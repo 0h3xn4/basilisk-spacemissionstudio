@@ -147,6 +147,10 @@ Version |release|
   CMake now tracks that file and reads the current source version instead of
   Conan's cached version. Running ``ninja -j 12`` in an existing build directory
   applies the fix and refreshes the metadata without a clean build.
+- :ref:`spacecraftLocation` formed its Sun direction from the inertial origin and its viewing direction from the
+  primary spacecraft center instead of the configured body-fixed location. Illumination and viewing angles for
+  translated or offset locations are corrected in the current version (issue #864).
+  NaN ``glareThreshold`` values are now rejected during initialization rather than silently bypassing glare rejection.
 
 - GitHub issue 1393: The :ref:`constraintDynamicEffector` applied its constraint force and torque
   regardless of the device status message, which gated only the load filtering and the output
@@ -378,6 +382,15 @@ Version 2.12.0 (September 21, 2026)
   and both noise models were initialized with the same random stream. Both propagation matrices now
   default to zero, and the accelerometer and gyro use distinct repeatable streams for every
   ``RNGSeed`` value, including zero. This is fixed in the current version.
+- GitHub issue 1560: Normalizing ``GaussMarkov`` secondary seeds to 32 bits could make a secondary
+  stream identical to its primary stream for some 64-bit input seeds on platforms with a 64-bit
+  engine result type. Seed derivation now avoids both the truncated and full-width primary states
+  while preserving existing primary seeding. This is fixed in the current version.
+  Derived seeds and raw engine sequences now match across standard libraries.
+  Replaying earlier simulations on builds with a 64-bit
+  ``std::minstd_rand::result_type`` may change secondary sensor noise and fault outputs.
+  Sensor outputs are still not guaranteed to match across standard libraries because distribution
+  algorithms are implementation-defined.
 - BSK-1460: Configuring :ref:`starTracker` ``PMatrix`` produced an unbounded attitude-error random
   walk by default. The propagation matrix now defaults to zero so ``PMatrix`` alone produces white
   Gaussian attitude errors; random-walk behavior remains explicitly configurable. This is fixed in
