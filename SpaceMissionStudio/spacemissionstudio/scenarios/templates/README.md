@@ -1,9 +1,10 @@
 # Template missions
 
-Eighteen ready-to-run scenario files, each demonstrating one SpaceMissionStudio
-concept in isolation -- for learning the tool and the orbital-mechanics
-concepts it simulates, and as starting points for your own missions
-(copy one, edit it, save it under a new name).
+Nineteen ready-to-run scenario files -- eighteen each demonstrating one
+SpaceMissionStudio concept in isolation, plus one ('19') that
+deliberately integrates several -- for learning the tool and the
+orbital-mechanics concepts it simulates, and as starting points for your
+own missions (copy one, edit it, save it under a new name).
 
 Every file is a complete, independently valid `Scenario` (built through
 `schema.scenario`'s own dataclasses and `Scenario.validate()`, not
@@ -30,7 +31,7 @@ spacemissionstudio validate spacemissionstudio/scenarios/templates/01_two_body_c
 Once opened in the GUI, **Save As...** under a new name/location before
 editing if you want to keep the original template intact for next time.
 
-Every one of these eighteen templates also has a standalone
+Every one of these nineteen templates also has a standalone
 **"Customize: \<template name\>..."** button in the GUI's Load Scenario
 tab, below the template list (see `gui/template_wizard.py` for the spec
 registry, or that module's own docstring for the two-stage rollout this

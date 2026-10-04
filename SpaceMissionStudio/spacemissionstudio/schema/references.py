@@ -149,6 +149,11 @@ def find_ground_station_references(scenario: "Scenario", name: str) -> List[Refe
                 path=f"spacecraft[{i}] ({sc.name!r}).fsw_params['target_ground_station']",
                 resource_kind="ground_station", name=name,
             ))
+        if sc.comms_pointing is not None and sc.comms_pointing.target_ground_station == name:
+            refs.append(Reference(
+                path=f"spacecraft[{i}] ({sc.name!r}).comms_pointing.target_ground_station",
+                resource_kind="ground_station", name=name,
+            ))
     return refs
 
 
@@ -196,6 +201,9 @@ def rename_ground_station(scenario: "Scenario", old_name: str, new_name: str) ->
     for sc in scenario.spacecraft:
         if sc.fsw_mode == "locationPointing" and sc.fsw_params.get("target_ground_station") == old_name:
             sc.fsw_params["target_ground_station"] = new_name
+            updated += 1
+        if sc.comms_pointing is not None and sc.comms_pointing.target_ground_station == old_name:
+            sc.comms_pointing.target_ground_station = new_name
             updated += 1
 
     target.name = new_name

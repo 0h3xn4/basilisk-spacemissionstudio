@@ -108,6 +108,28 @@ def test_comms_pointing_mode_shows_accent_badge_and_visibility(widget):
     assert "900.0 km" in widget.slant_range_label.text()
 
 
+def test_real_access_without_mode_switch_shows_no_link_breakdown(widget):
+    """Regression test for a real bug: has_access alone used to be enough
+    to compute and show a full RF breakdown, even while the spacecraft was
+    still Sun-pointing (active_mode == 0) -- i.e. its antenna was never
+    actually pointed at the ground station at all. This contradicts
+    engine.link_budget.link_margin_series()'s own gating (has_access AND
+    active_mode), and showed a fabricated link margin right next to a
+    "Sun-pointing" mode badge. The ground station being geometrically
+    visible must not, by itself, produce a link breakdown.
+    """
+    result = _result_set(
+        active_mode=[0], pointing_error_deg=[1.0], has_access=[1],
+        slant_range_m=[1.0e6], battery_charge_wh=[35.0], net_power_w=[8.0],
+    )
+    widget.set_result(result, _scenario())
+
+    assert widget.mode_badge.text() == "Sun-pointing"
+    assert widget.link_status_badge.text() == "Not yet comms-pointing"
+    assert widget.margin_label.text() == "--"
+    assert widget.eirp_label.text() == "--"
+
+
 def test_large_pointing_error_shows_slewing_badge_and_degraded_link(widget):
     """Right at a Sun-pointing -> ground-station-pointing transition, the
     arbitrator has already switched the attitude reference and has_access

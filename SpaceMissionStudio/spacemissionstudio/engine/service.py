@@ -1763,9 +1763,12 @@ class SimulationService:
         for sc_config in self.scenario.spacecraft:
             if sc_config.rf_link is None:
                 continue
+            comms_target = sc_config.comms_pointing.target_ground_station \
+                if sc_config.comms_pointing is not None else None
             for gs_config in self.scenario.ground_stations:
                 result.add(link_budget.link_margin_series(
-                    result, gs_config.name, sc_config.name, sc_config.rf_link, gs_config
+                    result, gs_config.name, sc_config.name, sc_config.rf_link, gs_config,
+                    comms_pointing_target_ground_station=comms_target,
                 ))
         return result
 

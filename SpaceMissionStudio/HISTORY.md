@@ -5451,4 +5451,119 @@ the new dashboard widget against synthetic `ResultSet`/`Scenario` data, headless
 isolating the arbitrator's own mode-switching/power-gating/attitude-continuity behavior (it
 collects correctly and skips cleanly here, same as this project's entire existing
 Basilisk-dependent suite always has in this sandbox -- it will only genuinely run once a real
-build is available). Full suite: 976 passed, 130 skipped, zero regressions (up from 949/126).
+build is available). Full suite: 976 passed, 130 skipped, zero regressions (up from 940/126, this
+file's own last-recorded figure, in the "Version 2.0.0" entry above).
+
+---
+
+## Comprehensive audit of the comms_pointing feature (template 19) and a full README pass
+
+Direct request: "update all readme's, do a complete and comprehensive audit and review of
+everything, and fix any problem that may be detected." Run as four parallel, independent audits
+(`schema/`, `engine/`, `gui/`, and a fact-checking pass over every README/HISTORY.md claim against
+the actual repository state) rather than one linear read-through -- each one reported concrete,
+verifiable findings (file:line, concrete failure scenario, suggested fix), not style preferences.
+Five real bugs were found and fixed; one more was investigated, understood, and DELIBERATELY left
+unchanged because the "fix" was worse than the bug. Every fix below got its own new regression test.
+
+**Real bugs, fixed:**
+
+1. **`Scenario.validate()`'s `needs_sun` check omitted `comms_pointing`**
+   (`schema/scenario.py`). The existing check already catches `power`/`station_keeping`/
+   `enable_srp` needing a real sun ephemeris (`gravity.third_body_perturbers`) -- but
+   `comms_pointing`'s own internal `sunSafePoint` chain needs exactly the same thing
+   (`engine.fsw.build_simple_nav`'s `vehSunPntBdy` field is only populated when "sun" is
+   SPICE-tracked) and was simply never added to the `any(...)` predicate. A `comms_pointing`
+   scenario with no `power`/third-body sun validated cleanly and then silently Sun-pointed on a
+   zero/garbage heading the moment it was actually run -- the exact failure mode this check
+   exists to catch, just missing one case. Fixed by adding `comms_pointing` to the predicate;
+   covered by a new `"comms_pointing"` case added to the existing parametrized
+   `test_power_station_keeping_or_srp_{with,without}_sun_third_body_*` tests.
+2. **`schema/references.py` never tracked `comms_pointing.target_ground_station`**. This
+   module's whole job is backing "refuse delete if referenced" and "rename updates every
+   reference atomically" for the GUI -- but `find_ground_station_references`/
+   `rename_ground_station` only ever knew about `fsw_params['target_ground_station']`, never
+   `comms_pointing`'s own reference to the same resource kind. A user could delete a ground
+   station out from under a `comms_pointing` spacecraft with no warning, or rename one and leave
+   `comms_pointing.target_ground_station` pointing at a name that no longer exists -- precisely
+   the two guarantees this module's own docstring promises, both silently broken for this one
+   field. Fixed by adding a `comms_pointing` case to both functions, mirroring the existing
+   `fsw_params` handling exactly; two new tests (`test_comms_pointing_target_is_found`,
+   `test_rename_ground_station_updates_comms_pointing_reference`).
+3. **`engine.link_budget.link_margin_series` computed a margin for the WRONG ground station in
+   a multi-ground-station scenario.** A `comms_pointing` spacecraft has exactly one antenna,
+   committed to `comms_pointing.target_ground_station` -- but `link_margin_series` had no notion
+   of which station that was, so `_extract_results()`'s own loop over every `ground_stations`
+   entry would compute a plausible-looking, entirely fabricated margin for ANY station with
+   `has_access=1` while the spacecraft was actively comms-pointing (gated on `active_mode`
+   alone), using a pointing error that was really measured against the ACTUAL target, not that
+   station. Fixed by threading a new `comms_pointing_target_ground_station` parameter through
+   `link_margin_series()` (from `engine.service`'s own call site): when it's set and doesn't
+   match the ground station being evaluated, the margin is now always `NaN` for that pair --
+   there is no real link to a station the single antenna was never pointed at, geometric access
+   notwithstanding. Two new tests confirm both the NaN case and that the real target's own
+   gating is unaffected.
+4. **`gui.mission_dashboard_widget`'s RF link panel ignored `active_mode` entirely** -- it
+   computed and showed a full link-budget breakdown (EIRP, FSPL, C/N0, Eb/N0, a concrete margin
+   number) gated on `has_access` alone, the exact same gap `engine.link_budget.
+   link_margin_series()` itself had already been fixed to avoid (see its own docstring,
+   "geometric visibility vs. actual RF link availability"). Concretely: with the Mode badge
+   reading "Sun-pointing" (i.e. the antenna isn't pointed at the ground station AT ALL), the RF
+   panel right next to it could still show "Link OK" with a specific margin in dB -- a fabricated
+   number directly contradicting the badge beside it. Fixed by threading `is_comms_mode` into
+   `_refresh_rf_link()` and adding it to the gating condition; when access exists but the mode
+   hasn't switched yet, the badge now reads "Not yet comms-pointing" instead of either a fake
+   breakdown or the equally-wrong "No access" (access DOES exist in that case -- pointing just
+   hasn't caught up). New regression test:
+   `test_real_access_without_mode_switch_shows_no_link_breakdown`.
+5. **The same dashboard's `_find_ground_station` could silently pick the wrong station** for
+   the RF panel in a multi-ground-station scenario (same root issue as #3, GUI side) -- it just
+   returned the first `{gs}.access_to_{sc}.has_access` series found, with no preference for the
+   spacecraft's own actual `comms_pointing.target_ground_station`. Fixed to prefer the
+   configured target when a `Scenario` is available (and to return no station, rather than a
+   wrong one, if that pairing wasn't actually recorded), falling back to the old "first found"
+   behavior only when no `Scenario`/target is known.
+
+**Investigated, NOT fixed -- the audit's own case for leaving something alone:**
+`engine.fsw.build_comms_pointing`'s arbitrator is added to its task at the default (lowest)
+priority, while `engine.service`'s own `comms_power_sink` (the thing the arbitrator drives) is
+added at priority 50 (matching the panel/bus_sink convention, intentionally higher than
+battery's 40 so the battery reads THIS tick's fresh power values). Since the sink runs before
+the arbitrator within a tick, the battery's recorded comms-power draw lags the mode-switch
+telemetry by one dynamics tick -- real, but negligible at this app's `dynamics_task_rate_s`
+scale (seconds) against comms passes lasting minutes. The first attempted fix (raising the
+arbitrator's own priority above 50) was checked by hand against Basilisk's own task-priority
+semantics (confirmed in `sys_model_task.cpp`: higher priority runs first within a tick) and
+found to introduce a WORSE bug: the arbitrator would then run before the two guidance chains it
+reads from, feeding it one-tick-stale guidance every single tick instead of a one-tick-stale
+power reading only on the power side. No single priority value satisfies both orderings given
+the existing power-layer (40-100) vs. FSW-layer (-1) priority split this app already uses
+throughout -- fixing this for real would mean restructuring that split, unverifiable without a
+real Basilisk build. Reverted, and documented in `build_comms_pointing`'s own comment so the
+tradeoff is visible to the next person who looks at this, rather than silently "fixed" with an
+unverified change.
+
+**README/docs pass**, verified against the actual repository rather than assumed: `README.md`'s
+test-count claims (two places said 940, actual was 976 before these fixes' own +7 tests, now
+983), its "Repository layout" tree (missing `mission_dashboard_widget.py`, `logging_setup.py`,
+`tests/test_comms_pointing.py`, `tests/test_propellant_bookkeeping.py`,
+`tests/gui/test_mission_dashboard_widget.py`, `tests/gui/test_feedback.py`, the six
+`diagnostic_05*.json` files, `USER_MANUAL.md`, `docs/images/`, and four `packaging/` scripts that
+exist but weren't listed), and its complete lack of any mention of the "Mission Dashboard" tab
+anywhere (added to both "Running the GUI" and the "GUI & CLI" capability paragraph).
+`scenarios/templates/README.md` still said "eighteen" templates in two places (now nineteen).
+`packaging/README.md`'s own real, historical `.deb` build example showed `_1.0.0_` (true to what
+was actually run at the time, left as a historical record per this file's own convention, but
+annotated so it isn't mistaken for what `build_deb.sh` produces today, `_2.0.0_`). This file's
+own immediately-preceding entry claimed "(up from 949/126)" -- a real number from an intermediate
+point in that session's own work, but one this file never actually recorded anywhere, making it
+unverifiable from the file's own text; corrected to reference this file's own last RECORDED
+figure (940/126, the "Version 2.0.0" entry) instead, matching every other entry's own convention.
+
+**Verification**: full suite re-run after every fix above, not just at the end --
+`python3 -m pytest tests/ -q` -- 983 passed, 130 skipped, zero regressions (up from 976/130,
+this file's own immediately-preceding entry). A headless `MainWindow` smoke test confirmed
+template 19 still loads/round-trips through the Scenario Editor and the Mission Dashboard tab
+still renders after all of the above. `scripts/_generate_templates.py` re-run and produced
+byte-identical template JSON files (confirms none of the schema/engine fixes above touch
+anything a template's own construction depends on).

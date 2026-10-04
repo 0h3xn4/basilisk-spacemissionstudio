@@ -166,7 +166,7 @@ environment issue.
   `engine/constellation.py`, `engine/spacecraft_templates.py`,
   `engine/propellant_bookkeeping.py`, `cli.py`, and the entire
   `spacemissionstudio/gui/` package) has no Basilisk import and is fully
-  exercised either way -- `pytest tests/` runs and passes 940 tests
+  exercised either way -- `pytest tests/` runs and passes 983 tests
   with or without Basilisk installed (see "Running the tests" below).
   That includes the PySide6 GUI: built, run headless, and driven with
   `pytest-qt` for real -- every form field, every menu action, every
@@ -371,7 +371,13 @@ rendered in an embedded `QWebEngineView`, with the epoch/elapsed-time
 x-axis toggle and per-series km-unit conversion described above still
 applying unchanged; see `results_widget.py`'s own module docstring for
 why `QWebEngineView` over a static image, and "Verification status"
-above for this migration's one open packaging caveat.
+above for this migration's one open packaging caveat. A "Mission
+Dashboard" tab (`mission_dashboard_widget.py`) shows the same live run
+as a set of grouped status readouts (operating state, attitude, power,
+RF link) instead of a plot, for a `comms_pointing`-configured
+spacecraft -- fed from the exact same `RunWorker.progress`/
+`finished_ok`/`cancelled` signals the Results tab already uses, so it
+updates live during a run with no extra plumbing.
 
 ## Repository layout
 
@@ -379,10 +385,14 @@ above for this migration's one open packaging caveat.
 SpaceMissionStudio/
   README.md                          -- this file
   HISTORY.md                         -- the full phase-by-phase development log
+  USER_MANUAL.md                     -- end-user walkthrough of the GUI (screenshots in docs/images/)
   LICENSE                            -- ISC license
   pyproject.toml                     -- packaging metadata, pytest config, CLI entry point
+  docs/
+    images/                          -- USER_MANUAL.md's own screenshots
   spacemissionstudio/
     cli.py                           -- batch/headless CLI + GUI launcher
+    logging_setup.py                 -- file-backed logging (so a GUI crash leaves more than one bare line)
     schema/
       scenario.py                    -- Scenario and friends, validation, save/load
       migrations.py                  -- schema-version migration registry
@@ -429,9 +439,11 @@ SpaceMissionStudio/
       spacecraft_template_dialog.py  -- Phase 5: "New from template" picker dialog
       kernel_status_widget.py        -- SPICE kernel status panel
       results_widget.py              -- Plotly results plot (QWebEngineView) + CSV export
+      mission_dashboard_widget.py    -- "Mission Dashboard" tab: live operating-state/attitude/power/RF-link telemetry for a comms_pointing spacecraft
       run_worker.py                  -- SimulationService/Monte Carlo on a background QThread
     scenarios/
       two_body_validation.json       -- the Phase 0 validation scenario
+      diagnostic_05*.json             -- one-off diagnostic scenarios from '05's own station-keeping/constant-thrust investigation (see HISTORY.md); diagnostic_05f_* is the only one a test (test_vizard.py) still reads
       templates/                     -- education/starter-template scenarios -- see that directory's own README
         README.md                    -- the template catalog: what each one teaches, how to open/run one
         01_two_body_circular_orbit.json
@@ -457,6 +469,9 @@ SpaceMissionStudio/
     _generate_templates.py            -- regenerates scenarios/templates/*.json from schema dataclasses (not installed/imported elsewhere)
   packaging/                          -- build_wheel.sh/.ps1, install.sh/.ps1, .desktop entry (Linux) -- see packaging/README.md
     build_deb.sh                     -- builds the real, double-click Linux .deb installer
+    build_wheel.sh / build_wheel.ps1 -- build a plain, platform-independent wheel (Linux/Windows)
+    install.sh / install.ps1         -- venv + Basilisk + SpaceMissionStudio install script (Linux/Windows)
+    spacemissionstudio.desktop.in    -- Linux desktop-entry template (filled in by build_deb.sh)
     deb/                              -- .deb package skeleton (DEBIAN/control.in + postinst/prerm/postrm, desktop entry, copyright)
     windows/                          -- the real Windows installer wizard
       spacemissionstudio.iss              -- Inno Setup script -> spacemissionstudio-2.0.0-setup.exe
@@ -533,14 +548,14 @@ python3 -m pip install -e ".[dev,gui]"
 python3 -m pytest tests/ -v
 ```
 
-Without Basilisk on `PYTHONPATH`, this runs 940 tests (schema, space
+Without Basilisk on `PYTHONPATH`, this runs 983 tests (schema, space
 weather, results, link budget, constellation generation, CLI, and the
-full PySide6 GUI, run headless) and skips 126 whose premise is
+full PySide6 GUI, run headless) and skips 130 whose premise is
 specifically "Basilisk is unavailable" (marked `requires_basilisk`), per
 `tests/conftest.py`.
 
 With Basilisk installed (`pip install "bsk[all]"` -- see "Getting
-started" above), the 126 skips above run for real instead of skipping.
+started" above), the 130 skips above run for real instead of skipping.
 See "Verification status" above for how thoroughly that's actually been
 exercised -- short version: yes, including a real full multi-day run.
 
@@ -685,7 +700,13 @@ label updates live as you type, including its Monte Carlo section
 (enable/num_runs/thread_count + a dispersion list, referencing spacecraft
 by name). Run > Run Simulation runs `SimulationService` on a background
 thread (the UI stays responsive) and switches to the Results tab when
-done, with a plot per result series and a CSV export button. Run > Check
+done, with a plot per result series and a CSV export button. A
+**"Mission Dashboard"** tab alongside Results shows the same run's live,
+at-a-glance telemetry (sim time/mode/ground-station visibility, pointing
+error/tracking status, battery charge-SOC-net power, and a live RF
+link-budget breakdown) whenever the scenario has a
+`comms_pointing`-configured spacecraft (see template '19'); it stays on
+its own empty-state placeholder otherwise. Run > Check
 Kernels shows SPICE kernel fetch/cache status. Both Run actions report a
 clear error (not a crash) if Basilisk isn't installed/built.
 

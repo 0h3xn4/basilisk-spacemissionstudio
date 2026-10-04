@@ -1199,19 +1199,31 @@ def test_station_keeping_rejects_out_of_range_eclipse_threshold():
         sc.validate()
 
 
+def _configure_comms_pointing(sc):
+    sc.ground_stations = [GroundStationConfig(name="gs-1", latitude_deg=0.0, longitude_deg=0.0)]
+    sc.spacecraft[0].comms_pointing = CommsPointingConfig(target_ground_station="gs-1")
+
+
 @pytest.mark.parametrize("configure", [
     lambda sc: setattr(sc.spacecraft[0], "power", PowerConfig(panel_area_m2=1.0, panel_efficiency=0.29)),
     lambda sc: setattr(sc.spacecraft[0], "station_keeping", StationKeepingConfig(
         target_altitude_km=500.0, deadband_km=1.0, thrust_n=0.01, isp_s=1500.0, propellant_kg=2.0)),
     lambda sc: setattr(sc.spacecraft[0], "enable_srp", True),
-], ids=["power", "station_keeping", "enable_srp"])
+    _configure_comms_pointing,
+], ids=["power", "station_keeping", "enable_srp", "comms_pointing"])
 def test_power_station_keeping_or_srp_without_sun_third_body_is_rejected(configure):
     """Mirrors engine.service.SimulationService.build()'s own
     SimulationServiceError (simpleSolarPanel/the eclipse gate/SRP all
     need a real eclipse shadow factor, which needs a sun ephemeris) --
     caught for real against two of this project's own bundled templates
     (05, 07), which validated cleanly here but failed the moment they
-    were actually run.
+    were actually run. The comms_pointing case is a regression test for
+    the exact same gap: comms_pointing's own internal sunSafePoint chain
+    (engine.service's comms_pointing branch) needs a real sun ephemeris
+    too, but Scenario.validate()'s needs_sun check didn't originally
+    include it, so a comms_pointing scenario with no sun third-body
+    validated cleanly here and only failed (silently sun-pointing on a
+    zero/garbage heading) once actually run.
     """
     sc = _minimal_scenario()
     assert "sun" not in sc.gravity.third_body_perturbers
@@ -1225,7 +1237,8 @@ def test_power_station_keeping_or_srp_without_sun_third_body_is_rejected(configu
     lambda sc: setattr(sc.spacecraft[0], "station_keeping", StationKeepingConfig(
         target_altitude_km=500.0, deadband_km=1.0, thrust_n=0.01, isp_s=1500.0, propellant_kg=2.0)),
     lambda sc: setattr(sc.spacecraft[0], "enable_srp", True),
-], ids=["power", "station_keeping", "enable_srp"])
+    _configure_comms_pointing,
+], ids=["power", "station_keeping", "enable_srp", "comms_pointing"])
 def test_power_station_keeping_or_srp_with_sun_third_body_validates(configure):
     sc = _minimal_scenario(gravity=GravityConfig(third_body_perturbers=["sun"]))
     configure(sc)

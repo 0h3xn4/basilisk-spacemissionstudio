@@ -1303,13 +1303,15 @@ class Scenario:
         # moment it's actually run (caught for real: two of this
         # project's own bundled templates had exactly this bug).
         needs_sun = any(sc.power is not None or sc.station_keeping is not None or sc.enable_srp
+                         or sc.comms_pointing is not None
                          for sc in self.spacecraft)
         if needs_sun:
             _require("sun" in self.gravity.third_body_perturbers,
-                      "a spacecraft has power, station_keeping, or enable_srp configured, but 'sun' is not "
-                      "one of gravity.third_body_perturbers -- simpleSolarPanel/the eclipse gate/SRP all need "
-                      "a sun ephemeris. Add 'sun' to gravity.third_body_perturbers, or remove power/"
-                      "station_keeping/enable_srp from every spacecraft")
+                      "a spacecraft has power, station_keeping, enable_srp, or comms_pointing configured, "
+                      "but 'sun' is not one of gravity.third_body_perturbers -- simpleSolarPanel/the eclipse "
+                      "gate/SRP/comms_pointing's own sunSafePoint chain all need a sun ephemeris. Add 'sun' "
+                      "to gravity.third_body_perturbers, or remove power/station_keeping/enable_srp/"
+                      "comms_pointing from every spacecraft")
         self.space_weather.validate()
         self.sim_settings.validate()
         self.monte_carlo.validate()

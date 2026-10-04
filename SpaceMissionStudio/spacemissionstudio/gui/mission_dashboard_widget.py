@@ -84,14 +84,31 @@ def _find_comms_pointing_spacecraft(result: Optional[ResultSet]) -> Optional[str
     return None
 
 
-def _find_ground_station(result: ResultSet, spacecraft_name: str) -> Optional[str]:
-    """The ground station name paired with ``spacecraft_name`` in a
-    recorded ``{gs}.access_to_{sc}.has_access`` series (see
-    ``engine.service.SimulationService.run()``'s access-analysis
-    wiring) -- the FIRST such pairing found, matching this module's own
-    single-spacecraft-panel scope (a spacecraft tracked by more than one
-    ground station would need more than one RF panel, not handled here).
+def _find_ground_station(result: ResultSet, spacecraft_name: str,
+                          comms_pointing_target_ground_station: Optional[str] = None) -> Optional[str]:
+    """The ground station this panel should show for ``spacecraft_name``.
+
+    When ``comms_pointing_target_ground_station`` is given (the
+    spacecraft's own ``schema.scenario.CommsPointingConfig.
+    target_ground_station``, when a ``Scenario`` is available -- see
+    :meth:`MissionDashboardWidget._refresh`) and that pair was actually
+    recorded, it's used directly: a ``comms_pointing`` spacecraft has
+    exactly one antenna under that mode arbitrator's control, so it is
+    the ONLY ground station whose access/link-margin series mean
+    anything for this panel, even if another station happens to be
+    simultaneously, geometrically visible too (see
+    ``engine.link_budget.link_margin_series``'s own docstring for the
+    same reasoning on the engine side). Otherwise falls back to the
+    FIRST ``{gs}.access_to_{sc}.has_access`` pairing found in
+    ``result.series`` (e.g. no ``Scenario`` was given alongside this
+    ``ResultSet``) -- matching this module's own single-spacecraft-panel
+    scope (a spacecraft tracked by more than one ground station would
+    need more than one RF panel, not handled here).
     """
+    if comms_pointing_target_ground_station is not None:
+        if f"{comms_pointing_target_ground_station}.access_to_{spacecraft_name}.has_access" in result.series:
+            return comms_pointing_target_ground_station
+        return None
     suffix = f".access_to_{spacecraft_name}.has_access"
     for series_name in result.series:
         if series_name.endswith(suffix):
@@ -243,7 +260,9 @@ class MissionDashboardWidget(QWidget):
             self.mode_badge.setText("Sun-pointing")
             self.mode_badge.setStyleSheet(_badge_style(_SUCCESS_BADGE))
 
-        gs_name = _find_ground_station(result, sc_name)
+        comms_target = sc_config.comms_pointing.target_ground_station \
+            if sc_config is not None and sc_config.comms_pointing is not None else None
+        gs_name = _find_ground_station(result, sc_name, comms_target)
         has_access = None
         slant_range_m = None
         if gs_name is not None:
@@ -299,10 +318,11 @@ class MissionDashboardWidget(QWidget):
             self.net_power_label.setStyleSheet("")
 
         # -- RF link --------------------------------------------------------
-        self._refresh_rf_link(sc_config, gs_name, has_access, slant_range_m, pointing_error_deg)
+        self._refresh_rf_link(sc_config, gs_name, has_access, is_comms_mode, slant_range_m, pointing_error_deg)
 
     def _refresh_rf_link(self, sc_config, gs_name: Optional[str], has_access: Optional[bool],
-                          slant_range_m: Optional[float], pointing_error_deg: Optional[float]) -> None:
+                          is_comms_mode: bool, slant_range_m: Optional[float],
+                          pointing_error_deg: Optional[float]) -> None:
         self.slant_range_label.setText(f"{slant_range_m / 1000.0:,.1f} km" if slant_range_m is not None else "--")
 
         rf_link = sc_config.rf_link if sc_config is not None else None
@@ -310,8 +330,16 @@ class MissionDashboardWidget(QWidget):
         if self._scenario is not None and gs_name is not None:
             gs_config = next((gs for gs in self._scenario.ground_stations if gs.name == gs_name), None)
 
+        # Gated on has_access AND is_comms_mode -- matching
+        # engine.link_budget.link_margin_series()'s own gating exactly
+        # (see that function's docstring): real geometric access alone
+        # does not mean the spacecraft has actually switched into
+        # ground-station-pointing mode yet, so no link attempt -- and so
+        # no breakdown -- should be shown while it's still Sun-pointing,
+        # even if the ground station happens to already be visible.
         breakdown = None
-        if rf_link is not None and gs_config is not None and slant_range_m is not None and has_access:
+        if rf_link is not None and gs_config is not None and slant_range_m is not None \
+                and has_access and is_comms_mode:
             breakdown = link_budget.link_budget_breakdown(
                 slant_range_m, rf_link, gs_config, pointing_error_deg or 0.0
             )
@@ -321,8 +349,18 @@ class MissionDashboardWidget(QWidget):
                           self.received_power_label, self.noise_label, self.cn0_label,
                           self.ebno_label, self.margin_label):
                 label.setText("--")
-            if has_access is None or not has_access:
+            if has_access is None:
+                self.link_status_badge.setText("Unknown")
+                self.link_status_badge.setStyleSheet(_badge_style(_MUTED_BADGE))
+            elif not has_access:
                 self.link_status_badge.setText("No access")
+                self.link_status_badge.setStyleSheet(_badge_style(_MUTED_BADGE))
+            elif not is_comms_mode:
+                # Real access exists, but the spacecraft hasn't
+                # (mode-)switched its antenna to point at it yet -- the
+                # "geometric visibility vs. actual RF link availability"
+                # distinction this feature is built around.
+                self.link_status_badge.setText("Not yet comms-pointing")
                 self.link_status_badge.setStyleSheet(_badge_style(_MUTED_BADGE))
             else:
                 self.link_status_badge.setText("Link status unknown (no rf_link configured)")

@@ -131,7 +131,8 @@ def link_margin_db(range_m: float, rf_link: RFLinkConfig, ground_station: Ground
 
 
 def link_margin_series(result: ResultSet, ground_station_name: str, spacecraft_name: str,
-                        rf_link: RFLinkConfig, ground_station: GroundStationConfig) -> TimeSeries:
+                        rf_link: RFLinkConfig, ground_station: GroundStationConfig,
+                        comms_pointing_target_ground_station: Optional[str] = None) -> TimeSeries:
     """Builds a ``"<gs>.access_to_<sc>.link_margin_db"`` :class:`TimeSeries`
     from that pair's already-recorded ``slant_range``/``has_access`` series
     (see ``engine.service.SimulationService.run()``'s access-analysis
@@ -140,20 +141,32 @@ def link_margin_series(result: ResultSet, ground_station_name: str, spacecraft_n
     window, so those samples are ``NaN`` rather than a misleadingly large
     negative number.
 
-    When the spacecraft also has ``schema.scenario.CommsPointingConfig``
-    configured, this additionally gates on its own
-    ``{spacecraft_name}.comms_pointing.active_mode`` series (when present in
-    ``result.series``) -- real geometric ``has_access`` only means the
-    ground station is visible, not that the spacecraft has actually
-    (mode-)switched its antenna to point at it yet, so a sample only gets a
-    defined margin once BOTH are true. When that series is present, this
-    also feeds the spacecraft's own, real, simulated
-    ``{spacecraft_name}.comms_pointing.pointing_error_deg`` into
+    ``comms_pointing_target_ground_station`` is the spacecraft's own
+    ``schema.scenario.CommsPointingConfig.target_ground_station`` (``None``
+    if it has no ``comms_pointing`` configured at all -- the pre-existing
+    behavior, below, is then unchanged). When it's set and EQUALS
+    ``ground_station_name``, this additionally gates on the spacecraft's
+    own ``{spacecraft_name}.comms_pointing.active_mode`` series (when
+    present) -- real geometric ``has_access`` only means the ground
+    station is visible, not that the spacecraft has actually
+    (mode-)switched its antenna to point at it yet, so a sample only gets
+    a defined margin once BOTH are true -- and feeds its own, real,
+    simulated ``{spacecraft_name}.comms_pointing.pointing_error_deg`` into
     :func:`link_margin_db` for that sample, so the margin reflects the
     actually-achieved antenna pointing rather than assuming perfect
-    boresight. Spacecraft with no ``comms_pointing`` configured (the
-    pre-existing behavior) have neither series recorded, so this is exactly
-    equivalent to the old, always-perfect-pointing margin for them.
+    boresight.
+
+    When it's set but does NOT equal ``ground_station_name`` -- i.e. this
+    spacecraft's single antenna is committed elsewhere, to a DIFFERENT
+    ground station, by ``comms_pointing`` -- the margin is ALWAYS ``NaN``
+    for this pair, regardless of this station's own ``has_access``: a
+    spacecraft with ``comms_pointing`` configured has exactly one antenna
+    under that mode arbitrator's control, so geometric visibility of some
+    OTHER, non-targeted station was never a real link attempt (unlike the
+    ``comms_pointing_target_ground_station is None`` case, which has no
+    single committed antenna to speak of and so keeps the plain, always
+    -perfect-pointing ``has_access``-only gate for every station it's
+    evaluated against).
     """
     prefix = f"{ground_station_name}.access_to_{spacecraft_name}"
     range_series = result.series.get(f"{prefix}.slant_range")
@@ -165,10 +178,18 @@ def link_margin_series(result: ResultSet, ground_station_name: str, spacecraft_n
             f"{prefix}.slant_range/{prefix}.has_access in result.series)"
         )
 
+    margin_db = np.full(len(range_series.time_s), np.nan)
+
+    if comms_pointing_target_ground_station is not None \
+            and comms_pointing_target_ground_station != ground_station_name:
+        # This station was never the antenna's actual target -- no real
+        # link attempt here, ever, regardless of its own has_access.
+        return TimeSeries(f"{prefix}.link_margin_db", range_series.time_s, ("link_margin_db",),
+                           margin_db.reshape(-1, 1), units="dB")
+
     active_mode_series = result.series.get(f"{spacecraft_name}.comms_pointing.active_mode")
     pointing_error_series = result.series.get(f"{spacecraft_name}.comms_pointing.pointing_error_deg")
 
-    margin_db = np.full(len(range_series.time_s), np.nan)
     has_access = access_series.data[:, 0] > 0.5
     if active_mode_series is not None:
         has_access = has_access & (active_mode_series.data[:, 0] > 0.5)

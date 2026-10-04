@@ -108,8 +108,11 @@ inside the sandbox itself, not just written carefully against verified
 API sequences:
 
 ```bash
-./build_deb.sh                       # -> dist/spacemissionstudio_1.0.0_all.deb
-sudo apt install ./dist/spacemissionstudio_1.0.0_all.deb
+./build_deb.sh                       # -> dist/spacemissionstudio_1.0.0_all.deb (an honest record of
+sudo apt install ./dist/spacemissionstudio_1.0.0_all.deb  # what this verification run actually produced
+                                      # at the time -- today's build_deb.sh reads the package's own
+                                      # current __version__ instead, currently 2.0.0, so expect
+                                      # dist/spacemissionstudio_2.0.0_all.deb if you run this yourself now)
 ```
 
 ran end-to-end with no errors: the venv was created, `bsk[all]` installed

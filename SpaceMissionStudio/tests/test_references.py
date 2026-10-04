@@ -13,6 +13,7 @@ from spacemissionstudio.schema.references import (
     rename_spacecraft,
 )
 from spacemissionstudio.schema.scenario import (
+    CommsPointingConfig,
     DispersionConfig,
     GroundStationConfig,
     MonteCarloConfig,
@@ -153,6 +154,24 @@ def test_ground_station_target_is_found():
     assert "target_ground_station" in refs[0].path
 
 
+def test_comms_pointing_target_is_found():
+    """Regression test for a real gap: comms_pointing.target_ground_station
+    is a real reference (Scenario.validate() treats it as one -- see
+    scenario.py's own cross-reference checks), but find_ground_station_references
+    didn't know about it, which would let the GUI delete a ground station
+    out from under a comms_pointing spacecraft with no warning at all.
+    """
+    sc = SpacecraftConfig(name="sat-1", orbit=_orbit(),
+                            comms_pointing=CommsPointingConfig(target_ground_station="gs-1"))
+    scenario = _scenario(spacecraft=[sc],
+                          ground_stations=[GroundStationConfig(name="gs-1", latitude_deg=0.0, longitude_deg=0.0)])
+
+    refs = find_ground_station_references(scenario, "gs-1")
+
+    assert len(refs) == 1
+    assert "comms_pointing.target_ground_station" in refs[0].path
+
+
 def test_ground_station_unreferenced_is_empty():
     scenario = _scenario(ground_stations=[GroundStationConfig(name="gs-1", latitude_deg=0.0, longitude_deg=0.0)])
     assert find_ground_station_references(scenario, "gs-1") == []
@@ -251,3 +270,22 @@ def test_rename_ground_station_updates_self_and_references():
 def test_rename_ground_station_raises_if_not_found():
     with pytest.raises(ReferenceError, match="no ground station named"):
         rename_ground_station(_scenario(), "does-not-exist", "new-name")
+
+
+def test_rename_ground_station_updates_comms_pointing_reference():
+    """Regression test for a real gap: rename_ground_station used to
+    rename the GroundStationConfig itself but leave
+    comms_pointing.target_ground_station pointing at the old, now
+    -nonexistent name -- breaking the "rename updates every reference
+    atomically" guarantee this module's own docstring promises.
+    """
+    sc = SpacecraftConfig(name="sat-1", orbit=_orbit(),
+                            comms_pointing=CommsPointingConfig(target_ground_station="gs-1"))
+    scenario = _scenario(spacecraft=[sc],
+                          ground_stations=[GroundStationConfig(name="gs-1", latitude_deg=0.0, longitude_deg=0.0)])
+
+    updated = rename_ground_station(scenario, "gs-1", "gs-1-renamed")
+
+    assert updated == 1
+    assert scenario.ground_stations[0].name == "gs-1-renamed"
+    assert sc.comms_pointing.target_ground_station == "gs-1-renamed"

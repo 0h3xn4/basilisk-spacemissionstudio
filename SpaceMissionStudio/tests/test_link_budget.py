@@ -187,6 +187,47 @@ def test_link_margin_series_applies_the_pointing_error_series_per_sample():
     assert expected_1 > expected_0  # better-pointed sample has less pointing loss, so more margin
 
 
+def test_link_margin_series_is_nan_for_a_ground_station_other_than_the_comms_pointing_target():
+    """Regression test for a real bug: a comms_pointing spacecraft has
+    exactly ONE antenna, committed to comms_pointing.target_ground_station
+    -- geometric visibility of a DIFFERENT, non-targeted ground station is
+    never a real link attempt, even if that other station's own
+    has_access happens to be true at the same moment the spacecraft is
+    actively comms-pointing (at its real target). Before this fix,
+    link_margin_series had no way to know which ground station was
+    actually targeted, so it would compute a plausible-looking,
+    nonsensical margin for ANY station with has_access=1, using pointing
+    error that was really measured against the ACTUAL target.
+    """
+    has_access = [1, 1]
+    active_mode = [1, 1]  # actively comms-pointing -- but at gs-OTHER, not gs1
+    pointing_error_deg = [2.0, 2.0]
+    result = _access_result_with_comms_pointing(1.0e6, has_access, active_mode, pointing_error_deg, n=2)
+    rf_link = _rf_link(antenna_beamwidth_deg=15.0)
+    gs = _ground_station()
+
+    series = link_margin_series(result, "gs1", "sat1", rf_link, gs,
+                                 comms_pointing_target_ground_station="gs-OTHER")
+
+    assert np.all(np.isnan(series.data[:, 0]))
+
+
+def test_link_margin_series_still_applies_normal_gating_for_the_actual_comms_pointing_target():
+    has_access = [1, 1]
+    active_mode = [1, 1]
+    pointing_error_deg = [2.0, 2.0]
+    result = _access_result_with_comms_pointing(1.0e6, has_access, active_mode, pointing_error_deg, n=2)
+    rf_link = _rf_link(antenna_beamwidth_deg=15.0)
+    gs = _ground_station()
+
+    series = link_margin_series(result, "gs1", "sat1", rf_link, gs,
+                                 comms_pointing_target_ground_station="gs1")
+
+    expected = link_margin_db(1.0e6, rf_link, gs, pointing_error_deg=2.0)
+    assert series.data[0, 0] == pytest.approx(expected)
+    assert series.data[1, 0] == pytest.approx(expected)
+
+
 def test_link_margin_series_without_comms_pointing_series_is_unaffected():
     """A spacecraft with rf_link but no comms_pointing configured (the
     pre-existing case) has neither active_mode nor pointing_error_deg

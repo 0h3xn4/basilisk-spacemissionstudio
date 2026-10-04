@@ -580,6 +580,24 @@ def build_comms_pointing(scSim, task_name: str, tag: str, comms_config, sun_guid
     arbitrator.sunGuidInMsg.subscribeTo(sun_guid_msg)
     arbitrator.commsGuidInMsg.subscribeTo(comms_guid_msg)
     arbitrator.commsPowerSink = comms_power_sink
+    # Default (lowest) priority, deliberately -- same as nav/both
+    # guidance chains/mrpFeedback/idealized actuation, relying on
+    # insertion order (this is always added after both guidance chains
+    # exist) to run after them within the tick, so it reads THIS tick's
+    # fresh guidance rather than last tick's. One consequence: since
+    # engine.service's comms_power_sink is added at priority 50 (matching
+    # the panel/bus_sink convention, which needs to run BEFORE battery's
+    # 40 each tick) -- strictly higher than this arbitrator's own -1 -- the
+    # sink's evaluatePowerModel() runs BEFORE this arbitrator updates
+    # nodePowerOut each tick, so the battery's recorded comms power draw
+    # lags the mode-switch telemetry by one dynamics tick (negligible at
+    # this app's dynamics_task_rate_s scale -- seconds to tens of seconds
+    # -- against comms passes lasting minutes). Deliberately NOT "fixed"
+    # by raising this arbitrator's priority above 50: that would make it
+    # run BEFORE the guidance chains it reads from instead, trading a
+    # negligible one-tick power-accounting lag for reading stale guidance
+    # every tick -- a strictly worse bug. See HISTORY.md for this
+    # tradeoff's own writeup.
     scSim.AddModelToTask(task_name, arbitrator)
     return arbitrator
 
