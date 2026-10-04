@@ -56,6 +56,7 @@ from ..schema.scenario import Scenario, ScenarioValidationError, load_scenario
 from .feedback import show_toast
 from .kernel_status_widget import KernelStatusWidget
 from .load_scenario_widget import LoadScenarioWidget
+from .mission_dashboard_widget import MissionDashboardWidget
 from .mission_output_widget import MissionOutputWidget
 from .results_widget import ResultsWidget
 from .run_worker import MonteCarloWorker, RunWorker
@@ -124,6 +125,7 @@ class MainWindow(QMainWindow):
         # also isn't nagged repeatedly once they do.
         self._vizard_live_stream_hint_shown = False
         self._last_run_epoch_utc: str | None = None  # set in on_run(); see its own comment
+        self._last_run_scenario: Scenario | None = None  # set in on_run(); fed to mission_dashboard_widget
 
         self.scenario_editor = ScenarioEditorWidget()
         self.scenario_editor.reset_to_default()
@@ -134,11 +136,13 @@ class MainWindow(QMainWindow):
         self.load_scenario_widget.scenario_customized.connect(self._on_load_scenario_customized)
 
         self.results_widget = ResultsWidget()
+        self.mission_dashboard_widget = MissionDashboardWidget()
         self.mission_output_widget = MissionOutputWidget()
         self.kernel_status_widget = KernelStatusWidget()
 
         self.right_tabs = QTabWidget()
         self.right_tabs.addTab(self.results_widget, "Results")
+        self.right_tabs.addTab(self.mission_dashboard_widget, "Mission Dashboard")
         self.right_tabs.addTab(self.mission_output_widget, "Mission Output")
         self.right_tabs.addTab(self.kernel_status_widget, "Kernel Status")
 
@@ -419,6 +423,7 @@ class MainWindow(QMainWindow):
         self.scenario_editor.reset_to_default()
         self._current_path = None
         self.results_widget.set_result(None)
+        self.mission_dashboard_widget.set_result(None)
         self.mission_output_widget.clear()
         self._mark_clean()
         self.statusBar().showMessage("New scenario.")
@@ -486,6 +491,7 @@ class MainWindow(QMainWindow):
         self.scenario_editor.from_scenario(scenario)
         self._current_path = current_path
         self.results_widget.set_result(None)
+        self.mission_dashboard_widget.set_result(None)
         self.mission_output_widget.clear()
         self._mark_clean()
         label = str(current_path) if current_path is not None else scenario.name
@@ -845,14 +851,18 @@ class MainWindow(QMainWindow):
             # otherwise look like this run already has results before it
             # actually does.
             self.results_widget.set_result(None)
+            self.mission_dashboard_widget.set_result(None)
             self.right_tabs.setCurrentWidget(self.results_widget)
         self.mission_output_widget.clear()
         # Captured now (not read back from self.scenario_editor later,
         # e.g. in _on_run_finished()): the editor isn't locked while a run
         # is in flight, so it could hold different, later edits by the
         # time this run actually finishes. This is the exact epoch that
-        # exact ResultSet's time_s values are relative to.
+        # exact ResultSet's time_s values are relative to -- and the exact
+        # rf_link/ground_station/power config mission_dashboard_widget
+        # needs to recompute a live link-budget breakdown.
         self._last_run_epoch_utc = scenario.epoch_utc
+        self._last_run_scenario = scenario
         self._run_worker = RunWorker(scenario, vizard_request=self._vizard_request, live=live)
         self._run_worker.progress.connect(self._on_run_progress)
         self._run_worker.finished_ok.connect(self._on_run_finished)
@@ -879,6 +889,7 @@ class MainWindow(QMainWindow):
 
     def _on_run_progress(self, partial_result, fraction: float) -> None:
         self.results_widget.set_live_result(partial_result, self._last_run_epoch_utc)
+        self.mission_dashboard_widget.set_live_result(partial_result, self._last_run_scenario)
         self._busy_progress.setValue(int(round(fraction * 100)))
 
     def _on_run_finished(self, result, command_summary=None) -> None:
@@ -894,6 +905,7 @@ class MainWindow(QMainWindow):
         # a non-live run: set_live_result() still rebuilds normally
         # whenever the series set differs from whatever was shown before.
         self.results_widget.set_live_result(result, self._last_run_epoch_utc)
+        self.mission_dashboard_widget.set_live_result(result, self._last_run_scenario)
         if command_summary is not None:
             self.mission_output_widget.set_command_summary(command_summary)
             self.right_tabs.setCurrentWidget(self.mission_output_widget)
@@ -914,6 +926,7 @@ class MainWindow(QMainWindow):
         self._stop_busy("Run cancelled by user.")
         show_toast(self, "Run cancelled", kind="info")
         self.results_widget.set_live_result(partial_result, self._last_run_epoch_utc)
+        self.mission_dashboard_widget.set_live_result(partial_result, self._last_run_scenario)
         if command_summary is not None:
             self.mission_output_widget.set_command_summary(command_summary)
             self.right_tabs.setCurrentWidget(self.mission_output_widget)

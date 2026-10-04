@@ -121,7 +121,7 @@ from typing import Dict, List, Optional
 
 import numpy as np
 
-from Basilisk.architecture import messaging
+from Basilisk.architecture import messaging, sysModel
 from Basilisk.fswAlgorithms import (
     attTrackingError,
     cssWlsEst,
@@ -154,7 +154,7 @@ from Basilisk.simulation import (
     starTracker,
     thrusterDynamicEffector,
 )
-from Basilisk.utilities import simIncludeRW, simIncludeThruster
+from Basilisk.utilities import macros, simIncludeRW, simIncludeThruster
 
 from ..schema.scenario import SUPPORTED_FSW_MODES
 
@@ -453,6 +453,153 @@ def build_guidance(scSim, task_name: str, tag: str, fsw_mode: str, fsw_params: d
         return mod.attGuidOutMsg
 
     raise FswError(f"fsw_mode {fsw_mode!r} is schema-valid but has no engine.fsw builder")  # unreachable
+
+
+class _CommsPointingArbitrator(sysModel.SysModel):
+    """``schema.scenario.CommsPointingConfig``'s mode switch: forwards
+    whichever of two already-built ``AttGuidMsg`` guidance chains
+    (Sun-pointing, ground-station-pointing) is currently "active" onto
+    its own output ``AttGuidMsg``, based on the REAL, live
+    ``AccessMsg.hasAccess`` from ``engine.fsw.build_ground_location``/
+    ``add_access_analysis`` -- never a manually-specified time window.
+
+    This switches only the attitude REFERENCE/error fed downstream to
+    :func:`build_mrp_feedback` -- the spacecraft's own integrated
+    attitude STATE is untouched by the switch itself (this module writes
+    no torque/force directly), so the existing closed-loop MRP
+    controller simply tracks a new target starting the next tick,
+    exactly as it would for any other reference change. That is what
+    makes the Sun-pointing <-> ground-station-pointing transition a
+    genuine physically-simulated slew rather than an instantaneous
+    attitude jump: nothing here resets ``sigma_BN``, there is no state
+    to reset.
+
+    Not built from a single official Basilisk example (unlike every
+    other module this file wires up) because there isn't one for this
+    specific orchestration -- instead follows TWO patterns already
+    proven in THIS codebase/checkout: the general "custom Python
+    ``SysModel``, construct-then-``.write()`` a message" mechanics
+    confirmed against ``examples/scenarioAttitudePointingPy.py``'s own
+    ``PythonMRPPD`` class, and the "Python-side list logs for cheap
+    per-tick telemetry, converted to a ``TimeSeries`` once in
+    ``engine.service._extract_results``" convention
+    ``engine.orbit_maintenance``'s own controllers (e.g.
+    ``StationKeepingController``) already use -- see that class for the
+    identical shape (``tLog``/a state log/etc., a ``Reset()``, an
+    ``UpdateState()``).
+
+    Construct via :func:`build_comms_pointing`, not directly -- that
+    function wires every input/output message this needs.
+    """
+
+    def __init__(self, name: str, comms_power_w: float):
+        super().__init__()
+        self.ModelTag = name
+
+        self.accessInMsg = messaging.AccessMsgReader()
+        self.sunGuidInMsg = messaging.AttGuidMsgReader()
+        self.commsGuidInMsg = messaging.AttGuidMsgReader()
+        self.attGuidOutMsg = messaging.AttGuidMsg()
+
+        # Wired externally (see build_comms_pointing): the comms
+        # transmitter's power-draw sink, driven live by this arbitrator
+        # exactly like a thruster's extForce_N is driven by
+        # StationKeepingController above -- None is a valid, deliberate
+        # choice (schema.scenario.CommsPointingConfig.comms_power_w == 0.0
+        # means "model the attitude switch only, no extra power draw").
+        self.commsPowerSink = None
+        self.commsPowerW = comms_power_w  # [W]
+
+        # Python-side telemetry -- same convention as
+        # engine.orbit_maintenance's controllers (see class docstring).
+        self.tLog: list = []
+        self.modeLog: list = []  # 0 = Sun-pointing, 1 = ground-station-pointing
+        self.pointingErrorDegLog: list = []  # [deg] the ACTIVE chain's own achieved tracking error
+
+    def Reset(self, CurrentSimNanos):
+        if self.commsPowerSink is not None:
+            self.commsPowerSink.nodePowerOut = 0.0
+
+    def UpdateState(self, CurrentSimNanos):
+        t = CurrentSimNanos * macros.NANO2SEC  # [s]
+        active_comms = bool(self.accessInMsg().hasAccess)
+
+        guid = self.commsGuidInMsg() if active_comms else self.sunGuidInMsg()
+        self.attGuidOutMsg.write(guid, CurrentSimNanos, self.moduleID)
+
+        if self.commsPowerSink is not None:
+            self.commsPowerSink.nodePowerOut = -self.commsPowerW if active_comms else 0.0
+
+        # theta = 4*atan(|sigma_BR|) is the exact MRP-to-principal-rotation
+        # -angle relation (sigma = tan(theta/4)*e_hat) -- the ACTIVE
+        # chain's own already-computed tracking error, not a geometry
+        # this module recomputes by hand.
+        sigma_br_norm = float(np.linalg.norm(guid.sigma_BR))
+        theta_deg = float(np.degrees(4.0 * np.arctan(sigma_br_norm)))
+
+        self.tLog.append(t)
+        self.modeLog.append(1 if active_comms else 0)
+        self.pointingErrorDegLog.append(theta_deg)
+
+
+def build_comms_pointing(scSim, task_name: str, tag: str, comms_config, sun_guid_msg, comms_guid_msg,
+                          access_out_msg, comms_power_sink=None) -> _CommsPointingArbitrator:
+    """Builds and wires one spacecraft's :class:`_CommsPointingArbitrator`.
+
+    Args:
+        comms_config: the ``schema.scenario.CommsPointingConfig``, for
+            ``comms_power_w`` only (the two guidance chains themselves
+            are built by the caller via ordinary :func:`build_guidance`
+            calls -- ``sunSafePoint`` for Sun-pointing, ``locationPointing``
+            with ``fsw_params['target_ground_station']`` for ground
+            -station-pointing -- and passed in already built).
+        sun_guid_msg: the Sun-pointing chain's ``AttGuidMsg`` output.
+        comms_guid_msg: the ground-station-pointing chain's ``AttGuidMsg``
+            output.
+        access_out_msg: the real ``groundLocation.GroundLocation.accessOutMsgs[i]``
+            for this spacecraft/``comms_config.target_ground_station`` pair
+            (``engine.service`` builds this via ``add_access_analysis`` --
+            see that function's own docstring for why it isn't available
+            until every spacecraft exists, which is why this call is
+            deferred to its own pass in ``engine.service.build()``, same as
+            ``phasing_keeping``).
+        comms_power_sink: optional ``simplePowerSink.SimplePowerSink``
+            whose ``nodePowerOut`` this arbitrator drives live while
+            ground-station-pointing is active -- omit (default ``None``)
+            when ``comms_config.comms_power_w == 0.0``.
+
+    Returns the arbitrator (feed its ``attGuidOutMsg`` to
+    :func:`build_mrp_feedback`) -- the CALLER must keep this object alive
+    for the simulation's lifetime (store it on the spacecraft's handle),
+    matching this project's own documented dangling-Python-reference
+    gotcha for custom SysModels (see e.g.
+    ``build_css_sun_estimation``'s docstring).
+    """
+    arbitrator = _CommsPointingArbitrator(name=f"{tag}_commsPointing", comms_power_w=comms_config.comms_power_w)
+    arbitrator.accessInMsg.subscribeTo(access_out_msg)
+    arbitrator.sunGuidInMsg.subscribeTo(sun_guid_msg)
+    arbitrator.commsGuidInMsg.subscribeTo(comms_guid_msg)
+    arbitrator.commsPowerSink = comms_power_sink
+    # Default (lowest) priority, deliberately -- same as nav/both
+    # guidance chains/mrpFeedback/idealized actuation, relying on
+    # insertion order (this is always added after both guidance chains
+    # exist) to run after them within the tick, so it reads THIS tick's
+    # fresh guidance rather than last tick's. One consequence: since
+    # engine.service's comms_power_sink is added at priority 50 (matching
+    # the panel/bus_sink convention, which needs to run BEFORE battery's
+    # 40 each tick) -- strictly higher than this arbitrator's own -1 -- the
+    # sink's evaluatePowerModel() runs BEFORE this arbitrator updates
+    # nodePowerOut each tick, so the battery's recorded comms power draw
+    # lags the mode-switch telemetry by one dynamics tick (negligible at
+    # this app's dynamics_task_rate_s scale -- seconds to tens of seconds
+    # -- against comms passes lasting minutes). Deliberately NOT "fixed"
+    # by raising this arbitrator's priority above 50: that would make it
+    # run BEFORE the guidance chains it reads from instead, trading a
+    # negligible one-tick power-accounting lag for reading stale guidance
+    # every tick -- a strictly worse bug. See HISTORY.md for this
+    # tradeoff's own writeup.
+    scSim.AddModelToTask(task_name, arbitrator)
+    return arbitrator
 
 
 def build_vehicle_config_msg(inertia_kg_m2: List[float]):

@@ -462,6 +462,19 @@ class _SpacecraftHandle:
     eclipse_out_msg: Optional[object] = None  # Phase 4: only set if power or station_keeping was configured
     phasing_keeping_controller: Optional[object] = None  # Phase 4: only set if sc_config.phasing_keeping was configured
     constant_thrust_controller: Optional[object] = None  # Phase 5: only set if sc_config.constant_thrust was configured
+    # comms_pointing (schema.scenario.CommsPointingConfig): the two
+    # guidance chains + power sink are built in the main per-spacecraft
+    # loop, but the arbitrator itself (needs accessOutMsg, which doesn't
+    # exist until every spacecraft does -- see build()'s own comment)
+    # is built in a deferred second pass, same reasoning as
+    # phasing_keeping_controller above. These four are only ever read
+    # back within build() itself, between those two passes.
+    comms_sun_guid_msg: Optional[object] = None
+    comms_station_guid_msg: Optional[object] = None
+    comms_nav: Optional[object] = None
+    comms_veh_config_msg: Optional[object] = None
+    comms_power_sink: Optional[object] = None  # the simplePowerSink.SimplePowerSink() itself, or None
+    comms_pointing_arbitrator: Optional[object] = None  # set once the deferred pass runs; owns tLog/modeLog/pointingErrorDegLog
 
 
 class SimulationService:
@@ -1215,6 +1228,76 @@ class SimulationService:
                 self.scSim.AddModelToTask(dyn_task_name, handle.nav_recorder)
                 self.scSim.AddModelToTask(dyn_task_name, handle.control_torque_recorder)
 
+            elif sc_config.comms_pointing is not None:
+                # schema.scenario.CommsPointingConfig -- mutually exclusive
+                # with fsw_mode (Scenario.validate() enforces this), so this
+                # is its own top-level branch, not nested under the
+                # `fsw_mode is not None` block above. Builds BOTH guidance
+                # chains (ordinary fsw.build_guidance() calls -- sunSafePoint
+                # for Sun-pointing, locationPointing for ground-station
+                # -pointing) plus the comms power sink here; the arbitrator
+                # that actually switches between them, and the mrpFeedback/
+                # idealized-actuation chain it feeds, are built in a
+                # deferred second pass below (needs accessOutMsg, which
+                # doesn't exist until every spacecraft does -- same
+                # constraint phasing_keeping already works around).
+                #
+                # Scope note: only idealized-torque actuation is wired for
+                # comms_pointing spacecraft (matching fsw_mode's own
+                # "no actuators configured" path, fsw.build_idealized_actuation)
+                # -- reaction-wheel/thruster actuation for this mode is a
+                # reasonable follow-on, not built here; Scenario.validate()
+                # doesn't need to reject actuators on a comms_pointing
+                # spacecraft today because this project's templates simply
+                # don't configure any (documented in the new template's own
+                # description).
+                comms_config = sc_config.comms_pointing
+
+                nav = fsw.build_simple_nav(
+                    self.scSim, dyn_task_name, sc_config.name, sc_object, sun_state_out_msg=self._sun_state_out_msg
+                )
+                veh_config_msg = fsw.build_vehicle_config_msg(sc_config.inertia_kg_m2)
+
+                sun_axis_b = comms_config.sun_pointing_axis_b
+                if sun_axis_b is None:
+                    sun_axis_b = sc_config.power.panel_normal_b if sc_config.power is not None else [0.0, 0.0, 1.0]
+
+                try:
+                    sun_guid_msg = fsw.build_guidance(
+                        self.scSim, dyn_task_name, f"{sc_config.name}_sun", "sunSafePoint",
+                        {"sHatBdyCmd": sun_axis_b}, nav, mu, self._ground_locations,
+                    )
+                    station_guid_msg = fsw.build_guidance(
+                        self.scSim, dyn_task_name, f"{sc_config.name}_comms", "locationPointing",
+                        {"target_ground_station": comms_config.target_ground_station,
+                         "pHat_B": comms_config.antenna_boresight_b},
+                        nav, mu, self._ground_locations,
+                    )
+                except fsw.FswError as exc:
+                    raise SimulationServiceError(str(exc)) from exc
+
+                comms_power_sink = None
+                if comms_config.comms_power_w > 0.0:
+                    # Scenario.validate() already guarantees sc_config.power
+                    # is set whenever comms_power_w > 0 -- so handle.battery_module
+                    # (built earlier in THIS SAME loop iteration, in the
+                    # power-budget block above) already exists here.
+                    from Basilisk.simulation import simplePowerSink
+
+                    comms_power_sink = simplePowerSink.SimplePowerSink()
+                    comms_power_sink.ModelTag = f"{sc_config.name}CommsPowerSink"
+                    comms_power_sink.nodePowerOut = 0.0  # arbitrator drives this live once built below
+                    self.scSim.AddModelToTask(dyn_task_name, comms_power_sink, 50)
+                    handle.battery_module.addPowerNodeToModel(comms_power_sink.nodePowerOutMsg)
+
+                handle.comms_sun_guid_msg = sun_guid_msg
+                handle.comms_station_guid_msg = station_guid_msg
+                handle.comms_nav = nav
+                handle.comms_veh_config_msg = veh_config_msg
+                handle.comms_power_sink = comms_power_sink
+                handle.nav_recorder = nav.attOutMsg.recorder()
+                self.scSim.AddModelToTask(dyn_task_name, handle.nav_recorder)
+
             rw_effectors_in_order.append(rw_effector_for_viz)
             thr_effectors_in_order.append(thr_effector_for_viz)
             self._handles[sc_config.name] = handle
@@ -1262,6 +1345,38 @@ class SimulationService:
                 self.scSim.AddModelToTask(dyn_task_name, recorder)
                 self._access_recorders[(gs_name, sc_object.ModelTag)] = recorder
                 self._access_out_msgs[(gs_name, sc_object.ModelTag)] = access_out_msg
+
+        # Phase: comms_pointing (schema.scenario.CommsPointingConfig) --
+        # the arbitrator needs this spacecraft/target-ground-station pair's
+        # REAL accessOutMsg, which (see the access-analysis pass just
+        # above) doesn't exist until every ground station has seen every
+        # spacecraft -- so, like phasing_keeping above, this is its own
+        # pass after the main per-spacecraft loop, not inside it. Finishes
+        # what that loop started: the two guidance chains + power sink
+        # already exist on the handle (handle.comms_*); this builds the
+        # arbitrator that switches between them, plus the mrpFeedback/
+        # idealized-actuation chain the arbitrator's own output feeds.
+        for sc_config in scenario.spacecraft:
+            if sc_config.comms_pointing is None:
+                continue
+            handle = self._handles[sc_config.name]
+            comms_config = sc_config.comms_pointing
+            access_out_msg = self._access_out_msgs[(comms_config.target_ground_station, sc_config.name)]
+
+            arbitrator = fsw.build_comms_pointing(
+                self.scSim, dyn_task_name, sc_config.name, comms_config,
+                sun_guid_msg=handle.comms_sun_guid_msg, comms_guid_msg=handle.comms_station_guid_msg,
+                access_out_msg=access_out_msg, comms_power_sink=handle.comms_power_sink,
+            )
+            handle.comms_pointing_arbitrator = arbitrator
+
+            mrp = fsw.build_mrp_feedback(
+                self.scSim, dyn_task_name, sc_config.name, arbitrator.attGuidOutMsg, handle.comms_veh_config_msg,
+                sc_config.control_params, inertia_kg_m2=sc_config.inertia_kg_m2,
+            )
+            fsw.build_idealized_actuation(self.scSim, dyn_task_name, sc_config.name, handle.sc_object, mrp)
+            handle.control_torque_recorder = mrp.cmdTorqueOutMsg.recorder()
+            self.scSim.AddModelToTask(dyn_task_name, handle.control_torque_recorder)
 
         if self.vizard_request is not None:
             battery_by_spacecraft = {
@@ -1620,6 +1735,14 @@ class SimulationService:
                 result.add(TimeSeries(f"{name}.constant_thrust.delta_v", ct_t_s, ("cumulative_delta_v",),
                                        np.asarray(ct_controller.deltaVLog), units="m/s"))
 
+            if handle.comms_pointing_arbitrator is not None:
+                arbitrator = handle.comms_pointing_arbitrator
+                cp_t_s = np.asarray(arbitrator.tLog)
+                result.add(TimeSeries(f"{name}.comms_pointing.active_mode", cp_t_s, ("active_mode",),
+                                       np.asarray(arbitrator.modeLog, dtype=float), units="-"))
+                result.add(TimeSeries(f"{name}.comms_pointing.pointing_error_deg", cp_t_s, ("pointing_error_deg",),
+                                       np.asarray(arbitrator.pointingErrorDegLog), units="deg"))
+
         for (gs_name, sc_name), recorder in self._access_recorders.items():
             access_t_s = recorder.times() * macros.NANO2SEC
             series_name = f"{gs_name}.access_to_{sc_name}"
@@ -1640,9 +1763,12 @@ class SimulationService:
         for sc_config in self.scenario.spacecraft:
             if sc_config.rf_link is None:
                 continue
+            comms_target = sc_config.comms_pointing.target_ground_station \
+                if sc_config.comms_pointing is not None else None
             for gs_config in self.scenario.ground_stations:
                 result.add(link_budget.link_margin_series(
-                    result, gs_config.name, sc_config.name, sc_config.rf_link, gs_config
+                    result, gs_config.name, sc_config.name, sc_config.rf_link, gs_config,
+                    comms_pointing_target_ground_station=comms_target,
                 ))
         return result
 

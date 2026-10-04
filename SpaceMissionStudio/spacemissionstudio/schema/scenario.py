@@ -286,6 +286,16 @@ class RFLinkConfig:
     tx_antenna_gain_dbi: float = 0.0  # [dBi] spacecraft downlink antenna gain
     implementation_loss_db: float = 2.0  # [dB] combined pointing/polarization/implementation loss
     required_ebno_db: float = 6.0  # [dB] required Eb/N0 for the assumed modulation/coding
+    # [deg] half-power beamwidth of the spacecraft's downlink antenna pattern.
+    # None (the default) keeps every existing scenario's exact prior behavior
+    # (no pointing-loss term at all -- same as before this field existed).
+    # Set together with CommsPointingConfig to make the link margin respond
+    # to the spacecraft's own actual achieved antenna pointing error (see
+    # engine.link_budget's module docstring for the parabolic-pattern
+    # approximation this applies: L_point_dB = 12*(pointing_error_deg /
+    # antenna_beamwidth_deg)^2, the standard textbook falloff for a
+    # Gaussian/parabolic-reflector main lobe).
+    antenna_beamwidth_deg: Optional[float] = None
 
     def validate(self, spacecraft_name: str) -> None:
         _require(self.tx_power_w > 0, f"{spacecraft_name}: rf_link.tx_power_w must be > 0")
@@ -293,6 +303,63 @@ class RFLinkConfig:
         _require(self.data_rate_bps > 0, f"{spacecraft_name}: rf_link.data_rate_bps must be > 0")
         _require(self.implementation_loss_db >= 0,
                   f"{spacecraft_name}: rf_link.implementation_loss_db must be >= 0")
+        _require(self.antenna_beamwidth_deg is None or self.antenna_beamwidth_deg > 0,
+                  f"{spacecraft_name}: rf_link.antenna_beamwidth_deg must be None or > 0")
+
+
+@dataclass
+class CommsPointingConfig:
+    """Automatic, geometry-driven attitude mode switching between Sun
+    -pointing (the spacecraft's normal operating state) and ground
+    -station antenna pointing (whenever this spacecraft is in real,
+    simulated access to ``target_ground_station``) --
+    ``engine.fsw.build_comms_pointing``'s mode arbitrator.
+
+    When set, this field OWNS the spacecraft's attitude control --
+    ``fsw_mode`` must be left ``None`` (``Scenario.validate()`` enforces
+    this), since there is no single static guidance mode to combine it
+    with. Internally this builds BOTH a ``sunSafePoint`` chain (tracking
+    the real, live sun ephemeris, same as setting ``fsw_mode:
+    "sunSafePoint"`` directly would) and a ``locationPointing`` chain
+    targeting ``target_ground_station`` (same as ``fsw_mode:
+    "locationPointing"`` with ``fsw_params['target_ground_station']``
+    would), then switches which one feeds the shared ``mrpFeedback``
+    control loop based on the REAL ``groundLocation.GroundLocation``
+    access state for that station -- never a fixed/manually-specified
+    time window. Only the attitude REFERENCE switches; the spacecraft's
+    own integrated attitude state is untouched by the switch itself, so
+    the existing closed-loop controller physically slews from one
+    target to the other across the transition, exactly like commanding
+    any other new reference -- there is no instantaneous attitude jump.
+
+    ``comms_power_w`` (if set) draws that much additional electrical
+    power -- via its own ``simplePowerSink``, on top of whatever
+    ``PowerConfig.bus_idle_power_w`` already draws -- for exactly as
+    long as the ground-station-pointing mode is actually active, a
+    stand-in for a downlink transmitter's own power draw. Requires
+    ``SpacecraftConfig.power`` to also be set (nothing to draw from
+    otherwise); leave ``comms_power_w`` at its default ``0.0`` to model
+    the attitude-switching behavior alone with no extra power draw.
+    """
+
+    target_ground_station: str
+    antenna_boresight_b: list = field(default_factory=lambda: [0.0, 0.0, 1.0])  # body-frame unit vector
+    # None (the default) falls back to PowerConfig.panel_normal_b (the
+    # solar panel's own normal is the natural Sun-pointing axis whenever
+    # a power budget is also configured); with no power budget, falls
+    # back to [0, 0, 1]. Set explicitly to point a DIFFERENT body axis
+    # at the sun than the panel normal.
+    sun_pointing_axis_b: Optional[list] = None
+    comms_power_w: float = 0.0  # [W] additional transmitter draw while ground-station-pointing is active
+
+    def validate(self, spacecraft_name: str) -> None:
+        _require(bool(self.target_ground_station),
+                  f"{spacecraft_name}: comms_pointing.target_ground_station must not be empty")
+        _require(len(self.antenna_boresight_b) == 3,
+                  f"{spacecraft_name}: comms_pointing.antenna_boresight_b must be a 3-element [x, y, z] list")
+        _require(self.sun_pointing_axis_b is None or len(self.sun_pointing_axis_b) == 3,
+                  f"{spacecraft_name}: comms_pointing.sun_pointing_axis_b must be None or a 3-element [x, y, z] list")
+        _require(self.comms_power_w >= 0, f"{spacecraft_name}: comms_pointing.comms_power_w must be >= 0")
 
 
 @dataclass
@@ -669,6 +736,7 @@ class SpacecraftConfig:
 
     power: Optional[PowerConfig] = None
     rf_link: Optional[RFLinkConfig] = None
+    comms_pointing: Optional[CommsPointingConfig] = None
     station_keeping: Optional[StationKeepingConfig] = None
     phasing_keeping: Optional[PhasingKeepingConfig] = None
     constant_thrust: Optional[ConstantThrustConfig] = None
@@ -723,6 +791,11 @@ class SpacecraftConfig:
             _require(any(s.kind == "coarse_sun_sensor" for s in self.sensors),
                       f"{self.name}: fsw_params['use_css_estimation'] is set but this spacecraft has no "
                       "'coarse_sun_sensor' sensors to estimate sun-heading from")
+        if self.comms_pointing is not None:
+            _require(self.fsw_mode is None,
+                      f"{self.name}: comms_pointing and fsw_mode cannot both be set -- comms_pointing "
+                      "already builds its own Sun-pointing/ground-station-pointing guidance chains "
+                      f"internally (got fsw_mode={self.fsw_mode!r})")
 
         sensor_names = [s.name for s in self.sensors]
         _require(len(sensor_names) == len(set(sensor_names)),
@@ -848,6 +921,11 @@ class SpacecraftConfig:
             self.power.validate(self.name)
         if self.rf_link is not None:
             self.rf_link.validate(self.name)
+        if self.comms_pointing is not None:
+            self.comms_pointing.validate(self.name)
+            _require(self.power is not None or self.comms_pointing.comms_power_w == 0.0,
+                      f"{self.name}: comms_pointing.comms_power_w > 0 needs this spacecraft's power "
+                      "also set (nothing to draw that power from otherwise)")
         if self.station_keeping is not None:
             self.station_keeping.validate(self.name)
         if self.phasing_keeping is not None:
@@ -1194,6 +1272,12 @@ class Scenario:
                           f"{sc.name}: fsw_params['target_ground_station'] {target_gs!r} is not one of "
                           f"this scenario's ground_stations {gs_names}")
         for sc in self.spacecraft:
+            if sc.comms_pointing is not None:
+                _require(sc.comms_pointing.target_ground_station in gs_names,
+                          f"{sc.name}: comms_pointing.target_ground_station "
+                          f"{sc.comms_pointing.target_ground_station!r} is not one of this scenario's "
+                          f"ground_stations {gs_names}")
+        for sc in self.spacecraft:
             target_body = sc.fsw_params.get("target_body") if sc.fsw_mode == "locationPointing" else None
             if target_body is not None:
                 spice_tracked = {self.gravity.central_body, *self.gravity.third_body_perturbers}
@@ -1219,13 +1303,15 @@ class Scenario:
         # moment it's actually run (caught for real: two of this
         # project's own bundled templates had exactly this bug).
         needs_sun = any(sc.power is not None or sc.station_keeping is not None or sc.enable_srp
+                         or sc.comms_pointing is not None
                          for sc in self.spacecraft)
         if needs_sun:
             _require("sun" in self.gravity.third_body_perturbers,
-                      "a spacecraft has power, station_keeping, or enable_srp configured, but 'sun' is not "
-                      "one of gravity.third_body_perturbers -- simpleSolarPanel/the eclipse gate/SRP all need "
-                      "a sun ephemeris. Add 'sun' to gravity.third_body_perturbers, or remove power/"
-                      "station_keeping/enable_srp from every spacecraft")
+                      "a spacecraft has power, station_keeping, enable_srp, or comms_pointing configured, "
+                      "but 'sun' is not one of gravity.third_body_perturbers -- simpleSolarPanel/the eclipse "
+                      "gate/SRP/comms_pointing's own sunSafePoint chain all need a sun ephemeris. Add 'sun' "
+                      "to gravity.third_body_perturbers, or remove power/station_keeping/enable_srp/"
+                      "comms_pointing from every spacecraft")
         self.space_weather.validate()
         self.sim_settings.validate()
         self.monte_carlo.validate()
@@ -1286,6 +1372,8 @@ class Scenario:
             power = PowerConfig(**power_data) if power_data is not None else None
             rf_link_data = sc.pop("rf_link", None)
             rf_link = RFLinkConfig(**rf_link_data) if rf_link_data is not None else None
+            comms_pointing_data = sc.pop("comms_pointing", None)
+            comms_pointing = CommsPointingConfig(**comms_pointing_data) if comms_pointing_data is not None else None
             station_keeping_data = sc.pop("station_keeping", None)
             station_keeping = StationKeepingConfig(**station_keeping_data) if station_keeping_data is not None else None
             phasing_keeping_data = sc.pop("phasing_keeping", None)
@@ -1304,7 +1392,8 @@ class Scenario:
             fuel_tank_data = sc.pop("fuel_tank", None)
             fuel_tank = FuelTankConfig(**fuel_tank_data) if fuel_tank_data is not None else None
             spacecraft.append(SpacecraftConfig(orbit=orbit, sensors=sensors, actuators=actuators,
-                                                power=power, rf_link=rf_link, station_keeping=station_keeping,
+                                                power=power, rf_link=rf_link, comms_pointing=comms_pointing,
+                                                station_keeping=station_keeping,
                                                 phasing_keeping=phasing_keeping, constant_thrust=constant_thrust,
                                                 momentum_dumping=momentum_dumping,
                                                 magnetic_momentum_management=magnetic_momentum_management,

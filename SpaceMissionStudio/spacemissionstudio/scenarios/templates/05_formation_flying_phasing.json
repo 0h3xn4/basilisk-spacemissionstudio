@@ -64,6 +64,7 @@
       "control_params": {},
       "power": null,
       "rf_link": null,
+      "comms_pointing": null,
       "station_keeping": null,
       "phasing_keeping": null,
       "constant_thrust": null,
@@ -140,6 +141,7 @@
       "control_params": {},
       "power": null,
       "rf_link": null,
+      "comms_pointing": null,
       "station_keeping": {
         "target_altitude_km": 550.0,
         "deadband_km": 2.0,

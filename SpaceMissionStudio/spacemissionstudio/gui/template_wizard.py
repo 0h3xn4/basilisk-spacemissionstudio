@@ -34,7 +34,7 @@ template with a registered spec here; every other template still only
 opens straight into the full editor via the existing "Open Template"
 button, unchanged.
 
-Every bundled template ('01' through '18') has a registered spec. The
+Every bundled template ('01' through '19') has a registered spec. The
 first pass covered three representative ones ('03' GEO station-keeping,
 '18' LEO station-keeping, '07' full attitude + hardware + power) to
 validate the spec format and the UX before this full rollout -- adding a
@@ -1131,6 +1131,63 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
                         lambda s: _sc(s).fuel_tank.max_propellant_mass_kg,
                         lambda s, v: setattr(_sc(s).fuel_tank, "max_propellant_mass_kg", v),
                         0.001, 100.0, decimals=3, step=0.05, suffix=" kg",
+                    ),
+                ],
+            ),
+        ],
+    ),
+    "19_sun_pointing_comms_link.json": TemplateWizardSpec(
+        template_filename="19_sun_pointing_comms_link.json",
+        pages=[
+            WizardPageSpec(
+                title="Ground-station pass geometry",
+                intro="How easy it is for the spacecraft to acquire and hold a real, "
+                      "geometry-driven link with 'boulder-gs'.",
+                fields=[
+                    WizardField(
+                        "Minimum elevation", "The lowest elevation angle (above the local horizon) "
+                        "counted as real access -- lower means longer, more frequent, but lower "
+                        "-quality passes.",
+                        lambda s: s.ground_stations[0].min_elevation_deg,
+                        lambda s, v: setattr(s.ground_stations[0], "min_elevation_deg", v),
+                        0.0, 89.0, decimals=1, step=5.0, suffix=" deg",
+                    ),
+                ],
+            ),
+            WizardPageSpec(
+                title="RF link / antenna pointing",
+                intro="How strongly the downlink's antenna-pointing-loss term (and so the "
+                      "computed link margin) responds to the spacecraft's actually-achieved "
+                      "pointing error during each Sun-pointing <-> comms-pointing transition.",
+                fields=[
+                    WizardField(
+                        "Antenna beamwidth", "The downlink antenna's half-power beamwidth -- "
+                        "narrower means a pointing error costs MORE link margin.",
+                        lambda s: _sc(s).rf_link.antenna_beamwidth_deg,
+                        lambda s, v: setattr(_sc(s).rf_link, "antenna_beamwidth_deg", v),
+                        1.0, 180.0, decimals=1, step=5.0, suffix=" deg",
+                    ),
+                    WizardField(
+                        "Comms transmitter power", "Extra electrical power the downlink "
+                        "transmitter draws from the battery, only while actually "
+                        "ground-station-pointing.",
+                        lambda s: _sc(s).comms_pointing.comms_power_w,
+                        lambda s, v: setattr(_sc(s).comms_pointing, "comms_power_w", v),
+                        0.0, 200.0, decimals=1, step=5.0, suffix=" W",
+                    ),
+                ],
+            ),
+            WizardPageSpec(
+                title="Simulation length",
+                intro="Longer runs show more ground-station passes, at the cost of a bigger "
+                      "recorded dataset (see scripts/_generate_templates.py's own comment on "
+                      "why this template defaults to half a day, not more).",
+                fields=[
+                    WizardField(
+                        "Duration", "Total simulated time.",
+                        lambda s: s.sim_settings.duration_days,
+                        lambda s, v: setattr(s.sim_settings, "duration_days", v),
+                        0.1, 14.0, decimals=2, step=0.1, suffix=" days",
                     ),
                 ],
             ),

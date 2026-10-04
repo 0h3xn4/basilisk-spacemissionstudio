@@ -1,5 +1,15 @@
 # SpaceMissionStudio
 
+> **AI authorship disclosure.** SpaceMissionStudio was entirely conceived,
+> written, tested, and documented by Claude (Anthropic's AI model), via
+> Claude Code -- every line of application code, every test, this README,
+> [`HISTORY.md`](HISTORY.md)'s entire development log, and every commit
+> and pull request in this repository's history. No human wrote any of
+> it directly. A human reviewed Claude's output, decided what to build
+> next, and approved what got merged -- but did not author the code or
+> prose themselves. Stated here plainly, not as a footnote, because
+> anyone evaluating this project should know that going in.
+
 A standalone, GUI-based mission-analysis application for Linux and
 Windows 11, using the Basilisk astrodynamics framework (AVS Lab,
 University of Colorado Boulder) as its sole simulation/dynamics engine.
@@ -166,7 +176,7 @@ environment issue.
   `engine/constellation.py`, `engine/spacecraft_templates.py`,
   `engine/propellant_bookkeeping.py`, `cli.py`, and the entire
   `spacemissionstudio/gui/` package) has no Basilisk import and is fully
-  exercised either way -- `pytest tests/` runs and passes 940 tests
+  exercised either way -- `pytest tests/` runs and passes 983 tests
   with or without Basilisk installed (see "Running the tests" below).
   That includes the PySide6 GUI: built, run headless, and driven with
   `pytest-qt` for real -- every form field, every menu action, every
@@ -285,6 +295,25 @@ link-margin estimate evaluated against real simulated slant range, and
 Monte Carlo batch analysis (`Basilisk.utilities.MonteCarlo`, dry-mass
 and attitude dispersions).
 
+**Automatic Sun-pointing / ground-station-pointing attitude switching** --
+`SpacecraftConfig.comms_pointing` (`engine.fsw.build_comms_pointing`): a
+small arbitrator `SysModel` that holds a spacecraft Sun-pointing (for
+solar-panel power generation) by default, and switches it to point a
+body-fixed antenna boresight at a named ground station instead, entirely
+driven by that station's own REAL `groundLocation.GroundLocation` access
+state -- never a manually-specified time window. Only the attitude
+REFERENCE switches; the spacecraft's own integrated attitude state is
+untouched, so the existing closed-loop `mrpFeedback` controller physically
+slews across the transition rather than snapping instantly. An optional
+`comms_power_w` draws extra battery power only while actually
+ground-station-pointing, and `RFLinkConfig.antenna_beamwidth_deg` (when
+set) feeds the spacecraft's own, actually-achieved pointing error into
+`engine.link_budget`'s margin calculation as a parabolic-pattern
+antenna-pointing-loss term -- so the link margin, gated on both real
+access AND the spacecraft having actually switched modes, can show a
+real "geometrically visible but not yet actually linked" period right at
+each transition. See template '19' (below).
+
 **Orbit maintenance** -- altitude/semi-major-axis station-keeping and
 constellation-wide phasing maintenance, both with real delta-V/
 propellant bookkeeping (rocket-equation mass depletion fed back into
@@ -330,8 +359,9 @@ it.
 
 **Reusable starting points** -- three spacecraft "bus" templates
 (passive CubeSat, 3-axis-stabilized CubeSat, ESPA-class smallsat) and
-eighteen complete example scenarios covering every major concept in
-isolation (see "Template missions" below).
+nineteen complete example scenarios, eighteen covering one major concept
+each in isolation plus one integrated demonstration (see "Template
+missions" below).
 
 **Safe cancellation** -- **Abort Simulation** cooperatively cancels an
 in-progress run (or Monte Carlo batch, or Mission Sequence) between
@@ -351,7 +381,13 @@ rendered in an embedded `QWebEngineView`, with the epoch/elapsed-time
 x-axis toggle and per-series km-unit conversion described above still
 applying unchanged; see `results_widget.py`'s own module docstring for
 why `QWebEngineView` over a static image, and "Verification status"
-above for this migration's one open packaging caveat.
+above for this migration's one open packaging caveat. A "Mission
+Dashboard" tab (`mission_dashboard_widget.py`) shows the same live run
+as a set of grouped status readouts (operating state, attitude, power,
+RF link) instead of a plot, for a `comms_pointing`-configured
+spacecraft -- fed from the exact same `RunWorker.progress`/
+`finished_ok`/`cancelled` signals the Results tab already uses, so it
+updates live during a run with no extra plumbing.
 
 ## Repository layout
 
@@ -359,10 +395,14 @@ above for this migration's one open packaging caveat.
 SpaceMissionStudio/
   README.md                          -- this file
   HISTORY.md                         -- the full phase-by-phase development log
+  USER_MANUAL.md                     -- end-user walkthrough of the GUI (screenshots in docs/images/)
   LICENSE                            -- ISC license
   pyproject.toml                     -- packaging metadata, pytest config, CLI entry point
+  docs/
+    images/                          -- USER_MANUAL.md's own screenshots
   spacemissionstudio/
     cli.py                           -- batch/headless CLI + GUI launcher
+    logging_setup.py                 -- file-backed logging (so a GUI crash leaves more than one bare line)
     schema/
       scenario.py                    -- Scenario and friends, validation, save/load
       migrations.py                  -- schema-version migration registry
@@ -409,9 +449,11 @@ SpaceMissionStudio/
       spacecraft_template_dialog.py  -- Phase 5: "New from template" picker dialog
       kernel_status_widget.py        -- SPICE kernel status panel
       results_widget.py              -- Plotly results plot (QWebEngineView) + CSV export
+      mission_dashboard_widget.py    -- "Mission Dashboard" tab: live operating-state/attitude/power/RF-link telemetry for a comms_pointing spacecraft
       run_worker.py                  -- SimulationService/Monte Carlo on a background QThread
     scenarios/
       two_body_validation.json       -- the Phase 0 validation scenario
+      diagnostic_05*.json             -- one-off diagnostic scenarios from '05's own station-keeping/constant-thrust investigation (see HISTORY.md); diagnostic_05f_* is the only one a test (test_vizard.py) still reads
       templates/                     -- education/starter-template scenarios -- see that directory's own README
         README.md                    -- the template catalog: what each one teaches, how to open/run one
         01_two_body_circular_orbit.json
@@ -432,10 +474,14 @@ SpaceMissionStudio/
         16_lambert_transfer.json
         17_fuel_tank_depletion.json
         18_leo_station_keeping.json
+        19_sun_pointing_comms_link.json
   scripts/
     _generate_templates.py            -- regenerates scenarios/templates/*.json from schema dataclasses (not installed/imported elsewhere)
   packaging/                          -- build_wheel.sh/.ps1, install.sh/.ps1, .desktop entry (Linux) -- see packaging/README.md
     build_deb.sh                     -- builds the real, double-click Linux .deb installer
+    build_wheel.sh / build_wheel.ps1 -- build a plain, platform-independent wheel (Linux/Windows)
+    install.sh / install.ps1         -- venv + Basilisk + SpaceMissionStudio install script (Linux/Windows)
+    spacemissionstudio.desktop.in    -- Linux desktop-entry template (filled in by build_deb.sh)
     deb/                              -- .deb package skeleton (DEBIAN/control.in + postinst/prerm/postrm, desktop entry, copyright)
     windows/                          -- the real Windows installer wizard
       spacemissionstudio.iss              -- Inno Setup script -> spacemissionstudio-2.0.0-setup.exe
@@ -512,14 +558,14 @@ python3 -m pip install -e ".[dev,gui]"
 python3 -m pytest tests/ -v
 ```
 
-Without Basilisk on `PYTHONPATH`, this runs 940 tests (schema, space
+Without Basilisk on `PYTHONPATH`, this runs 983 tests (schema, space
 weather, results, link budget, constellation generation, CLI, and the
-full PySide6 GUI, run headless) and skips 126 whose premise is
+full PySide6 GUI, run headless) and skips 130 whose premise is
 specifically "Basilisk is unavailable" (marked `requires_basilisk`), per
 `tests/conftest.py`.
 
 With Basilisk installed (`pip install "bsk[all]"` -- see "Getting
-started" above), the 126 skips above run for real instead of skipping.
+started" above), the 130 skips above run for real instead of skipping.
 See "Verification status" above for how thoroughly that's actually been
 exercised -- short version: yes, including a real full multi-day run.
 
@@ -644,11 +690,11 @@ spacemissionstudio gui
 ```
 
 The GUI opens on its **Load Scenario** tab (left pane) -- pick one of the
-eighteen built-in template missions (see "Template missions" below) or
+nineteen built-in template missions (see "Template missions" below) or
 browse for any other scenario file; either one switches you to the
 **Scenario Editor** tab next to it with that scenario loaded and ready to
 edit. Below the template list, a standalone **"Customize: \<template
-name\>..."** button for every one of the eighteen templates is always
+name\>..."** button for every one of the nineteen templates is always
 visible: a short, multi-step walkthrough of just that template's own key
 tunable parameters (pre-filled with its current values), ending in the
 same Scenario Editor tab with those changes already applied -- a faster
@@ -664,14 +710,21 @@ label updates live as you type, including its Monte Carlo section
 (enable/num_runs/thread_count + a dispersion list, referencing spacecraft
 by name). Run > Run Simulation runs `SimulationService` on a background
 thread (the UI stays responsive) and switches to the Results tab when
-done, with a plot per result series and a CSV export button. Run > Check
+done, with a plot per result series and a CSV export button. A
+**"Mission Dashboard"** tab alongside Results shows the same run's live,
+at-a-glance telemetry (sim time/mode/ground-station visibility, pointing
+error/tracking status, battery charge-SOC-net power, and a live RF
+link-budget breakdown) whenever the scenario has a
+`comms_pointing`-configured spacecraft (see template '19'); it stays on
+its own empty-state placeholder otherwise. Run > Check
 Kernels shows SPICE kernel fetch/cache status. Both Run actions report a
 clear error (not a crash) if Basilisk isn't installed/built.
 
 ## Template missions for learning and for starting your own
 
-`spacemissionstudio/scenarios/templates/` has eighteen ready-to-run scenario
-files, each demonstrating one SpaceMissionStudio concept in isolation --
+`spacemissionstudio/scenarios/templates/` has nineteen ready-to-run scenario
+files, each demonstrating one SpaceMissionStudio concept in isolation (except
+the last, which deliberately integrates several) --
 two-body orbits, J2/third-body perturbations, GEO station-keeping,
 a generated Walker constellation, formation-flying phasing control,
 attitude pointing (idealized, then with real ADCS hardware), a Mission
@@ -681,8 +734,11 @@ control, reaction-wheel momentum management via thrusters or via
 magnetic torque rods, real sun-heading estimation from coarse sun
 sensor hardware, direct celestial-body pointing, a Lambert-solver
 point-to-point transfer, real propellant depletion via a fuel tank,
-and drag-driven LEO station-keeping (the direct LEO counterpart to
-GEO station-keeping above).
+drag-driven LEO station-keeping (the direct LEO counterpart to
+GEO station-keeping above), and an integrated Sun-pointing/ground
+-station-pointing spacecraft with a live power budget and RF link
+margin, automatically switching attitude based on real, geometry
+-driven ground-station access.
 See that directory's own `README.md` for the full catalog and
 what each one teaches -- every file also carries its own extensive
 `description` field (visible in the GUI's scenario form, or by opening
@@ -699,7 +755,7 @@ round-trips through the actual `ScenarioEditorWidget` form),
 `tests/gui/test_load_scenario_widget.py` (the in-GUI picker described
 below), and `tests/gui/test_template_wizard.py` (the "Customize:
 \<template name\>..." wizard spec registry -- see "Running the GUI"
-below) -- 198 tests total across those four files, all passing. What's
+below) -- 207 tests total across those four files, all passing. What's
 NOT yet verified: an actual Basilisk run of any of them (this sandbox has
 none), so treat the physical numbers (propellant use, drift rates,
 orbital periods) as reasonable back-of-the-envelope choices, not
@@ -709,7 +765,7 @@ and hasn't been run for real.
 
 **Built into the GUI itself** (not just files you'd have to know the path
 to): the GUI's **Load Scenario** tab (`gui/load_scenario_widget.py`,
-see "Running the GUI" above) lists all eighteen by name with their
+see "Running the GUI" above) lists all nineteen by name with their
 description shown on selection, no file-browsing needed -- "Open
 Template" or a double-click loads one and switches straight to the
 Scenario Editor tab. The same tab's "Browse for a file..." button covers
