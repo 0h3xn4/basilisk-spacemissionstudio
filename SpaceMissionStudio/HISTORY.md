@@ -12,8 +12,12 @@ here instead.
 
 Read `README.md` first for current install/usage/status. Read this file
 for *why* things are the way they are, or to see a real, honest account
-of an AI-assisted development process working through real bugs on a
-real user's machine.
+of this project's actual development process: every line below was
+written by Claude (Anthropic's AI model), via Claude Code, working
+through real bugs on a real user's machine -- not a human-written log
+with AI assistance, but the reverse. See `README.md`'s own "AI
+authorship disclosure" at the top for the full, plain statement of what
+that means and doesn't mean.
 
 **A note on the name.** This project was renamed from "missionStudio"
 (Python package `missionstudio`) to "SpaceMissionStudio" (package

@@ -1,5 +1,15 @@
 # SpaceMissionStudio
 
+> **AI authorship disclosure.** SpaceMissionStudio was entirely conceived,
+> written, tested, and documented by Claude (Anthropic's AI model), via
+> Claude Code -- every line of application code, every test, this README,
+> [`HISTORY.md`](HISTORY.md)'s entire development log, and every commit
+> and pull request in this repository's history. No human wrote any of
+> it directly. A human reviewed Claude's output, decided what to build
+> next, and approved what got merged -- but did not author the code or
+> prose themselves. Stated here plainly, not as a footnote, because
+> anyone evaluating this project should know that going in.
+
 A standalone, GUI-based mission-analysis application for Linux and
 Windows 11, using the Basilisk astrodynamics framework (AVS Lab,
 University of Colorado Boulder) as its sole simulation/dynamics engine.
