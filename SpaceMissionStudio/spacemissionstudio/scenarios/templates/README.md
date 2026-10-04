@@ -70,15 +70,20 @@ before it, but none of them depend on running an earlier one first.
 | 16 | `16_lambert_transfer.json` | A new Mission Sequence command kind, the counterpart to '08's `maneuver`: `lambert_transfer` solves for WHATEVER delta-V takes the spacecraft from its current state to a target position after a given time of flight (rather than you specifying the delta-V directly), via Basilisk's own `lambertPlanner` -> `lambertSolver` -> `lambertValidator` chain (`engine.mission_engine.MissionEngine._run_lambert_transfer`), then applies it immediately. This exact configuration was confirmed directly against a real Basilisk build to land within sub-millimeter precision of `target_position_m` once propagated forward by `time_of_flight_s`. |
 | 17 | `17_fuel_tank_depletion.json` | The exact '11' thruster-attitude-control setup, with a real `FuelTankConfig` added: Basilisk's own `fuelTank` state effector (`engine.fsw.build_fuel_tank`) now tracks real propellant depletion as the thrusters fire, reading the same mass-flow rate each thruster already computes for its own physics -- unlike this app's older hand-rolled station-keeping/phasing/constant-thrust propellant bookkeeping, this is Basilisk's own effector doing the real physics. Confirmed directly against a real Basilisk build: ~0.185 kg of the 0.5 kg starting load is consumed during the attitude-convergence burn, then `{sat-1}.fuel_mass_remaining` goes flat once the thrusters stop firing. |
 | 18 | `18_leo_station_keeping.json` | The direct LEO counterpart to '03': a 400 km satellite correcting atmospheric-drag-driven altitude decay with the same `station_keeping` deadband controller, instead of '03's GEO-scale Sun/Moon/SRP drift. A tight 1 km deadband (vs. '03's 5 km) and continuous drag mean noticeably more frequent, smaller corrections than GEO's occasional ones -- the contrast is the lesson. `enable_srp` deliberately off, same "isolate the one dominant perturbation" approach as '03'. Same conservative drag margin as '04'/'05'/'07'/'08'; like '05', its exact nrlmsise00 decay rate has not been re-verified in this sandbox (no CelesTrak/SPICE route here) -- the station_keeping/drag parameters were instead tuned against a bypass-SPICE build with a realistically-reparameterized atmosphere model (2-3 real reboost burns over 14 days). |
+| 19 | `19_sun_pointing_comms_link.json` | An integrated spacecraft: `comms_pointing` automatically switches attitude between Sun-pointing (normal operation, maximizing `power` generation) and ground-station-pointing, driven entirely by real `groundLocation.GroundLocation` access to `boulder-gs` -- never a manually-specified time window -- with a genuine, physically-slewed transition (only the attitude REFERENCE switches; the spacecraft's own integrated state is never reset). `rf_link` (extended with an `antenna_beamwidth_deg`-driven pointing-loss term) computes a live link margin gated on BOTH real access AND the spacecraft having actually switched into comms-pointing mode, so it can show a real, physically meaningful "geometrically visible but not yet actually linked" period right at each transition. The one template that layers ground station + RF link + comms-pointing + power onto a single spacecraft -- see the file's own `description` for the full cross-subsystem story, including a documented, deliberately-not-yet-used upgrade path to Basilisk's own native `simpleAntenna`/`linkBudget` modules. |
 
 ## Using one as a starting point for your own mission
 
-These are deliberately minimal and self-contained -- no ground stations,
-no RF links, no Monte Carlo batches layered on top of an attitude
-scenario, etc. -- so each idea is easy to see in isolation. A real mission
-scenario will usually combine several of these concepts (e.g. a
-comms-relay constellation might start from '04' and add '07''s ADCS
-hardware plus a ground station and RF link to each satellite, matching
-what `gui/ground_station_editor.py`/`RFLinkConfig` add). Copying the
-closest template and layering in the next concept from this list is
-generally easier than starting from a blank scenario.
+Templates '01' through '18' are deliberately minimal and self-contained --
+no ground stations, no RF links, no Monte Carlo batches layered on top of
+an attitude scenario, etc. -- so each idea is easy to see in isolation.
+'19' is the one exception: it's the integrated demonstration showing what
+combining several of these concepts looks like (ground station + RF link
++ comms-pointing + power, on one spacecraft). A real mission scenario will
+usually combine several of these concepts this way (e.g. a comms-relay
+constellation might start from '04' and add '07''s ADCS hardware plus a
+ground station and RF link to each satellite, matching what
+`gui/ground_station_editor.py`/`RFLinkConfig` add, or '19's own
+`comms_pointing` for automatic antenna pointing). Copying the closest
+template and layering in the next concept from this list is generally
+easier than starting from a blank scenario.

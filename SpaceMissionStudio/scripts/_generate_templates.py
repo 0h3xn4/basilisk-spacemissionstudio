@@ -34,6 +34,7 @@ from pathlib import Path
 
 from spacemissionstudio.engine.constellation import WalkerConstellationRequest, generate_walker_constellation
 from spacemissionstudio.schema.scenario import (
+    CommsPointingConfig,
     DispersionConfig,
     FuelTankConfig,
     GravityConfig,
@@ -44,6 +45,7 @@ from spacemissionstudio.schema.scenario import (
     OrbitIC,
     PhasingKeepingConfig,
     PowerConfig,
+    RFLinkConfig,
     Scenario,
     SensorConfig,
     ActuatorConfig,
@@ -1192,6 +1194,139 @@ def build_18_leo_station_keeping() -> Scenario:
     )
 
 
+def build_19_sun_pointing_comms_link() -> Scenario:
+    # Verification note (see this function's own user-facing description
+    # below for the short version): this sandbox has no Basilisk build, so
+    # nothing here could be run end-to-end. The ONE piece of numeric tuning
+    # this template reuses -- idealized-torque mrpFeedback control on
+    # _INERTIA_MEDIUM at dynamics_task_rate_s=0.1s with DEFAULT_MRP_GAINS --
+    # is the EXACT combination '06' already confirmed stable against a real
+    # Basilisk build (see build_06_attitude_pointing_basic()'s own comment);
+    # comms_pointing only supports idealized actuation (see
+    # engine.service's own scope note at the comms_pointing branch), so no
+    # actuators are configured here, matching that constraint. What is NOT
+    # independently re-confirmed here: that this same combo stays stable
+    # through MUCH LARGER-angle slews (Sun-pointing <-> ground-station
+    # -pointing can be up to a ~180-degree reorientation, not '06's small
+    # initial offset) over a much longer, 12-hour run. MRP feedback's own
+    # commanded-torque term is naturally bounded regardless of angle size
+    # (sigma_BR's magnitude never exceeds 1, with the shadow-set switch
+    # keeping it there), which is why this risk is believed low -- but
+    # please report back if a real run shows otherwise.
+    #
+    # Ground-station pass geometry: a near-polar inclination (97.8 deg)
+    # covers every longitude under the station's latitude band within
+    # about one nodal period regardless of the exact RAAN chosen, so this
+    # doesn't depend on fine-tuning raan_deg/true_anomaly_deg against a
+    # specific station longitude the way, say, a GEO station-keeping
+    # template would -- but the exact NUMBER and duration of passes over
+    # half a day couldn't be independently re-confirmed against a real
+    # Basilisk run here either. If a run shows zero access windows, the
+    # most likely fix is sim_settings.duration_days (try 1.0 instead of
+    # 0.5) rather than the orbit geometry itself.
+    return Scenario(
+        name="19 - Sun-pointing spacecraft with automatic ground-station comms link",
+        description=(
+            "An integrated small-satellite mission: 'leo-comms-1' normally points its solar panel "
+            "normal at the real, live Sun (fsw_mode-equivalent 'sunSafePoint' behavior, continuously "
+            "tracking the actual Sun direction, never a fixed inertial attitude) to maximize power "
+            "generation. Whenever this spacecraft comes into REAL, geometry-driven access of the "
+            "'boulder-gs' ground station (Basilisk's own groundLocation.GroundLocation elevation-mask "
+            "access analysis -- never a manually-specified time window), comms_pointing "
+            "(schema.scenario.CommsPointingConfig) automatically takes over and re-points the "
+            "spacecraft's antenna boresight at the ground station instead, switching back to "
+            "Sun-pointing the instant access ends. This is schema_version's newest capability: see "
+            "engine.fsw.build_comms_pointing()'s docstring for how the switch works -- only the "
+            "attitude REFERENCE changes; the spacecraft's own integrated attitude state is never reset, "
+            "so the existing closed-loop mrpFeedback controller physically SLEWS between the two "
+            "targets across every transition (watch sat.attitude_sigma_BN step continuously across an "
+            "access-start/access-end boundary -- never jump) rather than snapping instantly.\n\n"
+            "Power (schema.scenario.PowerConfig) and an RF downlink (schema.scenario.RFLinkConfig, "
+            "with a beamwidth-dependent antenna-pointing-loss term) respond to this real, simulated "
+            "behavior, not independent canned numbers: solar generation depends on the spacecraft's "
+            "actual attitude (panel-to-sun angle) and real eclipse state every tick; the comms "
+            "transmitter's extra comms_power_w draws from the SAME battery only while ground-station "
+            "-pointing is actually active; and the downlink's link margin (engine.link_budget) is "
+            "computed from the REAL simulated slant range AND the spacecraft's own actually-achieved "
+            "antenna pointing error -- not an assumption of perfect boresight. Crucially, the link "
+            "margin series is gated on BOTH real geometric access (gs.access_to_sat.has_access) AND "
+            "the spacecraft having actually switched into ground-station-pointing mode "
+            "(sat.comms_pointing.active_mode) -- so a margin value only appears once there's an "
+            "actual attempted link, and during the slew right after a pass begins, the still-large "
+            "antenna pointing error can legitimately show a DEGRADED or even negative margin even "
+            "though hasAccess is already true: this is the 'geometric visibility vs actual RF link "
+            "availability' distinction made concrete, not just asserted.\n\n"
+            "What to look at: after running, find one access window in "
+            "'boulder-gs.access_to_leo-comms-1.has_access' and, across that SAME window, cross-plot: "
+            "'leo-comms-1.comms_pointing.active_mode' (0 -> 1 at access start, back to 0 at access "
+            "end), 'leo-comms-1.comms_pointing.pointing_error_deg' (large right at the transition, "
+            "decaying toward ~0 as the slew converges), 'leo-comms-1.power.battery_soc' (dips a bit "
+            "faster while comms_power_w is drawing, recovers once Sun-pointing resumes and the panel "
+            "is well-illuminated), and 'boulder-gs.access_to_leo-comms-1.link_margin_db' (should be "
+            "poor/undefined right at the transition, then settle to a healthy positive margin once "
+            "pointing converges, and should also visibly worsen as elevation drops toward the pass's "
+            "edges -- real free-space-path-loss growing with slant range). Compare against a window "
+            "with NO access at all, where active_mode should stay continuously 0 and link_margin_db "
+            "should be entirely NaN (no link attempted).\n\n"
+            "Try changing: boulder-gs's min_elevation_deg (lower = longer, more frequent but lower "
+            "-quality passes), rf_link.antenna_beamwidth_deg (narrower = pointing error matters MORE, "
+            "a bigger dip in margin during each transition's slew), comms_pointing.comms_power_w "
+            "(higher = a more visible battery drain during each pass), or sim_settings.duration_days "
+            "(longer = more passes, at the cost of a bigger recorded dataset -- see the generator "
+            "script's own comment on why this template doesn't go beyond 0.5 days by default).\n\n"
+            "Known, deliberately-not-used upgrade path: Basilisk's own source tree has a more "
+            "physically-complete, compiled antenna + link-budget pair "
+            "(src/simulation/communication/simpleAntenna, .../linkBudget -- a real 2D-Gaussian-beam "
+            "antenna pattern computing pointing loss from true 3D spacecraft/ground antenna geometry, "
+            "plus FSPL and ITU-R P.676 atmospheric attenuation). This template deliberately does NOT "
+            "use it: no example scenario anywhere in this checkout exercises those modules yet, so "
+            "there's no reference usage to confirm the wiring against -- unlike every other module "
+            "this project uses. This template's simplified, already-proven, Basilisk-free "
+            "engine.link_budget.py is used instead (now extended with its own, textbook parabolic "
+            "-pattern pointing-loss approximation, not the real antenna geometry). A real future "
+            "upgrade would swap this template's RFLinkConfig/link_budget wiring for those native "
+            "modules once a reference example exists to validate the integration against."
+        ),
+        epoch_utc="2030-01-01T00:00:00",
+        simulation_mode="full_attitude",
+        gravity=GravityConfig(central_body="earth", central_body_degree=10, third_body_perturbers=["sun", "moon"]),
+        sim_settings=SimSettings(duration_days=0.5, dynamics_task_rate_s=0.1, integrator="rkf78"),
+        ground_stations=[
+            GroundStationConfig(
+                name="boulder-gs", latitude_deg=40.0150, longitude_deg=-105.2705, altitude_m=1655.0,
+                min_elevation_deg=10.0, rx_antenna_gain_dbi=35.0, system_noise_temp_k=150.0,
+            ),
+        ],
+        spacecraft=[
+            SpacecraftConfig(
+                name="leo-comms-1",
+                orbit=OrbitIC(type="classical_elements", semi_major_axis_km=6928.0, eccentricity=0.0,
+                               inclination_deg=97.8, raan_deg=0.0, arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
+                dry_mass_kg=60.0,
+                inertia_kg_m2=list(_INERTIA_MEDIUM),
+                sigma_bn_init=[0.2, -0.1, 0.15],
+                omega_bn_b_init_rad_s=[0.001, -0.001, 0.0005],
+                power=PowerConfig(
+                    panel_area_m2=0.4, panel_efficiency=0.28, panel_normal_b=[0.0, 0.0, 1.0],
+                    bus_idle_power_w=8.0, battery_capacity_wh=40.0, battery_initial_soc=0.9,
+                ),
+                rf_link=RFLinkConfig(
+                    tx_power_w=5.0, frequency_hz=2.2e9, data_rate_bps=5.0e6, tx_antenna_gain_dbi=6.0,
+                    required_ebno_db=10.0, antenna_beamwidth_deg=30.0,
+                ),
+                comms_pointing=CommsPointingConfig(
+                    # A different body axis than power.panel_normal_b ([0,0,1], above) --
+                    # the downlink patch antenna sits on a different face than the solar
+                    # panel, so Sun-pointing and ground-station-pointing are genuinely
+                    # different whole-body attitudes, not the same axis re-aimed twice.
+                    target_ground_station="boulder-gs", antenna_boresight_b=[1.0, 0.0, 0.0],
+                    comms_power_w=15.0,
+                ),
+            ),
+        ],
+    )
+
+
 def main() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     _save(build_01_two_body_circular_orbit(), "01_two_body_circular_orbit.json")
@@ -1213,6 +1348,7 @@ def main() -> None:
     _save(build_16_lambert_transfer(), "16_lambert_transfer.json")
     _save(build_17_fuel_tank_depletion(), "17_fuel_tank_depletion.json")
     _save(build_18_leo_station_keeping(), "18_leo_station_keeping.json")
+    _save(build_19_sun_pointing_comms_link(), "19_sun_pointing_comms_link.json")
 
 
 if __name__ == "__main__":

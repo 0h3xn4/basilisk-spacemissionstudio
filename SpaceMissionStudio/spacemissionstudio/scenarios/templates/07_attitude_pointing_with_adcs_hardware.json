@@ -144,6 +144,7 @@
         "battery_initial_soc": 1.0
       },
       "rf_link": null,
+      "comms_pointing": null,
       "station_keeping": null,
       "phasing_keeping": null,
       "constant_thrust": null,

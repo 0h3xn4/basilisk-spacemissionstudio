@@ -6,6 +6,7 @@ import pytest
 
 from spacemissionstudio.schema import (
     ActuatorConfig,
+    CommsPointingConfig,
     ConstantThrustConfig,
     DispersionConfig,
     FuelTankConfig,
@@ -1019,6 +1020,100 @@ def test_ground_station_rejects_non_positive_system_noise_temp():
     gs = GroundStationConfig(name="gs1", latitude_deg=0.0, longitude_deg=0.0, system_noise_temp_k=0.0)
     with pytest.raises(ScenarioValidationError, match="system_noise_temp_k"):
         gs.validate()
+
+
+def test_rf_link_antenna_beamwidth_deg_defaults_to_none():
+    rf_link = RFLinkConfig(tx_power_w=10.0, frequency_hz=8.0e9, data_rate_bps=1.0e6)
+    assert rf_link.antenna_beamwidth_deg is None
+    rf_link.validate("sat-1")  # must not raise -- not required
+
+
+def test_rf_link_antenna_beamwidth_deg_rejects_non_positive():
+    sc = _minimal_scenario()
+    sc.spacecraft[0].rf_link = RFLinkConfig(tx_power_w=10.0, frequency_hz=8.0e9, data_rate_bps=1.0e6,
+                                             antenna_beamwidth_deg=0.0)
+    with pytest.raises(ScenarioValidationError, match="antenna_beamwidth_deg"):
+        sc.validate()
+
+
+def test_comms_pointing_defaults_to_none():
+    sc = _minimal_scenario()
+    assert sc.spacecraft[0].comms_pointing is None
+    sc.validate()  # must not raise -- not required
+
+
+def _comms_pointing_scenario(**overrides) -> Scenario:
+    """A minimal, otherwise-valid scenario with one comms_pointing
+    spacecraft and the ground station it targets -- the shared starting
+    point for every comms_pointing validation test below.
+    """
+    defaults = dict(
+        gravity=GravityConfig(third_body_perturbers=["sun"]),
+        ground_stations=[GroundStationConfig(name="gs-1", latitude_deg=40.0, longitude_deg=-105.0)],
+    )
+    defaults.update(overrides)
+    sc = _minimal_scenario(**defaults)
+    sc.spacecraft[0].power = PowerConfig(panel_area_m2=0.4, panel_efficiency=0.28)
+    sc.spacecraft[0].comms_pointing = CommsPointingConfig(target_ground_station="gs-1")
+    return sc
+
+
+def test_comms_pointing_valid_scenario_validates():
+    _comms_pointing_scenario().validate()  # must not raise
+
+
+def test_comms_pointing_round_trips_through_save_load(tmp_path):
+    sc = _comms_pointing_scenario()
+    sc.spacecraft[0].comms_pointing = CommsPointingConfig(
+        target_ground_station="gs-1", antenna_boresight_b=[1.0, 0.0, 0.0],
+        sun_pointing_axis_b=[0.0, 0.0, 1.0], comms_power_w=15.0,
+    )
+
+    path = tmp_path / "scenario.json"
+    sc.save(path)
+    loaded = load_scenario(path)
+
+    assert isinstance(loaded.spacecraft[0].comms_pointing, CommsPointingConfig)
+    assert loaded.spacecraft[0].comms_pointing.target_ground_station == "gs-1"
+    assert loaded.spacecraft[0].comms_pointing.antenna_boresight_b == [1.0, 0.0, 0.0]
+    assert loaded.spacecraft[0].comms_pointing.sun_pointing_axis_b == [0.0, 0.0, 1.0]
+    assert loaded.spacecraft[0].comms_pointing.comms_power_w == 15.0
+
+
+def test_comms_pointing_rejects_being_combined_with_fsw_mode():
+    sc = _comms_pointing_scenario()
+    sc.spacecraft[0].fsw_mode = "sunSafePoint"
+    with pytest.raises(ScenarioValidationError, match="comms_pointing and fsw_mode"):
+        sc.validate()
+
+
+def test_comms_pointing_rejects_unknown_ground_station():
+    sc = _comms_pointing_scenario()
+    sc.spacecraft[0].comms_pointing.target_ground_station = "does-not-exist"
+    with pytest.raises(ScenarioValidationError, match="does-not-exist"):
+        sc.validate()
+
+
+def test_comms_pointing_rejects_comms_power_without_power_config():
+    sc = _comms_pointing_scenario()
+    sc.spacecraft[0].power = None
+    sc.spacecraft[0].comms_pointing.comms_power_w = 15.0
+    with pytest.raises(ScenarioValidationError, match="comms_power_w"):
+        sc.validate()
+
+
+def test_comms_pointing_allows_zero_comms_power_without_power_config():
+    sc = _comms_pointing_scenario()
+    sc.spacecraft[0].power = None
+    assert sc.spacecraft[0].comms_pointing.comms_power_w == 0.0
+    sc.validate()  # must not raise -- comms_power_w defaults to 0.0
+
+
+def test_comms_pointing_rejects_malformed_antenna_boresight():
+    sc = _comms_pointing_scenario()
+    sc.spacecraft[0].comms_pointing.antenna_boresight_b = [1.0, 0.0]
+    with pytest.raises(ScenarioValidationError, match="antenna_boresight_b"):
+        sc.validate()
 
 
 def test_old_scenario_file_without_power_or_rf_link_keys_still_loads(tmp_path):

@@ -285,6 +285,25 @@ link-margin estimate evaluated against real simulated slant range, and
 Monte Carlo batch analysis (`Basilisk.utilities.MonteCarlo`, dry-mass
 and attitude dispersions).
 
+**Automatic Sun-pointing / ground-station-pointing attitude switching** --
+`SpacecraftConfig.comms_pointing` (`engine.fsw.build_comms_pointing`): a
+small arbitrator `SysModel` that holds a spacecraft Sun-pointing (for
+solar-panel power generation) by default, and switches it to point a
+body-fixed antenna boresight at a named ground station instead, entirely
+driven by that station's own REAL `groundLocation.GroundLocation` access
+state -- never a manually-specified time window. Only the attitude
+REFERENCE switches; the spacecraft's own integrated attitude state is
+untouched, so the existing closed-loop `mrpFeedback` controller physically
+slews across the transition rather than snapping instantly. An optional
+`comms_power_w` draws extra battery power only while actually
+ground-station-pointing, and `RFLinkConfig.antenna_beamwidth_deg` (when
+set) feeds the spacecraft's own, actually-achieved pointing error into
+`engine.link_budget`'s margin calculation as a parabolic-pattern
+antenna-pointing-loss term -- so the link margin, gated on both real
+access AND the spacecraft having actually switched modes, can show a
+real "geometrically visible but not yet actually linked" period right at
+each transition. See template '19' (below).
+
 **Orbit maintenance** -- altitude/semi-major-axis station-keeping and
 constellation-wide phasing maintenance, both with real delta-V/
 propellant bookkeeping (rocket-equation mass depletion fed back into
@@ -330,8 +349,9 @@ it.
 
 **Reusable starting points** -- three spacecraft "bus" templates
 (passive CubeSat, 3-axis-stabilized CubeSat, ESPA-class smallsat) and
-eighteen complete example scenarios covering every major concept in
-isolation (see "Template missions" below).
+nineteen complete example scenarios, eighteen covering one major concept
+each in isolation plus one integrated demonstration (see "Template
+missions" below).
 
 **Safe cancellation** -- **Abort Simulation** cooperatively cancels an
 in-progress run (or Monte Carlo batch, or Mission Sequence) between
@@ -432,6 +452,7 @@ SpaceMissionStudio/
         16_lambert_transfer.json
         17_fuel_tank_depletion.json
         18_leo_station_keeping.json
+        19_sun_pointing_comms_link.json
   scripts/
     _generate_templates.py            -- regenerates scenarios/templates/*.json from schema dataclasses (not installed/imported elsewhere)
   packaging/                          -- build_wheel.sh/.ps1, install.sh/.ps1, .desktop entry (Linux) -- see packaging/README.md
@@ -644,11 +665,11 @@ spacemissionstudio gui
 ```
 
 The GUI opens on its **Load Scenario** tab (left pane) -- pick one of the
-eighteen built-in template missions (see "Template missions" below) or
+nineteen built-in template missions (see "Template missions" below) or
 browse for any other scenario file; either one switches you to the
 **Scenario Editor** tab next to it with that scenario loaded and ready to
 edit. Below the template list, a standalone **"Customize: \<template
-name\>..."** button for every one of the eighteen templates is always
+name\>..."** button for every one of the nineteen templates is always
 visible: a short, multi-step walkthrough of just that template's own key
 tunable parameters (pre-filled with its current values), ending in the
 same Scenario Editor tab with those changes already applied -- a faster
@@ -670,8 +691,9 @@ clear error (not a crash) if Basilisk isn't installed/built.
 
 ## Template missions for learning and for starting your own
 
-`spacemissionstudio/scenarios/templates/` has eighteen ready-to-run scenario
-files, each demonstrating one SpaceMissionStudio concept in isolation --
+`spacemissionstudio/scenarios/templates/` has nineteen ready-to-run scenario
+files, each demonstrating one SpaceMissionStudio concept in isolation (except
+the last, which deliberately integrates several) --
 two-body orbits, J2/third-body perturbations, GEO station-keeping,
 a generated Walker constellation, formation-flying phasing control,
 attitude pointing (idealized, then with real ADCS hardware), a Mission
@@ -681,8 +703,11 @@ control, reaction-wheel momentum management via thrusters or via
 magnetic torque rods, real sun-heading estimation from coarse sun
 sensor hardware, direct celestial-body pointing, a Lambert-solver
 point-to-point transfer, real propellant depletion via a fuel tank,
-and drag-driven LEO station-keeping (the direct LEO counterpart to
-GEO station-keeping above).
+drag-driven LEO station-keeping (the direct LEO counterpart to
+GEO station-keeping above), and an integrated Sun-pointing/ground
+-station-pointing spacecraft with a live power budget and RF link
+margin, automatically switching attitude based on real, geometry
+-driven ground-station access.
 See that directory's own `README.md` for the full catalog and
 what each one teaches -- every file also carries its own extensive
 `description` field (visible in the GUI's scenario form, or by opening
@@ -699,7 +724,7 @@ round-trips through the actual `ScenarioEditorWidget` form),
 `tests/gui/test_load_scenario_widget.py` (the in-GUI picker described
 below), and `tests/gui/test_template_wizard.py` (the "Customize:
 \<template name\>..." wizard spec registry -- see "Running the GUI"
-below) -- 198 tests total across those four files, all passing. What's
+below) -- 207 tests total across those four files, all passing. What's
 NOT yet verified: an actual Basilisk run of any of them (this sandbox has
 none), so treat the physical numbers (propellant use, drift rates,
 orbital periods) as reasonable back-of-the-envelope choices, not
@@ -709,7 +734,7 @@ and hasn't been run for real.
 
 **Built into the GUI itself** (not just files you'd have to know the path
 to): the GUI's **Load Scenario** tab (`gui/load_scenario_widget.py`,
-see "Running the GUI" above) lists all eighteen by name with their
+see "Running the GUI" above) lists all nineteen by name with their
 description shown on selection, no file-browsing needed -- "Open
 Template" or a double-click loads one and switches straight to the
 Scenario Editor tab. The same tab's "Browse for a file..." button covers

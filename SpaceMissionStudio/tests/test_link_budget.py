@@ -7,7 +7,7 @@ margin down by 20 dB) rather than a second copy of the same formula.
 import numpy as np
 import pytest
 
-from spacemissionstudio.engine.link_budget import link_margin_db, link_margin_series
+from spacemissionstudio.engine.link_budget import link_budget_breakdown, link_margin_db, link_margin_series
 from spacemissionstudio.engine.results import ResultSet, ResultsError, TimeSeries
 from spacemissionstudio.schema.scenario import GroundStationConfig, RFLinkConfig
 
@@ -82,3 +82,124 @@ def test_link_margin_series_missing_pair_raises_clear_error():
     result = ResultSet(scenario_name="test")
     with pytest.raises(ResultsError, match="no access-analysis series found"):
         link_margin_series(result, "gs1", "sat1", _rf_link(), _ground_station())
+
+
+def test_link_budget_breakdown_zero_pointing_error_matches_no_beamwidth_case():
+    """No antenna_beamwidth_deg (the pre-existing default) and a
+    perfectly-pointed antenna (pointing_error_deg=0.0) must produce the
+    exact same margin -- confirms the new pointing-loss term is additive,
+    never changing existing behavior when it doesn't apply.
+    """
+    rf_link_no_beamwidth = _rf_link()
+    rf_link_with_beamwidth = _rf_link(antenna_beamwidth_deg=10.0)
+    gs = _ground_station()
+
+    no_beamwidth = link_budget_breakdown(1.0e6, rf_link_no_beamwidth, gs, pointing_error_deg=5.0)
+    with_beamwidth_zero_error = link_budget_breakdown(1.0e6, rf_link_with_beamwidth, gs, pointing_error_deg=0.0)
+
+    assert no_beamwidth.pointing_loss_db == 0.0
+    assert with_beamwidth_zero_error.pointing_loss_db == 0.0
+    assert no_beamwidth.margin_db == pytest.approx(with_beamwidth_zero_error.margin_db)
+
+
+def test_link_budget_breakdown_pointing_loss_matches_parabolic_formula():
+    # 12 * (pointing_error_deg / antenna_beamwidth_deg)^2, per this
+    # module's own docstring -- independently computed here, not
+    # copy-pasted from link_budget.py's own expression.
+    rf_link = _rf_link(antenna_beamwidth_deg=20.0)
+    gs = _ground_station()
+    breakdown = link_budget_breakdown(1.0e6, rf_link, gs, pointing_error_deg=10.0)
+    expected_loss_db = 12.0 * (10.0 / 20.0) ** 2  # = 3.0 dB
+    assert breakdown.pointing_loss_db == pytest.approx(expected_loss_db)
+
+    baseline = link_budget_breakdown(1.0e6, rf_link, gs, pointing_error_deg=0.0)
+    assert baseline.margin_db - breakdown.margin_db == pytest.approx(expected_loss_db)
+
+
+def test_link_budget_breakdown_pointing_loss_clamped_at_max():
+    rf_link = _rf_link(antenna_beamwidth_deg=1.0)  # tiny beamwidth -> huge unclamped loss
+    gs = _ground_station()
+    breakdown = link_budget_breakdown(1.0e6, rf_link, gs, pointing_error_deg=90.0)
+    assert breakdown.pointing_loss_db == 30.0  # _MAX_POINTING_LOSS_DB
+
+
+def test_link_margin_db_pointing_error_kwarg_matches_breakdown():
+    rf_link = _rf_link(antenna_beamwidth_deg=15.0)
+    gs = _ground_station()
+    assert link_margin_db(1.0e6, rf_link, gs, pointing_error_deg=7.0) == pytest.approx(
+        link_budget_breakdown(1.0e6, rf_link, gs, pointing_error_deg=7.0).margin_db
+    )
+
+
+def _access_result_with_comms_pointing(range_m, has_access, active_mode, pointing_error_deg, n=5):
+    t = np.linspace(0.0, 100.0, n)
+    result = ResultSet(scenario_name="test")
+    result.add(TimeSeries("gs1.access_to_sat1.slant_range", t, ("slant_range",),
+                           np.full((n, 1), range_m), units="m"))
+    result.add(TimeSeries("gs1.access_to_sat1.has_access", t, ("has_access",),
+                           np.array(has_access, dtype=float).reshape(-1, 1), units="-"))
+    result.add(TimeSeries("sat1.comms_pointing.active_mode", t, ("active_mode",),
+                           np.array(active_mode, dtype=float).reshape(-1, 1), units="-"))
+    result.add(TimeSeries("sat1.comms_pointing.pointing_error_deg", t, ("pointing_error_deg",),
+                           np.array(pointing_error_deg, dtype=float).reshape(-1, 1), units="deg"))
+    return result
+
+
+def test_link_margin_series_gates_on_active_mode_in_addition_to_has_access():
+    """Real geometric access alone isn't enough once a spacecraft also has
+    comms_pointing configured -- the spacecraft must have actually
+    switched into ground-station-pointing mode too (see
+    link_margin_series's own docstring: "geometric visibility vs actual
+    RF link availability"). Index 1 below has real access but the
+    spacecraft hasn't switched modes yet (e.g. right at access start,
+    before the arbitrator's own next tick) -- margin must be NaN there.
+    """
+    has_access = [0, 1, 1, 1, 0]
+    active_mode = [0, 0, 1, 1, 0]
+    pointing_error_deg = [0.0, 20.0, 5.0, 1.0, 0.0]
+    result = _access_result_with_comms_pointing(1.0e6, has_access, active_mode, pointing_error_deg)
+    rf_link = _rf_link(antenna_beamwidth_deg=15.0)
+    gs = _ground_station()
+
+    series = link_margin_series(result, "gs1", "sat1", rf_link, gs)
+
+    assert np.isnan(series.data[0, 0])  # no access at all
+    assert np.isnan(series.data[1, 0])  # access, but mode not yet switched
+    assert not np.isnan(series.data[2, 0])
+    assert not np.isnan(series.data[3, 0])
+    assert np.isnan(series.data[4, 0])  # access ended
+
+
+def test_link_margin_series_applies_the_pointing_error_series_per_sample():
+    has_access = [1, 1]
+    active_mode = [1, 1]
+    pointing_error_deg = [20.0, 1.0]  # degraded right at the transition, converged afterward
+    result = _access_result_with_comms_pointing(1.0e6, has_access, active_mode, pointing_error_deg, n=2)
+    rf_link = _rf_link(antenna_beamwidth_deg=15.0)
+    gs = _ground_station()
+
+    series = link_margin_series(result, "gs1", "sat1", rf_link, gs)
+
+    expected_0 = link_margin_db(1.0e6, rf_link, gs, pointing_error_deg=20.0)
+    expected_1 = link_margin_db(1.0e6, rf_link, gs, pointing_error_deg=1.0)
+    assert series.data[0, 0] == pytest.approx(expected_0)
+    assert series.data[1, 0] == pytest.approx(expected_1)
+    assert expected_1 > expected_0  # better-pointed sample has less pointing loss, so more margin
+
+
+def test_link_margin_series_without_comms_pointing_series_is_unaffected():
+    """A spacecraft with rf_link but no comms_pointing configured (the
+    pre-existing case) has neither active_mode nor pointing_error_deg
+    recorded -- link_margin_series must behave exactly as it did before
+    this feature existed (gate on has_access alone, assume perfect
+    pointing).
+    """
+    has_access = [0, 1, 1, 0]
+    result = _access_result(1.0e6, has_access, n=4)
+    series = link_margin_series(result, "gs1", "sat1", _rf_link(), _ground_station())
+    expected_margin = link_margin_db(1.0e6, _rf_link(), _ground_station())
+    for i, accessible in enumerate(has_access):
+        if accessible:
+            assert series.data[i, 0] == pytest.approx(expected_margin)
+        else:
+            assert np.isnan(series.data[i, 0])
