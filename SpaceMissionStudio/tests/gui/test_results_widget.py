@@ -121,6 +121,72 @@ def test_export_with_no_result_is_a_no_op(widget, monkeypatch):
     assert calls == []
 
 
+def test_save_plot_as_png_writes_a_real_png_file(widget, tmp_path, monkeypatch, qtbot):
+    """End-to-end: real plotly.js rendering a real PNG in the offscreen
+    QWebEngineView, not a mocked JS call -- the same "confirmed directly
+    in this sandbox, not assumed" discipline this module's own docstring
+    already holds itself to for the base setHtml()/loadFinished pipeline.
+    Plotly.toImage() is asynchronous (page().runJavaScript() callback),
+    so this waits for the file to actually appear rather than asserting
+    immediately after the click.
+    """
+    from PySide6.QtWidgets import QFileDialog, QMessageBox
+
+    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=10000):
+        widget.set_result(_sample_result_set())
+    assert widget.save_png_button.isEnabled()
+    out_path = tmp_path / "plot.png"
+    monkeypatch.setattr(QFileDialog, "getSaveFileName",
+                         staticmethod(lambda *a, **k: (str(out_path), "PNG images (*.png)")))
+    info_calls = []
+    monkeypatch.setattr(QMessageBox, "information", staticmethod(lambda *a, **k: info_calls.append(a)))
+
+    widget._on_save_plot_png()
+    qtbot.waitUntil(lambda: out_path.exists(), timeout=10000)
+
+    png_bytes = out_path.read_bytes()
+    assert png_bytes[:8] == b"\x89PNG\r\n\x1a\n"  # real PNG magic bytes, not an empty/garbage file
+    assert len(png_bytes) > 1000  # a real rendered chart, not a 1x1 placeholder
+    qtbot.waitUntil(lambda: len(info_calls) == 1, timeout=5000)
+
+
+def test_save_plot_as_png_appends_extension_if_missing(widget, tmp_path, monkeypatch, qtbot):
+    from PySide6.QtWidgets import QFileDialog, QMessageBox
+
+    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=10000):
+        widget.set_result(_sample_result_set())
+    out_path_no_ext = tmp_path / "plot"
+    monkeypatch.setattr(QFileDialog, "getSaveFileName",
+                         staticmethod(lambda *a, **k: (str(out_path_no_ext), "PNG images (*.png)")))
+    monkeypatch.setattr(QMessageBox, "information", staticmethod(lambda *a, **k: None))
+
+    widget._on_save_plot_png()
+    expected_path = tmp_path / "plot.png"
+    qtbot.waitUntil(lambda: expected_path.exists(), timeout=10000)
+    assert not out_path_no_ext.exists()
+
+
+def test_save_plot_as_png_with_no_result_is_a_no_op(widget, monkeypatch):
+    from PySide6.QtWidgets import QFileDialog
+
+    assert not widget.save_png_button.isEnabled()
+    calls = []
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", staticmethod(lambda *a, **k: calls.append(1) or ("", "")))
+    widget._on_save_plot_png()  # self.figure is None
+    assert calls == []
+
+
+def test_save_plot_as_png_cancelled_dialog_is_a_no_op(widget, tmp_path, monkeypatch):
+    from PySide6.QtWidgets import QFileDialog
+
+    widget.set_result(_sample_result_set())
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", staticmethod(lambda *a, **k: ("", "")))
+
+    widget._on_save_plot_png()  # must not raise, must not create anything
+
+    assert list(tmp_path.iterdir()) == []
+
+
 def test_set_live_result_populates_combo_on_first_update(widget):
     widget.set_live_result(_sample_result_set(n=5))
     assert widget.series_combo.count() == 2

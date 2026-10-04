@@ -176,7 +176,7 @@ environment issue.
   `engine/constellation.py`, `engine/spacecraft_templates.py`,
   `engine/propellant_bookkeeping.py`, `cli.py`, and the entire
   `spacemissionstudio/gui/` package) has no Basilisk import and is fully
-  exercised either way -- `pytest tests/` runs and passes 983 tests
+  exercised either way -- `pytest tests/` runs and passes 987 tests
   with or without Basilisk installed (see "Running the tests" below).
   That includes the PySide6 GUI: built, run headless, and driven with
   `pytest-qt` for real -- every form field, every menu action, every
@@ -448,7 +448,7 @@ SpaceMissionStudio/
       phasing_formation_dialog.py    -- "Generate phasing formation..." dialog
       spacecraft_template_dialog.py  -- Phase 5: "New from template" picker dialog
       kernel_status_widget.py        -- SPICE kernel status panel
-      results_widget.py              -- Plotly results plot (QWebEngineView) + CSV export
+      results_widget.py              -- Plotly results plot (QWebEngineView) + CSV export + save-plot-as-PNG
       mission_dashboard_widget.py    -- "Mission Dashboard" tab: live operating-state/attitude/power/RF-link telemetry for a comms_pointing spacecraft
       run_worker.py                  -- SimulationService/Monte Carlo on a background QThread
     scenarios/
@@ -558,7 +558,7 @@ python3 -m pip install -e ".[dev,gui]"
 python3 -m pytest tests/ -v
 ```
 
-Without Basilisk on `PYTHONPATH`, this runs 983 tests (schema, space
+Without Basilisk on `PYTHONPATH`, this runs 987 tests (schema, space
 weather, results, link budget, constellation generation, CLI, and the
 full PySide6 GUI, run headless) and skips 130 whose premise is
 specifically "Basilisk is unavailable" (marked `requires_basilisk`), per
@@ -710,7 +710,11 @@ label updates live as you type, including its Monte Carlo section
 (enable/num_runs/thread_count + a dispersion list, referencing spacecraft
 by name). Run > Run Simulation runs `SimulationService` on a background
 thread (the UI stays responsive) and switches to the Results tab when
-done, with a plot per result series and a CSV export button. A
+done, with a plot per result series, a CSV export button (every series
+at once), and a "Save plot as PNG..." button (just the currently
+displayed plot, to a user-chosen location via a native Save As dialog --
+rendered client-side through the same `plotly.js` already on the page,
+not a new `kaleido` dependency). A
 **"Mission Dashboard"** tab alongside Results shows the same run's live,
 at-a-glance telemetry (sim time/mode/ground-station visibility, pointing
 error/tracking status, battery charge-SOC-net power, and a live RF

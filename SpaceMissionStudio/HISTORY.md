@@ -5571,3 +5571,66 @@ template 19 still loads/round-trips through the Scenario Editor and the Mission 
 still renders after all of the above. `scripts/_generate_templates.py` re-run and produced
 byte-identical template JSON files (confirms none of the schema/engine fixes above touch
 anything a template's own construction depends on).
+
+---
+
+## Results tab: "Save plot as PNG..." button
+
+Direct request: "would be great to also have a button to save the plots as png images in a
+desired location." Plotly's own modebar already has a built-in camera/download-as-png icon
+(`config={"displaylogo": False}` in `results_widget.py` leaves it in), but inside an embedded
+`QWebEngineView` that triggers Chromium's own download machinery, which this app never wires up
+(`QWebEngineProfile.downloadRequested`) -- confirmed directly that clicking it does nothing
+observable here, not assumed. A new "Save plot as PNG..." button next to the existing "Export
+all series to CSV..." button fixes this with a proper native Save As dialog and a real file on
+disk at the chosen path.
+
+**Design**: renders the chart to a PNG CLIENT-SIDE via the SAME `plotly.js` already loaded on
+the page (`Plotly.toImage()`), rather than pulling in a server-side renderer (the `kaleido`
+package) this project doesn't otherwise depend on -- the same "no unnecessary dependency" choice
+this module's own docstring already makes for `plotly.js` itself. `scale: 2` asks for a
+higher-than-screen-resolution render at the chart's own current on-screen size.
+
+**A real bug, caught before it shipped, not after**: the first implementation assumed
+`QWebEnginePage.runJavaScript()` awaits a top-level returned `Promise` automatically (this is
+genuinely true for some Qt WebEngine versions/configurations, which is presumably where that
+assumption came from) and just returned `Plotly.toImage(...)`'s own Promise directly as the
+script. Confirmed directly, NOT assumed, against this project's actual PySide6 6.11.2: it does
+NOT await it -- the callback receives an empty string every single time, which looks exactly
+like a render failure (both show up as "no valid PNG data") but isn't one. Caught by the
+project's own "verify before committing" discipline: a quick isolated diagnostic script
+(`new Promise((resolve) => resolve(42))` through the exact same `runJavaScript()` call) showed
+the empty-string result BEFORE the feature's own real test was trusted, rather than assuming a
+hanging/failing test meant the feature itself was broken. Fixed by polling a page-global
+variable instead (`Plotly.toImage(...).then(url => { window.X = url; })`, then a `QTimer`
+checking `window.X` every 100ms) -- confirmed directly to work (a 106 KB real PNG, resolved in
+~200ms in practice). A second, related quirk found the same way: a bare JS `null`/`undefined`
+also bridges back as an empty string here, not Python `None` as plain code might assume -- the
+poll uses an explicit sentinel string (`"__spacemissionstudio_png_pending__"`) to tell "still
+rendering" apart from a real (possibly falsy) result, rather than relying on that bridging.
+
+**A second real race, also caught by actually running the test, not just writing it**: the
+button's own enabled state is set synchronously inside `_redraw()`, right after kicking off
+`QWebEngineView.setHtml()` -- but `setHtml()` itself loads and executes the page (including
+`plotly.js` and the `Plotly.newPlot()` call that defines `window.Plotly`) ASYNCHRONOUSLY. An
+ordinary human click is far slower than that load and never notices, but this project's own new
+test for the feature -- calling `_on_save_plot_png()` immediately after `set_result()`, with no
+wait -- hit it directly: `js: Uncaught ReferenceError: Plotly is not defined`. Fixed two ways:
+the test now waits for a real `loadFinished` signal before clicking (`qtbot.waitSignal`,
+matching realistic usage and making the test deterministic rather than racy), AND the production
+kickoff script itself gained a short, near-zero-cost-in-the-common-case retry loop (up to 40
+attempts, 50ms apart) that waits for `window.Plotly`/the chart element to exist before rendering
+-- real defense-in-depth for the narrow case of an automated/very-fast click actually beating
+the page load, not just a test-only workaround.
+
+**Verification**: `tests/gui/test_results_widget.py` gained 5 new tests (a real end-to-end PNG
+render with real PNG magic-byte verification, the `.png` extension auto-append, the no-result
+no-op, and the cancelled-dialog no-op) -- all confirmed against the REAL offscreen
+`QWebEngineView`/`plotly.js` pipeline in this sandbox, not mocked JS. One environment quirk
+noted, not a regression from this feature: running `tests/gui/test_results_widget.py` ALONE
+segfaults at Python interpreter teardown ("Release of profile requested but WebEnginePage still
+not deleted") -- confirmed this already happens on the pre-existing 26 tests in that file with
+zero changes from this feature, and that the full `tests/gui/` suite (517 passed, 2 skipped) and
+the full `tests/` suite both exit cleanly (code 0) -- an isolated-single-file-run artifact of
+this sandbox's Qt WebEngine teardown, not something seen running the suite normally. Full suite:
+987 passed, 130 skipped, zero regressions (up from 983/130, the previous entry's own figure).

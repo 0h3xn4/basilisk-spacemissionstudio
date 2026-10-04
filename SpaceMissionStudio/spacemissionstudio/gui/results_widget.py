@@ -112,6 +112,7 @@ unambiguous, not follow a plot-only display preference):
 
 from __future__ import annotations
 
+import base64
 import math
 import os
 
@@ -127,7 +128,7 @@ from pathlib import Path
 from typing import Dict, Optional
 
 import plotly.graph_objects as go
-from PySide6.QtCore import Qt, QUrl
+from PySide6.QtCore import Qt, QTimer, QUrl
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import (
     QCompleter,
@@ -168,6 +169,26 @@ _GRID_COLOR = "#D8DCE3"  # theme.py's "border"
 _SURFACE = "#FFFFFF"  # theme.py's "surface"
 _EMPTY_STATE_TEXT = "#8A93A3"  # same color the previous matplotlib empty-state message used
 _FONT_FAMILY = "system-ui, -apple-system, 'Segoe UI', sans-serif"
+
+# A fixed id (rather than Plotly's own randomly-generated default) so
+# _on_save_plot_png's injected JS can reliably find the chart div to
+# rasterize -- see that method's own docstring for why a client-side
+# Plotly.toImage() call is used instead of a server-side renderer
+# (kaleido) this project doesn't otherwise depend on.
+_PLOT_DIV_ID = "spacemissionstudio-plot"
+
+# _on_save_plot_png/_poll_plot_png's poll-for-an-async-JS-result protocol
+# -- see _on_save_plot_png's own docstring for why polling a page-global
+# variable is used instead of relying on QWebEnginePage.runJavaScript()
+# awaiting a top-level Promise itself (confirmed directly: it doesn't, on
+# this PySide6 version). The sentinel distinguishes "still rendering"
+# from a real result because a bare JS null/undefined also bridges back
+# as an empty string here, not None.
+_PNG_RESULT_JS_VAR = "__spacemissionstudioPngResult"
+_SAVE_PNG_PENDING_SENTINEL = "__spacemissionstudio_png_pending__"
+_SAVE_PNG_ERROR_PREFIX = "__spacemissionstudio_png_error__:"
+_SAVE_PNG_POLL_INTERVAL_MS = 100
+_SAVE_PNG_MAX_POLL_ATTEMPTS = 100  # 100 * 100ms = 10s -- Plotly.toImage took ~200ms in practice
 
 
 @dataclass(frozen=True)
@@ -431,6 +452,7 @@ class ResultsWidget(QWidget):
         self._result: ResultSet | None = None
         self._epoch_utc: Optional[str] = None
         self.figure: Optional[go.Figure] = None  # the currently-plotted go.Figure, or None (empty state)
+        self._png_poll_state: Optional[dict] = None  # set by _on_save_plot_png, read by _poll_plot_png
 
         layout = QVBoxLayout(self)
 
@@ -474,6 +496,12 @@ class ResultsWidget(QWidget):
         self.export_button.clicked.connect(self._on_export)
         self.export_button.setEnabled(False)
         top_row.addWidget(self.export_button)
+        self.save_png_button = QPushButton("Save plot as PNG...")
+        self.save_png_button.setToolTip("Save the currently displayed plot (not every series -- see "
+                                         "\"Export all series to CSV...\" for that) as a PNG image")
+        self.save_png_button.clicked.connect(self._on_save_plot_png)
+        self.save_png_button.setEnabled(False)
+        top_row.addWidget(self.save_png_button)
         layout.addLayout(top_row)
 
         self.web_view = QWebEngineView()
@@ -601,11 +629,12 @@ class ResultsWidget(QWidget):
             base_url = QUrl()
         else:
             html = self.figure.to_html(
-                include_plotlyjs=str(_plotlyjs_path()), full_html=True,
+                include_plotlyjs=str(_plotlyjs_path()), full_html=True, div_id=_PLOT_DIV_ID,
                 config={"displaylogo": False, "responsive": True},
             )
             base_url = QUrl.fromLocalFile(str(_plotlyjs_path().parent) + "/")
         self.web_view.setHtml(html, base_url)
+        self.save_png_button.setEnabled(self.figure is not None)
 
     def _on_export(self) -> None:
         if self._result is None:
@@ -619,3 +648,122 @@ class ResultsWidget(QWidget):
             QMessageBox.critical(self, "Export failed", str(exc))
             return
         QMessageBox.information(self, "Export complete", f"Wrote {len(paths)} CSV file(s) to {out_dir}")
+
+    def _on_save_plot_png(self) -> None:
+        """Saves the CURRENTLY DISPLAYED plot (only -- see
+        ``_on_export`` for every series at once) as a PNG, to a
+        user-chosen location via a native "Save As" dialog -- real user
+        request ("would be great to also have a button to save the plots
+        as png images in a desired location").
+
+        Plotly's own modebar already has a built-in camera/download-as
+        -png icon (``config={"displaylogo": False}`` above leaves it in;
+        see this module's own docstring), but inside an embedded
+        ``QWebEngineView`` that triggers Chromium's OWN download
+        machinery, which this app never wires up
+        (``QWebEngineProfile.downloadRequested``) -- confirmed directly
+        that clicking it does nothing observable here, not assumed. This
+        button instead renders the chart to a PNG CLIENT-SIDE, via the
+        SAME ``plotly.js`` already loaded on the page (``Plotly.toImage()``),
+        rather than pulling in a server-side renderer (the ``kaleido``
+        package) this project doesn't otherwise depend on -- consistent
+        with this module's own "no unnecessary dependency" choice for
+        ``plotly.js`` itself. ``scale: 2`` asks for a higher-than-screen
+        -resolution render (sharper on a high-DPI display/print) at the
+        chart's own current on-screen size, rather than a hardcoded
+        width/height that might not match what's actually visible.
+
+        ``Plotly.toImage()`` is asynchronous (it returns a ``Promise``).
+        ``QWebEnginePage.runJavaScript()`` does NOT await a top-level
+        returned ``Promise`` on this PySide6 version (confirmed directly,
+        not assumed -- an earlier version of this method relied on that
+        and silently got back an empty string every time, which looked
+        exactly like a render failure but wasn't one), so this instead
+        kicks the render off into a page-global variable and polls for it
+        via :meth:`_poll_plot_png` -- ``_SAVE_PNG_PENDING_SENTINEL``
+        distinguishes "still rendering" from a real (possibly falsy)
+        result, since a bare JS ``null``/``undefined`` also bridges back
+        as an empty string here, not ``None`` as plain Python code might
+        expect.
+        """
+        if self.figure is None:
+            return
+        default_name = f"{self.series_combo.currentText()}.png"
+        path, _ = QFileDialog.getSaveFileName(self, "Save plot as PNG", default_name, "PNG images (*.png)")
+        if not path:
+            return
+        if not path.lower().endswith(".png"):
+            path += ".png"
+
+        self.save_png_button.setEnabled(False)  # guards against a second click racing this one's own poll
+        # tryRender's retry loop guards a real (if narrow) race: this
+        # button's own enabled state is set synchronously inside
+        # _redraw(), right after kicking off setHtml() -- but setHtml()
+        # itself loads/executes the page (including plotly.js and the
+        # Plotly.newPlot() call that defines window.Plotly) ASYNCHRONOUSLY.
+        # An ordinary human click is far slower than that load, but an
+        # automated one (a UI test, accessibility tooling) could win the
+        # race and hit "Plotly is not defined" -- confirmed directly, not
+        # hypothetical (this project's own test for this method did
+        # exactly that before it was changed to wait for loadFinished).
+        # A short, near-zero-cost-in-the-common-case retry loop is more
+        # robust than asserting the race away.
+        kickoff_script = f"""
+        window.{_PNG_RESULT_JS_VAR} = {_SAVE_PNG_PENDING_SENTINEL!r};
+        (function tryRender(attemptsLeft) {{
+            var el = document.getElementById({_PLOT_DIV_ID!r});
+            if (typeof Plotly === 'undefined' || !el) {{
+                if (attemptsLeft > 0) {{
+                    setTimeout(function() {{ tryRender(attemptsLeft - 1); }}, 50);
+                }} else {{
+                    window.{_PNG_RESULT_JS_VAR} = '{_SAVE_PNG_ERROR_PREFIX}the plot had not finished loading';
+                }}
+                return;
+            }}
+            Plotly.toImage(el, {{format: 'png', scale: 2}})
+                .then(function(url) {{ window.{_PNG_RESULT_JS_VAR} = url; }})
+                .catch(function(err) {{
+                    window.{_PNG_RESULT_JS_VAR} =
+                        '{_SAVE_PNG_ERROR_PREFIX}' + (err && err.message ? err.message : err);
+                }});
+        }})(40);
+        """
+        self.web_view.page().runJavaScript(kickoff_script)
+
+        poll_timer = QTimer(self)
+        self._png_poll_state = {"path": path, "timer": poll_timer, "attempts": 0}
+        poll_timer.timeout.connect(self._poll_plot_png)
+        poll_timer.start(_SAVE_PNG_POLL_INTERVAL_MS)
+
+    def _poll_plot_png(self) -> None:
+        state = self._png_poll_state
+        state["attempts"] += 1
+
+        def on_poll_result(value: object) -> None:
+            if value == _SAVE_PNG_PENDING_SENTINEL:
+                if state["attempts"] >= _SAVE_PNG_MAX_POLL_ATTEMPTS:
+                    state["timer"].stop()
+                    self.save_png_button.setEnabled(True)
+                    QMessageBox.critical(self, "Save failed", "Timed out waiting for the plot to render.")
+                return
+            state["timer"].stop()
+            self.save_png_button.setEnabled(True)
+            self._on_plot_png_rendered(value, state["path"])
+
+        self.web_view.page().runJavaScript(f"window.{_PNG_RESULT_JS_VAR}", on_poll_result)
+
+    def _on_plot_png_rendered(self, data_url: object, path: str) -> None:
+        prefix = "data:image/png;base64,"
+        if isinstance(data_url, str) and data_url.startswith(_SAVE_PNG_ERROR_PREFIX):
+            QMessageBox.critical(self, "Save failed", data_url[len(_SAVE_PNG_ERROR_PREFIX):])
+            return
+        if not isinstance(data_url, str) or not data_url.startswith(prefix):
+            QMessageBox.critical(self, "Save failed", "Could not render the plot to a PNG image.")
+            return
+        try:
+            png_bytes = base64.b64decode(data_url[len(prefix):])
+            Path(path).write_bytes(png_bytes)
+        except (OSError, ValueError) as exc:
+            QMessageBox.critical(self, "Save failed", str(exc))
+            return
+        QMessageBox.information(self, "Plot saved", f"Saved plot to {path}")
