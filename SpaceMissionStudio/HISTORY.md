@@ -5634,3 +5634,111 @@ zero changes from this feature, and that the full `tests/gui/` suite (517 passed
 the full `tests/` suite both exit cleanly (code 0) -- an isolated-single-file-run artifact of
 this sandbox's Qt WebEngine teardown, not something seen running the suite normally. Full suite:
 987 passed, 130 skipped, zero regressions (up from 983/130, the previous entry's own figure).
+
+## Closed-off/offline policy: removing every runtime network call
+
+**Real user requirement**: "the app must be completely closed off and offline, only exception is
+the installation process." Before this change, SpaceMissionStudio had three runtime code paths
+that could reach the network, none of them gated behind an opt-in flag -- this entry audits and
+closes all three, plus a real gap discovered along the way.
+
+**1. SPICE/gravity-harmonics/magnetic-field support data (`engine.kernels`)**. Basilisk's own
+`supportDataTools.dataFetcher` (`pooch`-backed) fetches a file over the network the first time
+`get_path()` is called for it and the local repo copy/cache doesn't already have it -- this was
+previously left to happen lazily, on whatever run first needed a given file. A real pre-existing
+gap found while auditing this: `DEFAULT_KERNELS` (what `ensure_kernels`/`require_kernels`
+defaulted to) covered only the SPICE kernels (`naif0012.tls`, `de430.bsp`, `de-403-masses.tpc`,
+`pck00010.tpc`) -- `DataFile.LocalGravData.GGM03S` (10th-degree spherical-harmonics gravity) and
+`DataFile.MagneticFieldData.WMM` (the magnetometer model) were NOT pre-fetched by anything, so a
+scenario using gravity harmonics or a magnetometer could still trigger an unreported runtime
+fetch even before this directive. Fixed in two parts: `engine/kernels.py` now defines
+`ALL_SUPPORT_DATA_FILES = DEFAULT_KERNELS + (GGM03S, WMM)` and both `ensure_kernels`/
+`require_kernels` default to it instead of `DEFAULT_KERNELS`; and all four packaging installers
+(`packaging/install.sh`, `packaging/install.ps1`, `packaging/deb/DEBIAN/postinst`,
+`packaging/windows/bootstrap_env.ps1`) now call `engine.kernels.require_kernels()` once, right
+after SpaceMissionStudio itself is installed into the venv (ordering matters: a first attempt in
+`postinst` placed this call right after the Basilisk install step but BEFORE
+spacemissionstudio's own install, which would have failed with `ModuleNotFoundError` -- caught by
+re-reading the script's full line order before considering the edit done, and fixed by moving the
+block after the spacemissionstudio wheel install). `install.sh`/`install.ps1` treat a failed
+pre-fetch as non-fatal (a missing Basilisk wheel there is already optional); `postinst`/
+`bootstrap_env.ps1` treat it as FATAL, since both of those always install a real Basilisk --
+matching how each script already treats its own Basilisk/spacemissionstudio install steps. See
+`packaging/README.md`'s own "Closed-off/offline policy" section for the per-script detail.
+`build_spice_interface()`'s own `kernels` parameter default is UNCHANGED (`DEFAULT_KERNELS`) --
+it's SPICE-specific by construction, not the general-purpose default this change touches.
+
+**2. Space weather (`engine.spaceweather`)**. This module used to fetch live F10.7/Ap data from
+CelesTrak as its DEFAULT `source` (`"celestrak"`), with a fallback chain to `local_file` then
+`synthetic` if the fetch failed or didn't cover the scenario's date range. All of that -- the
+`fetch()` function, `CELESTRAK_URLS`, the `urllib.request`/`urllib.error` imports, the
+fetch-then-fallback chain in `resolve()`, and the `"celestrak"` branch in
+`_resolve_conservative()` -- has been REMOVED entirely, not just defaulted away from. `source` is
+now `"local_file"` or `"synthetic"` (the new default) only; anything else, including
+`"celestrak"`, raises `SpaceWeatherError` as an unknown source. The `activity_level="conservative"`
+worst-case-percentile margin (computed from REAL historical F10.7/Ap data -- never the synthetic
+generator, which is fabricated) is now `local_file`-only for the same reason: there is no more
+automatic way to obtain that real historical data inside the app. A real, deliberate honesty
+check was run before accepting this trade-off: could a real historical CSV just be bundled with
+the app instead, to preserve the conservative-margin feature's full value without ANY runtime
+fetch? A direct `curl` against `celestrak.org` from this sandbox confirmed it is genuinely
+blocked (403) and no stale cached copy exists anywhere in this checkout to fall back on -- so
+rather than fabricate or guess a "real historical" file, the honest choice was to reduce this
+specific capability and say so plainly, not paper over it.
+
+**Ripple effects, all fixed**: `tests/test_spaceweather.py` had its CelesTrak-specific tests
+(`test_resolve_celestrak_falls_back_when_unreachable_or_insufficient`,
+`test_fetch_sends_a_browser_like_user_agent`) replaced with
+`test_resolve_celestrak_source_is_rejected_as_unknown` and `test_module_has_no_fetch_function`
+(asserts `spaceweather.fetch`/`spaceweather.urllib` don't even exist any more). The five bundled
+templates that defaulted to `_conservative_drag_margin()` (`scripts/_generate_templates.py`: 04
+Walker constellation, 05 formation-flying phasing, 07 ADCS hardware, 08 mission-sequence orbit
+raise, 18 LEO station-keeping) now use `activity_level="nominal", source="synthetic"` instead of
+`source="celestrak", activity_level="conservative"` -- each template's own `description` field was
+rewritten to explain the change and how to restore the real-historical-data margin (set
+`space_weather.source="local_file"`, `activity_level="conservative"`, `local_file_path=<your own
+downloaded CelesTrak CSV>` in the Scenario Editor). All 19 templates were regenerated via
+`scripts/_generate_templates.py` -- every one of them had `"source": "celestrak"` serialized into
+its JSON (the OLD schema default), which would otherwise have failed `Scenario.validate()`'s
+source-whitelist check the moment this schema change landed. The six hand-maintained
+`diagnostic_05*.json` fixtures and `two_body_validation.json` (not produced by
+`_generate_templates.py`) had the same stale `"source": "celestrak"` fixed by hand (a plain
+`"source": "synthetic"` substitution -- these files set no other space-weather fields, so no
+further changes were needed) and re-validated via `load_scenario()` + `.validate()`.
+`gui/propagation_setup_dialog.py`'s `space_weather_source_combo` dropped the `"celestrak"` entry
+(now just `["synthetic", "local_file"]`), and its tooltips/docstring were reworded to match.
+
+**3. Vizard auto-download (`gui.vizard_launcher`, `gui.main_window`)**. `fetch_vizard()` (plus its
+`VizardFetchError`, `_DOWNLOAD_URLS` table pointing at `hanspeterschaub.info`, zip-slip-guarded
+extraction, and `VizardFetchWorker` QThread wrapper) and the "Download Vizard" button that drove
+it from `MainWindow.on_launch_vizard()`'s "Vizard not found" dialog have been removed entirely.
+Vizard is a separate, user-installed Unity application, not something this app's own install step
+can pre-fetch the way `engine.kernels` does for SPICE/support data (there's no single guaranteed
+install location, and the installers above only run once, at install time, not whenever Vizard
+happens to be missing). The "Vizard not found" dialog now offers only its original **Browse...**
+option; `docs/source/Vizard/VizardDownload.rst`'s published links are still there for a human to
+follow manually, same as before this feature ever existed. `tests/gui/test_vizard_launcher.py`
+lost its entire "fetch_vizard()" test section (previously unverifiable end-to-end in this sandbox
+anyway, per that module's own docstring -- `hanspeterschaub.info` was blocked here); the path
+-lookup/persistence/process-launch tests it opened with are unaffected and still pass.
+`tests/gui/test_main_window.py` lost its `_FakeVizardFetchWorker` class and the two
+`_fetch_vizard_with_progress` tests it supported; `_locate_or_fetch_vizard` was renamed to
+`_locate_vizard` throughout (it no longer offers a download branch, so the old name was no longer
+accurate) and its remaining browse/cancel/dismiss tests updated to match the single-button dialog.
+
+**Re-verified**: a project-wide re-grep for `import urllib`/`import requests`/`import socket`/
+`import ftplib`/`urlopen(` across `spacemissionstudio/` (excluding `build/`) turned up zero
+matches after this change -- the ONLY `http://`/`https://` literal left anywhere in the package is
+a docstring pointer in `engine/spaceweather.py` telling a USER where to manually download a
+CelesTrak CSV themselves, never code that fetches it.
+
+**Verification**: full suite re-run after every change above, not just at the end.
+`tests/test_spaceweather.py`: 22 passed. `tests/test_scenario_templates.py`: 90 passed (all 19
+regenerated templates round-trip and validate). The six diagnostic fixtures +
+`two_body_validation.json` re-validated individually via `load_scenario()`/`.validate()` after the
+hand-edit. `tests/gui/test_propagation_setup_dialog.py`: 20 passed. `tests/gui/
+test_vizard_launcher.py`: 11 passed (down from its pre-change count, entirely from removing the
+fetch-only tests, zero regressions in what remains). `tests/gui/test_main_window.py`: 75 passed.
+Full suite with `QT_QPA_PLATFORM=offscreen`: 968 passed, 130 skipped, zero regressions (the drop
+from 987 to 968 passed is entirely the removed fetch_vizard/VizardFetchWorker/CelesTrak-fallback
+tests described above, not a loss of coverage on anything that still exists).

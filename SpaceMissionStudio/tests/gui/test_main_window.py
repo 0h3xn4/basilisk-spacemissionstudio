@@ -7,7 +7,6 @@ error path in this development sandbox (see test_run_worker.py).
 import importlib.util
 
 import pytest
-from PySide6.QtCore import QObject, Signal
 
 pytestmark = pytest.mark.requires_gui
 
@@ -812,11 +811,10 @@ def test_launch_vizard_relaunches_after_the_process_exits(window, monkeypatch):
 
 def test_launch_vizard_not_found_falls_back_to_browse(window, monkeypatch):
     """`on_launch_vizard()`'s own contract once `find_vizard_executable()`
-    comes up empty: whatever `_locate_or_fetch_vizard()` resolves to (via
-    either its "Download" or "Browse..." path -- see the dedicated tests
-    for those below) gets launched. Mocked at that seam rather than
-    QFileDialog directly, since which of the two sub-paths the user took
-    is no longer this test's concern.
+    comes up empty: whatever `_locate_vizard()` resolves to (via its
+    "Browse..." path -- see the dedicated tests for that below) gets
+    launched. Mocked at that seam rather than QFileDialog directly,
+    since the browse-dialog mechanics aren't this test's concern.
     """
     from pathlib import Path
 
@@ -824,7 +822,7 @@ def test_launch_vizard_not_found_falls_back_to_browse(window, monkeypatch):
 
     picked = Path("/picked/Vizard")
     monkeypatch.setattr(main_window, "find_vizard_executable", lambda: None)
-    monkeypatch.setattr(main_window.MainWindow, "_locate_or_fetch_vizard", lambda self: picked)
+    monkeypatch.setattr(main_window.MainWindow, "_locate_vizard", lambda self: picked)
     monkeypatch.setattr(main_window, "launch_vizard", lambda path, direct_comm_address=None: _FakeVizardProcess())
 
     window.on_launch_vizard()
@@ -836,7 +834,7 @@ def test_launch_vizard_not_found_and_resolution_cancelled_does_nothing(window, m
     from spacemissionstudio.gui import main_window
 
     monkeypatch.setattr(main_window, "find_vizard_executable", lambda: None)
-    monkeypatch.setattr(main_window.MainWindow, "_locate_or_fetch_vizard", lambda self: None)
+    monkeypatch.setattr(main_window.MainWindow, "_locate_vizard", lambda self: None)
     launch_calls = []
     monkeypatch.setattr(main_window, "launch_vizard",
                          lambda path, direct_comm_address=None: launch_calls.append(path))
@@ -847,11 +845,14 @@ def test_launch_vizard_not_found_and_resolution_cancelled_does_nothing(window, m
     assert window._vizard_process is None
 
 
-def test_locate_or_fetch_vizard_browse_option_remembers_the_picked_path(window, monkeypatch):
-    """The original manual-browse path, now reached via the "not found"
-    QMessageBox's "Browse..." button -- clicked here by text match (see
-    this test's own `_click` helper) rather than assuming a specific
-    button object, since QMessageBox builds its buttons fresh each call.
+def test_locate_vizard_browse_option_remembers_the_picked_path(window, monkeypatch):
+    """The manual-browse path, reached via the "not found" QMessageBox's
+    "Browse..." button -- clicked here by text match (see this test's own
+    `_click` helper) rather than assuming a specific button object, since
+    QMessageBox builds its buttons fresh each call. There is no
+    automatic-download option any more (this app makes no network calls
+    at runtime -- see gui.vizard_launcher's own docstring), so "Browse..."
+    is the only non-Cancel button on this dialog.
     """
     from pathlib import Path
 
@@ -864,32 +865,32 @@ def test_locate_or_fetch_vizard_browse_option_remembers_the_picked_path(window, 
     monkeypatch.setattr("spacemissionstudio.gui.main_window.remember_vizard_executable",
                          lambda path: remembered.append(path))
 
-    result = window._locate_or_fetch_vizard()
+    result = window._locate_vizard()
 
     assert result == picked
     assert remembered == [picked]
 
 
-def test_locate_or_fetch_vizard_browse_cancelled_returns_none(window, monkeypatch):
+def test_locate_vizard_browse_cancelled_returns_none(window, monkeypatch):
     from PySide6.QtWidgets import QFileDialog, QMessageBox
 
     monkeypatch.setattr(QMessageBox, "exec", _click_message_box_button("Browse..."))
     monkeypatch.setattr(QFileDialog, "getOpenFileName", staticmethod(lambda *a, **k: ("", "")))
 
-    assert window._locate_or_fetch_vizard() is None
+    assert window._locate_vizard() is None
 
 
-def test_locate_or_fetch_vizard_dismissed_returns_none(window, monkeypatch):
-    """Neither "Download Vizard" nor "Browse..." clicked (e.g. the dialog
-    was closed via its window decoration) -- QMessageBox's own
-    `clickedButton()` then returns its implicit Cancel button, which
-    matches neither of the two named buttons this method checks for.
+def test_locate_vizard_dismissed_returns_none(window, monkeypatch):
+    """"Browse..." never clicked (e.g. the dialog was closed via its
+    window decoration) -- QMessageBox's own `clickedButton()` then
+    returns its implicit Cancel button, which doesn't match the one
+    named button this method checks for.
     """
     from PySide6.QtWidgets import QMessageBox
 
     monkeypatch.setattr(QMessageBox, "exec", lambda self: 0)  # never click anything
 
-    assert window._locate_or_fetch_vizard() is None
+    assert window._locate_vizard() is None
 
 
 def _click_message_box_button(button_text):
@@ -907,76 +908,6 @@ def _click_message_box_button(button_text):
                 return 0
         raise AssertionError(f"no QMessageBox button with text {button_text!r}")
     return _exec
-
-
-class _FakeVizardFetchWorker(QObject):
-    """Stands in for ``VizardFetchWorker`` without spinning up a real
-    ``QThread`` -- mirrors this test file's own ``RunWorker``-patching
-    convention (``monkeypatch.setattr(RunWorker, "start", ...)``) rather
-    than exercising real threading/network in a unit test. Signals are
-    emitted synchronously from :meth:`start`, exactly as they would be
-    for a worker whose background thread happened to finish before the
-    caller's nested ``QEventLoop`` even started spinning -- a real,
-    documented-safe case for ``QEventLoop`` (``quit()`` before ``exec()``
-    just makes the next ``exec()`` return immediately), not a test-only
-    shortcut.
-    """
-
-    finished_ok = Signal(str)
-    failed = Signal(str)
-    status = Signal(str)
-
-    def __init__(self, outcome_path=None, outcome_error=None, parent=None):
-        super().__init__(parent)
-        self._outcome_path = outcome_path
-        self._outcome_error = outcome_error
-        self.cancel_requested = False
-
-    def request_cancel(self):
-        self.cancel_requested = True
-
-    def start(self):
-        if self._outcome_error is not None:
-            self.failed.emit(self._outcome_error)
-        else:
-            self.finished_ok.emit(self._outcome_path)
-
-    def wait(self):
-        pass
-
-
-def test_fetch_vizard_with_progress_success_remembers_and_returns_the_path(window, monkeypatch):
-    from pathlib import Path
-
-    from spacemissionstudio.gui import main_window
-
-    fetched = Path("/fetched/Vizard")
-    monkeypatch.setattr(main_window, "VizardFetchWorker",
-                         lambda parent=None: _FakeVizardFetchWorker(outcome_path=str(fetched)))
-    remembered = []
-    monkeypatch.setattr(main_window, "remember_vizard_executable", lambda path: remembered.append(path))
-
-    result = window._fetch_vizard_with_progress()
-
-    assert result == fetched
-    assert remembered == [fetched]
-
-
-def test_fetch_vizard_with_progress_failure_shows_error_and_returns_none(window, monkeypatch):
-    from PySide6.QtWidgets import QMessageBox
-
-    from spacemissionstudio.gui import main_window
-
-    monkeypatch.setattr(main_window, "VizardFetchWorker",
-                         lambda parent=None: _FakeVizardFetchWorker(outcome_error="could not download: boom"))
-    shown = []
-    monkeypatch.setattr(main_window.QMessageBox, "critical",
-                         staticmethod(lambda *a, **k: shown.append(a) or QMessageBox.StandardButton.Ok))
-
-    result = window._fetch_vizard_with_progress()
-
-    assert result is None
-    assert shown  # a critical dialog was shown with the failure reason
 
 
 def test_launch_vizard_failure_shows_error(window, monkeypatch):

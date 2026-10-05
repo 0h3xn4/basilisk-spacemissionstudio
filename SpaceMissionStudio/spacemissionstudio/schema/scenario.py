@@ -1032,9 +1032,22 @@ class GroundStationConfig:
 class SpaceWeatherConfig:
     """See engine/spaceweather.py and engine/service.py. ``source``
     selects the space-weather resolution strategy; ``local_file_path`` is
-    used (and required) only for ``"local_file"``, matching the user's own
-    fallback plan ("if fetching isn't possible I'll provide the file
-    myself").
+    used (and required) only for ``"local_file"``.
+
+    SpaceMissionStudio never accesses the network at runtime (real user
+    requirement: "the app must be completely closed off and offline,
+    only exception is the installation process") -- ``source`` is one of
+    ``"local_file"`` (a real historical/forecast CSV you supply yourself,
+    matching the user's own original fallback plan: "if fetching isn't
+    possible I'll provide the file myself") or ``"synthetic"`` (the
+    default: a solar-cycle-SHAPED, not real, profile generated locally,
+    no file needed). There used to be a third option, ``"celestrak"``,
+    that fetched real data from CelesTrak at RUN time -- removed
+    entirely (not just defaulted away from) for the same offline
+    requirement; see ``engine.spaceweather``'s own module docstring for
+    the full history and what this means for the "conservative" worst
+    -case margin below (now ``"local_file"``-only, since there is no
+    longer a way to pull a real historical record in automatically).
 
     ``atmosphere_model`` selects which Basilisk atmosphere-density model
     ``engine.service`` builds for ``enable_drag`` spacecraft:
@@ -1074,7 +1087,7 @@ class SpaceWeatherConfig:
     implements and exactly what it computes.
     """
 
-    source: str = "celestrak"  # "celestrak" | "local_file" | "synthetic"
+    source: str = "synthetic"  # "local_file" | "synthetic"
     local_file_path: Optional[str] = None
     cache_dir: Optional[str] = None  # defaults to engine.spaceweather's own cache dir when None
     atmosphere_model: str = "nrlmsise00"  # "nrlmsise00" | "exponential"
@@ -1082,8 +1095,8 @@ class SpaceWeatherConfig:
     activity_percentile: float = 95.0  # [-] percentile of REAL historical F10.7/Ap; "conservative" only
 
     def validate(self) -> None:
-        _require(self.source in ("celestrak", "local_file", "synthetic"),
-                  f"space_weather.source {self.source!r} must be 'celestrak', 'local_file', or 'synthetic'")
+        _require(self.source in ("local_file", "synthetic"),
+                  f"space_weather.source {self.source!r} must be 'local_file' or 'synthetic'")
         if self.source == "local_file":
             _require(bool(self.local_file_path),
                       "space_weather.source is 'local_file' but local_file_path was not set")

@@ -18,20 +18,26 @@
 
 r"""
 Space-weather resolution for Basilisk's ``spaceWeatherData`` module (which
-drives ``msisAtmosphere`` for atmospheric drag), per the user's explicit
-instruction: fetch from CelesTrak; if that isn't possible, fall back to a
-user-provided local file; only fall back further than that (a synthetic
-profile) loudly, never silently.
+drives ``msisAtmosphere`` for atmospheric drag).
+
+**Closed-off/offline policy**: SpaceMissionStudio never accesses the
+network at runtime (real user requirement -- "the app must be completely
+closed off and offline, only exception is the installation process").
+This module used to also fetch real data from CelesTrak at RUN time as
+its default ``source``; that option has been REMOVED entirely (not just
+defaulted away from -- there is no ``fetch()``/network code left in this
+module at all). ``resolve()`` now only ever does one of two things: use
+a real file the user supplies (``source == "local_file"``), or generate
+a synthetic, solar-cycle-SHAPED (never a real forecast) profile locally
+(``source == "synthetic"``, the default -- no file, no network, always
+available). If you want REAL observed/forecast F10.7/Ap data, download a
+CelesTrak CSV (``https://celestrak.org/SpaceData/SW-All.csv`` or
+``SW-Last5Years.csv``) yourself, OUTSIDE this app, and point
+``local_file_path`` at it -- the loader accepts that exact format
+unmodified (see "Format note" below).
 
 No Basilisk import in this module -- it is pure standard library + numpy,
 fully unit-testable without a Basilisk build (see ``tests/test_spaceweather.py``).
-The network fetch itself is the one thing this module cannot prove works in
-THIS sandbox: this session's outbound-network policy blocks
-``celestrak.org`` (confirmed with a direct ``curl`` test -- a 403 policy
-denial, not a timeout), so :func:`fetch` is written against CelesTrak's
-documented CSV format but has not been exercised end-to-end here. The CSV
-validation, synthetic-fallback generation, and the ``resolve()`` fallback
-chain are all fully tested here (no network needed for any of them).
 
 Format note (verified against this checkout's own
 ``spaceWeatherData.cpp``, not assumed): the loader parses its input CSV by
@@ -39,16 +45,9 @@ Format note (verified against this checkout's own
 ``DATE, AP1..AP8, AP_AVG, F10.7_OBS, F10.7_OBS_CENTER81`` to be present --
 extra columns are ignored. A real CelesTrak ``SW-All.csv``/
 ``SW-Last5Years.csv`` download has those exact column names (plus many
-more Basilisk doesn't need), so it can be hand to
+more Basilisk doesn't need), so it can be handed to
 ``spaceWeatherData.loadSpaceWeatherFile()`` completely unmodified: no
 reformatting step exists or is needed in this module.
-
-CelesTrak's files only cover the past plus a short (~1 year) predicted
-window -- they cannot cover a mission that starts far enough out and runs
-long enough. :func:`resolve` handles that the same way
-``missionAnalysis/generate_space_weather_placeholder.py`` does: fall back
-to a synthetic, solar-cycle-shaped (but not a real forecast) profile,
-loudly warned about, never silently substituted.
 
 Conservative ("worst-case") drag margin
 ----------------------------------------
@@ -61,10 +60,14 @@ F10.7/Ap constant to hand-code (deliberately NOT guessed; see
 ``AGENTS.md``'s "never guess about Basilisk's API" spirit extended here
 to "never guess a specific physical constant either"). Real user
 decision: derive it statistically instead, from REAL historical F10.7/Ap
-records (CelesTrak's own data -- never the synthetic generator, which is
-a fabricated profile, not observed history; see
-:func:`compute_worst_case_activity`/:func:`resolve`'s own docstrings for
-the refusal that enforces this).
+records (never the synthetic generator, which is a fabricated profile,
+not observed history; see :func:`compute_worst_case_activity`/
+:func:`resolve`'s own docstrings for the refusal that enforces this).
+Since the offline policy above removed this module's own ability to pull
+that real historical record in automatically, "conservative" mode is now
+``source == "local_file"``-only: supply your own real historical CSV
+(e.g. a CelesTrak extract downloaded ahead of time, outside this app) via
+``local_file_path``.
 
 The result -- :func:`generate_worst_case` -- is a CSV holding F10.7/Ap
 CONSTANT at the computed percentile across the whole scenario, not a
@@ -81,8 +84,6 @@ silently picks one interpretation over the other.
 from __future__ import annotations
 
 import csv
-import urllib.error
-import urllib.request
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -95,35 +96,7 @@ REQUIRED_COLUMNS = (
     "AP_AVG", "F10.7_OBS", "F10.7_OBS_CENTER81",
 )
 
-# CelesTrak's two space-weather CSV products -- Last5Years is smaller/faster
-# to fetch and covers most near-term missions; All is the full historical
-# record (needed if the scenario epoch is more than ~5 years in the past).
-CELESTRAK_URLS = {
-    "SW-Last5Years": "https://celestrak.org/SpaceData/SW-Last5Years.csv",
-    "SW-All": "https://celestrak.org/SpaceData/SW-All.csv",
-}
-
 DEFAULT_CACHE_DIR = Path.home() / ".cache" / "SpaceMissionStudio" / "spaceweather"
-
-# Applied the same fix here proactively as gui.vizard_launcher's own
-# fetch_vizard() needed for real (see that module's own comment): a real
-# user report showed a plain urllib.request.urlopen(url) (no custom
-# headers) getting "HTTPError: 403 Forbidden" from hanspeterschaub.info,
-# the classic signature of basic bot-protection blocking urllib's own
-# default User-Agent string. This module's own fetch() has the identical
-# bare-urlopen pattern against a different host (celestrak.org) that has
-# never actually been exercised against the real network in this
-# project's own development sandbox (see this module's own docstring) --
-# fixed here on the same reasoning rather than waiting to hit the
-# identical bug a second time.
-_USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-
-# [bytes] CelesTrak's largest space-weather product (SW-All.csv, the full
-# historical record) is a few MB -- cap well above that so a legitimate
-# fetch never trips this, but refuse to buffer an unbounded response into
-# memory (a redirected/compromised/misbehaving server response should fail
-# loudly here, not hang the process or exhaust memory/disk).
-_MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024
 
 # Synthetic fallback: a smooth ~11-year solar-cycle envelope with correlated
 # day-to-day noise and occasional storm episodes -- shaped like real solar
@@ -239,61 +212,6 @@ def validate_file(path, start_utc: datetime, end_utc: datetime) -> ValidationRes
 
     return ValidationResult(ok, covers_range, missing, duplicates, unsorted, first_date, last_date,
                              "OK" if ok else "; ".join(reasons))
-
-
-def fetch(dataset: str = "SW-All", cache_dir: Optional[Path] = None, force: bool = False,
-          timeout_s: float = 30.0) -> Path:
-    """Download a CelesTrak space-weather CSV to a local cache and return
-    its path. Raises :class:`SpaceWeatherError` (never returns a partial/
-    corrupt file) on any network or HTTP failure -- callers (see
-    :func:`resolve`) are expected to catch this and fall back per the
-    documented chain, not to treat a fetch failure as fatal on its own.
-
-    NOT exercised end-to-end in this development sandbox -- ``celestrak.org``
-    is blocked by this environment's outbound-network policy (confirmed via
-    a direct ``curl`` returning a 403 policy denial, not a timeout). Written
-    directly against CelesTrak's documented CSV endpoints; verify on first
-    real-network use. A ``User-Agent`` header is set (see
-    :data:`_USER_AGENT`'s own comment) as a preemptive fix, not a
-    confirmed one here -- a real user's machine hit exactly this failure
-    mode (a plain ``urlopen()`` getting ``HTTPError: 403 Forbidden``, root
-    -caused to urllib's own default User-Agent string) against
-    ``hanspeterschaub.info`` for :func:`gui.vizard_launcher.fetch_vizard`,
-    a different host with the identical bare-``urlopen`` pattern this
-    function used to share; applied the same fix here on that precedent,
-    not yet re-confirmed against celestrak.org specifically.
-    """
-    if dataset not in CELESTRAK_URLS:
-        raise SpaceWeatherError(f"unknown CelesTrak dataset {dataset!r}, expected one of {list(CELESTRAK_URLS)}")
-
-    cache_dir = Path(cache_dir) if cache_dir else DEFAULT_CACHE_DIR
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    dest = cache_dir / f"{dataset}.csv"
-    if dest.exists() and not force:
-        return dest
-
-    url = CELESTRAK_URLS[dataset]
-    request = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
-    try:
-        with urllib.request.urlopen(request, timeout=timeout_s) as response:
-            # Read one byte past the cap rather than response.read() with no
-            # bound: an unbounded read would buffer however much data the
-            # server sends (or never sends, tying up memory/the connection)
-            # before the timeout/error handling below ever gets a chance to
-            # apply -- see _MAX_DOWNLOAD_BYTES.
-            data = response.read(_MAX_DOWNLOAD_BYTES + 1)
-    except (urllib.error.URLError, TimeoutError, OSError) as exc:
-        raise SpaceWeatherError(f"could not fetch {url}: {exc}") from exc
-
-    if len(data) > _MAX_DOWNLOAD_BYTES:
-        raise SpaceWeatherError(
-            f"{url} response exceeded {_MAX_DOWNLOAD_BYTES} bytes -- refusing to buffer an unbounded download"
-        )
-
-    tmp = dest.with_suffix(dest.suffix + ".part")
-    tmp.write_bytes(data)
-    tmp.replace(dest)  # atomic-ish: never leave a half-written file at `dest`
-    return dest
 
 
 def _f107_base(day_index: np.ndarray) -> np.ndarray:
@@ -476,31 +394,8 @@ def _resolve_conservative(source: str, start_utc: datetime, end_utc: datetime,
         raise SpaceWeatherError(
             "space_weather.activity_level='conservative' needs REAL historical F10.7/Ap data to compute a "
             "percentile from -- source='synthetic' has none (it's a fabricated solar-cycle-shaped profile, "
-            "not observed history). Set source to 'celestrak' or 'local_file', or activity_level back to "
-            "'nominal'."
+            "not observed history). Set source to 'local_file', or activity_level back to 'nominal'."
         )
-    elif source == "celestrak":
-        # SW-All (the full historical record since 1957), not
-        # SW-Last5Years: a meaningful "worst case" percentile wants as
-        # much real solar-cycle history as possible, not just whichever
-        # file nominal mode would have picked for its own different
-        # reason (covering the scenario's own date range).
-        try:
-            historical_path = fetch(dataset="SW-All", cache_dir=cache_dir)
-        except SpaceWeatherError as exc:
-            warnings.append(f"CelesTrak fetch of SW-All failed: {exc}")
-            historical_path = None
-            if local_file_path and Path(local_file_path).exists():
-                historical_path = Path(local_file_path)
-                warnings.append(f"CelesTrak was unavailable; used provided local_file_path as the historical "
-                                 f"basis instead: {local_file_path}")
-            if historical_path is None:
-                raise SpaceWeatherError(
-                    "space_weather.activity_level='conservative' needs real historical F10.7/Ap data "
-                    "(CelesTrak was unreachable and no usable local_file_path was provided) -- cannot "
-                    "compute a percentile without it. Provide local_file_path, or set activity_level back "
-                    "to 'nominal'."
-                ) from exc
     else:
         raise SpaceWeatherError(f"unknown space_weather.source {source!r}")
 
@@ -524,30 +419,22 @@ def resolve(source: str, start_utc: datetime, end_utc: datetime,
     ``schema.scenario``) into an actual, validated CSV path Basilisk's
     ``spaceWeatherData.loadSpaceWeatherFile()`` can load.
 
-    ``activity_level == "nominal"`` (the default) follows the
-    user-specified fallback chain:
+    ``activity_level == "nominal"`` (the default) supports exactly two
+    sources (see this module's own "Closed-off/offline policy" docstring
+    -- there is no network fetch here or anywhere else in this module):
 
     * ``source == "local_file"``: use exactly that file; error if missing
       or invalid (no silent fallback -- the user asked for this file).
-    * ``source == "synthetic"``: generate the synthetic profile directly
-      (explicitly requested, so still loud about being synthetic, but not
-      a "fallback" in the sense of something failing first).
-    * ``source == "celestrak"`` (the default): try ``SW-Last5Years`` then
-      ``SW-All`` from CelesTrak; if the fetch fails OR the downloaded file
-      doesn't cover the scenario's date range, fall back to
-      ``local_file_path`` if one was given; if that also isn't usable,
-      fall back to the synthetic generator as a last resort -- every
-      fallback step appends a human-readable warning to the returned
-      :class:`ResolvedSpaceWeather`, so the GUI/CLI can surface exactly
-      what happened rather than silently substituting data.
+    * ``source == "synthetic"`` (the default): generate the synthetic
+      profile directly -- always available, no file, no network.
+
+    Any other ``source`` value raises :class:`SpaceWeatherError`.
 
     ``activity_level == "conservative"`` (see this module's own docstring,
     "Conservative ('worst-case') drag margin") instead computes the
     ``activity_percentile``-th percentile of REAL historical F10.7/Ap data
     and returns a CSV holding that value constant across the scenario.
-    ``source`` still selects where the REAL historical data comes from
-    (``"celestrak"`` fetches ``SW-All``, the full historical record;
-    ``"local_file"`` uses ``local_file_path`` as-is) -- ``source ==
+    ``source`` must be ``"local_file"`` for this -- ``source ==
     "synthetic"`` is refused outright here: a percentile computed from a
     fabricated profile is not a real historical "worst case", whatever
     the number comes out to.
@@ -575,34 +462,4 @@ def resolve(source: str, start_utc: datetime, end_utc: datetime,
         warnings.append("space weather is SYNTHETIC (not real observed/forecast data) -- explicitly requested.")
         return ResolvedSpaceWeather(path, True, warnings)
 
-    if source != "celestrak":
-        raise SpaceWeatherError(f"unknown space_weather.source {source!r}")
-
-    for dataset in ("SW-Last5Years", "SW-All"):
-        try:
-            path = fetch(dataset=dataset, cache_dir=cache_dir)
-        except SpaceWeatherError as exc:
-            warnings.append(f"CelesTrak fetch of {dataset} failed: {exc}")
-            continue
-        result = validate_file(path, start_utc, end_utc)
-        if result.ok:
-            return ResolvedSpaceWeather(path, False, warnings)
-        warnings.append(f"CelesTrak {dataset} does not cover the requested range ({result.message})")
-
-    if local_file_path:
-        result = validate_file(local_file_path, start_utc, end_utc)
-        if result.ok:
-            warnings.append(f"CelesTrak was unavailable/insufficient; used provided local_file_path instead: "
-                             f"{local_file_path}")
-            return ResolvedSpaceWeather(Path(local_file_path), False, warnings)
-        warnings.append(f"provided local_file_path also failed validation: {result.message}")
-
-    path = _synthetic_cache_path(cache_dir, start_utc, end_utc)
-    generate_synthetic(start_utc, end_utc, path)
-    warnings.append(
-        "FALLING BACK TO SYNTHETIC space weather: CelesTrak could not be reached or did not cover the "
-        "scenario's date range, and no usable local_file_path was provided. This is NOT real observed/"
-        "forecast data -- replace it with a real CelesTrak extract (or a valid local_file_path) once one "
-        "covering this date range is available."
-    )
-    return ResolvedSpaceWeather(path, True, warnings)
+    raise SpaceWeatherError(f"unknown space_weather.source {source!r}")

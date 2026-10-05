@@ -21,12 +21,16 @@
 "kernel management surfaced in the UI, not silently resolved in the
 background" Phase 1 goal.
 
-The actual fetch runs on a background ``QThread`` (it can trigger a
-network download -- see ``engine.kernels.ensure_kernels()``), so it never
-freezes the GUI. Importing ``engine.kernels`` needs a Basilisk build; when
-it's missing, this widget reports that clearly instead of crashing --
-genuinely exercised in this development sandbox (no Basilisk here), not
-just handled in theory.
+The actual check runs on a background ``QThread`` (see
+``engine.kernels.ensure_kernels()``'s own docstring for why this
+normally touches no network at all -- every ``packaging/`` installer
+pre-fetches everything this app needs exactly once, during installation;
+this widget's own fetch path only ever runs for real if that cache is
+somehow missing/corrupted), so it never freezes the GUI either way.
+Importing ``engine.kernels`` needs a Basilisk build; when it's missing,
+this widget reports that clearly instead of crashing -- genuinely
+exercised in this development sandbox (no Basilisk here), not just
+handled in theory.
 """
 
 from __future__ import annotations
@@ -88,6 +92,13 @@ class KernelStatusWidget(QWidget):
         layout.addWidget(self.table)
 
         self.refresh_button = QPushButton("Check / fetch kernels")
+        self.refresh_button.setToolTip(
+            "Reports which support-data files are already cached. Every packaging/ installer fetches all of "
+            "them once, during installation, so this normally finds everything already present and touches "
+            "no network at all -- SpaceMissionStudio does not access the network at any other time. Only if "
+            "the local cache is missing/corrupted would clicking this attempt to re-fetch a file; if that "
+            "happens, re-running the installer is the normal fix."
+        )
         self.refresh_button.clicked.connect(self.refresh)
         layout.addWidget(self.refresh_button)
 

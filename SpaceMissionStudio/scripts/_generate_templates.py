@@ -74,24 +74,29 @@ _MTB_DEMO_RW_AXES = [
 ]
 
 def _conservative_drag_margin() -> SpaceWeatherConfig:
-    """A conservative, sustained-worst-case atmospheric-drag margin -- a
-    fresh instance per call (like ``list(_INERTIA_SMALL)`` above, not a
-    single shared object, since ``SpaceWeatherConfig`` is mutable) for
-    every template where drag is physically relevant (a LEO altitude) and
+    """A nominal, synthetic atmospheric-drag environment -- a fresh
+    instance per call (like ``list(_INERTIA_SMALL)`` above, not a single
+    shared object, since ``SpaceWeatherConfig`` is mutable) for every
+    template where drag is physically relevant (a LEO altitude) and
     doesn't undermine that template's own stated lesson (see each
     ``build_*()`` function's own comment for why some are, or aren't,
-    drag-enabled at all). Real user request; see engine/spaceweather.py's
-    own docstring, "Conservative ('worst-case') drag margin", for exactly
-    what this computes (derived from real historical CelesTrak data,
-    never a fabricated constant). Needs network access to CelesTrak (or a
-    local historical space-weather file set via
-    ``space_weather.local_file_path``) to actually resolve when the
-    scenario is RUN -- schema validation/``save()`` itself never touches
-    the network.
+    drag-enabled at all).
+
+    This used to compute a real ``activity_level="conservative"``
+    sustained-worst-case margin from real historical CelesTrak data
+    (``source="celestrak"``). The app's closed-off/offline policy (see
+    ``engine/spaceweather.py``'s own docstring) removed that network fetch
+    entirely -- "conservative" mode is now ``local_file``-only, and these
+    bundled templates ship no historical CSV to point it at. Rather than
+    fabricate a fake "real historical" file, these templates honestly fall
+    back to the synthetic, solar-cycle-shaped generator at the default
+    ``activity_level="nominal"``. A user who wants the real worst-case
+    margin back can still get it: download a CelesTrak CSV themselves
+    (outside this app) and set ``space_weather.source="local_file"``,
+    ``activity_level="conservative"``, ``local_file_path=<that file>`` in
+    the Scenario Editor.
     """
-    return SpaceWeatherConfig(
-        source="celestrak", atmosphere_model="nrlmsise00", activity_level="conservative", activity_percentile=95.0,
-    )
+    return SpaceWeatherConfig(source="synthetic", atmosphere_model="nrlmsise00", activity_level="nominal")
 
 
 def _save(scenario: Scenario, filename: str) -> None:
@@ -257,13 +262,14 @@ def build_04_walker_constellation() -> Scenario:
             "phasing_factor to change how planes interleave relative to each other.\n\n"
             "Updated to include 10th-degree spherical-harmonics gravity, Sun/Moon third-body gravity, "
             "atmospheric drag, and solar radiation pressure on every satellite -- a 700 km Walker "
-            "constellation genuinely experiences all of these. Drag uses a CONSERVATIVE, "
-            "95th-percentile sustained-worst-case F10.7/Ap margin computed from real historical "
-            "CelesTrak data (see engine/spaceweather.py's own docstring) rather than day-to-day space "
-            "weather -- running this template needs network access to CelesTrak (or a local historical "
-            "space-weather file set via space_weather.local_file_path); set "
-            "space_weather.activity_level back to 'nominal' to use ordinary resolved space weather "
-            "instead."
+            "constellation genuinely experiences all of these. Drag uses a nominal, SYNTHETIC "
+            "(solar-cycle-shaped, not a real forecast) space-weather profile, generated entirely "
+            "locally -- see engine/spaceweather.py's own 'Closed-off/offline policy' docstring: this "
+            "app makes no network calls at runtime, so a CONSERVATIVE, percentile-based worst-case "
+            "margin (which needs real historical F10.7/Ap data) isn't available out of the box here "
+            "anymore. To get that margin back, download a CelesTrak CSV yourself (outside this app) "
+            "and set space_weather.source='local_file', activity_level='conservative', "
+            "local_file_path=<that file> in the Scenario Editor."
         ),
         epoch_utc="2030-01-01T00:00:00",
         simulation_mode="orbit_only",
@@ -298,11 +304,14 @@ def build_05_formation_flying_phasing() -> Scenario:
             "follower-1 correct it.\n\n"
             "Updated to include 10th-degree spherical-harmonics gravity, Sun/Moon third-body gravity, "
             "atmospheric drag, and solar radiation pressure on both spacecraft (identically, so any "
-            "chief/follower difference in behavior is real physics, not asymmetric configuration) -- a "
-            "CONSERVATIVE, 95th-percentile sustained-worst-case drag margin from real historical "
-            "CelesTrak data (see engine/spaceweather.py's own docstring), needing network access to "
-            "CelesTrak or a local historical file to actually run. NOTE: this specific change has NOT "
-            "been re-verified against a real multi-day Basilisk run the way this template's original "
+            "chief/follower difference in behavior is real physics, not asymmetric configuration) -- "
+            "drag uses a nominal, SYNTHETIC (solar-cycle-shaped, not a real forecast) space-weather "
+            "profile generated entirely locally, no network access needed (see "
+            "engine/spaceweather.py's own 'Closed-off/offline policy' docstring: this app makes no "
+            "network calls at runtime, so a real-historical-data CONSERVATIVE margin isn't available "
+            "out of the box here anymore -- see template 04's own description for how to restore it "
+            "via a self-supplied local CelesTrak CSV). NOTE: this specific change has NOT been "
+            "re-verified against a real multi-day Basilisk run the way this template's original "
             "dynamics were (see README's 'Verification status') -- this development sandbox has no "
             "route to the NAIF SPICE kernel host needed to run it at all; please report back if the "
             "phasing controller's propellant budget or behavior looks off under the added "
@@ -453,10 +462,11 @@ def build_07_attitude_pointing_with_adcs_hardware() -> Scenario:
             "ground_stations entry exists in this scenario.\n\n"
             "Updated to include 10th-degree spherical-harmonics gravity, Sun/Moon third-body gravity, "
             "atmospheric drag, and solar radiation pressure -- consistent with this template's own "
-            "role as the 'realistic counterpart' to '06'. Drag uses a CONSERVATIVE, 95th-percentile "
-            "sustained-worst-case F10.7/Ap margin from real historical CelesTrak data (see "
-            "engine/spaceweather.py's own docstring), needing network access to CelesTrak or a local "
-            "historical file to actually run."
+            "role as the 'realistic counterpart' to '06'. Drag uses a nominal, SYNTHETIC "
+            "(solar-cycle-shaped, not a real forecast) space-weather profile, generated entirely "
+            "locally, no network access needed (see engine/spaceweather.py's own 'Closed-off/offline "
+            "policy' docstring -- see template 04's own description for how to restore a real "
+            "historical-data CONSERVATIVE margin via a self-supplied local CelesTrak CSV)."
         ),
         epoch_utc="2030-01-01T00:00:00",
         simulation_mode="full_attitude",
@@ -556,9 +566,11 @@ def build_08_mission_sequence_orbit_raise() -> Scenario:
             "atmospheric drag, and solar radiation pressure -- physically relevant at 400 km, and this "
             "template's own lesson (the Mission Sequence command layer / maneuver mechanics) doesn't "
             "depend on a clean two-body baseline the way '01'/'09' deliberately do. Drag uses a "
-            "CONSERVATIVE, 95th-percentile sustained-worst-case F10.7/Ap margin from real historical "
-            "CelesTrak data (see engine/spaceweather.py's own docstring), needing network access to "
-            "CelesTrak or a local historical file to actually run."
+            "nominal, SYNTHETIC (solar-cycle-shaped, not a real forecast) space-weather profile, "
+            "generated entirely locally, no network access needed (see engine/spaceweather.py's own "
+            "'Closed-off/offline policy' docstring -- see template 04's own description for how to "
+            "restore a real historical-data CONSERVATIVE margin via a self-supplied local CelesTrak "
+            "CSV)."
         ),
         epoch_utc="2030-01-01T00:00:00",
         simulation_mode="orbit_only",
@@ -1162,10 +1174,12 @@ def build_18_leo_station_keeping() -> Scenario:
             "enable_srp is deliberately OFF here (unlike '04'/'05', which enable it alongside drag): "
             "the point of this template, like '03's point about GEO, is to isolate the ONE dominant "
             "perturbation (drag) rather than mix in a secondary effect SRP is at this altitude. Uses "
-            "the same CONSERVATIVE, 95th-percentile sustained-worst-case nrlmsise00 drag margin from "
-            "real historical CelesTrak data as '04'/'05' (see engine/spaceweather.py's own docstring) "
-            "-- needs network access to CelesTrak (or a local historical space-weather file set via "
-            "space_weather.local_file_path) to actually run. NOTE: like '05', this template's exact "
+            "the same nominal, SYNTHETIC (solar-cycle-shaped, not a real forecast) nrlmsise00 "
+            "space-weather profile as '04'/'05'/'07'/'08' -- generated entirely locally, no network "
+            "access needed (see engine/spaceweather.py's own 'Closed-off/offline policy' docstring; "
+            "see template 04's own description for how to restore a real historical-data "
+            "CONSERVATIVE margin via a self-supplied local CelesTrak CSV). NOTE: like '05', this "
+            "template's exact "
             "decay rate under the real nrlmsise00 model has NOT been re-verified against a real "
             "multi-day Basilisk run in this development sandbox (no route to the NAIF SPICE kernel "
             "host or CelesTrak here) -- the station_keeping/drag parameters were instead tuned and "

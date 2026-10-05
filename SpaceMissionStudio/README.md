@@ -176,7 +176,7 @@ environment issue.
   `engine/constellation.py`, `engine/spacecraft_templates.py`,
   `engine/propellant_bookkeeping.py`, `cli.py`, and the entire
   `spacemissionstudio/gui/` package) has no Basilisk import and is fully
-  exercised either way -- `pytest tests/` runs and passes 987 tests
+  exercised either way -- `pytest tests/` runs and passes 968 tests
   with or without Basilisk installed (see "Running the tests" below).
   That includes the PySide6 GUI: built, run headless, and driven with
   `pytest-qt` for real -- every form field, every menu action, every
@@ -266,10 +266,14 @@ via Basilisk's own `orbitalMotion.clMeanOscMap` (the same tool its
 `meanOEFeedback` FSW module uses -- not a bespoke implementation).
 NRLMSISE-00 drag can also use a
 CONSERVATIVE, sustained-worst-case margin (a chosen percentile -- e.g.
-95th -- of REAL historical CelesTrak F10.7/Ap data, held constant
-across the whole scenario, never a fabricated number) instead of
-ordinary resolved space weather -- see `engine/spaceweather.py`'s own
-docstring, "Conservative ('worst-case') drag margin".
+95th -- of REAL historical F10.7/Ap data YOU supply as a local file,
+held constant across the whole scenario, never a fabricated number)
+instead of ordinary resolved space weather -- see
+`engine/spaceweather.py`'s own docstring, "Conservative ('worst-case')
+drag margin". SpaceMissionStudio makes no network calls at runtime (see
+"Closed-off/offline policy" below), so this app can no longer fetch that
+historical data itself; download a CelesTrak CSV yourself, outside this
+app, and point `local_file_path` at it.
 
 **Attitude, sensors & actuators** -- every `fsw_mode` maps to a real
 Basilisk FSW module chain (attitude nav/guidance/control), idealized or
@@ -411,8 +415,8 @@ SpaceMissionStudio/
       validation.py                  -- Phase 6: validate_all() -- fully-collecting scenario-wide validation
     engine/
       time_system.py                 -- UTC/TAI/TT/ET, single source of truth (needs Basilisk)
-      kernels.py                     -- SPICE kernel fetch/status (needs Basilisk)
-      spaceweather.py                -- CelesTrak fetch/validate/fallback (no Basilisk needed)
+      kernels.py                     -- SPICE kernel fetch/status (needs Basilisk; network only at install time)
+      spaceweather.py                -- local-file/synthetic resolve+validate, no network (no Basilisk needed)
       results.py                     -- TimeSeries/ResultSet, CSV export (no Basilisk needed)
       service.py                     -- SimulationService (needs Basilisk)
       fsw.py                         -- Phase 2: attitude nav/guidance/control/actuation chain (needs Basilisk)
@@ -558,7 +562,7 @@ python3 -m pip install -e ".[dev,gui]"
 python3 -m pytest tests/ -v
 ```
 
-Without Basilisk on `PYTHONPATH`, this runs 987 tests (schema, space
+Without Basilisk on `PYTHONPATH`, this runs 968 tests (schema, space
 weather, results, link budget, constellation generation, CLI, and the
 full PySide6 GUI, run headless) and skips 130 whose premise is
 specifically "Basilisk is unavailable" (marked `requires_basilisk`), per
@@ -607,8 +611,12 @@ scenario.save("my_scenario.json")
 from datetime import datetime
 from spacemissionstudio.engine import spaceweather as sw
 
-resolved = sw.resolve("celestrak", datetime(2030, 1, 1), datetime(2030, 4, 1),
-                       local_file_path="/path/to/your/SW-All.csv")  # your CelesTrak download, if you have one
+# SpaceMissionStudio makes no network calls at runtime -- "celestrak" is no
+# longer a valid source. Use "local_file" with your own downloaded CSV, or
+# "synthetic" (the default) for a locally-generated, solar-cycle-shaped
+# profile that needs no file at all.
+resolved = sw.resolve("local_file", datetime(2030, 1, 1), datetime(2030, 4, 1),
+                       local_file_path="/path/to/your/SW-All.csv")  # your own CelesTrak download
 print(resolved.path, resolved.is_synthetic, resolved.warnings)
 ```
 
@@ -667,14 +675,12 @@ Two more commands worth knowing: **Launch Vizard** (Run menu/toolbar,
 GUI only) starts the external Vizard application itself, separate from
 configuring how a run feeds it -- if it can't be found automatically
 (a remembered path, or a short list of common per-OS install
-locations), a dialog offers **Download Vizard** (fetches AVS's own
-pre-built binary for your platform, the same links
-`docs/source/Vizard/VizardDownload.rst` in the Basilisk checkout
-publishes for a human to follow manually -- see
-`spacemissionstudio/gui/vizard_launcher.py`'s own module docstring for why a
-true single-build-step integration with Basilisk isn't realistic, and
-what this does instead) alongside the original **Browse...** for an
-existing install; **Abort Simulation** (Run menu, GUI only, also while
+locations), a dialog offers **Browse...** to an existing install. Vizard
+itself must be installed manually (see
+`docs/source/Vizard/VizardDownload.rst` in the Basilisk checkout for the
+published links) -- SpaceMissionStudio makes no network calls at runtime
+(see "Closed-off/offline policy" below), so there is no longer an
+automatic download option here; **Abort Simulation** (Run menu, GUI only, also while
 a Monte Carlo batch or Mission Sequence is running) cooperatively
 cancels an in-progress run between simulation chunks or
 mission-sequence commands -- never a forced kill, so partial results
@@ -809,6 +815,43 @@ reproducibility, a locally-built wheel with custom modules, or an offline
 install from a wheel file already on disk. `--basilisk-wheel` accepts any
 string `pip install` would (a path, a URL, or a plain requirement
 specifier like `"bsk[all]==2.12.0"`), not literally only a `.whl` file.
+
+## Closed-off/offline policy
+
+SpaceMissionStudio makes **no network calls at runtime**. The only exception
+is installation, where a handful of one-time downloads are genuinely
+needed:
+
+* **SPICE/gravity-harmonics/magnetic-field support data** -- normally
+  fetched on first use via Basilisk's own `pooch`-backed cache
+  (`engine.kernels`). All four packaging installers (`install.sh`/
+  `install.ps1`, the `.deb`'s `postinst`, the Windows Inno Setup bootstrap)
+  now call `engine.kernels.require_kernels()` once, right after installing
+  SpaceMissionStudio itself, so every later run resolves purely from that
+  local cache -- see `packaging/README.md`'s "Closed-off/offline policy"
+  section for exactly where in each script and why.
+* **A real Basilisk build** (`pip install "bsk[all]"`) -- an ordinary PyPI
+  install step every installer already needed; not specific to this app.
+
+Two capabilities that used to fetch live data at runtime were changed or
+removed as a direct consequence:
+
+* **Space weather** (`engine.spaceweather`) no longer has a `"celestrak"`
+  source at all -- not just defaulted away from. `source` is now
+  `"local_file"` (point `local_file_path` at a CSV you download yourself,
+  outside this app) or `"synthetic"` (the default: a locally-generated,
+  solar-cycle-shaped profile, no file or network needed). The
+  `activity_level="conservative"` worst-case-percentile margin is now
+  `local_file`-only for the same reason -- the bundled templates that used
+  to default to a conservative CelesTrak-derived margin (04, 05, 07, 08, 18)
+  now ship `nominal`/`synthetic` instead, with their own `description`
+  explaining how to restore the real-historical-data margin by supplying
+  your own local CSV.
+* **Vizard** (the external visualization app) no longer has an automatic
+  "Download Vizard" option. Install it yourself from
+  `docs/source/Vizard/VizardDownload.rst`'s published links, then use the
+  **Browse...** prompt (Run menu's **Launch Vizard**, when it isn't found
+  automatically) to point this app at it once.
 
 ## Known limitations
 

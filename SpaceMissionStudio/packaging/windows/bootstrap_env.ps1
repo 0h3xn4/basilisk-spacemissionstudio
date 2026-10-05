@@ -65,6 +65,31 @@ if ($LASTEXITCODE -ne 0) {
     Fail "spacemissionstudio install failed (exit code $LASTEXITCODE)"
 }
 
+# SpaceMissionStudio never accesses the network at runtime (real user
+# requirement: "the app must be completely closed off and offline, only
+# exception is the installation process") -- this is that one exception.
+# engine.kernels.require_kernels()'s own default (ALL_SUPPORT_DATA_FILES)
+# covers every SPICE/gravity-harmonics/magnetic-field support-data file
+# any of this app's code paths read, fetching each one once into
+# Basilisk's own local pooch cache; every later get_path() call for the
+# rest of this install's lifetime resolves from that cache with no
+# network touched at all. Fatal here (same as the Basilisk/
+# spacemissionstudio install steps above): this script always installs a
+# real Basilisk, so a scenario that can never actually run without its
+# own kernels is exactly the kind of "configured but broken" state this
+# installer step should refuse, not silently ship. Run only now (not
+# right after Basilisk, above): it imports spacemissionstudio itself,
+# which isn't installed into this venv until the pip install just above
+# completes.
+Write-Host "SpaceMissionStudio: pre-fetching SPICE kernels and other support data -- this needs internet access ..."
+& $VenvPython -c "
+from spacemissionstudio.engine import kernels
+kernels.require_kernels()
+"
+if ($LASTEXITCODE -ne 0) {
+    Fail "support-data pre-fetch failed (exit code $LASTEXITCODE) -- check internet access and try again"
+}
+
 # No custom Start Menu icon is rendered here: gui/icons.py's
 # ensure_icon_file() always writes PNG data regardless of the path's own
 # extension (see that function's own docstring) -- a Windows .lnk's

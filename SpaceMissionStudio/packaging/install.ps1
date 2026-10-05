@@ -103,11 +103,30 @@ if ($BasiliskWheel) {
         throw "pip install '$BasiliskWheel' failed (exit code $LASTEXITCODE)"
     }
     $BasiliskStatus = "Basilisk was installed into this venv from: $BasiliskWheel"
+
+    # SpaceMissionStudio never accesses the network at runtime (real user
+    # requirement: "the app must be completely closed off and offline,
+    # only exception is the installation process") -- this is that one
+    # exception. See install.sh's own matching comment for the full
+    # reasoning; same non-fatal treatment here, since this script's own
+    # Basilisk wheel is itself optional.
+    Write-Host "Pre-fetching SPICE kernels and other support data (one-time, needs internet access) ..."
+    & $VenvPython -c "
+from spacemissionstudio.engine import kernels
+kernels.require_kernels()
+" 2>$null
+    if ($LASTEXITCODE -eq 0) {
+        $KernelStatus = "Support data pre-fetched -- SpaceMissionStudio will not need network access again."
+    } else {
+        $KernelStatus = "Could not pre-fetch support data (no internet access right now?) -- run " +
+            "'spacemissionstudio kernels-status' once WITH internet access before your first real run."
+    }
 } else {
     $BasiliskStatus = "No Basilisk wheel was provided (-BasiliskWheel) -- 'spacemissionstudio validate' and the " +
         "GUI will open, but Run/Check Kernels/Monte Carlo need a Basilisk build on this venv's " +
         "PYTHONPATH. Re-run this script with -BasiliskWheel, or 'pip install' one into " +
         "$VenvDir yourself, once you have one."
+    $KernelStatus = ""
 }
 
 # spacemissionstudio.exe already exists in $VenvDir\Scripts (pip installs the
@@ -149,6 +168,9 @@ Write-Host ""
 Write-Host "Installed spacemissionstudio to $VenvDir"
 Write-Host $ShortcutStatus
 Write-Host $BasiliskStatus
+if ($KernelStatus) {
+    Write-Host $KernelStatus
+}
 Write-Host ""
 Write-Host "Launch it with: $Launcher gui"
 Write-Host "(or: $VenvDir\Scripts\Activate.ps1 ; spacemissionstudio gui)"

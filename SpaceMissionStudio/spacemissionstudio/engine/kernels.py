@@ -17,13 +17,38 @@
 #
 
 r"""
-SPICE kernel management: a thin, GUI-facing wrapper over Basilisk's own
-versioned kernel fetch/cache (``Basilisk.utilities.supportDataTools.dataFetcher``,
-which fetches via ``pooch`` and caches locally -- this is real, native
-Basilisk infrastructure, not something this module reimplements), adding
-a status report so the app is never silently trusting a kernel the user
-can't see or verify. Satisfies the "auto-download/cache with version
-pinning, not silent hardcoding" requirement.
+SPICE kernel / support-data management: a thin, GUI-facing wrapper over
+Basilisk's own versioned fetch/cache
+(``Basilisk.utilities.supportDataTools.dataFetcher``, which fetches via
+``pooch`` and caches locally -- this is real, native Basilisk
+infrastructure, not something this module reimplements), adding a status
+report so the app is never silently trusting a file the user can't see
+or verify.
+
+**Closed-off/offline policy**: SpaceMissionStudio itself must never touch
+the network except during installation (real user requirement -- "the
+app must be completely closed off and offline, only exception is the
+installation process"). Every ``packaging/`` installer
+(``install.sh``/``install.ps1``/``deb/DEBIAN/postinst``/
+``windows/bootstrap_env.ps1``) now calls :func:`require_kernels` with NO
+arguments right after installing Basilisk -- its default,
+:data:`ALL_SUPPORT_DATA_FILES`, covers every ``dataFetcher``-backed file
+ANY of this app's own code paths read (confirmed by grepping every
+``get_path()``/``DataFile.`` call site in ``engine/``/``gui/``: the four
+SPICE ephemeris kernels :func:`build_spice_interface` needs, plus
+``LocalGravData.GGM03S`` -- spherical-harmonics gravity, ``engine.service``
+-- and ``MagneticFieldData.WMM`` -- magnetometer sensors,
+``engine.fsw.build_magnetic_field_wmm``), so that first (and only) fetch
+warms Basilisk's own local ``pooch`` cache for good: every later
+``get_path()`` call, for the rest of this install's lifetime, resolves
+from that cache with no network touched at all (``pooch``'s own fetch
+-from-cache behavior, not something this module reimplements). This
+module's own :func:`build_spice_interface`/:func:`require_kernels` calls
+therefore run ONLY against an already-warm cache in normal operation --
+if one of them still needs the network (a missing/corrupted cache entry),
+that is treated as a configuration problem to fix by re-running the
+installer, not a background feature this app silently falls back on; see
+:class:`KernelError`'s own message for exactly that.
 
 Requires a Basilisk build (imports ``Basilisk.utilities...``). Written
 directly against the verified ``dataFetcher``/``spiceKernels``/
@@ -67,6 +92,22 @@ DEFAULT_KERNELS: tuple = (
     DataFile.EphemerisData.pck00010,       # planet shape/orientation (PCK)
 )
 
+# Every ``dataFetcher``-backed support-data file ANY of this app's own
+# code reads (confirmed by grepping every get_path()/DataFile. call site
+# under engine/ and gui/) -- DEFAULT_KERNELS (above) is the narrower,
+# SPICE-only subset :func:`build_spice_interface` actually passes to
+# ``createSpiceInterface()`` (which only accepts real SPICE kernel
+# filenames, not GGM03S.txt/WMM2025.COF). This broader set is what
+# :func:`ensure_kernels`/:func:`require_kernels` default to instead --
+# see this module's own docstring, "Closed-off/offline policy", for why
+# a single pre-fetch of exactly this set (done once, by every
+# packaging/ installer) is what lets the rest of this app run with zero
+# network access afterward.
+ALL_SUPPORT_DATA_FILES: tuple = DEFAULT_KERNELS + (
+    DataFile.LocalGravData.GGM03S,     # spherical-harmonics gravity (engine.service)
+    DataFile.MagneticFieldData.WMM,    # magnetometer sensors (engine.fsw.build_magnetic_field_wmm)
+)
+
 
 class KernelError(Exception):
     """Raised when a required kernel could not be fetched -- carries the
@@ -89,12 +130,19 @@ class KernelStatus:
     # few years), and this app must not hide that from the user.
 
 
-def ensure_kernels(kernels: Iterable = DEFAULT_KERNELS) -> List[KernelStatus]:
+def ensure_kernels(kernels: Iterable = ALL_SUPPORT_DATA_FILES) -> List[KernelStatus]:
     """Ensure every kernel in ``kernels`` is fetched/cached (triggering a
     download through Basilisk's own ``pooch``-backed fetch if not already
     cached) and return a status report for each. The GUI/CLI call this to
     show kernel state (and surface any fetch failure) BEFORE a run, rather
     than the run failing deep inside SPICE with a less actionable error.
+
+    Defaults to :data:`ALL_SUPPORT_DATA_FILES` (every support-data file
+    this app's own code might need), not just the narrower SPICE-only
+    :data:`DEFAULT_KERNELS` -- every ``packaging/`` installer calls this
+    (via :func:`require_kernels`) with no arguments as its ONE allowed
+    network touch, so the default here is what actually gets pre-fetched;
+    see this module's own docstring.
     """
     statuses = []
     for kernel in kernels:
@@ -110,7 +158,7 @@ def ensure_kernels(kernels: Iterable = DEFAULT_KERNELS) -> List[KernelStatus]:
     return statuses
 
 
-def require_kernels(kernels: Iterable = DEFAULT_KERNELS) -> List[KernelStatus]:
+def require_kernels(kernels: Iterable = ALL_SUPPORT_DATA_FILES) -> List[KernelStatus]:
     """Like :func:`ensure_kernels`, but raises :class:`KernelError` naming
     every kernel that failed, instead of returning a status list with
     ``available=False`` entries for the caller to notice on its own.
@@ -119,7 +167,13 @@ def require_kernels(kernels: Iterable = DEFAULT_KERNELS) -> List[KernelStatus]:
     failed = [s for s in statuses if not s.available]
     if failed:
         names = "; ".join(f"{s.name} ({s.error})" for s in failed)
-        raise KernelError(f"could not fetch required SPICE kernel(s): {names}")
+        raise KernelError(
+            f"could not fetch required support-data file(s): {names} -- SpaceMissionStudio does not access "
+            "the network at runtime by design, only during installation (see packaging/README.md): these "
+            "files should already have been cached then. If you're seeing this outside that installer "
+            "(e.g. a dev checkout), run `spacemissionstudio kernels-status` once WITH network access to "
+            "fetch them now, or restore/re-run the installer if the local cache was deleted or corrupted."
+        )
     return statuses
 
 

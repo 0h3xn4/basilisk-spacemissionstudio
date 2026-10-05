@@ -99,11 +99,37 @@ if [[ -n "$basilisk_wheel" ]]; then
     echo "Installing vendored Basilisk wheel from $basilisk_wheel ..."
     python3 -m pip install --quiet "$basilisk_wheel"
     basilisk_status="Basilisk was installed into this venv from: $basilisk_wheel"
+
+    # SpaceMissionStudio never accesses the network at runtime (real user
+    # requirement: "the app must be completely closed off and offline,
+    # only exception is the installation process") -- this is that one
+    # exception. engine.kernels.require_kernels()'s own default
+    # (ALL_SUPPORT_DATA_FILES) covers every SPICE/gravity-harmonics/
+    # magnetic-field support-data file ANY of this app's code paths
+    # read, fetching each one once into Basilisk's own local pooch
+    # cache; every later get_path() call for the rest of this install's
+    # lifetime resolves from that cache with no network touched at all.
+    # Non-fatal (like the icon-rendering step below): this script's own
+    # Basilisk wheel is itself optional, so a kernel-fetch failure here
+    # (e.g. no internet access right now) leaves the same already
+    # -documented "needs a Basilisk build on PYTHONPATH" situation, not
+    # a new kind of broken install -- clearly warned about either way.
+    echo "Pre-fetching SPICE kernels and other support data (one-time, needs internet access) ..."
+    if python3 -c "
+from spacemissionstudio.engine import kernels
+kernels.require_kernels()
+" 2>/dev/null; then
+        kernel_status="Support data pre-fetched -- SpaceMissionStudio will not need network access again."
+    else
+        kernel_status="Could not pre-fetch support data (no internet access right now?) -- run
+'spacemissionstudio kernels-status' once WITH internet access before your first real run."
+    fi
 else
     basilisk_status="No Basilisk wheel was provided (--basilisk-wheel) -- 'spacemissionstudio validate' and the
 GUI will open, but Run/Check Kernels/Monte Carlo need a Basilisk build on this venv's
 PYTHONPATH. Re-run this script with --basilisk-wheel, or 'pip install' one into
 $venv_dir yourself, once you have one."
+    kernel_status=""
 fi
 
 launcher="$prefix/spacemissionstudio"
@@ -152,6 +178,9 @@ if [[ -n "$icon_status" ]]; then
     echo "$icon_status"
 fi
 echo "$basilisk_status"
+if [[ -n "$kernel_status" ]]; then
+    echo "$kernel_status"
+fi
 echo
 echo "Launch it with: $launcher gui"
 echo "(or: source $venv_dir/bin/activate && spacemissionstudio gui)"

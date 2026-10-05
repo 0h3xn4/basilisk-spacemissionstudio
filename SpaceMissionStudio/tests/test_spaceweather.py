@@ -1,9 +1,8 @@
 """Tests for spacemissionstudio.engine.spaceweather -- no Basilisk import, runs
-anywhere. The CelesTrak network fetch itself is exercised against whatever
-network this test runs on (it will genuinely fail in an offline/blocked
-sandbox, which is itself the thing test_resolve_celestrak_unreachable_falls_back_to_synthetic
-below checks: the fallback chain has to work when the network call fails,
-not just when it's mocked to fail).
+anywhere. This module makes no network calls at all (see its own
+"Closed-off/offline policy" docstring) -- only "local_file" and "synthetic"
+are valid source values; "celestrak" (and anything else) is rejected as an
+unknown source.
 """
 
 from datetime import datetime
@@ -123,35 +122,15 @@ def test_resolve_unknown_source_raises():
         sw.resolve("magic", datetime(2030, 1, 1), datetime(2030, 1, 5))
 
 
-def test_resolve_celestrak_falls_back_when_unreachable_or_insufficient(tmp_path):
-    """This is the fallback chain the user explicitly asked for: fetch from
-    CelesTrak; if that isn't possible, fall back (here: no local_file_path
-    was given, so all the way to synthetic), never raising and never
-    silently returning an unusable/empty result. Genuinely exercises the
-    real network call (no mocking) -- in this project's own development
-    sandbox that call is blocked by network policy, which is exactly the
-    "not possible" case this test proves is handled gracefully; on a
-    machine where CelesTrak IS reachable, this either succeeds via the
-    real fetch (is_synthetic False) or still falls back correctly if the
-    fetched data doesn't cover the (deliberately far-future) requested
-    range -- either outcome is a pass.
+def test_resolve_celestrak_source_is_rejected_as_unknown():
+    """"celestrak" used to be a real fetch-from-network source; the
+    closed-off/offline policy removed it entirely (not just defaulted away
+    from -- see spaceweather.py's own module docstring), so it must now be
+    rejected the same as any other unknown source string, never silently
+    treated as "local_file" or "synthetic".
     """
-    start, end = datetime(2030, 1, 1), datetime(2030, 1, 5)
-    resolved = sw.resolve("celestrak", start, end, cache_dir=tmp_path)
-    assert resolved.path.exists()
-    # A clean, real CelesTrak fetch (is_synthetic False, no warnings) is a
-    # perfectly good outcome -- see the docstring above, "either outcome is
-    # a pass". A warning is only expected on the FALLBACK path
-    # (is_synthetic True or a warning-carrying local_file_path substitution);
-    # requiring one unconditionally was a real bug in this test, caught on a
-    # machine where CelesTrak is actually reachable (this project's own
-    # development sandbox never exercised the "success" branch, only the
-    # "blocked" one, so this was never caught until now).
-    if resolved.is_synthetic:
-        assert resolved.warnings, "expected at least one warning explaining the fallback to synthetic data"
-    # Whatever happened, the file it points to must itself be valid.
-    result = sw.validate_file(resolved.path, start, end)
-    assert result.ok, f"resolve() returned an unusable file: {result.message}"
+    with pytest.raises(sw.SpaceWeatherError, match="unknown space_weather.source"):
+        sw.resolve("celestrak", datetime(2030, 1, 1), datetime(2030, 1, 5))
 
 
 # -- Conservative ("worst-case") drag margin -------------------------------
@@ -251,42 +230,10 @@ def test_resolve_unknown_activity_level_raises():
         sw.resolve("synthetic", datetime(2030, 1, 1), datetime(2030, 1, 5), activity_level="extreme")
 
 
-def test_fetch_sends_a_browser_like_user_agent(tmp_path, monkeypatch):
-    """Regression guard, applied proactively here on the precedent of a
-    real bug a user hit with gui.vizard_launcher.fetch_vizard's own
-    identical bare-urlopen pattern against a different host: urllib's own
-    default User-Agent ("Python-urllib/<version>") got "HTTPError: 403
-    Forbidden" from that other host's basic bot-protection. Asserts the
-    actual outgoing urllib.request.Request carries a real User-Agent
-    header, not just that some response gets consumed.
+def test_module_has_no_fetch_function():
+    """The closed-off/offline policy removed the CelesTrak network fetch
+    entirely, not just defaulted away from it -- there must be no
+    fetch()/urllib left in this module for anything to accidentally call.
     """
-    import io
-
-    captured = {}
-
-    class _FakeResponse:
-        def __init__(self, data):
-            self._buf = io.BytesIO(data)
-
-        def read(self, n=-1):
-            return self._buf.read(n)
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *exc_info):
-            return False
-
-    def _fake_urlopen(request, timeout=None):
-        captured["request"] = request
-        return _FakeResponse(b"DATE,AP1,AP2,AP3,AP4,AP5,AP6,AP7,AP8,AP_AVG,F10.7_OBS,F10.7_OBS_CENTER81\n")
-
-    monkeypatch.setattr(sw.urllib.request, "urlopen", _fake_urlopen)
-
-    sw.fetch(cache_dir=tmp_path)
-
-    sent_request = captured["request"]
-    assert isinstance(sent_request, sw.urllib.request.Request)
-    user_agent = sent_request.get_header("User-agent")  # urllib title-cases header names internally
-    assert user_agent
-    assert "python-urllib" not in user_agent.lower()
+    assert not hasattr(sw, "fetch")
+    assert not hasattr(sw, "urllib")
