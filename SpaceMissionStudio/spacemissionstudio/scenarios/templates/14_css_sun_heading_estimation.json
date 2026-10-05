@@ -237,7 +237,7 @@
   ],
   "ground_stations": [],
   "space_weather": {
-    "source": "celestrak",
+    "source": "synthetic",
     "local_file_path": null,
     "cache_dir": null,
     "atmosphere_model": "nrlmsise00",
@@ -258,5 +258,5 @@
   },
   "mission_sequence": [],
   "description": "Real sun-direction ESTIMATION (not truth) feeding a closed attitude-control loop: eight coarse_sun_sensor devices in a cube layout (same directions as examples/BskSim/models/BSK_Dynamics.py's SetCSSConstellation()) feed a dedicated CSSConstellation + cssWlsEst weighted-least-squares estimator (engine.fsw.build_css_sun_estimation), and fsw_params['use_css_estimation']=True routes that ESTIMATE (rather than simpleNav's truth) into fsw_mode 'sunSafePoint''s sunDirectionInMsg -- the same architecture as examples/BskSim/scenarios/scenario_AttEclipse.py's real reference (cssWlsEst -> sunSafePoint -> mrpFeedback -> reaction wheels).\n\ncontrol_params is deliberately NOT left at engine.fsw.DEFAULT_MRP_GAINS (K=3.5/P=30): that default is lifted directly from Basilisk's own BSK_Fsw.py reference, tuned for THAT example's 900 kg*m^2 spacecraft. Applied unscaled to this template's 5 kg*m^2 hub it is roughly 180x too stiff -- confirmed directly against a real Basilisk build to produce a persistent, non-decaying ~30-degree pointing oscillation (bounded by RW torque saturation, not a crash, but never actually 'pointed and holding'). Scaling K and P by this hub's inertia relative to that reference (both x 5/900) converges cleanly instead -- confirmed: sub-1e-6-degree final pointing error. See HISTORY.md for the full investigation; this gain/inertia mismatch is a general risk for ANY small-sat-scale spacecraft left on DEFAULT_MRP_GAINS, worth checking on every new fsw_mode spacecraft this small, not something specific to CSS estimation.\n\nWhat to look at: '{sat-1}.sun_heading_body_estimated' (the CSS estimate) should settle near [0, 0, 1] in the body frame as sunSafePoint drives the commanded body +Z axis (sHatBdyCmd) onto the real sun direction -- compare its early, still-converging samples against its settled final value to see the estimate itself stabilize as the attitude stops moving. The WLS estimate's accuracy is purely geometry-dependent (how many of the 8 sensors are actually sunlit for the current sun direction, confirmed directly against a real Basilisk build: an under-determined 2-of-8-illuminated case gave 14.5 degrees of error, a well-conditioned 4-of-8 case gave an exact 0.0-degree match with zero sensor noise) -- real hardware has exactly this coverage gap, it is not something to 'fix' here.\n\nTry changing: the coarse_sun_sensor fov_deg values (a narrower FOV sees fewer sensors illuminated at once, degrading the WLS conditioning), or fsw_params['use_css_estimation'] to False to compare against simpleNav's noise-free truth sun direction instead.",
-  "schema_version": 1
+  "schema_version": 2
 }

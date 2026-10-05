@@ -1,9 +1,11 @@
 """Tests for spacemissionstudio.engine.spaceweather -- no Basilisk import, runs
-anywhere. The CelesTrak network fetch itself is exercised against whatever
-network this test runs on (it will genuinely fail in an offline/blocked
-sandbox, which is itself the thing test_resolve_celestrak_unreachable_falls_back_to_synthetic
-below checks: the fallback chain has to work when the network call fails,
-not just when it's mocked to fail).
+anywhere. resolve() itself makes no network calls at all (see its own
+"Closed-off/offline policy" docstring) -- only "local_file" and "synthetic"
+are valid source values; "celestrak" (and anything else) is rejected as an
+unknown source. fetch() is a separate, never-automatically-called utility
+(only reached via gui.startup_fetch_dialog's consent-gated prompt) --
+its own network calls are mocked here (urllib.request.urlopen), same as
+gui/test_vizard_launcher.py's fetch_vizard() tests.
 """
 
 from datetime import datetime
@@ -123,35 +125,15 @@ def test_resolve_unknown_source_raises():
         sw.resolve("magic", datetime(2030, 1, 1), datetime(2030, 1, 5))
 
 
-def test_resolve_celestrak_falls_back_when_unreachable_or_insufficient(tmp_path):
-    """This is the fallback chain the user explicitly asked for: fetch from
-    CelesTrak; if that isn't possible, fall back (here: no local_file_path
-    was given, so all the way to synthetic), never raising and never
-    silently returning an unusable/empty result. Genuinely exercises the
-    real network call (no mocking) -- in this project's own development
-    sandbox that call is blocked by network policy, which is exactly the
-    "not possible" case this test proves is handled gracefully; on a
-    machine where CelesTrak IS reachable, this either succeeds via the
-    real fetch (is_synthetic False) or still falls back correctly if the
-    fetched data doesn't cover the (deliberately far-future) requested
-    range -- either outcome is a pass.
+def test_resolve_celestrak_source_is_rejected_as_unknown():
+    """"celestrak" used to be a real fetch-from-network source; the
+    closed-off/offline policy removed it entirely (not just defaulted away
+    from -- see spaceweather.py's own module docstring), so it must now be
+    rejected the same as any other unknown source string, never silently
+    treated as "local_file" or "synthetic".
     """
-    start, end = datetime(2030, 1, 1), datetime(2030, 1, 5)
-    resolved = sw.resolve("celestrak", start, end, cache_dir=tmp_path)
-    assert resolved.path.exists()
-    # A clean, real CelesTrak fetch (is_synthetic False, no warnings) is a
-    # perfectly good outcome -- see the docstring above, "either outcome is
-    # a pass". A warning is only expected on the FALLBACK path
-    # (is_synthetic True or a warning-carrying local_file_path substitution);
-    # requiring one unconditionally was a real bug in this test, caught on a
-    # machine where CelesTrak is actually reachable (this project's own
-    # development sandbox never exercised the "success" branch, only the
-    # "blocked" one, so this was never caught until now).
-    if resolved.is_synthetic:
-        assert resolved.warnings, "expected at least one warning explaining the fallback to synthetic data"
-    # Whatever happened, the file it points to must itself be valid.
-    result = sw.validate_file(resolved.path, start, end)
-    assert result.ok, f"resolve() returned an unusable file: {result.message}"
+    with pytest.raises(sw.SpaceWeatherError, match="unknown space_weather.source"):
+        sw.resolve("celestrak", datetime(2030, 1, 1), datetime(2030, 1, 5))
 
 
 # -- Conservative ("worst-case") drag margin -------------------------------
@@ -251,42 +233,128 @@ def test_resolve_unknown_activity_level_raises():
         sw.resolve("synthetic", datetime(2030, 1, 1), datetime(2030, 1, 5), activity_level="extreme")
 
 
-def test_fetch_sends_a_browser_like_user_agent(tmp_path, monkeypatch):
-    """Regression guard, applied proactively here on the precedent of a
-    real bug a user hit with gui.vizard_launcher.fetch_vizard's own
-    identical bare-urlopen pattern against a different host: urllib's own
-    default User-Agent ("Python-urllib/<version>") got "HTTPError: 403
-    Forbidden" from that other host's basic bot-protection. Asserts the
-    actual outgoing urllib.request.Request carries a real User-Agent
-    header, not just that some response gets consumed.
+def test_resolve_never_calls_fetch(tmp_path, monkeypatch):
+    """resolve() itself must NEVER touch the network, regardless of
+    source/activity_level -- fetch() is only ever reached explicitly, via
+    gui.startup_fetch_dialog's consent-gated prompt. Fails loudly (instead
+    of quietly passing) if resolve() is ever wired to call it.
     """
-    import io
+    def _unexpected_fetch(*args, **kwargs):
+        raise AssertionError("resolve() must never call fetch() itself")
 
-    captured = {}
+    monkeypatch.setattr(sw, "fetch", _unexpected_fetch)
+    start, end = datetime(2030, 1, 1), datetime(2030, 1, 5)
+    local_path = sw.generate_synthetic(start, end, tmp_path / "local.csv")
 
-    class _FakeResponse:
-        def __init__(self, data):
-            self._buf = io.BytesIO(data)
+    sw.resolve("synthetic", start, end)
+    sw.resolve("local_file", start, end, local_file_path=str(local_path))
 
-        def read(self, n=-1):
-            return self._buf.read(n)
 
-        def __enter__(self):
-            return self
+class _FakeFetchResponse:
+    """Minimal stand-in for ``urllib.request.urlopen``'s return value."""
 
-        def __exit__(self, *exc_info):
-            return False
+    def __init__(self, data: bytes):
+        self._data = data
 
-    def _fake_urlopen(request, timeout=None):
-        captured["request"] = request
-        return _FakeResponse(b"DATE,AP1,AP2,AP3,AP4,AP5,AP6,AP7,AP8,AP_AVG,F10.7_OBS,F10.7_OBS_CENTER81\n")
+    def read(self, n: int = -1) -> bytes:
+        return self._data if n < 0 else self._data[:n]
 
-    monkeypatch.setattr(sw.urllib.request, "urlopen", _fake_urlopen)
+    def __enter__(self):
+        return self
 
-    sw.fetch(cache_dir=tmp_path)
+    def __exit__(self, *exc_info):
+        return False
 
-    sent_request = captured["request"]
-    assert isinstance(sent_request, sw.urllib.request.Request)
-    user_agent = sent_request.get_header("User-agent")  # urllib title-cases header names internally
-    assert user_agent
-    assert "python-urllib" not in user_agent.lower()
+
+def test_fetch_downloads_and_caches(tmp_path, monkeypatch):
+    fake_csv = b"DATE,AP1,AP2,AP3,AP4,AP5,AP6,AP7,AP8,AP_AVG,F10.7_OBS,F10.7_OBS_CENTER81\n"
+    monkeypatch.setattr(sw.urllib.request, "urlopen", lambda *a, **k: _FakeFetchResponse(fake_csv))
+
+    path = sw.fetch(dataset="SW-All", cache_dir=tmp_path)
+
+    assert path == tmp_path / "SW-All.csv"
+    assert path.read_bytes() == fake_csv
+
+
+def test_fetch_is_a_cache_hit_without_force(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(sw.urllib.request, "urlopen",
+                         lambda *a, **k: calls.append(1) or _FakeFetchResponse(b"x"))
+
+    dest = tmp_path / "SW-All.csv"
+    dest.write_bytes(b"already here")
+
+    path = sw.fetch(dataset="SW-All", cache_dir=tmp_path)
+
+    assert path == dest
+    assert path.read_bytes() == b"already here"
+    assert calls == []  # no network touched -- cache hit
+
+
+def test_fetch_force_redownloads_even_if_cached(tmp_path, monkeypatch):
+    fake_csv = b"DATE,AP1,AP2,AP3,AP4,AP5,AP6,AP7,AP8,AP_AVG,F10.7_OBS,F10.7_OBS_CENTER81\nfresh\n"
+    monkeypatch.setattr(sw.urllib.request, "urlopen", lambda *a, **k: _FakeFetchResponse(fake_csv))
+
+    dest = tmp_path / "SW-All.csv"
+    dest.write_bytes(b"stale")
+
+    path = sw.fetch(dataset="SW-All", cache_dir=tmp_path, force=True)
+
+    assert path.read_bytes() == fake_csv
+
+
+def test_fetch_rejects_unknown_dataset():
+    with pytest.raises(sw.SpaceWeatherError, match="unknown CelesTrak dataset"):
+        sw.fetch(dataset="not-a-real-dataset")
+
+
+def test_fetch_reports_network_failure(tmp_path, monkeypatch):
+    def _raise(*args, **kwargs):
+        raise OSError("boom")
+
+    monkeypatch.setattr(sw.urllib.request, "urlopen", _raise)
+
+    with pytest.raises(sw.SpaceWeatherError, match="could not fetch"):
+        sw.fetch(dataset="SW-All", cache_dir=tmp_path)
+
+
+def test_fetch_reports_a_disk_write_failure(tmp_path, monkeypatch):
+    """A full/read-only disk failing the write step, AFTER a successful
+    download, must be reported as a SpaceWeatherError too -- not a raw
+    OSError the caller (gui.startup_fetch_dialog's worker, in practice)
+    would need its own special handling for.
+    """
+    monkeypatch.setattr(sw.urllib.request, "urlopen", lambda *a, **k: _FakeFetchResponse(b"data"))
+
+    from pathlib import Path as _Path
+
+    def _raise_write(self, data):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(_Path, "write_bytes", _raise_write)
+
+    with pytest.raises(sw.SpaceWeatherError, match="could not write"):
+        sw.fetch(dataset="SW-All", cache_dir=tmp_path)
+
+
+def test_fetch_reports_a_cache_dir_creation_failure(tmp_path, monkeypatch):
+    from pathlib import Path as _Path
+
+    def _raise_mkdir(self, *args, **kwargs):
+        raise OSError("permission denied")
+
+    monkeypatch.setattr(_Path, "mkdir", _raise_mkdir)
+
+    with pytest.raises(sw.SpaceWeatherError, match="could not create cache directory"):
+        sw.fetch(dataset="SW-All", cache_dir=tmp_path / "nested")
+
+
+def test_cached_fetch_path_is_none_when_nothing_fetched(tmp_path):
+    assert sw.cached_fetch_path(cache_dir=tmp_path) is None
+
+
+def test_cached_fetch_path_finds_a_real_fetch(tmp_path, monkeypatch):
+    monkeypatch.setattr(sw.urllib.request, "urlopen", lambda *a, **k: _FakeFetchResponse(b"data"))
+    fetched = sw.fetch(dataset="SW-All", cache_dir=tmp_path)
+
+    assert sw.cached_fetch_path(cache_dir=tmp_path) == fetched

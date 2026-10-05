@@ -53,7 +53,14 @@ its own explicit enable control here:
   ``schema.scenario.SpaceWeatherConfig``'s own docstring for exactly
   what each selects and why (Basilisk has no Jacchia-Roberts model to
   offer, checked directly against its source; the percentile margin is
-  computed from real historical CelesTrak data, never fabricated).
+  computed from real historical F10.7/Ap data the user supplies via a
+  local file). This dialog itself makes no network calls -- there is no
+  "celestrak" source option here, only "local_file"/"synthetic" -- but
+  its Local file field pre-fills with the path of the most recent
+  startup-time fetch (``gui.startup_fetch_dialog``, a real CelesTrak CSV,
+  only ever downloaded after the user explicitly agreed to it) when one
+  exists and the scenario doesn't already have its own path set; see
+  ``engine.spaceweather``'s own "Closed-off/offline policy" docstring.
 
 Construct with the scenario's current ``GravityConfig``/``SimSettings``/
 ``SpaceWeatherConfig``, then read back the (possibly unchanged) values via
@@ -309,18 +316,32 @@ class PropagationSetupDialog(QDialog):
         form.addRow("Atmosphere model", self.atmosphere_model_combo)
 
         self.space_weather_source_combo = QComboBox()
-        self.space_weather_source_combo.addItems(["celestrak", "local_file", "synthetic"])
+        self.space_weather_source_combo.addItems(["synthetic", "local_file"])
         self.space_weather_source_combo.setCurrentText(space_weather.source)
         self.space_weather_source_combo.currentTextChanged.connect(self._on_space_weather_source_changed)
         form.addRow("Source", self.space_weather_source_combo)
 
         local_file_row = QHBoxLayout()
-        self.local_file_edit = QLineEdit(space_weather.local_file_path or "")
+        # Pre-fills with the most recently startup-fetched CelesTrak CSV
+        # (see gui.startup_fetch_dialog) when the scenario doesn't already
+        # have its own local_file_path set -- a real user-visible fetch
+        # that produces a local file nobody can actually USE unless they
+        # know its path isn't much of a convenience. Still just a
+        # suggestion: the field stays plain text, editable/clearable like
+        # any other, and nothing here touches the network -- it only
+        # checks whether a previous fetch already left a file on disk.
+        initial_local_file_path = space_weather.local_file_path
+        if not initial_local_file_path:
+            from ..engine import spaceweather as sw
+            cached = sw.cached_fetch_path()
+            if cached is not None:
+                initial_local_file_path = str(cached)
+        self.local_file_edit = QLineEdit(initial_local_file_path or "")
         self.local_file_browse_button = QPushButton("Browse...")
         self.local_file_browse_button.clicked.connect(self._on_browse_local_file)
         local_file_row.addWidget(self.local_file_edit)
         local_file_row.addWidget(self.local_file_browse_button)
-        form.addRow("Local file (used as fallback, or directly if source=local_file)", local_file_row)
+        form.addRow("Local file (used directly if Source=local_file; ignored otherwise)", local_file_row)
 
         self.activity_level_combo = QComboBox()
         # (display text, schema value)
@@ -337,10 +358,11 @@ class PropagationSetupDialog(QDialog):
         self.activity_percentile_spin.setDecimals(1)
         self.activity_percentile_spin.setValue(space_weather.activity_percentile)
         self.activity_percentile_spin.setToolTip(
-            "Percentile of REAL historical F10.7/Ap data (CelesTrak) to hold constant across the whole "
-            "scenario as a sustained worst-case drag assumption -- 95.0 is a common 'P95' choice; ~97.7 "
-            "approximates a mean+2-sigma figure. Needs network access to CelesTrak, or a local historical "
-            "file set as the Source above, to actually resolve."
+            "Percentile of REAL historical F10.7/Ap data to hold constant across the whole scenario as "
+            "a sustained worst-case drag assumption -- 95.0 is a common 'P95' choice; ~97.7 approximates "
+            "a mean+2-sigma figure. This app makes no network calls at runtime, so 'Conservative' needs "
+            "Source above set to 'local_file', pointing at a real historical space-weather CSV you "
+            "supply yourself (e.g. a CelesTrak extract downloaded ahead of time, outside this app)."
         )
         form.addRow("Worst-case percentile", self.activity_percentile_spin)
 

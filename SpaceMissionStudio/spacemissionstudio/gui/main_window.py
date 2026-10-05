@@ -61,6 +61,7 @@ from .mission_output_widget import MissionOutputWidget
 from .results_widget import ResultsWidget
 from .run_worker import MonteCarloWorker, RunWorker
 from .scenario_editor import ScenarioEditorWidget
+from .startup_fetch_dialog import maybe_run_startup_fetch
 from .vizard_dialog import VizardDialog
 from .vizard_launcher import (
     DEFAULT_LIVE_STREAM_ADDRESS,
@@ -89,7 +90,7 @@ def _with_log_file_hint(message: str) -> str:
 
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, prompt_startup_fetch: bool = True):
         super().__init__()
         # Wider default than before: the scenario form's own natural
         # content width (~576px, e.g. the "Full attitude (sensors,
@@ -197,6 +198,18 @@ class MainWindow(QMainWindow):
 
         self.statusBar().showMessage("Ready.")
         self._update_window_title()
+
+        if prompt_startup_fetch:
+            # Fired via singleShot(0, ...), not called directly here, so
+            # the main window has already rendered (show() has happened,
+            # back in gui.app.main()) before the consent dialog appears
+            # on top of it -- real user requirement: "a one time fetch
+            # during each startup... the user always should be asked".
+            # prompt_startup_fetch=False is how tests (and anything else
+            # constructing MainWindow headlessly) opt out of this blocking
+            # modal dialog -- see tests/gui/test_main_window.py's own
+            # `window` fixture.
+            QTimer.singleShot(0, lambda: maybe_run_startup_fetch(self))
 
     # -- menu ---------------------------------------------------------------
     def _build_menu(self) -> None:
@@ -584,16 +597,17 @@ class MainWindow(QMainWindow):
             else:
                 self.statusBar().showMessage("Vizard enabled for the next run.")
 
-    def _locate_or_fetch_vizard(self) -> Optional[Path]:
+    def _locate_vizard(self) -> Optional[Path]:
         """Called only when :func:`find_vizard_executable` came up empty.
-        Offers "Download Vizard" (automatic -- see
-        ``gui.vizard_launcher``'s own module docstring on the real user
-        request this answers) alongside the original manual "Browse...".
-        Returns the resolved, already-``remember_vizard_executable``'d
-        path, or ``None`` if the user cancelled/dismissed both options or
-        a download genuinely failed (an error dialog was already shown in
-        that case) -- :meth:`on_launch_vizard` treats that exactly like
-        its own previous "user cancelled the browse prompt" case.
+        Offers "Download Vizard" (automatic -- an explicit click, never
+        automatic on its own; see ``gui.vizard_launcher``'s own module
+        docstring on the "closed-off/offline policy" that still gates it)
+        alongside the original manual "Browse...". Returns the resolved,
+        already-``remember_vizard_executable``'d path, or ``None`` if the
+        user cancelled/dismissed both options or a download genuinely
+        failed (an error dialog was already shown in that case) --
+        :meth:`on_launch_vizard` treats that exactly like its own previous
+        "user cancelled the browse prompt" case.
         """
         box = QMessageBox(self)
         box.setWindowTitle("Vizard not found")
@@ -756,7 +770,7 @@ class MainWindow(QMainWindow):
 
         executable = find_vizard_executable()
         if executable is None:
-            executable = self._locate_or_fetch_vizard()
+            executable = self._locate_vizard()
             if executable is None:
                 return False
         try:

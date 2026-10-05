@@ -31,7 +31,7 @@ def window(qtbot, monkeypatch):
     monkeypatch.setattr(QMessageBox, "question",
                          staticmethod(lambda *a, **k: QMessageBox.StandardButton.Discard))
 
-    w = MainWindow()
+    w = MainWindow(prompt_startup_fetch=False)
     qtbot.addWidget(w)
     return w
 
@@ -812,9 +812,9 @@ def test_launch_vizard_relaunches_after_the_process_exits(window, monkeypatch):
 
 def test_launch_vizard_not_found_falls_back_to_browse(window, monkeypatch):
     """`on_launch_vizard()`'s own contract once `find_vizard_executable()`
-    comes up empty: whatever `_locate_or_fetch_vizard()` resolves to (via
-    either its "Download" or "Browse..." path -- see the dedicated tests
-    for those below) gets launched. Mocked at that seam rather than
+    comes up empty: whatever `_locate_vizard()` resolves to (via either
+    its "Download" or "Browse..." path -- see the dedicated tests for
+    those below) gets launched. Mocked at that seam rather than
     QFileDialog directly, since which of the two sub-paths the user took
     is no longer this test's concern.
     """
@@ -824,7 +824,7 @@ def test_launch_vizard_not_found_falls_back_to_browse(window, monkeypatch):
 
     picked = Path("/picked/Vizard")
     monkeypatch.setattr(main_window, "find_vizard_executable", lambda: None)
-    monkeypatch.setattr(main_window.MainWindow, "_locate_or_fetch_vizard", lambda self: picked)
+    monkeypatch.setattr(main_window.MainWindow, "_locate_vizard", lambda self: picked)
     monkeypatch.setattr(main_window, "launch_vizard", lambda path, direct_comm_address=None: _FakeVizardProcess())
 
     window.on_launch_vizard()
@@ -836,7 +836,7 @@ def test_launch_vizard_not_found_and_resolution_cancelled_does_nothing(window, m
     from spacemissionstudio.gui import main_window
 
     monkeypatch.setattr(main_window, "find_vizard_executable", lambda: None)
-    monkeypatch.setattr(main_window.MainWindow, "_locate_or_fetch_vizard", lambda self: None)
+    monkeypatch.setattr(main_window.MainWindow, "_locate_vizard", lambda self: None)
     launch_calls = []
     monkeypatch.setattr(main_window, "launch_vizard",
                          lambda path, direct_comm_address=None: launch_calls.append(path))
@@ -847,7 +847,7 @@ def test_launch_vizard_not_found_and_resolution_cancelled_does_nothing(window, m
     assert window._vizard_process is None
 
 
-def test_locate_or_fetch_vizard_browse_option_remembers_the_picked_path(window, monkeypatch):
+def test_locate_vizard_browse_option_remembers_the_picked_path(window, monkeypatch):
     """The original manual-browse path, now reached via the "not found"
     QMessageBox's "Browse..." button -- clicked here by text match (see
     this test's own `_click` helper) rather than assuming a specific
@@ -864,22 +864,22 @@ def test_locate_or_fetch_vizard_browse_option_remembers_the_picked_path(window, 
     monkeypatch.setattr("spacemissionstudio.gui.main_window.remember_vizard_executable",
                          lambda path: remembered.append(path))
 
-    result = window._locate_or_fetch_vizard()
+    result = window._locate_vizard()
 
     assert result == picked
     assert remembered == [picked]
 
 
-def test_locate_or_fetch_vizard_browse_cancelled_returns_none(window, monkeypatch):
+def test_locate_vizard_browse_cancelled_returns_none(window, monkeypatch):
     from PySide6.QtWidgets import QFileDialog, QMessageBox
 
     monkeypatch.setattr(QMessageBox, "exec", _click_message_box_button("Browse..."))
     monkeypatch.setattr(QFileDialog, "getOpenFileName", staticmethod(lambda *a, **k: ("", "")))
 
-    assert window._locate_or_fetch_vizard() is None
+    assert window._locate_vizard() is None
 
 
-def test_locate_or_fetch_vizard_dismissed_returns_none(window, monkeypatch):
+def test_locate_vizard_dismissed_returns_none(window, monkeypatch):
     """Neither "Download Vizard" nor "Browse..." clicked (e.g. the dialog
     was closed via its window decoration) -- QMessageBox's own
     `clickedButton()` then returns its implicit Cancel button, which
@@ -889,24 +889,7 @@ def test_locate_or_fetch_vizard_dismissed_returns_none(window, monkeypatch):
 
     monkeypatch.setattr(QMessageBox, "exec", lambda self: 0)  # never click anything
 
-    assert window._locate_or_fetch_vizard() is None
-
-
-def _click_message_box_button(button_text):
-    """Returns a replacement for ``QMessageBox.exec`` that, instead of
-    actually blocking on user input, finds one of the box's own
-    ``addButton()``-added buttons by its visible text and clicks it --
-    exercising the real ``clickedButton()``/``buttonClicked`` machinery
-    (that connection is wired in ``addButton()`` itself, not only while
-    ``exec()`` is actually running) rather than faking the outcome.
-    """
-    def _exec(self):
-        for button in self.buttons():
-            if button.text() == button_text:
-                button.click()
-                return 0
-        raise AssertionError(f"no QMessageBox button with text {button_text!r}")
-    return _exec
+    assert window._locate_vizard() is None
 
 
 class _FakeVizardFetchWorker(QObject):
@@ -977,6 +960,23 @@ def test_fetch_vizard_with_progress_failure_shows_error_and_returns_none(window,
 
     assert result is None
     assert shown  # a critical dialog was shown with the failure reason
+
+
+def _click_message_box_button(button_text):
+    """Returns a replacement for ``QMessageBox.exec`` that, instead of
+    actually blocking on user input, finds one of the box's own
+    ``addButton()``-added buttons by its visible text and clicks it --
+    exercising the real ``clickedButton()``/``buttonClicked`` machinery
+    (that connection is wired in ``addButton()`` itself, not only while
+    ``exec()`` is actually running) rather than faking the outcome.
+    """
+    def _exec(self):
+        for button in self.buttons():
+            if button.text() == button_text:
+                button.click()
+                return 0
+        raise AssertionError(f"no QMessageBox button with text {button_text!r}")
+    return _exec
 
 
 def test_launch_vizard_failure_shows_error(window, monkeypatch):

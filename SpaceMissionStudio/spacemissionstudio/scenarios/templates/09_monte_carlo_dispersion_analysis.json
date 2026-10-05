@@ -88,7 +88,7 @@
   ],
   "ground_stations": [],
   "space_weather": {
-    "source": "celestrak",
+    "source": "synthetic",
     "local_file_path": null,
     "cache_dir": null,
     "atmosphere_model": "nrlmsise00",
@@ -118,5 +118,5 @@
   },
   "mission_sequence": [],
   "description": "The same circular LEO orbit as '01', but run as a Monte Carlo batch of 20 cases instead of a single deterministic run: each case's dry_mass_kg is independently redrawn from a normal distribution (mean 500 kg, std deviation 25 kg -- a stand-in for, e.g., propellant -loading or manufacturing-tolerance uncertainty). This is the basic pattern behind real uncertainty-quantification questions: 'given that I don't know this spacecraft's exact mass to the kilogram, how much does that affect the outcome I care about?'\n\nWhat to look at: run via the GUI's 'Run Monte Carlo...' action (or 'spacemissionstudio monte-carlo') and pick an archive directory -- each of the 20 runs is archived separately, so you can compare e.g. final position across cases to see how much (or how little) an 5% mass uncertainty actually perturbs the resulting orbit over a 1-day propagation (physically: not much, for pure two-body motion -- mass doesn't affect trajectory at all, only propellant-consuming maneuvers/drag/SRP would show sensitivity; try enabling one of those, or add an 'attitude_sigma_bn' dispersion, to see a case where it does matter).\n\nTry changing: num_runs (more runs = a smoother distribution of outcomes, at proportional runtime cost), std_deviation (a wider spread), or add a second DispersionConfig with quantity='attitude_sigma_bn'/kind='uniform_euler_mrp' for an initial-attitude dispersion instead (needs simulation_mode='full_attitude').",
-  "schema_version": 1
+  "schema_version": 2
 }

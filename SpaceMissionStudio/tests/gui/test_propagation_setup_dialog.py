@@ -111,6 +111,45 @@ def test_space_weather_local_file_field_enabled_only_for_local_file_source(dialo
     assert not dialog.local_file_edit.isEnabled()
 
 
+def test_local_file_field_prefills_from_a_cached_startup_fetch_when_empty(qtbot, monkeypatch, tmp_path):
+    from spacemissionstudio.engine import spaceweather as sw
+
+    cached = tmp_path / "SW-All.csv"
+    cached.write_text("DATE\n")
+    monkeypatch.setattr(sw, "cached_fetch_path", lambda *a, **k: cached)
+
+    d = _dialog()
+    qtbot.addWidget(d)
+
+    assert d.local_file_edit.text() == str(cached)
+
+
+def test_local_file_field_does_not_override_an_explicit_local_file_path(qtbot, monkeypatch, tmp_path):
+    from spacemissionstudio.engine import spaceweather as sw
+    from spacemissionstudio.schema.scenario import SpaceWeatherConfig
+
+    cached = tmp_path / "SW-All.csv"
+    cached.write_text("DATE\n")
+    monkeypatch.setattr(sw, "cached_fetch_path", lambda *a, **k: cached)
+
+    explicit_path = str(tmp_path / "my_own_history.csv")
+    d = _dialog(space_weather=SpaceWeatherConfig(source="local_file", local_file_path=explicit_path))
+    qtbot.addWidget(d)
+
+    assert d.local_file_edit.text() == explicit_path
+
+
+def test_local_file_field_stays_empty_with_no_cached_fetch(qtbot, monkeypatch, tmp_path):
+    from spacemissionstudio.engine import spaceweather as sw
+
+    monkeypatch.setattr(sw, "cached_fetch_path", lambda *a, **k: None)
+
+    d = _dialog()
+    qtbot.addWidget(d)
+
+    assert d.local_file_edit.text() == ""
+
+
 def test_harmonics_checkbox_off_by_default_forces_point_mass(dialog):
     assert not dialog.enable_harmonics_check.isChecked()
     assert dialog.to_gravity().central_body_degree == 0

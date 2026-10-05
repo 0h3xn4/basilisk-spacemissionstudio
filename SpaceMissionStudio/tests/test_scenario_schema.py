@@ -5,6 +5,7 @@ import json
 import pytest
 
 from spacemissionstudio.schema import (
+    CURRENT_SCHEMA_VERSION,
     ActuatorConfig,
     CommsPointingConfig,
     ConstantThrustConfig,
@@ -89,7 +90,7 @@ def test_saved_file_is_plain_readable_json(tmp_path):
     # is a "human-readable JSON", not a pickle, per the project requirement.
     data = json.loads(path.read_text())
     assert data["name"] == "test scenario"
-    assert data["schema_version"] == 1
+    assert data["schema_version"] == CURRENT_SCHEMA_VERSION
 
 
 @pytest.mark.parametrize("bad_field,bad_value,match", [

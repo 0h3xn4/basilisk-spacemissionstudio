@@ -26,6 +26,52 @@ simulation RUN past kernel loading -- a narrower, later gap than "no
 Basilisk at all". See "The `.deb` package" below for exactly what this
 made possible to verify end-to-end for the first time.
 
+## Closed-off/offline policy -- the kernel pre-fetch step
+
+Real user requirement: "the app must be completely closed off and offline,
+only exception is the installation process." SpaceMissionStudio itself makes
+no network calls at runtime -- see `../spacemissionstudio/engine/kernels.py`'s
+own "Closed-off/offline policy" docstring -- but it still depends on
+Basilisk's SPICE/gravity-harmonics/magnetic-field support data, which
+`engine.kernels.require_kernels()` normally fetches (via Basilisk's own
+`pooch`-backed cache) the first time a scenario that needs a given file is
+run. Deferring that first fetch to the user's first real run would violate
+the offline policy, so all four installers below now call
+`engine.kernels.require_kernels()` (with its default, ALL_SUPPORT_DATA_FILES,
+covering every SPICE/gravity/magnetic-field file this app's code paths read)
+once, right after spacemissionstudio itself is installed into the venv:
+
+* **`install.sh`** / **`install.ps1`** -- only when a Basilisk wheel was
+  also given (`--basilisk-wheel`/`-BasiliskWheel`); non-fatal (a missing
+  Basilisk build already means Run/Monte Carlo won't work, so a failed
+  pre-fetch here doesn't change that) -- prints a status line either way so
+  the user knows whether a later `spacemissionstudio kernels-status` run
+  (WITH internet access) is still needed before their first real run.
+* **`deb/DEBIAN/postinst`** / **`windows/bootstrap_env.ps1`** -- always (both
+  always install a real Basilisk build into the venv they create), so a
+  failure here is FATAL, matching how both scripts already treat the
+  Basilisk/spacemissionstudio install steps themselves: a scenario that can
+  never actually run without its own kernels is exactly the kind of
+  "configured but broken" state these installers should refuse to ship,
+  not silently produce.
+
+Every later `get_path()` call for the rest of that install's lifetime then
+resolves from Basilisk's own local cache, with no network touched at all --
+this install-time pre-fetch is the first of two allowed exceptions to the
+offline policy.
+
+The second, relaxed later by a real user decision ("a one time fetch during
+each startup of the app is also allowed, to store everything that is needed
+locally so it can be used later again. But the user always should be asked if
+they want to fetch/update"): the GUI's `gui.startup_fetch_dialog` shows a
+consent prompt once each time it starts, offering to re-check/refresh the
+same support-data kernels (a safety net for a dev checkout or a cleared
+cache -- normally a no-op, since the installer above already did this) and,
+separately, to fetch real space-weather history from CelesTrak. Neither ever
+runs without the user clicking "Fetch now" first; clicking "Skip" touches no
+network, same as before this existed. This is a GUI-only concern -- nothing
+in `packaging/` needed to change for it.
+
 ## What's here
 
 * **`build_wheel.sh`** -- builds `spacemissionstudio`'s own wheel + sdist

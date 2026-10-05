@@ -164,7 +164,7 @@
   ],
   "ground_stations": [],
   "space_weather": {
-    "source": "celestrak",
+    "source": "synthetic",
     "local_file_path": null,
     "cache_dir": null
   },
@@ -182,5 +182,5 @@
   },
   "mission_sequence": [],
   "description": "Fifth diagnostic scenario, NOT a permanent template. Identical to diagnostic_05e_station_keeping_fine_rate.json (which reproducibly crashes deterministically within the first 1-2 simulated seconds regardless of dynamics_task_rate_s -- both 30 s and 1 s task rates show the last-good state already gone by the very next tick, so the divergence is genuinely near-instantaneous once station-keeping starts thrusting, not a logging-resolution artifact) except: integrator changed from the adaptive rkf78 to the FIXED-step rk2.\n\nPurpose: Basilisk's rkf45/rkf78 adaptive integrators have a known, already-documented limitation (see engine.service.raise_clear_execution_error's own error message) -- once the state goes non-finite, computeMaxRelativeError() returns NaN, the adaptive step-size search never terminates, and the process exhausts memory instead of raising a clear error. rk2 has no adaptive step-size search at all (it takes exactly one fixed-size step per dynamics_task_rate_s tick), so it cannot exhibit that specific spin-until-OOM failure mode.\n\nIf this run stays clean and physically stable, the adaptive step-size search itself (not the underlying force/mass model) is implicated as the actual trigger -- a Basilisk integrator-level issue, not a bug in orbit_maintenance.py. If this run also goes non-finite (even without the OOM spin -- rk2 would just propagate NaN state forward tick over tick instead of hanging), that rules the adaptive integrator OUT and points back at the force/mass model in StationKeepingController itself producing a genuinely wrong (not just numerically fragile) result.",
-  "schema_version": 1
+  "schema_version": 2
 }

@@ -43,10 +43,39 @@ from typing import Callable, Dict
 
 from .scenario import CURRENT_SCHEMA_VERSION, ScenarioValidationError
 
-# {old_version: migration_function}. Empty for now -- schema_version 1 is
-# the first version, so there is nothing to migrate FROM yet. This is
-# where the first entry goes the day version 2 ships.
-MIGRATIONS: Dict[int, Callable[[dict], dict]] = {}
+
+def _migrate_1_to_2(data: dict) -> dict:
+    """v1 -> v2: ``SpaceWeatherConfig.source`` dropped ``"celestrak"`` --
+    the closed-off/offline policy change removed this app's own ability
+    to fetch it automatically at RUN time (see ``engine.spaceweather``'s
+    own "Closed-off/offline policy" docstring); it is no longer a valid
+    ``source`` value at all. ``"celestrak"`` was also the v1 DEFAULT, so
+    this covers essentially every scenario file ever saved by an older
+    version of this tool, not just ones that explicitly chose it.
+
+    Rewrites ``space_weather.source == "celestrak"`` to ``"synthetic"``
+    -- the same safe, always-available, no-file/no-network default this
+    tool itself now falls back to. A ``"conservative"`` activity_level
+    paired with the old ``"celestrak"`` source is downgraded to
+    ``"nominal"`` too: ``"conservative"`` is now ``"local_file"``-only
+    (see ``SpaceWeatherConfig``'s own docstring), so migrating only
+    ``source`` would otherwise still leave a file that LOADS fine but
+    fails the moment it's actually resolved at run time, with no schema
+    -level warning anywhere along the way.
+    """
+    space_weather = data.get("space_weather")
+    if isinstance(space_weather, dict) and space_weather.get("source") == "celestrak":
+        space_weather["source"] = "synthetic"
+        if space_weather.get("activity_level") == "conservative":
+            space_weather["activity_level"] = "nominal"
+    data["schema_version"] = 2
+    return data
+
+
+# {old_version: migration_function}.
+MIGRATIONS: Dict[int, Callable[[dict], dict]] = {
+    1: _migrate_1_to_2,
+}
 
 
 def migrate(data: dict) -> dict:

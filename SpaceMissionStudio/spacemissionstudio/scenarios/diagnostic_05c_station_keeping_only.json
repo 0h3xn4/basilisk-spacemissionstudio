@@ -164,7 +164,7 @@
   ],
   "ground_stations": [],
   "space_weather": {
-    "source": "celestrak",
+    "source": "synthetic",
     "local_file_path": null,
     "cache_dir": null
   },
@@ -182,5 +182,5 @@
   },
   "mission_sequence": [],
   "description": "Third diagnostic scenario, NOT a permanent template. Findings so far: diagnostic_05_no_orbit_maintenance.json (no force effector at all) ran clean for the full 7 days. diagnostic_05b_constant_thrust_only.json (a simple constant force, same magnitude/direction, same mass-bookkeeping pattern, but no eclipse gating, no altitude/error smoothing history, and no sharing with a second controller) ALSO ran clean for the full 7 days.\n\nThis isolates the one remaining structural difference: identical orbits/duration/rate/integrator/gravity, but follower-1 has ONLY station_keeping configured -- no phasing_keeping at all, so no thruster arbitration, no second controller sharing the same ExtForceTorque effector and propellant tank. station_keeping DOES still have eclipse-gating and altitude-smoothing history, unlike the constant_thrust diagnostic.\n\nIf this crashes, the trigger is in station_keeping's own logic (eclipse-gating and/or altitude-smoothing), independent of sharing a thruster with a second controller. If it does NOT crash, that implicates the two-controllers-sharing-one-thruster/arbitration mechanism specifically -- i.e. something about phasing_keeping being present and sharing station_keeping's effector, not either controller's logic alone.",
-  "schema_version": 1
+  "schema_version": 2
 }

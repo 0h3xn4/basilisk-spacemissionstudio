@@ -239,7 +239,7 @@
   ],
   "ground_stations": [],
   "space_weather": {
-    "source": "celestrak",
+    "source": "synthetic",
     "local_file_path": null,
     "cache_dir": null,
     "atmosphere_model": "nrlmsise00",
@@ -260,5 +260,5 @@
   },
   "mission_sequence": [],
   "description": "The exact same 8-thruster attitude control setup as '11' (inertial3D pointing, the real thrForceMapping -> thrFiringSchmitt -> thrusterDynamicEffector chain), with a real FuelTankConfig added -- Basilisk's own fuelTank state effector (engine.fsw.build_fuel_tank, confirmed against examples/MultiSatBskSim/modelsMultiSat/BSK_MultiSatDynamics.py's own SetFuelTank()) now tracks REAL propellant depletion as the thrusters fire, reading the same mass-flow rate (mDot = F / (steadyIsp * g0)) each thruster already computes for its own physics -- unlike this app's older station-keeping/phasing/constant-thrust propellant bookkeeping (engine.orbit_maintenance, a hand-rolled Python estimate), this is Basilisk's own state effector doing the real physics, including the resulting center-of-mass shift as propellant depletes.\n\nThis exact configuration was confirmed directly against a real Basilisk build: the spacecraft's attitude error converges from its initial tip (sigma norm ~0.37) to near-zero (~0.002) within about 100-150 seconds, consuming roughly 0.185 kg of the tank's 0.5 kg starting load during that active correction burn -- then '{sat-1}.fuel_mass_remaining' goes flat once the attitude has converged and the thrusters stop firing, a clean before /during/after depletion curve.\n\nWhat to look at: result series '{sat-1}.fuel_mass_remaining' alongside '{sat-1}.thruster_on_time' -- the fuel-depletion curve's steep drop should line up exactly with the period where thrusters are actively firing, then both go flat together.\n\nTry changing: fuel_tank.propellant_mass_kg (set it below the ~0.185 kg this convergence burn needs to see what happens when the tank runs dry mid-maneuver -- thrusterDynamicEffector keeps commanding thrust, but fuelTank has nothing left to give), or each thruster's steadyIsp (a lower Isp burns through the same delta-V budget using more propellant, a higher Isp less).",
-  "schema_version": 1
+  "schema_version": 2
 }

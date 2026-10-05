@@ -164,7 +164,7 @@
   ],
   "ground_stations": [],
   "space_weather": {
-    "source": "celestrak",
+    "source": "synthetic",
     "local_file_path": null,
     "cache_dir": null
   },
@@ -182,5 +182,5 @@
   },
   "mission_sequence": [],
   "description": "Fourth diagnostic scenario, NOT a permanent template. Identical to diagnostic_05c_station_keeping_only.json (which reproducibly crashes with RuntimeError: basic_string::_M_create / std::bad_alloc, deterministically, at the same point every run) except: dynamics_task_rate_s reduced from 30.0 s to 1.0 s (30x finer), and duration_days shortened from 7.0 to 0.05 (4320 s) since the crash has always occurred within the first ~30-60 simulated seconds regardless of task rate -- the shorter duration only reduces how long this diagnostic needs to run before hitting it, it doesn't change the physics.\n\nPurpose: diagnostic_05c's own per-tick station_keeping logging only resolves the crash to 'somewhere between t=30 s (last good sample) and t=60 s (next tick, never reached)' -- not narrow enough to see what precedes the actual divergence. At 1 s resolution, the last-recorded-state-before-failure log line (engine.service.log_last_known_state) should land within 1 simulated second of the actual non-finite transition, and the per-tick station_keeping telemetry (alt/smoothed alt/burn_on/propellant/cumulative_dv) leading up to it should show whether anything (a deadband toggle, a mass/thrust discontinuity, an accumulating numerical drift) visibly changes right before the state goes non-physical, instead of everything still looking perfectly nominal at the last logged sample as it did at the 30 s resolution.\n\nEclipse-gating is left at its normal (non-diagnostic) behavior for this run -- SPACEMISSIONSTUDIO_DIAG_SKIP_ECLIPSE_READ/_SUBSCRIBE are already proven (by two separate real repros) not to change the outcome, so there is no need to set them here.",
-  "schema_version": 1
+  "schema_version": 2
 }

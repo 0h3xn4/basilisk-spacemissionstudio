@@ -5571,3 +5571,340 @@ template 19 still loads/round-trips through the Scenario Editor and the Mission 
 still renders after all of the above. `scripts/_generate_templates.py` re-run and produced
 byte-identical template JSON files (confirms none of the schema/engine fixes above touch
 anything a template's own construction depends on).
+
+---
+
+## Results tab: "Save plot as PNG..." button
+
+Direct request: "would be great to also have a button to save the plots as png images in a
+desired location." Plotly's own modebar already has a built-in camera/download-as-png icon
+(`config={"displaylogo": False}` in `results_widget.py` leaves it in), but inside an embedded
+`QWebEngineView` that triggers Chromium's own download machinery, which this app never wires up
+(`QWebEngineProfile.downloadRequested`) -- confirmed directly that clicking it does nothing
+observable here, not assumed. A new "Save plot as PNG..." button next to the existing "Export
+all series to CSV..." button fixes this with a proper native Save As dialog and a real file on
+disk at the chosen path.
+
+**Design**: renders the chart to a PNG CLIENT-SIDE via the SAME `plotly.js` already loaded on
+the page (`Plotly.toImage()`), rather than pulling in a server-side renderer (the `kaleido`
+package) this project doesn't otherwise depend on -- the same "no unnecessary dependency" choice
+this module's own docstring already makes for `plotly.js` itself. `scale: 2` asks for a
+higher-than-screen-resolution render at the chart's own current on-screen size.
+
+**A real bug, caught before it shipped, not after**: the first implementation assumed
+`QWebEnginePage.runJavaScript()` awaits a top-level returned `Promise` automatically (this is
+genuinely true for some Qt WebEngine versions/configurations, which is presumably where that
+assumption came from) and just returned `Plotly.toImage(...)`'s own Promise directly as the
+script. Confirmed directly, NOT assumed, against this project's actual PySide6 6.11.2: it does
+NOT await it -- the callback receives an empty string every single time, which looks exactly
+like a render failure (both show up as "no valid PNG data") but isn't one. Caught by the
+project's own "verify before committing" discipline: a quick isolated diagnostic script
+(`new Promise((resolve) => resolve(42))` through the exact same `runJavaScript()` call) showed
+the empty-string result BEFORE the feature's own real test was trusted, rather than assuming a
+hanging/failing test meant the feature itself was broken. Fixed by polling a page-global
+variable instead (`Plotly.toImage(...).then(url => { window.X = url; })`, then a `QTimer`
+checking `window.X` every 100ms) -- confirmed directly to work (a 106 KB real PNG, resolved in
+~200ms in practice). A second, related quirk found the same way: a bare JS `null`/`undefined`
+also bridges back as an empty string here, not Python `None` as plain code might assume -- the
+poll uses an explicit sentinel string (`"__spacemissionstudio_png_pending__"`) to tell "still
+rendering" apart from a real (possibly falsy) result, rather than relying on that bridging.
+
+**A second real race, also caught by actually running the test, not just writing it**: the
+button's own enabled state is set synchronously inside `_redraw()`, right after kicking off
+`QWebEngineView.setHtml()` -- but `setHtml()` itself loads and executes the page (including
+`plotly.js` and the `Plotly.newPlot()` call that defines `window.Plotly`) ASYNCHRONOUSLY. An
+ordinary human click is far slower than that load and never notices, but this project's own new
+test for the feature -- calling `_on_save_plot_png()` immediately after `set_result()`, with no
+wait -- hit it directly: `js: Uncaught ReferenceError: Plotly is not defined`. Fixed two ways:
+the test now waits for a real `loadFinished` signal before clicking (`qtbot.waitSignal`,
+matching realistic usage and making the test deterministic rather than racy), AND the production
+kickoff script itself gained a short, near-zero-cost-in-the-common-case retry loop (up to 40
+attempts, 50ms apart) that waits for `window.Plotly`/the chart element to exist before rendering
+-- real defense-in-depth for the narrow case of an automated/very-fast click actually beating
+the page load, not just a test-only workaround.
+
+**Verification**: `tests/gui/test_results_widget.py` gained 5 new tests (a real end-to-end PNG
+render with real PNG magic-byte verification, the `.png` extension auto-append, the no-result
+no-op, and the cancelled-dialog no-op) -- all confirmed against the REAL offscreen
+`QWebEngineView`/`plotly.js` pipeline in this sandbox, not mocked JS. One environment quirk
+noted, not a regression from this feature: running `tests/gui/test_results_widget.py` ALONE
+segfaults at Python interpreter teardown ("Release of profile requested but WebEnginePage still
+not deleted") -- confirmed this already happens on the pre-existing 26 tests in that file with
+zero changes from this feature, and that the full `tests/gui/` suite (517 passed, 2 skipped) and
+the full `tests/` suite both exit cleanly (code 0) -- an isolated-single-file-run artifact of
+this sandbox's Qt WebEngine teardown, not something seen running the suite normally. Full suite:
+987 passed, 130 skipped, zero regressions (up from 983/130, the previous entry's own figure).
+
+## Closed-off/offline policy: removing every runtime network call
+
+**Real user requirement**: "the app must be completely closed off and offline, only exception is
+the installation process." Before this change, SpaceMissionStudio had three runtime code paths
+that could reach the network, none of them gated behind an opt-in flag -- this entry audits and
+closes all three, plus a real gap discovered along the way.
+
+**1. SPICE/gravity-harmonics/magnetic-field support data (`engine.kernels`)**. Basilisk's own
+`supportDataTools.dataFetcher` (`pooch`-backed) fetches a file over the network the first time
+`get_path()` is called for it and the local repo copy/cache doesn't already have it -- this was
+previously left to happen lazily, on whatever run first needed a given file. A real pre-existing
+gap found while auditing this: `DEFAULT_KERNELS` (what `ensure_kernels`/`require_kernels`
+defaulted to) covered only the SPICE kernels (`naif0012.tls`, `de430.bsp`, `de-403-masses.tpc`,
+`pck00010.tpc`) -- `DataFile.LocalGravData.GGM03S` (10th-degree spherical-harmonics gravity) and
+`DataFile.MagneticFieldData.WMM` (the magnetometer model) were NOT pre-fetched by anything, so a
+scenario using gravity harmonics or a magnetometer could still trigger an unreported runtime
+fetch even before this directive. Fixed in two parts: `engine/kernels.py` now defines
+`ALL_SUPPORT_DATA_FILES = DEFAULT_KERNELS + (GGM03S, WMM)` and both `ensure_kernels`/
+`require_kernels` default to it instead of `DEFAULT_KERNELS`; and all four packaging installers
+(`packaging/install.sh`, `packaging/install.ps1`, `packaging/deb/DEBIAN/postinst`,
+`packaging/windows/bootstrap_env.ps1`) now call `engine.kernels.require_kernels()` once, right
+after SpaceMissionStudio itself is installed into the venv (ordering matters: a first attempt in
+`postinst` placed this call right after the Basilisk install step but BEFORE
+spacemissionstudio's own install, which would have failed with `ModuleNotFoundError` -- caught by
+re-reading the script's full line order before considering the edit done, and fixed by moving the
+block after the spacemissionstudio wheel install). `install.sh`/`install.ps1` treat a failed
+pre-fetch as non-fatal (a missing Basilisk wheel there is already optional); `postinst`/
+`bootstrap_env.ps1` treat it as FATAL, since both of those always install a real Basilisk --
+matching how each script already treats its own Basilisk/spacemissionstudio install steps. See
+`packaging/README.md`'s own "Closed-off/offline policy" section for the per-script detail.
+`build_spice_interface()`'s own `kernels` parameter default is UNCHANGED (`DEFAULT_KERNELS`) --
+it's SPICE-specific by construction, not the general-purpose default this change touches.
+
+**2. Space weather (`engine.spaceweather`)**. This module used to fetch live F10.7/Ap data from
+CelesTrak as its DEFAULT `source` (`"celestrak"`), with a fallback chain to `local_file` then
+`synthetic` if the fetch failed or didn't cover the scenario's date range. All of that -- the
+`fetch()` function, `CELESTRAK_URLS`, the `urllib.request`/`urllib.error` imports, the
+fetch-then-fallback chain in `resolve()`, and the `"celestrak"` branch in
+`_resolve_conservative()` -- has been REMOVED entirely, not just defaulted away from. `source` is
+now `"local_file"` or `"synthetic"` (the new default) only; anything else, including
+`"celestrak"`, raises `SpaceWeatherError` as an unknown source. The `activity_level="conservative"`
+worst-case-percentile margin (computed from REAL historical F10.7/Ap data -- never the synthetic
+generator, which is fabricated) is now `local_file`-only for the same reason: there is no more
+automatic way to obtain that real historical data inside the app. A real, deliberate honesty
+check was run before accepting this trade-off: could a real historical CSV just be bundled with
+the app instead, to preserve the conservative-margin feature's full value without ANY runtime
+fetch? A direct `curl` against `celestrak.org` from this sandbox confirmed it is genuinely
+blocked (403) and no stale cached copy exists anywhere in this checkout to fall back on -- so
+rather than fabricate or guess a "real historical" file, the honest choice was to reduce this
+specific capability and say so plainly, not paper over it.
+
+**Ripple effects, all fixed**: `tests/test_spaceweather.py` had its CelesTrak-specific tests
+(`test_resolve_celestrak_falls_back_when_unreachable_or_insufficient`,
+`test_fetch_sends_a_browser_like_user_agent`) replaced with
+`test_resolve_celestrak_source_is_rejected_as_unknown` and `test_module_has_no_fetch_function`
+(asserts `spaceweather.fetch`/`spaceweather.urllib` don't even exist any more). The five bundled
+templates that defaulted to `_conservative_drag_margin()` (`scripts/_generate_templates.py`: 04
+Walker constellation, 05 formation-flying phasing, 07 ADCS hardware, 08 mission-sequence orbit
+raise, 18 LEO station-keeping) now use `activity_level="nominal", source="synthetic"` instead of
+`source="celestrak", activity_level="conservative"` -- each template's own `description` field was
+rewritten to explain the change and how to restore the real-historical-data margin (set
+`space_weather.source="local_file"`, `activity_level="conservative"`, `local_file_path=<your own
+downloaded CelesTrak CSV>` in the Scenario Editor). All 19 templates were regenerated via
+`scripts/_generate_templates.py` -- every one of them had `"source": "celestrak"` serialized into
+its JSON (the OLD schema default), which would otherwise have failed `Scenario.validate()`'s
+source-whitelist check the moment this schema change landed. The six hand-maintained
+`diagnostic_05*.json` fixtures and `two_body_validation.json` (not produced by
+`_generate_templates.py`) had the same stale `"source": "celestrak"` fixed by hand (a plain
+`"source": "synthetic"` substitution -- these files set no other space-weather fields, so no
+further changes were needed) and re-validated via `load_scenario()` + `.validate()`.
+`gui/propagation_setup_dialog.py`'s `space_weather_source_combo` dropped the `"celestrak"` entry
+(now just `["synthetic", "local_file"]`), and its tooltips/docstring were reworded to match.
+
+**3. Vizard auto-download (`gui.vizard_launcher`, `gui.main_window`)**. `fetch_vizard()` (plus its
+`VizardFetchError`, `_DOWNLOAD_URLS` table pointing at `hanspeterschaub.info`, zip-slip-guarded
+extraction, and `VizardFetchWorker` QThread wrapper) and the "Download Vizard" button that drove
+it from `MainWindow.on_launch_vizard()`'s "Vizard not found" dialog have been removed entirely.
+Vizard is a separate, user-installed Unity application, not something this app's own install step
+can pre-fetch the way `engine.kernels` does for SPICE/support data (there's no single guaranteed
+install location, and the installers above only run once, at install time, not whenever Vizard
+happens to be missing). The "Vizard not found" dialog now offers only its original **Browse...**
+option; `docs/source/Vizard/VizardDownload.rst`'s published links are still there for a human to
+follow manually, same as before this feature ever existed. `tests/gui/test_vizard_launcher.py`
+lost its entire "fetch_vizard()" test section (previously unverifiable end-to-end in this sandbox
+anyway, per that module's own docstring -- `hanspeterschaub.info` was blocked here); the path
+-lookup/persistence/process-launch tests it opened with are unaffected and still pass.
+`tests/gui/test_main_window.py` lost its `_FakeVizardFetchWorker` class and the two
+`_fetch_vizard_with_progress` tests it supported; `_locate_or_fetch_vizard` was renamed to
+`_locate_vizard` throughout (it no longer offers a download branch, so the old name was no longer
+accurate) and its remaining browse/cancel/dismiss tests updated to match the single-button dialog.
+
+**Re-verified**: a project-wide re-grep for `import urllib`/`import requests`/`import socket`/
+`import ftplib`/`urlopen(` across `spacemissionstudio/` (excluding `build/`) turned up zero
+matches after this change -- the ONLY `http://`/`https://` literal left anywhere in the package is
+a docstring pointer in `engine/spaceweather.py` telling a USER where to manually download a
+CelesTrak CSV themselves, never code that fetches it.
+
+**Verification**: full suite re-run after every change above, not just at the end.
+`tests/test_spaceweather.py`: 22 passed. `tests/test_scenario_templates.py`: 90 passed (all 19
+regenerated templates round-trip and validate). The six diagnostic fixtures +
+`two_body_validation.json` re-validated individually via `load_scenario()`/`.validate()` after the
+hand-edit. `tests/gui/test_propagation_setup_dialog.py`: 20 passed. `tests/gui/
+test_vizard_launcher.py`: 11 passed (down from its pre-change count, entirely from removing the
+fetch-only tests, zero regressions in what remains). `tests/gui/test_main_window.py`: 75 passed.
+Full suite with `QT_QPA_PLATFORM=offscreen`: 968 passed, 130 skipped, zero regressions (the drop
+from 987 to 968 passed is entirely the removed fetch_vizard/VizardFetchWorker/CelesTrak-fallback
+tests described above, not a loss of coverage on anything that still exists).
+
+## Relaxing the offline policy: a consent-gated startup fetch/update prompt
+
+**Real user follow-up, immediately after the previous entry's fully-offline change**: "A one time
+fetch during each startup of the app is also allowed, to store everything that is needed locally
+so it can be used later again. But the user always should be asked if they want to fetch/update."
+This doesn't undo the previous entry's core principle (SpaceMissionStudio never fetches anything
+*silently*) -- it adds one specific, narrow exception: a consent prompt, shown once each GUI
+startup, that CAN fetch real data if the user explicitly agrees, every single time.
+
+**New: `gui/startup_fetch_dialog.py`**. `StartupFetchDialog` -- two independent checkboxes (both
+checked by default), "Fetch now"/"Skip" buttons, never auto-accepting. `maybe_run_startup_fetch()`
+shows it, and only on "Fetch now" (with at least one item still checked) runs
+`StartupFetchWorker` -- a background `QThread` (same cooperative pattern as
+`gui.kernel_status_widget`'s `_KernelFetchWorker`) that calls `engine.kernels.ensure_kernels()`
+and/or `engine.spaceweather.fetch(dataset="SW-All", force=True)` for whichever item(s) were
+checked -- behind a progress dialog, then shows a one-line-per-item summary. Clicking "Skip",
+dismissing the dialog, or unchecking both items touches no network at all, identical to before
+this file existed. Wired into `gui.main_window.MainWindow` via a new `prompt_startup_fetch: bool =
+True` constructor parameter and `QTimer.singleShot(0, ...)` (fires once the window has actually
+rendered, not before) -- `tests/gui/test_main_window.py`'s own `window` fixture passes
+`prompt_startup_fetch=False` so none of its 75+ tests hang on an unanswered modal dialog.
+
+**`engine/spaceweather.py`: `fetch()`/`CELESTRAK_URLS`/`cached_fetch_path()` restored, deliberately
+NOT wired back into `resolve()`**. The previous entry deleted `fetch()` entirely on the theory that
+CelesTrak access was gone for good; this entry restores it verbatim (same CelesTrak URLs,
+User-Agent fix, cache-hit-unless-`force`-set behavior) as a plain utility function, callable only
+by `gui.startup_fetch_dialog`'s consent-gated worker. Deliberately did NOT re-add `"celestrak"` as
+a valid `SpaceWeatherConfig.source` value: that would let a scenario's own config silently trigger
+a network fetch the moment it's RUN, which is not what was asked for ("during startup", not
+"during a run") and would reintroduce exactly the implicit-fetch behavior the previous entry
+removed. `resolve()` itself is unchanged -- still only `"local_file"`/`"synthetic"`, still never
+touches the network -- and a new `test_resolve_never_calls_fetch` test (monkeypatches `sw.fetch`
+to raise `AssertionError` if called, then exercises both valid sources) makes that a guarded
+invariant, not just a comment. New `cached_fetch_path()` is a pure, no-network existence check
+(not a second fetch path) that lets GUI code offer an already-fetched CSV without re-downloading.
+
+**`gui/vizard_launcher.py`/`gui/main_window.py`: `fetch_vizard()`/`VizardFetchWorker`/"Download
+Vizard" restored verbatim** from before the previous entry removed them. Unlike the space-weather
+fetch, this one was never wired to the startup prompt at all -- it's reached only via an explicit
+click on the "Download Vizard" button in the "Vizard not found" dialog (Run menu's Launch Vizard),
+which already satisfies "always ask first" on its own; cramming an unrelated external application
+into a startup checklist nobody asked to see every single time would be nagging, not a convenience
+for a capability most sessions never need. `_locate_vizard` (renamed back from the previous
+entry's rename) offers both "Download Vizard" and "Browse..." again; `_fetch_vizard_with_progress`
+(the blocking-`QEventLoop`-behind-a-progress-dialog pattern) is back too.
+
+**A real, deliberate design decision**: a successful startup space-weather fetch produces an
+ordinary local CSV -- fetching it is worthless if nothing then uses it. `gui/
+propagation_setup_dialog.py`'s Local file field now pre-fills with `engine.spaceweather
+.cached_fetch_path()`'s result when the scenario doesn't already have its own `local_file_path`
+set (never overriding an explicit one) -- a pure, no-network read of whether a previous fetch left
+a file on disk, not a second trigger for anything.
+
+**Verification**: `tests/test_spaceweather.py` gained `test_resolve_never_calls_fetch` plus 7 new
+`fetch()`/`cached_fetch_path()` tests (download+cache, cache-hit-without-force,
+force-redownloads, unknown dataset, network failure, and the two `cached_fetch_path` cases) -- all
+mocking `urllib.request.urlopen`, same convention as the restored `tests/gui/
+test_vizard_launcher.py` fetch tests (27 tests, reconstructed to cover the same ground as before:
+download+extract+find, User-Agent header, executable-bit, network/corrupt-zip/no-executable/
+cancellation/size-cap/zip-slip failures, progress callback, same-named-wrapper-folder and
+stale-extraction-clearing behavior, plus the `VizardFetchWorker` thread wrapper's three signals).
+`tests/gui/test_main_window.py` gained back its Download-Vizard-button and
+`_fetch_vizard_with_progress` tests (77 passed total). New `tests/gui/test_startup_fetch_dialog.py`
+(11 tests: dialog defaults/selection, Skip/both-unchecked no-ops, a successful/failed summary, and
+the worker's own `_fetch_kernels`/`_fetch_space_weather` methods -- the missing-Basilisk case
+exercised for real, this sandbox genuinely having none, same as `test_kernel_status_widget.py`'s
+own equivalent test). `tests/gui/test_propagation_setup_dialog.py` gained 3 tests for the new
+pre-fill behavior (fills when empty and a cache exists, never overrides an explicit path, stays
+empty with nothing cached). Full suite: 1007 passed, 130 skipped, zero regressions.
+
+## Comprehensive audit of the two offline-policy entries above
+
+Real user request: "a complete and comprehensive audit and review of everything." Ran this
+project's own `/code-review --level max` against the full `origin/develop...HEAD` diff (49 files,
+the two entries above). Three findings came back; all investigated, one deliberately not
+actioned, two were real bugs, fixed and regression-tested.
+
+**1. CRITICAL, fixed: no schema migration for the removed `"celestrak"` source.** The first entry
+above removed `"celestrak"` as a valid `SpaceWeatherConfig.source` value -- but `"celestrak"` was
+also the OLD (v1) schema default, so essentially every scenario file ever saved by a previous
+version of this tool has it. With no migration, `CURRENT_SCHEMA_VERSION` still at 1, every such
+file would fail `Scenario.validate()` the moment anyone tried to open it again -- a real backward
+-compatibility break this project's own `migrations.py` docstring explicitly warns against ("a
+change... that would break older files... requires a migration"). Fixed properly: bumped
+`CURRENT_SCHEMA_VERSION` to 2, added `migrations._migrate_1_to_2()` (rewrites
+`space_weather.source == "celestrak"` to `"synthetic"`, and downgrades `activity_level` from
+`"conservative"` to `"nominal"` when it was paired with the old `"celestrak"` source, since
+`"conservative"` is now `"local_file"`-only and migrating only `source` would otherwise still
+leave a file that loads fine but fails at RUN time with no schema-level warning). Regenerated all
+19 bundled templates (bumps each to `schema_version: 2`, a clean 1-line diff per file) and bumped
+the 7 hand-maintained diagnostic/`two_body_validation.json` fixtures the same way, by hand -- not
+produced by the generator. New `tests/test_migrations.py` (9 tests: version bump, both
+celestrak-rewrite cases, both pass-through cases, the no-space-weather-block edge case, two real
+`load_scenario()` end-to-end regression tests, and the "no migration registered" error path).
+Fixed `test_saved_file_is_plain_readable_json`'s hardcoded `== 1` assertion to use
+`CURRENT_SCHEMA_VERSION` instead, so it won't go stale at the next version bump either.
+
+**2. REAL bug, fixed: an orphaned QTimer could spam duplicate "Plot saved" dialogs forever.**
+Confirmed by reasoning through the exact sequence (then verified by literally reverting the fix
+and watching a new regression test fail): `gui.results_widget.ResultsWidget._redraw()` -- called
+repeatedly by `set_live_result()` while a run streams in -- unconditionally re-enabled
+`save_png_button` even while an earlier "Save plot as PNG..." click's async poll
+(`self._png_poll_state`, a `QTimer` polling a page-global JS variable for `Plotly.toImage()`'s
+result) was still in flight. A second click during that window started a SECOND, independent
+`QTimer`/poll while overwriting the ONE shared `self._png_poll_state` the two polls both read --
+orphaning the first `QTimer` (nothing held a reference to stop it specifically; `state["timer"]`
+only ever pointed at whichever poll started MOST recently). That orphaned timer never got told to
+stop, so it kept firing every 100ms indefinitely, each time re-reading the (by-then-resolved,
+unchanging) JS result variable and re-triggering `_on_plot_png_rendered()` -- a duplicate file
+write plus a duplicate "Plot saved" `QMessageBox.information()` dialog, forever, long after the
+user thought they were done. Fixed three ways: (a) `_on_save_plot_png()` gained an explicit
+re-entrancy guard (`if self._png_poll_state is not None: return`), matching
+`gui.kernel_status_widget.KernelStatusWidget.refresh()`'s own established convention; (b)
+`_redraw()` no longer force-enables the button while a poll is in flight; (c) `_poll_plot_png()`
+now resets `self._png_poll_state = None` on EVERY completion path (success, render error, AND the
+timeout path, which never did this before either), so the guard in (a) can't become permanent and
+block all future saves. **Verified the regression test actually catches the bug**: reverted fix
+(a) alone, watched `test_redraw_does_not_reenable_save_button_while_a_png_poll_is_in_flight` fail
+with a real assertion error, restored the fix, watched it pass again -- not just "added a test
+that happens to pass." Two more new tests cover the re-entrancy guard itself and that
+`self._png_poll_state` correctly resets to allow a later, legitimate save.
+
+**3. Investigated, NOT fixed -- a release-note-snippet process question with a clear answer.** The
+review flagged that this PR's validation/packaging changes should, per `AGENTS.md` rule 7 and
+`docs/source/Support/bskReleaseNotesSnippets/README.md`'s literal text, get a snippet file.
+Checked the actual precedent first: `git log --diff-filter=A -- docs/source/Support/
+bskReleaseNotesSnippets/` across this repo's ENTIRE history shows every snippet ever added was for
+a real upstream Basilisk core-engine PR (real AVSLab/basilisk issue numbers like `#282`/`#1592`)
+-- zero SpaceMissionStudio commits, across dozens of PRs over this project's whole history, have
+ever added one. SpaceMissionStudio is a self-contained sub-application that already maintains its
+own changelog discipline (`HISTORY.md`, kept current with every change, including both entries
+this audit covers) -- adding a snippet here would be inconsistent with every prior PR's own
+established practice, not a gap this one PR introduced. Left alone.
+
+**A second, related hardening pass, found while re-reading the new feature's own worker code** (not
+from the code-review findings above, but the same kind of "what happens on an unexpected failure"
+question #2 raised): `gui.startup_fetch_dialog.maybe_run_startup_fetch()` blocks inside a
+`QEventLoop` behind a progress dialog with deliberately NO cancel button, waiting for
+`StartupFetchWorker.finished_all` to fire. `_fetch_kernels()`/`_fetch_space_weather()` only caught
+their OWN specific expected failure types -- anything else (e.g. `engine.spaceweather.fetch()`'s
+own `tmp.write_bytes()`/`tmp.replace()`/`cache_dir.mkdir()` steps, which were NOT wrapped in the
+network try/except at all, raising a raw `OSError` on a full or read-only disk) would propagate
+uncaught out of the `QThread`'s `run()`, `finished_all` would never fire, and that `QEventLoop`
+would hang FOREVER with no way for the user to dismiss it. Fixed two layers deep: `run()` itself
+now wraps both helper calls in a broad `except Exception`, matching
+`gui.kernel_status_widget._KernelFetchWorker`'s own established "this signal must always fire"
+convention, so `finished_all` is a genuine guarantee rather than something that merely held for
+the failure modes anticipated so far; and `engine.spaceweather.fetch()` now wraps its
+`mkdir()`/`write_bytes()`/`replace()` calls in their own `try`/`except OSError`, converting to the
+same `SpaceWeatherError` every other failure in that function already reports (a full/read-only
+disk is just as much a "this fetch did not succeed" case as a network failure). **Verified the new
+`test_worker_run_always_emits_even_if_a_helper_raises_unexpectedly` test actually catches this**:
+reverted the `run()` fix, watched the test hit pytest-qt's own `TimeoutError` waiting on a signal
+that never came (the real hang, reproduced, not simulated), restored the fix, watched it pass.
+Two new `engine.spaceweather.fetch()` tests cover the disk-write and cache-dir-creation failure
+paths directly; two more on the GUI side cover `StartupFetchWorker.run()`'s own guarantee and
+`maybe_run_startup_fetch()`'s summary message for this new "error" outcome key.
+
+**Verification**: full suite re-run after every fix above, not just at the end.
+`tests/test_migrations.py`: 9 passed (new file). `tests/test_scenario_schema.py`: all passed with
+the corrected assertion. All 26 bundled/hand-maintained scenario files re-validated individually
+at `schema_version: 2` via `load_scenario()`/`.validate()` after the hand-edits.
+`tests/gui/test_results_widget.py`: 33 passed (30 + 3 new). `tests/test_spaceweather.py`: 31
+passed (29 + 2 new). `tests/gui/test_startup_fetch_dialog.py`: 13 passed (11 + 2 new). Full suite
+with `QT_QPA_PLATFORM=offscreen`: 1023 passed, 130 skipped, zero regressions (up from 1007/130).

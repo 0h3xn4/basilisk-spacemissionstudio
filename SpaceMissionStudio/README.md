@@ -176,7 +176,7 @@ environment issue.
   `engine/constellation.py`, `engine/spacecraft_templates.py`,
   `engine/propellant_bookkeeping.py`, `cli.py`, and the entire
   `spacemissionstudio/gui/` package) has no Basilisk import and is fully
-  exercised either way -- `pytest tests/` runs and passes 983 tests
+  exercised either way -- `pytest tests/` runs and passes 1007 tests
   with or without Basilisk installed (see "Running the tests" below).
   That includes the PySide6 GUI: built, run headless, and driven with
   `pytest-qt` for real -- every form field, every menu action, every
@@ -266,10 +266,14 @@ via Basilisk's own `orbitalMotion.clMeanOscMap` (the same tool its
 `meanOEFeedback` FSW module uses -- not a bespoke implementation).
 NRLMSISE-00 drag can also use a
 CONSERVATIVE, sustained-worst-case margin (a chosen percentile -- e.g.
-95th -- of REAL historical CelesTrak F10.7/Ap data, held constant
-across the whole scenario, never a fabricated number) instead of
-ordinary resolved space weather -- see `engine/spaceweather.py`'s own
-docstring, "Conservative ('worst-case') drag margin".
+95th -- of REAL historical F10.7/Ap data YOU supply as a local file,
+held constant across the whole scenario, never a fabricated number)
+instead of ordinary resolved space weather -- see
+`engine/spaceweather.py`'s own docstring, "Conservative ('worst-case')
+drag margin". SpaceMissionStudio makes no network calls at runtime (see
+"Closed-off/offline policy" below), so this app can no longer fetch that
+historical data itself; download a CelesTrak CSV yourself, outside this
+app, and point `local_file_path` at it.
 
 **Attitude, sensors & actuators** -- every `fsw_mode` maps to a real
 Basilisk FSW module chain (attitude nav/guidance/control), idealized or
@@ -411,8 +415,8 @@ SpaceMissionStudio/
       validation.py                  -- Phase 6: validate_all() -- fully-collecting scenario-wide validation
     engine/
       time_system.py                 -- UTC/TAI/TT/ET, single source of truth (needs Basilisk)
-      kernels.py                     -- SPICE kernel fetch/status (needs Basilisk)
-      spaceweather.py                -- CelesTrak fetch/validate/fallback (no Basilisk needed)
+      kernels.py                     -- SPICE kernel fetch/status (needs Basilisk; network only at install time/startup prompt)
+      spaceweather.py                -- local-file/synthetic resolve+validate (no network); fetch() is opt-in only (no Basilisk needed)
       results.py                     -- TimeSeries/ResultSet, CSV export (no Basilisk needed)
       service.py                     -- SimulationService (needs Basilisk)
       fsw.py                         -- Phase 2: attitude nav/guidance/control/actuation chain (needs Basilisk)
@@ -448,7 +452,7 @@ SpaceMissionStudio/
       phasing_formation_dialog.py    -- "Generate phasing formation..." dialog
       spacecraft_template_dialog.py  -- Phase 5: "New from template" picker dialog
       kernel_status_widget.py        -- SPICE kernel status panel
-      results_widget.py              -- Plotly results plot (QWebEngineView) + CSV export
+      results_widget.py              -- Plotly results plot (QWebEngineView) + CSV export + save-plot-as-PNG
       mission_dashboard_widget.py    -- "Mission Dashboard" tab: live operating-state/attitude/power/RF-link telemetry for a comms_pointing spacecraft
       run_worker.py                  -- SimulationService/Monte Carlo on a background QThread
     scenarios/
@@ -558,7 +562,7 @@ python3 -m pip install -e ".[dev,gui]"
 python3 -m pytest tests/ -v
 ```
 
-Without Basilisk on `PYTHONPATH`, this runs 983 tests (schema, space
+Without Basilisk on `PYTHONPATH`, this runs 1007 tests (schema, space
 weather, results, link budget, constellation generation, CLI, and the
 full PySide6 GUI, run headless) and skips 130 whose premise is
 specifically "Basilisk is unavailable" (marked `requires_basilisk`), per
@@ -607,8 +611,14 @@ scenario.save("my_scenario.json")
 from datetime import datetime
 from spacemissionstudio.engine import spaceweather as sw
 
-resolved = sw.resolve("celestrak", datetime(2030, 1, 1), datetime(2030, 4, 1),
-                       local_file_path="/path/to/your/SW-All.csv")  # your CelesTrak download, if you have one
+# resolve() itself never touches the network -- "celestrak" is not a
+# valid source. Use "local_file" with your own downloaded CSV (or one
+# fetched via the GUI's startup prompt -- see sw.fetch()/
+# sw.cached_fetch_path(), both consent-gated, never automatic), or
+# "synthetic" (the default) for a locally-generated, solar-cycle-shaped
+# profile that needs no file at all.
+resolved = sw.resolve("local_file", datetime(2030, 1, 1), datetime(2030, 4, 1),
+                       local_file_path="/path/to/your/SW-All.csv")  # your own CelesTrak download
 print(resolved.path, resolved.is_synthetic, resolved.warnings)
 ```
 
@@ -668,13 +678,12 @@ GUI only) starts the external Vizard application itself, separate from
 configuring how a run feeds it -- if it can't be found automatically
 (a remembered path, or a short list of common per-OS install
 locations), a dialog offers **Download Vizard** (fetches AVS's own
-pre-built binary for your platform, the same links
-`docs/source/Vizard/VizardDownload.rst` in the Basilisk checkout
-publishes for a human to follow manually -- see
-`spacemissionstudio/gui/vizard_launcher.py`'s own module docstring for why a
-true single-build-step integration with Basilisk isn't realistic, and
-what this does instead) alongside the original **Browse...** for an
-existing install; **Abort Simulation** (Run menu, GUI only, also while
+pre-built binary for your platform, cached locally -- an explicit click,
+never automatic; see "Closed-off/offline policy" below) alongside the
+original **Browse...** for an existing install (see
+`docs/source/Vizard/VizardDownload.rst` in the Basilisk checkout for the
+same published links, if you'd rather install it yourself);
+**Abort Simulation** (Run menu, GUI only, also while
 a Monte Carlo batch or Mission Sequence is running) cooperatively
 cancels an in-progress run between simulation chunks or
 mission-sequence commands -- never a forced kill, so partial results
@@ -710,7 +719,11 @@ label updates live as you type, including its Monte Carlo section
 (enable/num_runs/thread_count + a dispersion list, referencing spacecraft
 by name). Run > Run Simulation runs `SimulationService` on a background
 thread (the UI stays responsive) and switches to the Results tab when
-done, with a plot per result series and a CSV export button. A
+done, with a plot per result series, a CSV export button (every series
+at once), and a "Save plot as PNG..." button (just the currently
+displayed plot, to a user-chosen location via a native Save As dialog --
+rendered client-side through the same `plotly.js` already on the page,
+not a new `kaleido` dependency). A
 **"Mission Dashboard"** tab alongside Results shows the same run's live,
 at-a-glance telemetry (sim time/mode/ground-station visibility, pointing
 error/tracking status, battery charge-SOC-net power, and a live RF
@@ -805,6 +818,53 @@ reproducibility, a locally-built wheel with custom modules, or an offline
 install from a wheel file already on disk. `--basilisk-wheel` accepts any
 string `pip install` would (a path, a URL, or a plain requirement
 specifier like `"bsk[all]==2.12.0"`), not literally only a `.whl` file.
+
+## Closed-off/offline policy
+
+SpaceMissionStudio makes **no network calls implicitly**. Nothing here ever
+fetches anything without asking first -- there are exactly three places
+network access can happen, all opt-in:
+
+* **Installation** -- `pip install "bsk[all]"` (an ordinary PyPI install
+  step) and a one-time pre-fetch of SPICE/gravity-harmonics/magnetic-field
+  support data (`engine.kernels.require_kernels()`, called by all four
+  packaging installers right after installing SpaceMissionStudio itself)
+  that warms Basilisk's own local `pooch`-backed cache for good -- see
+  `packaging/README.md`'s "Closed-off/offline policy" section for exactly
+  where in each script and why.
+* **The startup fetch/update prompt** (`gui.startup_fetch_dialog`) -- a
+  dialog shown once each time the GUI starts, asking whether to check for
+  updates to support-data kernels and/or real space-weather history
+  (CelesTrak) now, and cache the result locally for later use. **Always
+  asks first** -- there is no "don't ask again" setting and nothing here
+  is ever fetched silently; clicking **Skip**, or unchecking both items,
+  touches no network at all, same as if the dialog didn't exist. A
+  successful space-weather fetch is an ordinary local CSV afterward -- the
+  Propagation Setup dialog's Local file field pre-fills with it
+  automatically (`engine.spaceweather.cached_fetch_path()`) when the
+  scenario doesn't already have its own `local_file_path` set.
+* **Launch Vizard's "Download Vizard" button** (`gui.vizard_launcher
+  .fetch_vizard`) -- reached only via an explicit click in the "Vizard not
+  found" dialog (Run menu's **Launch Vizard**), never automatically;
+  downloads AVS's own pre-built Vizard binary and caches it locally, same
+  "ask first, store locally for next time" shape as the startup prompt.
+  The original manual **Browse...** option (point this app at an existing
+  Vizard install yourself, from `docs/source/Vizard/VizardDownload.rst`'s
+  published links) is always available alongside it.
+
+`engine.spaceweather.resolve()` itself -- the function actually called
+while a scenario runs -- still never touches the network under any
+circumstance: `source` is only ever `"local_file"` (a CSV you point it at,
+whether fetched via the startup prompt or supplied some other way) or
+`"synthetic"` (a locally-generated, solar-cycle-shaped profile, no file or
+network needed). There is no `"celestrak"` source value -- `fetch()` is a
+separate, explicitly-invoked utility that produces an ordinary local file,
+not a new value `source` can take. The `activity_level="conservative"`
+worst-case-percentile margin is `local_file`-only for the same reason; the
+bundled templates that used to default to it (04, 05, 07, 08, 18) ship
+`nominal`/`synthetic` instead, with their own `description` explaining how
+to restore the real-historical-data margin (fetch it via the startup
+prompt, or supply your own local CSV).
 
 ## Known limitations
 

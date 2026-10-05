@@ -299,7 +299,7 @@
   ],
   "ground_stations": [],
   "space_weather": {
-    "source": "celestrak",
+    "source": "synthetic",
     "local_file_path": null,
     "cache_dir": null,
     "atmosphere_model": "nrlmsise00",
@@ -320,5 +320,5 @@
   },
   "mission_sequence": [],
   "description": "A spacecraft under normal reaction-wheel attitude control (fsw_mode 'inertial3D', same control chain as '07') whose four wheels start out already heavily spun up (the same pre-saturated Omega values as examples/scenarioMomentumDumping.py) -- MomentumDumpingConfig (hs_max=80 N*m*s) fires an 8-thruster desaturation cluster via thrMomentumManagement -> thrForceMapping -> thrMomentumDumping (engine.fsw.build_momentum_dumping) to bleed the excess momentum off, while the SAME reaction wheels stay in control of attitude the whole time -- the thrusters here never do attitude control, only desaturation. engine.service.SimulationService.build() automatically primes one dynamics tick and re-Resets the desaturation module before the real run starts, a real Basilisk requirement confirmed against this checkout's own build (see engine.fsw.build_momentum_dumping's docstring) -- nothing about that is visible here, it just works.\n\nWhat to look at: result series '{sat-1}.rw_speeds' should show all four wheel speeds dropping in sharp steps (each step is one desaturation firing) rather than staying flat or climbing; '{sat-1}.thruster_on_time' shows exactly when the desaturation thrusters fired.\n\nTry changing: momentum_dumping.hs_max (a lower threshold triggers desaturation sooner/more often), the wheels' initial Omega (closer to maxMomentum = desaturates almost immediately), or remove momentum_dumping entirely to see the wheel speeds never decrease on their own.",
-  "schema_version": 1
+  "schema_version": 2
 }

@@ -88,7 +88,7 @@
   ],
   "ground_stations": [],
   "space_weather": {
-    "source": "celestrak",
+    "source": "synthetic",
     "local_file_path": null,
     "cache_dir": null,
     "atmosphere_model": "nrlmsise00",
@@ -109,5 +109,5 @@
   },
   "mission_sequence": [],
   "description": "A spacecraft with NO attitude control (fsw_mode is None) and an elongated, non-spherical inertia tensor (Ixx=Iyy=12.5, Izz=7.5 kg*m^2) with SpacecraftConfig.enable_gravity_gradient set -- Basilisk's real GravityGradientEffector, the torque the central body's own gravity exerts across a spacecraft's non-uniform mass distribution. With zero initial body rate and no other torque source, a spacecraft normally stays frozen at its initial attitude for the entire run (see '06'/'07' for what active control looks like); this one does NOT, because gravity gradient torque is real physics, not a bug.\n\nWhat to look at: this is a Basilisk-truth-level effect, not exposed as a named result series when fsw_mode is None (see engine.service.SimulationService.run()'s own docstring) -- the clearest way to see it is tests/test_gravity_gradient.py's own technique (reading scStateOutMsg.sigma_BN directly), or simply watching the spacecraft's attitude indicator drift in Vizard over the run instead of staying locked to its starting orientation. For a spherically-symmetric inertia (Ixx=Iyy=Izz), this torque is identically zero -- try setting all three equal and confirm it stays frozen again.\n\nTry changing: the inertia spread (more elongated = stronger torque), the orbit altitude (gravity gradient torque falls off as 1/r^3 -- much stronger effect in a very low orbit than at GEO), or enable fsw_mode='inertial3D' with reaction wheels (see '07') to see an active controller simply reject this as one more disturbance torque.",
-  "schema_version": 1
+  "schema_version": 2
 }

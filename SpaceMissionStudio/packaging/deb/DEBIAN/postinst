@@ -45,6 +45,29 @@ case "$1" in
         echo "SpaceMissionStudio: installing SpaceMissionStudio itself from the bundled wheel ..."
         "$VENV_DIR/bin/python3" -m pip install --quiet "${wheel}[gui]"
 
+        # SpaceMissionStudio never accesses the network at runtime (real
+        # user requirement: "the app must be completely closed off and
+        # offline, only exception is the installation process") -- this
+        # is that one exception. engine.kernels.require_kernels()'s own
+        # default (ALL_SUPPORT_DATA_FILES) covers every SPICE/gravity
+        # -harmonics/magnetic-field support-data file any of this app's
+        # code paths read, fetching each one once into Basilisk's own
+        # local pooch cache; every later get_path() call for the rest of
+        # this install's lifetime resolves from that cache with no
+        # network touched at all. FATAL here (unlike packaging/install.sh,
+        # where a Basilisk wheel is itself optional): this postinst
+        # always installs a real Basilisk, so a scenario that can never
+        # actually run without its own kernels is exactly the kind of
+        # "configured but broken" state `set -e` exists to refuse. Run
+        # only now (not right after Basilisk, above): it imports
+        # spacemissionstudio itself, which isn't installed into this venv
+        # until the pip install just above completes.
+        echo "SpaceMissionStudio: pre-fetching SPICE kernels and other support data -- this needs internet access ..."
+        "$VENV_DIR/bin/python3" -c "
+from spacemissionstudio.engine import kernels
+kernels.require_kernels()
+"
+
         cat > "$LAUNCHER" <<EOF
 #!/bin/sh
 exec "$VENV_DIR/bin/spacemissionstudio" "\$@"
