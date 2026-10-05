@@ -206,7 +206,13 @@ def test_pointing_error_deg_log_matches_the_active_chains_own_sigma_br():
 def test_comms_power_sink_only_draws_power_while_comms_mode_is_active():
     _, _, _, power_rec = _run_comms_pointing([(False, 10.0), (True, 10.0), (False, 10.0)])
 
-    net_power = np.array(power_rec.nodePowerOut)
+    # The recorded PowerNodeUsageMsgPayload's own field is netPower -- NOT
+    # nodePowerOut, which is the SimplePowerSink MODULE's own Python
+    # property (set directly in engine.fsw/engine.service, never read back
+    # through the message here) -- a real test-only bug found while
+    # investigating a separate user report (this test never actually ran
+    # against a real Basilisk build before now; see HISTORY.md).
+    net_power = np.array(power_rec.netPower)
     times_s = np.array(power_rec.times()) * 1.0e-9
 
     assert np.allclose(net_power[times_s < 9.0], 0.0)
@@ -237,21 +243,25 @@ def test_switching_guidance_reference_does_not_reset_integrated_attitude():
     )
 
 
-def test_mode_cmd_out_msg_mirrors_mode_log_in_the_0_2_vizard_convention():
+def test_mode_cmd_out_msg_mirrors_mode_log_in_the_1_2_vizard_convention():
     """``modeCmdOutMsg`` is engine.vizard's live "Mode" GenericSensor
     badge source (real user feedback: the GUI's mission dashboard "shall
     also be in the vizard live visualization") -- it must use the SAME
-    0 (no/first color)/2 (second color) convention as the pre-existing
+    1 (first color)/2 (second color) convention as the pre-existing
     ground-station-access bridge (see engine.vizard's own "Live-data
-    panels" docstring section), not the 0/1 ``modeLog`` already uses for
-    plain Python telemetry.
+    panels" docstring section), NEVER 0 -- a real bug found directly from
+    Vizard's own Unity source: a GenericSensor commanded mode 0 fades to
+    permanently invisible regardless of its configured color, so 0 can
+    never be one of the two "visible, distinctly colored" states this
+    badge needs. Also not the 0/1 ``modeLog`` already uses for plain
+    Python telemetry.
     """
     arbitrator, _, _, _ = _run_comms_pointing([(False, 10.0), (True, 10.0), (False, 10.0)])
 
     mode_log = np.array(arbitrator.modeLog)
     mode_cmd = np.array(arbitrator.modeCmdRecorder.deviceCmd)
-    assert set(np.unique(mode_cmd)).issubset({0, 2})
-    assert np.array_equal(mode_cmd, np.where(mode_log == 1, 2, 0))
+    assert set(np.unique(mode_cmd)).issubset({1, 2})
+    assert np.array_equal(mode_cmd, np.where(mode_log == 1, 2, 1))
 
 
 def test_pointing_error_out_msg_matches_pointing_error_deg_log():
@@ -275,15 +285,16 @@ def test_pointing_error_out_msg_matches_pointing_error_deg_log():
 def test_link_status_cmd_out_msg_reports_no_link_without_rf_link_config():
     """Without an ``rf_link``/``ground_station_config`` pair (this
     project's templates without ``schema.scenario.RFLinkConfig`` set),
-    the live "Link status" badge must always report "no link" (0), even
-    while actually comms-pointing -- matching
-    gui.mission_dashboard_widget's own "no rf_link configured" fallback,
-    never a false "link OK".
+    the live "Link status" badge must always report "no link" (1 --
+    never 0, see test_mode_cmd_out_msg_mirrors_mode_log_in_the_1_2_vizard_convention's
+    own docstring for why), even while actually comms-pointing --
+    matching gui.mission_dashboard_widget's own "no rf_link configured"
+    fallback, never a false "link OK".
     """
     arbitrator, _, _, _ = _run_comms_pointing([(False, 10.0), (True, 10.0)])
 
     link_cmd = np.array(arbitrator.linkStatusRecorder.deviceCmd)
-    assert np.all(link_cmd == 0)
+    assert np.all(link_cmd == 1)
 
 
 def test_link_status_cmd_out_msg_tracks_a_real_link_budget_margin_sign():
@@ -292,7 +303,7 @@ def test_link_status_cmd_out_msg_tracks_a_real_link_budget_margin_sign():
     ``engine.link_budget.link_margin_db`` -- the SAME pure-Python function
     gui.mission_dashboard_widget and engine.link_budget.link_margin_series
     already use -- reports a non-negative margin for that segment's real
-    slant range, and "no link" (0) otherwise, including while NOT
+    slant range, and "no link" (1) otherwise, including while NOT
     comms-pointing even if the margin at that range would be positive
     (real access alone is not an actual link attempt -- see
     engine.link_budget.link_margin_series's own gating).
@@ -319,8 +330,8 @@ def test_link_status_cmd_out_msg_tracks_a_real_link_budget_margin_sign():
     t_log = np.array(arbitrator.tLog)
     link_cmd = np.array(arbitrator.linkStatusRecorder.deviceCmd)
     # First segment: real access but NOT comms-pointing yet -- no link attempt, regardless of range.
-    assert np.all(link_cmd[t_log < 9.0] == 0)
+    assert np.all(link_cmd[t_log < 9.0] == 1)
     # Second segment: comms-pointing at the close range -- link should read OK.
     assert np.all(link_cmd[(t_log > 11.0) & (t_log < 19.0)] == 2)
     # Third segment: comms-pointing at the far range -- link should read degraded/no-link.
-    assert np.all(link_cmd[t_log > 21.0] == 0)
+    assert np.all(link_cmd[t_log > 21.0] == 1)

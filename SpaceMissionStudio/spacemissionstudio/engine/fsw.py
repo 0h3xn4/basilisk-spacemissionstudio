@@ -523,9 +523,9 @@ class _CommsPointingArbitrator(sysModel.SysModel):
         # sigma_BR, not a re-derivation), so engine.vizard.enable_vizard()
         # can wire them straight into native Vizard panels with no second
         # source of truth.
-        self.modeCmdOutMsg = messaging.DeviceCmdMsg()  # 0 = Sun-pointing, 2 = ground-station-pointing (see vizard.py's 0/2 GenericSensor convention)
+        self.modeCmdOutMsg = messaging.DeviceCmdMsg()  # 1 = Sun-pointing, 2 = ground-station-pointing (see vizard.py's 1/2 GenericSensor convention -- never 0, a real Vizard-source finding)
         self.pointingErrorOutMsg = messaging.DataStorageStatusMsg()  # storageLevel/storageCapacity = theta_deg/180.0 [deg]
-        self.linkStatusCmdOutMsg = messaging.DeviceCmdMsg()  # 0 = no link (no access / not comms-pointing / degraded), 2 = link OK
+        self.linkStatusCmdOutMsg = messaging.DeviceCmdMsg()  # 1 = no link (no access / not comms-pointing / degraded), 2 = link OK
 
         # Only set when the caller (build_comms_pointing, from
         # engine.service) passed both -- enables the live link-status
@@ -568,8 +568,13 @@ class _CommsPointingArbitrator(sysModel.SysModel):
         sigma_br_norm = float(np.linalg.norm(guid.sigma_BR))
         theta_deg = float(np.degrees(4.0 * np.arctan(sigma_br_norm)))
 
+        # 1/2, never 0 -- see engine.vizard's own "Live-data panels"
+        # docstring section (the "Ground-station access windows" bullet's
+        # real-Vizard-source finding) for why a GenericSensor commanded 0
+        # renders permanently invisible regardless of its configured
+        # color, not just "the 0th color".
         mode_cmd = messaging.DeviceCmdMsgPayload()
-        mode_cmd.deviceCmd = 2 if active_comms else 0
+        mode_cmd.deviceCmd = 2 if active_comms else 1
         self.modeCmdOutMsg.write(mode_cmd, CurrentSimNanos, self.moduleID)
 
         # GenericStorage requires a non-negative storageLevel (a negative
@@ -582,7 +587,7 @@ class _CommsPointingArbitrator(sysModel.SysModel):
         pointing_msg.storageCapacity = 180.0  # [deg] the max possible principal rotation angle
         self.pointingErrorOutMsg.write(pointing_msg, CurrentSimNanos, self.moduleID)
 
-        link_ok_cmd = 0
+        link_ok_cmd = 1  # "no link" -- 1, never 0, same reason as mode_cmd above
         if active_comms and self.rfLink is not None and self.groundStationConfig is not None:
             margin_db = link_budget.link_margin_db(
                 float(access_payload.slantRange), self.rfLink, self.groundStationConfig, theta_deg
