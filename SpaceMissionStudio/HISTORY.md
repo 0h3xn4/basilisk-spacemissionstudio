@@ -6174,3 +6174,19 @@ file (e.g. `constellation_dialog.py`, `phasing_formation_dialog.py`, `vizard_dia
 `vizard_launcher.py`, `startup_fetch_dialog.py` still have their pre-existing, lighter tooltip
 coverage). A natural follow-on, not required to call this item done: those dialogs are smaller
 and already somewhat less dense with unexplained fields than the ones addressed here.
+
+---
+
+## Real user screenshot: picking a series via the completer popup still didn't redraw the plot
+
+**Direct user report, with a screenshot**: after the earlier "live plot series switching unresponsive" fix (see that entry above -- it addressed a webview-reload race during a FAST live run), the user showed a case that fix did NOT cover: typing into `series_combo` to filter, then picking a suggestion, left the OLD plot ("Inertial Position") on screen while the text box plainly showed a different, valid series name (`berlin-gs.access_to_leo-comms-1.has_access`) already typed in full.
+
+**Root cause, found by re-reading `series_combo`'s own wiring, not reasoned about in the abstract**: `_redraw()` was connected to exactly one signal, `series_combo.currentIndexChanged`. That signal is what a PLAIN dropdown-arrow click reliably fires. `series_combo` is `setEditable(True)` with its own `QCompleter` (needed for a 30-40+-series scenario, see this widget's own module docstring) -- and a completer-driven pick (click a popup suggestion, or type a full name and press Enter) does not reliably drive that same `currentIndexChanged` path in this Qt configuration, a known-inconsistent area of `QComboBox`+`QCompleter` interaction generally, not unique to this app. The combo's displayed TEXT updates either way (which is why the screenshot showed the right name in the box) -- only the actual redraw was silently skipped.
+
+**The fix**: two more explicit hooks in `results_widget.py`, both funneling through a new `_on_series_text_committed(text)` method that explicitly syncs `series_combo`'s real selected index to the committed text (via `findText`/`setCurrentIndex`) before calling `_redraw()` directly -- never relying on a signal cascade that turned out not to be reliable:
+* `completer.activated` -- fires the instant a popup suggestion is picked, by click or Enter-within-the-popup.
+* `series_combo.lineEdit().editingFinished` -- catches the other real path: typing an exact, already-complete name and pressing Enter with no popup open.
+
+Both are harmless to fire alongside the pre-existing `currentIndexChanged` (`_redraw()` is idempotent -- rebuilding the same figure twice costs a little work, never a bug) rather than trying to determine which single signal is "the" correct one across Qt versions.
+
+**Verified with two new tests** in `tests/gui/test_results_widget.py`, each simulating the REAL interaction path rather than calling internal methods directly: `test_selecting_a_series_via_the_completer_popup_redraws_the_plot` emits `completer.activated` the way Qt does when a popup suggestion is chosen; `test_typing_an_exact_series_name_and_pressing_enter_redraws_the_plot` sets the line edit's text and sends a real `Qt.Key_Return` via `qtbot.keyClick`. Both assert the plot's own y-axis title actually changes (confirming a real rebuild happened, not just that the combo's displayed text changed) -- deliberately NOT using `series_combo.setCurrentIndex()` directly, which is the pre-existing, already-passing `test_user_series_change_is_never_throttled_during_a_live_run`'s own subject (the plain dropdown-arrow path, which was never broken). Full suite: 1028 passed, 136 skipped, zero regressions.

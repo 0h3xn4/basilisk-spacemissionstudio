@@ -501,6 +501,29 @@ class ResultsWidget(QWidget):
         completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
         self.series_combo.setCompleter(completer)
         self.series_combo.currentIndexChanged.connect(self._redraw)
+        # Real user-reported bug: picking a series via the completer popup
+        # (type to filter, then click/Enter a suggestion -- this combo's
+        # whole reason for being editable, see the comment above) often
+        # left the line edit showing the new series name while the plot
+        # kept showing the old one. Root cause: QComboBox.currentIndexChanged
+        # above only fires when the combo's OWN internal index-selection
+        # path changes the index -- a completer operates on the line edit
+        # directly and, confirmed in this Qt version, does not reliably
+        # drive that same path (a known-inconsistent area of
+        # QComboBox+QCompleter interaction, not unique to this app). Two
+        # more explicit hooks close the gap: the completer's own
+        # ``activated`` fires the instant a popup suggestion is picked
+        # (click or Enter-within-the-popup), and the line edit's
+        # ``editingFinished`` catches the remaining case of typing an
+        # exact, already-complete name and pressing Enter with no popup
+        # open. Both funnel through ``_on_series_text_committed`` so the
+        # combo's own index is explicitly synced (not just its displayed
+        # text) before redrawing -- harmless if ``currentIndexChanged``
+        # also fires for the same pick (``_redraw()`` is idempotent).
+        completer.activated.connect(self._on_series_text_committed)
+        self.series_combo.lineEdit().editingFinished.connect(
+            lambda: self._on_series_text_committed(self.series_combo.currentText())
+        )
         top_row.addWidget(self.series_combo, stretch=1)
         top_row.addWidget(QLabel("X-axis:"))
         self.x_axis_combo = QComboBox()
@@ -710,6 +733,22 @@ class ResultsWidget(QWidget):
     def _redraw(self) -> None:
         self._update_figure()
         self._push_figure_to_webview()
+
+    def _on_series_text_committed(self, text: str) -> None:
+        """A series name was committed via the completer popup or by
+        pressing Enter in the line edit -- see ``series_combo``'s own
+        construction comment for why ``currentIndexChanged`` alone isn't
+        a reliable signal for either of those paths. Explicitly syncs
+        the combo's real selected index to match the committed text
+        (not just its displayed string) before redrawing, so
+        ``_redraw()``/``_on_save_plot_png()`` -- both of which read
+        ``series_combo.currentText()`` -- agree with what's actually
+        showing.
+        """
+        index = self.series_combo.findText(text)
+        if index >= 0:
+            self.series_combo.setCurrentIndex(index)
+        self._redraw()
 
     def _on_export(self) -> None:
         if self._result is None:
