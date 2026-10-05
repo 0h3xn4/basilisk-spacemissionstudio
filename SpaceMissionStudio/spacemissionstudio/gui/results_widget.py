@@ -634,7 +634,15 @@ class ResultsWidget(QWidget):
             )
             base_url = QUrl.fromLocalFile(str(_plotlyjs_path().parent) + "/")
         self.web_view.setHtml(html, base_url)
-        self.save_png_button.setEnabled(self.figure is not None)
+        # Never force-enable while a save-as-PNG poll is in flight (e.g. a
+        # live-updating run calling _redraw() repeatedly via
+        # set_live_result() while the user's earlier click is still being
+        # polled) -- see _on_save_plot_png's own re-entrancy-guard comment
+        # for what a second concurrent poll would do. _poll_plot_png's own
+        # completion paths already re-enable the button once that poll
+        # actually finishes.
+        if self._png_poll_state is None:
+            self.save_png_button.setEnabled(self.figure is not None)
 
     def _on_export(self) -> None:
         if self._result is None:
@@ -687,6 +695,22 @@ class ResultsWidget(QWidget):
         expect.
         """
         if self.figure is None:
+            return
+        if self._png_poll_state is not None:
+            # Re-entrancy guard, same convention as
+            # gui.kernel_status_widget.KernelStatusWidget.refresh()'s own:
+            # a live-updating run calls _redraw() repeatedly (see its own
+            # comment on why it must NOT blindly re-enable save_png_button
+            # while a poll is in flight), but belt-and-suspenders here too
+            # -- a second _on_save_plot_png() call while one poll is
+            # already running would overwrite self._png_poll_state AND
+            # the page-global JS result variable both polls share,
+            # orphaning the first poll_timer (nothing would ever stop it,
+            # since state["timer"] would now point at the SECOND timer)
+            # -- it would keep firing forever, re-triggering
+            # _on_plot_png_rendered() (a duplicate file write + a
+            # duplicate "Plot saved" dialog, repeating every poll
+            # interval) long after the user thinks they're done.
             return
         default_name = f"{self.series_combo.currentText()}.png"
         path, _ = QFileDialog.getSaveFileName(self, "Save plot as PNG", default_name, "PNG images (*.png)")
@@ -743,11 +767,13 @@ class ResultsWidget(QWidget):
             if value == _SAVE_PNG_PENDING_SENTINEL:
                 if state["attempts"] >= _SAVE_PNG_MAX_POLL_ATTEMPTS:
                     state["timer"].stop()
-                    self.save_png_button.setEnabled(True)
+                    self._png_poll_state = None  # see _on_save_plot_png's own re-entrancy-guard comment
+                    self.save_png_button.setEnabled(self.figure is not None)
                     QMessageBox.critical(self, "Save failed", "Timed out waiting for the plot to render.")
                 return
             state["timer"].stop()
-            self.save_png_button.setEnabled(True)
+            self._png_poll_state = None  # see _on_save_plot_png's own re-entrancy-guard comment
+            self.save_png_button.setEnabled(self.figure is not None)
             self._on_plot_png_rendered(value, state["path"])
 
         self.web_view.page().runJavaScript(f"window.{_PNG_RESULT_JS_VAR}", on_poll_result)

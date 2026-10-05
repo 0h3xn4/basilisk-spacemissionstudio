@@ -145,6 +145,29 @@ def test_maybe_run_reports_a_failed_space_weather_fetch(qtbot, monkeypatch):
     assert "boom" in message
 
 
+def test_maybe_run_reports_an_unexpected_worker_error(qtbot, monkeypatch):
+    from spacemissionstudio.gui import startup_fetch_dialog as module
+
+    _mock_dialog_exec(monkeypatch, accept=True, fetch_kernels=True, fetch_space_weather=False)
+
+    def _fake_run(self):
+        self.finished_all.emit({"error": (False, "something nobody expected")})
+
+    monkeypatch.setattr(module.StartupFetchWorker, "run", _fake_run)
+    monkeypatch.setattr(module.StartupFetchWorker, "start", lambda self: self.run())
+
+    shown = []
+    monkeypatch.setattr(module.QMessageBox, "information",
+                         staticmethod(lambda *a, **k: shown.append(a)))
+
+    module.maybe_run_startup_fetch(None)
+
+    assert shown
+    message = shown[0][-1]
+    assert "unexpectedly" in message
+    assert "something nobody expected" in message
+
+
 @pytest.mark.skipif(
     __import__("importlib.util", fromlist=["util"]).find_spec("Basilisk") is not None,
     reason="this test's premise is specifically that Basilisk is unavailable",
@@ -190,3 +213,30 @@ def test_worker_fetch_space_weather_reports_success(monkeypatch, tmp_path):
 
     assert ok is True
     assert message == str(fake_path)
+
+
+def test_worker_run_always_emits_even_if_a_helper_raises_unexpectedly(qtbot, monkeypatch):
+    """Regression guard: maybe_run_startup_fetch() waits for finished_all
+    inside a blocking QEventLoop behind a progress dialog with NO cancel
+    button. If a helper raised something neither _fetch_kernels nor
+    _fetch_space_weather already catches, run() used to let it propagate
+    uncaught -- finished_all would never fire, and that loop would hang
+    forever with no way for the user to dismiss it. run() itself must
+    catch anything that slips past those helpers.
+    """
+    from spacemissionstudio.gui.startup_fetch_dialog import StartupFetchWorker
+
+    def _raise(*args, **kwargs):
+        raise RuntimeError("something nobody expected")
+
+    monkeypatch.setattr(StartupFetchWorker, "_fetch_kernels", staticmethod(_raise))
+
+    worker = StartupFetchWorker(fetch_kernels=True, fetch_space_weather=False)
+    with qtbot.waitSignal(worker.finished_all, timeout=5000) as blocker:
+        worker.start()
+
+    result = blocker.args[0]
+    assert "error" in result
+    ok, message = result["error"]
+    assert ok is False
+    assert "something nobody expected" in message

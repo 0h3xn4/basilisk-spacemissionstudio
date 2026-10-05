@@ -258,7 +258,11 @@ def fetch(dataset: str = "SW-All", cache_dir: Optional[Path] = None, force: bool
           timeout_s: float = 30.0) -> Path:
     """Download a CelesTrak space-weather CSV to a local cache and return
     its path. Raises :class:`SpaceWeatherError` (never returns a partial/
-    corrupt file) on any network or HTTP failure.
+    corrupt file) on any network/HTTP failure OR a local disk failure
+    (can't create the cache directory, can't write the file -- e.g. a
+    full or read-only disk) -- a single reporting path for every way this
+    can fail, not something the caller needs its own raw-``OSError``
+    handling for.
 
     **Never called automatically** -- see this module's own "Closed-off/
     offline policy" docstring. The only caller in this app is
@@ -275,7 +279,10 @@ def fetch(dataset: str = "SW-All", cache_dir: Optional[Path] = None, force: bool
         raise SpaceWeatherError(f"unknown CelesTrak dataset {dataset!r}, expected one of {list(CELESTRAK_URLS)}")
 
     cache_dir = Path(cache_dir) if cache_dir else DEFAULT_CACHE_DIR
-    cache_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise SpaceWeatherError(f"could not create cache directory {cache_dir}: {exc}") from exc
     dest = cache_dir / f"{dataset}.csv"
     if dest.exists() and not force:
         return dest
@@ -299,8 +306,16 @@ def fetch(dataset: str = "SW-All", cache_dir: Optional[Path] = None, force: bool
         )
 
     tmp = dest.with_suffix(dest.suffix + ".part")
-    tmp.write_bytes(data)
-    tmp.replace(dest)  # atomic-ish: never leave a half-written file at `dest`
+    try:
+        tmp.write_bytes(data)
+        tmp.replace(dest)  # atomic-ish: never leave a half-written file at `dest`
+    except OSError as exc:
+        # A disk-full/permission failure here is just as much a "this
+        # fetch did not succeed" case as a network failure above -- same
+        # single SpaceWeatherError reporting path, not a raw OSError the
+        # caller (gui.startup_fetch_dialog's worker, in practice) would
+        # need its own special handling for.
+        raise SpaceWeatherError(f"could not write {dest}: {exc}") from exc
     return dest
 
 

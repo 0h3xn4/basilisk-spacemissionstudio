@@ -175,5 +175,5 @@
   },
   "mission_sequence": [],
   "description": "Diagnostic scenario, NOT a permanent template -- isolates whether engine.orbit_maintenance (station_keeping/phasing_keeping) has anything to do with the crash reported on 05_formation_flying_phasing.json. Identical to that template (same two near-circular, sun-perturbed, 45-degree-inclination orbits, same duration/rate/integrator) EXCEPT follower-1 has no station_keeping and no phasing_keeping configured at all -- just plain two-body-plus-sun-third-body dynamics for both spacecraft, no custom force effector active on either one.\n\nIf this ALSO crashes at/around t=30-60s the way the real template does, that proves the crash has nothing to do with orbit_maintenance.py at all -- something in the core gravity/integrator/two-spacecraft setup itself is the trigger. If this does NOT crash, that points the investigation back at a real force/effector being involved after all.",
-  "schema_version": 1
+  "schema_version": 2
 }

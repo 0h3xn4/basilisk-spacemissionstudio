@@ -5812,3 +5812,99 @@ exercised for real, this sandbox genuinely having none, same as `test_kernel_sta
 own equivalent test). `tests/gui/test_propagation_setup_dialog.py` gained 3 tests for the new
 pre-fill behavior (fills when empty and a cache exists, never overrides an explicit path, stays
 empty with nothing cached). Full suite: 1007 passed, 130 skipped, zero regressions.
+
+## Comprehensive audit of the two offline-policy entries above
+
+Real user request: "a complete and comprehensive audit and review of everything." Ran this
+project's own `/code-review --level max` against the full `origin/develop...HEAD` diff (49 files,
+the two entries above). Three findings came back; all investigated, one deliberately not
+actioned, two were real bugs, fixed and regression-tested.
+
+**1. CRITICAL, fixed: no schema migration for the removed `"celestrak"` source.** The first entry
+above removed `"celestrak"` as a valid `SpaceWeatherConfig.source` value -- but `"celestrak"` was
+also the OLD (v1) schema default, so essentially every scenario file ever saved by a previous
+version of this tool has it. With no migration, `CURRENT_SCHEMA_VERSION` still at 1, every such
+file would fail `Scenario.validate()` the moment anyone tried to open it again -- a real backward
+-compatibility break this project's own `migrations.py` docstring explicitly warns against ("a
+change... that would break older files... requires a migration"). Fixed properly: bumped
+`CURRENT_SCHEMA_VERSION` to 2, added `migrations._migrate_1_to_2()` (rewrites
+`space_weather.source == "celestrak"` to `"synthetic"`, and downgrades `activity_level` from
+`"conservative"` to `"nominal"` when it was paired with the old `"celestrak"` source, since
+`"conservative"` is now `"local_file"`-only and migrating only `source` would otherwise still
+leave a file that loads fine but fails at RUN time with no schema-level warning). Regenerated all
+19 bundled templates (bumps each to `schema_version: 2`, a clean 1-line diff per file) and bumped
+the 7 hand-maintained diagnostic/`two_body_validation.json` fixtures the same way, by hand -- not
+produced by the generator. New `tests/test_migrations.py` (9 tests: version bump, both
+celestrak-rewrite cases, both pass-through cases, the no-space-weather-block edge case, two real
+`load_scenario()` end-to-end regression tests, and the "no migration registered" error path).
+Fixed `test_saved_file_is_plain_readable_json`'s hardcoded `== 1` assertion to use
+`CURRENT_SCHEMA_VERSION` instead, so it won't go stale at the next version bump either.
+
+**2. REAL bug, fixed: an orphaned QTimer could spam duplicate "Plot saved" dialogs forever.**
+Confirmed by reasoning through the exact sequence (then verified by literally reverting the fix
+and watching a new regression test fail): `gui.results_widget.ResultsWidget._redraw()` -- called
+repeatedly by `set_live_result()` while a run streams in -- unconditionally re-enabled
+`save_png_button` even while an earlier "Save plot as PNG..." click's async poll
+(`self._png_poll_state`, a `QTimer` polling a page-global JS variable for `Plotly.toImage()`'s
+result) was still in flight. A second click during that window started a SECOND, independent
+`QTimer`/poll while overwriting the ONE shared `self._png_poll_state` the two polls both read --
+orphaning the first `QTimer` (nothing held a reference to stop it specifically; `state["timer"]`
+only ever pointed at whichever poll started MOST recently). That orphaned timer never got told to
+stop, so it kept firing every 100ms indefinitely, each time re-reading the (by-then-resolved,
+unchanging) JS result variable and re-triggering `_on_plot_png_rendered()` -- a duplicate file
+write plus a duplicate "Plot saved" `QMessageBox.information()` dialog, forever, long after the
+user thought they were done. Fixed three ways: (a) `_on_save_plot_png()` gained an explicit
+re-entrancy guard (`if self._png_poll_state is not None: return`), matching
+`gui.kernel_status_widget.KernelStatusWidget.refresh()`'s own established convention; (b)
+`_redraw()` no longer force-enables the button while a poll is in flight; (c) `_poll_plot_png()`
+now resets `self._png_poll_state = None` on EVERY completion path (success, render error, AND the
+timeout path, which never did this before either), so the guard in (a) can't become permanent and
+block all future saves. **Verified the regression test actually catches the bug**: reverted fix
+(a) alone, watched `test_redraw_does_not_reenable_save_button_while_a_png_poll_is_in_flight` fail
+with a real assertion error, restored the fix, watched it pass again -- not just "added a test
+that happens to pass." Two more new tests cover the re-entrancy guard itself and that
+`self._png_poll_state` correctly resets to allow a later, legitimate save.
+
+**3. Investigated, NOT fixed -- a release-note-snippet process question with a clear answer.** The
+review flagged that this PR's validation/packaging changes should, per `AGENTS.md` rule 7 and
+`docs/source/Support/bskReleaseNotesSnippets/README.md`'s literal text, get a snippet file.
+Checked the actual precedent first: `git log --diff-filter=A -- docs/source/Support/
+bskReleaseNotesSnippets/` across this repo's ENTIRE history shows every snippet ever added was for
+a real upstream Basilisk core-engine PR (real AVSLab/basilisk issue numbers like `#282`/`#1592`)
+-- zero SpaceMissionStudio commits, across dozens of PRs over this project's whole history, have
+ever added one. SpaceMissionStudio is a self-contained sub-application that already maintains its
+own changelog discipline (`HISTORY.md`, kept current with every change, including both entries
+this audit covers) -- adding a snippet here would be inconsistent with every prior PR's own
+established practice, not a gap this one PR introduced. Left alone.
+
+**A second, related hardening pass, found while re-reading the new feature's own worker code** (not
+from the code-review findings above, but the same kind of "what happens on an unexpected failure"
+question #2 raised): `gui.startup_fetch_dialog.maybe_run_startup_fetch()` blocks inside a
+`QEventLoop` behind a progress dialog with deliberately NO cancel button, waiting for
+`StartupFetchWorker.finished_all` to fire. `_fetch_kernels()`/`_fetch_space_weather()` only caught
+their OWN specific expected failure types -- anything else (e.g. `engine.spaceweather.fetch()`'s
+own `tmp.write_bytes()`/`tmp.replace()`/`cache_dir.mkdir()` steps, which were NOT wrapped in the
+network try/except at all, raising a raw `OSError` on a full or read-only disk) would propagate
+uncaught out of the `QThread`'s `run()`, `finished_all` would never fire, and that `QEventLoop`
+would hang FOREVER with no way for the user to dismiss it. Fixed two layers deep: `run()` itself
+now wraps both helper calls in a broad `except Exception`, matching
+`gui.kernel_status_widget._KernelFetchWorker`'s own established "this signal must always fire"
+convention, so `finished_all` is a genuine guarantee rather than something that merely held for
+the failure modes anticipated so far; and `engine.spaceweather.fetch()` now wraps its
+`mkdir()`/`write_bytes()`/`replace()` calls in their own `try`/`except OSError`, converting to the
+same `SpaceWeatherError` every other failure in that function already reports (a full/read-only
+disk is just as much a "this fetch did not succeed" case as a network failure). **Verified the new
+`test_worker_run_always_emits_even_if_a_helper_raises_unexpectedly` test actually catches this**:
+reverted the `run()` fix, watched the test hit pytest-qt's own `TimeoutError` waiting on a signal
+that never came (the real hang, reproduced, not simulated), restored the fix, watched it pass.
+Two new `engine.spaceweather.fetch()` tests cover the disk-write and cache-dir-creation failure
+paths directly; two more on the GUI side cover `StartupFetchWorker.run()`'s own guarantee and
+`maybe_run_startup_fetch()`'s summary message for this new "error" outcome key.
+
+**Verification**: full suite re-run after every fix above, not just at the end.
+`tests/test_migrations.py`: 9 passed (new file). `tests/test_scenario_schema.py`: all passed with
+the corrected assertion. All 26 bundled/hand-maintained scenario files re-validated individually
+at `schema_version: 2` via `load_scenario()`/`.validate()` after the hand-edits.
+`tests/gui/test_results_widget.py`: 33 passed (30 + 3 new). `tests/test_spaceweather.py`: 31
+passed (29 + 2 new). `tests/gui/test_startup_fetch_dialog.py`: 13 passed (11 + 2 new). Full suite
+with `QT_QPA_PLATFORM=offscreen`: 1023 passed, 130 skipped, zero regressions (up from 1007/130).

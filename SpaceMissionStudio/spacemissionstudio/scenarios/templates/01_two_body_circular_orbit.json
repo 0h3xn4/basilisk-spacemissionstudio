@@ -109,5 +109,5 @@
   },
   "mission_sequence": [],
   "description": "The simplest possible orbit: a single spacecraft in a circular low-Earth orbit around a point-mass Earth (no J2, no drag, no third-body gravity, no attitude dynamics -- simulation_mode is 'orbit_only'). This is the orbital-mechanics equivalent of a 'hello world' -- a clean two-body Keplerian orbit with nothing else going on.\n\nWhat to look at: plot 'sat-1.position_N' after running -- it traces a perfect circle in the orbit plane. The orbital period should match Kepler's third law, T = 2*pi*sqrt(a^3/mu), for a = 6778 km and Earth's mu (~398600.4418 km^3/s^2): about 5554 s (~92.6 minutes), so a 1-day run completes about 15.5 orbits.\n\nTry changing: the semi_major_axis_km (higher = slower, longer period), the inclination_deg (watch the ground track in Vizard change), or the eccentricity (still 0 here -- see '02 - Elliptical orbit with perturbations' for a non-circular example).",
-  "schema_version": 1
+  "schema_version": 2
 }

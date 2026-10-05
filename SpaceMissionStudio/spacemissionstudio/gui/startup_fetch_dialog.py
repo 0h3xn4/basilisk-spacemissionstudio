@@ -97,11 +97,25 @@ class StartupFetchWorker(QThread):
         self.fetch_space_weather = fetch_space_weather
 
     def run(self) -> None:
+        # finished_all MUST be emitted no matter what -- maybe_run_startup_fetch()
+        # waits for it inside a blocking QEventLoop behind a progress dialog
+        # with NO cancel button (see that function's own docstring on why).
+        # If anything below raised past this point uncaught, that loop would
+        # never be told to quit() and the dialog would hang forever with no
+        # way for the user to dismiss it. _fetch_kernels/_fetch_space_weather
+        # already catch their own expected failures, but this outer guard
+        # (matching gui.kernel_status_widget._KernelFetchWorker's own
+        # broad-except convention) is what makes that a GUARANTEE rather
+        # than something that merely holds today.
         result = {}
-        if self.fetch_kernels:
-            result["kernels"] = self._fetch_kernels()
-        if self.fetch_space_weather:
-            result["space_weather"] = self._fetch_space_weather()
+        try:
+            if self.fetch_kernels:
+                result["kernels"] = self._fetch_kernels()
+            if self.fetch_space_weather:
+                result["space_weather"] = self._fetch_space_weather()
+        except Exception as exc:  # noqa: BLE001 -- see the comment above: this signal must always fire
+            _logger.exception("Startup fetch failed unexpectedly")
+            result["error"] = (False, str(exc))
         self.finished_all.emit(result)
 
     @staticmethod
@@ -199,12 +213,14 @@ def maybe_run_startup_fetch(parent: QWidget) -> None:
     if not fetch_kernels and not fetch_space_weather:
         return
 
-    progress = QProgressDialog("Fetching/updating...", "", 0, 0, parent)
+    # cancelButtonText=None (not "") -- the real Qt idiom for "no cancel
+    # button at all", not an empty-looking one; see this module's own
+    # docstring on why there's nothing to cancel here.
+    progress = QProgressDialog("Fetching/updating...", None, 0, 0, parent)
     progress.setWindowModality(Qt.WindowModality.WindowModal)
     progress.setMinimumDuration(0)
     progress.setAutoClose(False)
     progress.setAutoReset(False)
-    progress.setCancelButton(None)  # see this module's own docstring on why
 
     worker = StartupFetchWorker(fetch_kernels, fetch_space_weather, parent=parent)
     loop = QEventLoop()
@@ -238,6 +254,14 @@ def maybe_run_startup_fetch(parent: QWidget) -> None:
             lines.append(f"Space weather: fetched and cached at {message}")
         else:
             lines.append(f"Space weather: could not fetch ({message})")
+    if "error" in outcome:
+        # See StartupFetchWorker.run()'s own comment: this key only
+        # appears if something unexpected (not one of the specific,
+        # already-handled failure modes above) blew up mid-fetch -- still
+        # surfaced here rather than silently dropped, even though it
+        # can't be attributed to "kernels" or "space weather" specifically.
+        _ok, message = outcome["error"]
+        lines.append(f"Fetch/update failed unexpectedly: {message}")
 
     if lines:
         QMessageBox.information(parent, "Fetch/update complete", "\n\n".join(lines))

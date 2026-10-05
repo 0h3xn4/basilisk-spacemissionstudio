@@ -318,6 +318,37 @@ def test_fetch_reports_network_failure(tmp_path, monkeypatch):
         sw.fetch(dataset="SW-All", cache_dir=tmp_path)
 
 
+def test_fetch_reports_a_disk_write_failure(tmp_path, monkeypatch):
+    """A full/read-only disk failing the write step, AFTER a successful
+    download, must be reported as a SpaceWeatherError too -- not a raw
+    OSError the caller (gui.startup_fetch_dialog's worker, in practice)
+    would need its own special handling for.
+    """
+    monkeypatch.setattr(sw.urllib.request, "urlopen", lambda *a, **k: _FakeFetchResponse(b"data"))
+
+    from pathlib import Path as _Path
+
+    def _raise_write(self, data):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(_Path, "write_bytes", _raise_write)
+
+    with pytest.raises(sw.SpaceWeatherError, match="could not write"):
+        sw.fetch(dataset="SW-All", cache_dir=tmp_path)
+
+
+def test_fetch_reports_a_cache_dir_creation_failure(tmp_path, monkeypatch):
+    from pathlib import Path as _Path
+
+    def _raise_mkdir(self, *args, **kwargs):
+        raise OSError("permission denied")
+
+    monkeypatch.setattr(_Path, "mkdir", _raise_mkdir)
+
+    with pytest.raises(sw.SpaceWeatherError, match="could not create cache directory"):
+        sw.fetch(dataset="SW-All", cache_dir=tmp_path / "nested")
+
+
 def test_cached_fetch_path_is_none_when_nothing_fetched(tmp_path):
     assert sw.cached_fetch_path(cache_dir=tmp_path) is None
 
