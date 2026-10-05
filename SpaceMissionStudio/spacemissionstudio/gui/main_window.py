@@ -783,6 +783,20 @@ class MainWindow(QMainWindow):
         since there is no reliable way to ask an arbitrary already
         -running Vizard process "are you already connected".
 
+        This method's own "reuse if already running and matching"
+        behavior still applies when called directly from the "Launch
+        Vizard" menu action -- but :meth:`on_run` (a live-stream run
+        specifically) always terminates a self-launched
+        ``self._vizard_process`` BEFORE calling this method, so that
+        branch is effectively never reached from there: real user
+        feedback was that reusing a running instance across separate runs
+        left a live-streamed Vizard showing a mix of the previous run's
+        and the current run's data, since a running Vizard Main Scene has
+        no way to reset itself live (confirmed directly from Vizard's own
+        Unity source, not merely suspected -- see ``on_run``'s own
+        comment for specifics). Forcing a fresh relaunch there is the
+        only way this app can guarantee a truly clean scene per run.
+
         Returns True once Vizard is confirmed running (already was, or
         was just started) by the end of this call, False if the user
         cancelled a browse prompt or launching genuinely failed (an
@@ -863,6 +877,30 @@ class MainWindow(QMainWindow):
             return
 
         if self._vizard_request is not None and self._vizard_request.live_stream:
+            # Real user feedback: "when running a new simulation after a
+            # previous simulation finished, vizard should completely
+            # refresh so it actually displays only stuff from the current
+            # simulation, and not the previous one." Confirmed directly
+            # from Vizard's own Unity source (0h3xn4/vizard,
+            # MessageList.cs/ScenarioSceneManager.cs): a running Vizard
+            # Main Scene has NO live "reset" capability -- its scene
+            # objects are built exactly ONCE, from the very first message
+            # ever received, and every later message (from ANY later run
+            # that reconnects to the SAME process) just keeps appending to
+            # the same ever-growing timeline. on_launch_vizard()'s own
+            # "reuse an already-running, matching instance" behavior
+            # (deliberate, see its own docstring -- avoids forcing a
+            # needless extra "Start Visualization" click) is exactly what
+            # was causing a new run to reuse that stale scene. A run this
+            # session itself launched Vizard for is therefore always
+            # terminated and relaunched fresh here -- an instance this
+            # session never launched (started manually, or in an earlier
+            # session) is left alone, same as on_launch_vizard()'s own
+            # policy, since killing a process this app didn't start is
+            # not this app's call to make.
+            if self._vizard_process is not None and self._vizard_process.poll() is None:
+                self._terminate_vizard_process()
+
             # Basilisk's InitializeSimulation() BLOCKS (inside native
             # C++, with no Python-level hook -- see RunWorker's own
             # module docstring on why there's no cancellation checkpoint

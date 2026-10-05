@@ -1350,6 +1350,52 @@ def test_run_refuses_to_start_when_vizard_cannot_be_confirmed(window, monkeypatc
     assert window._run_worker is None  # never even constructed
 
 
+def test_run_always_relaunches_vizard_fresh_for_a_live_stream_run(window, monkeypatch):
+    """Real user feedback: "when running a new simulation after a
+    previous simulation finished, vizard should completely refresh so it
+    actually displays only stuff from the current simulation, and not the
+    previous one." Confirmed directly from Vizard's own Unity source (see
+    on_run()'s own comment): a running Vizard Main Scene has no way to
+    reset itself live, so reusing an already-running, matching instance
+    across separate runs (on_launch_vizard()'s own deliberate behavior,
+    still correct for its OWN "Launch Vizard" menu entry point) must NOT
+    happen when on_run() itself starts a new live-stream run -- the
+    previous self-launched process must always be terminated and a fresh
+    one started, even though it would otherwise "match" and be reused.
+    """
+    from pathlib import Path
+
+    from PySide6.QtWidgets import QMessageBox
+
+    from spacemissionstudio.engine.vizard import VizardRequest
+    from spacemissionstudio.gui import main_window
+    from spacemissionstudio.gui.run_worker import RunWorker
+
+    _add_valid_spacecraft(window)
+    window._vizard_request = VizardRequest(live_stream=True)
+    monkeypatch.setattr(main_window, "find_vizard_executable", lambda: Path("/fake/Vizard"))
+    launch_calls = []
+    processes = [_FakeVizardProcess(pid=1), _FakeVizardProcess(pid=2)]
+    monkeypatch.setattr(
+        main_window, "launch_vizard",
+        lambda path, direct_comm_address=None: launch_calls.append(direct_comm_address) or processes[len(launch_calls) - 1]
+    )
+    monkeypatch.setattr(QMessageBox, "information", staticmethod(lambda *a, **k: None))
+    monkeypatch.setattr(RunWorker, "start", lambda self: None)
+
+    window.on_run()  # first run: nothing to terminate yet, launches process 1
+    first_process = window._vizard_process
+    assert first_process is processes[0]
+    assert first_process.terminate_calls == 0
+
+    window.on_run()  # second run: must terminate process 1 and launch a fresh one
+
+    assert first_process.terminate_calls == 1
+    assert window._vizard_process is processes[1]
+    assert window._vizard_process is not first_process
+    assert len(launch_calls) == 2
+
+
 def test_run_never_touches_vizard_without_a_live_stream_request(window, monkeypatch):
     """Vizard Configuration defaults to None (no request at all) --
     on_run() must not try to launch/confirm Vizard for an ordinary run.
