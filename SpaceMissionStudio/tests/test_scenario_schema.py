@@ -1258,6 +1258,48 @@ def test_constant_thrust_defaults_to_none():
     sc.validate()  # must not raise -- not required
 
 
+def test_magnetometer_sensor_without_earth_central_body_is_rejected():
+    """Mirrors engine.fsw.attach_sensors()'s own FswError (magneticFieldWMM,
+    the only magnetic-field model this app wires up, is Earth-only) --
+    a real audit finding: a magnetometer sensor was schema-valid on ANY
+    central_body, only failing much later at Run Simulation time, the
+    exact "validates cleanly but guaranteed to fail at run time" gap
+    this schema already closed for power/station_keeping/enable_srp/
+    comms_pointing needing a sun ephemeris (see the tests above).
+    """
+    sc = _minimal_scenario(gravity=GravityConfig(central_body="mars"))
+    sc.spacecraft[0].sensors = [SensorConfig(kind="magnetometer", name="mag-1")]
+    with pytest.raises(ScenarioValidationError, match="magnetometer"):
+        sc.validate()
+
+
+def test_magnetometer_sensor_with_earth_central_body_validates():
+    sc = _minimal_scenario(gravity=GravityConfig(central_body="earth"))
+    sc.spacecraft[0].sensors = [SensorConfig(kind="magnetometer", name="mag-1")]
+    sc.validate()  # must not raise
+
+
+def test_magnetic_momentum_management_without_earth_central_body_is_rejected():
+    """Mirrors engine.service.SimulationService.build()'s own
+    SimulationServiceError for the same Earth-only magneticFieldWMM
+    restriction -- MagneticMomentumManagementConfig's own docstring
+    already pointed at this exact gap as deferred-to-the-engine-layer;
+    this closes it, same as the magnetometer sensor case above.
+    """
+    sc = _minimal_scenario(gravity=GravityConfig(central_body="mars"))
+    sc.spacecraft[0].actuators = [
+        ActuatorConfig(kind="reaction_wheel", name="rw-1",
+                        params={"gsHat_B": [1.0, 0.0, 0.0], "rw_type": "Honeywell_HR16"}),
+        ActuatorConfig(kind="magnetic_torque_rod", name="mtb-1",
+                        params={"gtHat_B": [1.0, 0.0, 0.0], "max_dipole_a_m2": 0.1}),
+    ]
+    sc.spacecraft[0].magnetic_momentum_management = MagneticMomentumManagementConfig(
+        wheel_speed_biases_rad_s=[0.0]
+    )
+    with pytest.raises(ScenarioValidationError, match="magnetic_momentum_management"):
+        sc.validate()
+
+
 def test_constant_thrust_round_trips_through_save_load(tmp_path):
     sc = _minimal_scenario()
     sc.spacecraft[0].constant_thrust = ConstantThrustConfig(

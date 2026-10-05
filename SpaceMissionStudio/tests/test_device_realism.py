@@ -186,6 +186,21 @@ def test_magnetometer_unrecognized_fault_mode_raises_fsw_error():
         _run_magnetometer({"fault_mode": "not_a_real_mode"})
 
 
+def test_magnetometer_out_of_range_fault_axis_raises_fsw_error_not_indexerror():
+    """Real audit finding: fault_axis indexes a plain 3-element Python
+    list (stuckValue/etc.) before being passed to Basilisk's own
+    setFaultState(axis, state). An out-of-range axis must raise a clear
+    FswError, not a bare IndexError (too high) or silently write to the
+    wrong axis via Python's negative indexing (too low, e.g. -1).
+    """
+    from spacemissionstudio.engine.fsw import FswError
+
+    with pytest.raises(FswError, match="fault_axis"):
+        _run_magnetometer({"fault_mode": "stuck_value", "fault_axis": 3, "stuck_value_tesla": 1.0e-5})
+    with pytest.raises(FswError, match="fault_axis"):
+        _run_magnetometer({"fault_mode": "stuck_value", "fault_axis": -1, "stuck_value_tesla": 1.0e-5})
+
+
 # -- imu: bias/saturation/encoder quantization ----------------------------
 
 def _run_imu(params: dict, omega_init=(0.0, 0.0, 0.0)):

@@ -855,10 +855,17 @@ class MainWindow(QMainWindow):
         :meth:`on_launch_vizard` is about to replace -- see its own
         docstring) and waits (bounded, so a Vizard that refuses to exit
         can't hang the GUI thread forever) for it to actually stop before
-        returning, so the port it may have bound is free for the
-        replacement instance. ``terminate()`` first (a clean exit, in
-        case Vizard has anything to flush/save), ``kill()`` only if that
-        doesn't work within the timeout.
+        returning, so the replacement instance doesn't briefly coexist
+        with it. ``terminate()`` first (a clean exit, in case Vizard has
+        anything to flush/save), ``kill()`` only if that doesn't work
+        within the timeout.
+
+        Audit correction: this used to say waiting frees "the port it may
+        have bound" -- wrong. ``launch_vizard()`` only ever starts the
+        external Vizard GUI as a CLIENT process that dials OUT to
+        Basilisk's own ``vizInterface`` (the engine side, which is what
+        actually binds the port); see ``docs/source/Vizard/vizardAdvanced/
+        vizardLiveComm.rst``. Nothing this process does binds a port.
         """
         self._vizard_process.terminate()
         try:

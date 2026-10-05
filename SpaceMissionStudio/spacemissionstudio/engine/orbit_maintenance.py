@@ -843,8 +843,23 @@ class PhasingKeepingController(sysModel.SysModel):
 
         # Divergence guard: a fresh schedule target (the schedule ticking
         # over to a new entry) is a genuinely new situation worth trying
-        # again, even after a previous target was given up on below.
-        if scheduledTargetRad != self._lastScheduledTargetRad:
+        # again, even after a previous target was given up on below. Gated
+        # to self.state == self.IDLE (real audit finding): this used to run
+        # unconditionally every tick, so a schedule entry ticking over
+        # mid-maneuver (BURN_OUT/DRIFT/BURN_RESTORE) wiped
+        # suspendedDueToNonConvergence/_consecutiveNonConvergentCycles
+        # before the in-progress cycle was ever judged against the OLD
+        # target below (the BURN_RESTORE -> IDLE transition), handing a
+        # genuinely diverging correction a free reset of its non-
+        # convergence count for a coincidence of timing rather than an
+        # actual improvement. IDLE is the only state that reads
+        # suspendedDueToNonConvergence (just below) to decide whether to
+        # start a new correction, so deferring the reset until the
+        # controller is actually back in IDLE -- at which point it compares
+        # against whatever the schedule's CURRENT value is, not a stale
+        # mid-cycle snapshot -- loses no information, just the premature
+        # reset.
+        if self.state == self.IDLE and scheduledTargetRad != self._lastScheduledTargetRad:
             self.suspendedDueToNonConvergence = False
             self._consecutiveNonConvergentCycles = 0
             self._lastScheduledTargetRad = scheduledTargetRad

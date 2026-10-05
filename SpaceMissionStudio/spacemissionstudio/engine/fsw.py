@@ -1319,6 +1319,25 @@ def attach_sensors(scSim, task_name: str, tag: str, sc_object, sensor_configs: L
                         f"{tag}: magnetometer {sensor.name!r} has an unrecognized fault_mode {fault_mode!r} -- "
                         f"must be 'none' or one of {sorted(mag_fault_states)}"
                     )
+                # Real audit finding: fault_axis indexes a plain 3-element
+                # Python list (stuckValue/spikeProbability/spikeAmount)
+                # below, then is passed to Magnetometer.setFaultState(axis,
+                # state) directly. An out-of-range axis (>=3) would raise a
+                # bare, unhelpful IndexError on the list indexing below --
+                # unlike every other bad-input path in this function, which
+                # raises a specific FswError. A NEGATIVE axis is worse: it
+                # would silently index the WRONG axis via Python's negative
+                # -indexing (e.g. -1 writes axis 2, not axis -1), while
+                # Magnetometer::setFaultState() itself just silently no-ops
+                # for axis < 0 (confirmed directly against magnetometer.cpp:
+                # `if (axis >= 0 && axis < 3) {...}`, no else/error) -- so
+                # the fault would look "configured" but never actually be
+                # enabled on any axis. Caught here, explicitly, before any
+                # indexing happens.
+                if fault_axis not in (0, 1, 2):
+                    raise FswError(
+                        f"{tag}: magnetometer {sensor.name!r} has fault_axis {fault_axis!r} -- must be 0, 1, or 2"
+                    )
                 if "stuck_value_tesla" in params:
                     stuck = mod.stuckValue
                     stuck[fault_axis] = [float(params["stuck_value_tesla"])]

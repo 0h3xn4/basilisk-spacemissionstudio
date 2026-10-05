@@ -606,10 +606,15 @@ class MagneticMomentumManagementConfig:
     requirement), and ``gravity.central_body == "earth"`` (Basilisk's
     WMM magnetic field model is Earth-only, same restriction as a
     ``"magnetometer"`` sensor -- see ``engine.fsw``'s module docstring).
-    That central-body check happens at the engine layer when the
-    scenario actually runs (not here), matching this schema's existing
-    precedent for the same Earth-only WMM restriction on magnetometer
-    sensors.
+    That central-body check is enforced twice: once here for immediate,
+    in-dialog feedback, and once more at the engine layer
+    (``engine.service.SimulationService.build()``) when the scenario
+    actually runs, which is what this is mirroring -- see
+    :meth:`Scenario.validate`'s own central_body != "earth" block,
+    which checks this field (and the analogous ``"magnetometer"``
+    sensor case) directly, since neither this class nor
+    :class:`SensorConfig` has access to the scenario's own
+    ``gravity.central_body`` on their own.
 
     ``wheel_speed_biases_rad_s`` needs exactly one entry per
     ``"reaction_wheel"`` actuator on this spacecraft, in the same order
@@ -1325,6 +1330,33 @@ class Scenario:
                       "gate/SRP/comms_pointing's own sunSafePoint chain all need a sun ephemeris. Add 'sun' "
                       "to gravity.third_body_perturbers, or remove power/station_keeping/enable_srp/"
                       "comms_pointing from every spacecraft")
+        # Same mirroring reasoning as needs_sun just above:
+        # engine.fsw.attach_sensors() raises an FswError for a
+        # "magnetometer" sensor the moment gravity.central_body != "earth"
+        # (magneticFieldWMM is only wired up for Earth) -- but that's an
+        # engine-layer check that only runs when a scenario is actually
+        # simulated. Mirrored here so validation can't report a clean
+        # bill of health for a scenario guaranteed to fail at run time.
+        if self.gravity.central_body != "earth":
+            for sc in self.spacecraft:
+                _require(not any(sensor.kind == "magnetometer" for sensor in sc.sensors),
+                          f"{sc.name}: has a 'magnetometer' sensor, but gravity.central_body is "
+                          f"{self.gravity.central_body!r}, not 'earth' -- magneticFieldWMM (the only "
+                          "magnetic-field model this app wires up) is Earth-only. Remove the magnetometer "
+                          "sensor, or set gravity.central_body to 'earth'")
+                # Same Earth-only WMM restriction, same mirroring reasoning
+                # -- engine.service.SimulationService.build() raises this
+                # exact condition (central_body != "earth" ->
+                # self._mag_field_model stays None) as a
+                # SimulationServiceError at run time (see that module's
+                # own "needs an Earth central body" message); mirrored
+                # here, same as magnetic_momentum_management's own
+                # docstring already said it SHOULD be (it previously
+                # pointed at this exact gap as deferred-to-engine-layer).
+                _require(sc.magnetic_momentum_management is None,
+                          f"{sc.name}: has magnetic_momentum_management configured, but gravity.central_body "
+                          f"is {self.gravity.central_body!r}, not 'earth' -- magneticFieldWMM is Earth-only. "
+                          "Remove magnetic_momentum_management, or set gravity.central_body to 'earth'")
         self.space_weather.validate()
         self.sim_settings.validate()
         self.monte_carlo.validate()

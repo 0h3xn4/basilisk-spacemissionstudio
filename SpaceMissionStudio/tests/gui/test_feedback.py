@@ -102,3 +102,40 @@ def test_clear_invalid_on_an_unmarked_field_is_a_no_op():
     clear_invalid(field)  # must not raise
 
     assert field.property("state") != "error"
+
+
+def test_clear_invalid_restores_a_pre_existing_tooltip():
+    """Real audit finding: mark_invalid()/clear_invalid() used to
+    unconditionally overwrite/blank the widget's tooltip rather than
+    saving/restoring whatever was there before -- a field with its own
+    static tooltip (e.g. a units hint) would permanently lose it the
+    first time validation ever flagged that field.
+    """
+    from PySide6.QtWidgets import QLineEdit
+
+    from spacemissionstudio.gui.feedback import clear_invalid, mark_invalid
+
+    field = QLineEdit()
+    field.setToolTip("units: km")
+    mark_invalid(field, "must not be empty")
+    assert field.toolTip() == "must not be empty"
+
+    clear_invalid(field)
+
+    assert field.toolTip() == "units: km"
+
+
+def test_repeated_mark_invalid_does_not_save_its_own_error_message_as_the_tooltip():
+    from PySide6.QtWidgets import QLineEdit
+
+    from spacemissionstudio.gui.feedback import clear_invalid, mark_invalid
+
+    field = QLineEdit()
+    field.setToolTip("units: km")
+    mark_invalid(field, "first error")
+    mark_invalid(field, "second error")
+    assert field.toolTip() == "second error"
+
+    clear_invalid(field)
+
+    assert field.toolTip() == "units: km"

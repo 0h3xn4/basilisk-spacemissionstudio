@@ -717,3 +717,56 @@ def test_phasing_keeping_new_schedule_target_clears_the_suspension():
     assert controller.suspendedDueToNonConvergence is False
     assert controller._consecutiveNonConvergentCycles == 0
     assert controller.state == controller.BURN_OUT  # got a clean new attempt
+
+
+def test_phasing_keeping_schedule_tick_mid_maneuver_does_not_reset_the_guard():
+    """Real audit finding: the divergence-guard reset above used to run on
+    EVERY tick, gated only on scheduledTargetRad having changed -- not on
+    self.state == IDLE. So a schedule entry ticking over while a
+    genuinely-diverging correction was already mid-maneuver (BURN_OUT/
+    DRIFT/BURN_RESTORE, before this cycle's own outcome is judged at the
+    BURN_RESTORE -> IDLE transition) wiped suspendedDueToNonConvergence/
+    _consecutiveNonConvergentCycles for a timing coincidence, not an actual
+    improvement -- handing a non-converging maneuver extra, unearned
+    chances to keep burning propellant. This drives the guard to just
+    short of tripping, then ticks the schedule over while mid-burn (not
+    IDLE), and asserts the accumulated non-convergence count survives
+    intact and the guard still trips exactly on schedule.
+    """
+    from spacemissionstudio.engine.orbit_maintenance import _MAX_NON_CONVERGENT_CYCLES
+
+    controller = _build_non_convergent_phasing_controller()
+    controller.UpdateState(0)
+    for cycle in range(_MAX_NON_CONVERGENT_CYCLES - 1):
+        controller.state = controller.BURN_RESTORE
+        controller._accumDv = controller._targetDv
+        controller.UpdateState(int((cycle + 1) * 1e9))
+    assert controller.suspendedDueToNonConvergence is False
+    assert controller._consecutiveNonConvergentCycles == _MAX_NON_CONVERGENT_CYCLES - 1
+
+    # Force a mid-maneuver state (not IDLE) and tick the schedule over --
+    # this must NOT clear the accumulated non-convergence count.
+    # _accumDv is reset to 0.0 here (normally done by the IDLE -> BURN_OUT
+    # transition this test bypasses) purely so this UpdateState() call
+    # doesn't also happen to finish the burn and transition to DRIFT --
+    # irrelevant to what's under test, which is only whether the guard's
+    # own counters get touched.
+    controller.state = controller.BURN_OUT
+    controller._accumDv = 0.0
+    controller.separationSchedule.targetsRad[0] = controller.separationSchedule.targetsRad[0] * 2.0
+    controller.UpdateState(int(_MAX_NON_CONVERGENT_CYCLES * 1e9))
+
+    assert controller.state == controller.BURN_OUT  # still mid-maneuver, as forced
+    assert controller._consecutiveNonConvergentCycles == _MAX_NON_CONVERGENT_CYCLES - 1
+    assert controller.suspendedDueToNonConvergence is False
+
+    # Finish this cycle out (still against the old-vs-new target mismatch
+    # resolved at BURN_RESTORE -> IDLE below) -- the guard must still trip
+    # on schedule, not have been given a free extra cycle.
+    controller.state = controller.BURN_RESTORE
+    controller._accumDv = controller._targetDv
+    controller.UpdateState(int((_MAX_NON_CONVERGENT_CYCLES + 1) * 1e9))
+
+    assert controller.state == controller.IDLE
+    assert controller._consecutiveNonConvergentCycles == _MAX_NON_CONVERGENT_CYCLES
+    assert controller.suspendedDueToNonConvergence is True

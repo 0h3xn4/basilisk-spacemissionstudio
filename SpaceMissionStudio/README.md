@@ -448,6 +448,7 @@ SpaceMissionStudio/
       sensor_actuator_editor.py      -- Phase 2: generic sensor/actuator list + add/edit/remove dialog, with a "select from catalog" picker (engine/device_catalog.py) alongside the fully custom editor
       vizard_dialog.py               -- Phase 2: "enable Vizard for the next run" dialog
       vizard_launcher.py             -- find/launch the external Vizard application (no Basilisk needed)
+      startup_fetch_dialog.py        -- startup prompt to fetch cached support data/Vizard when missing (no Basilisk needed)
       monte_carlo_editor.py          -- Phase 3: Monte Carlo settings + dispersion list editor
       ground_station_editor.py       -- ground station list + add/edit/remove dialog
       orbit_ic_widget.py             -- classical-elements (true/mean anomaly)/Cartesian/TLE orbit editor
@@ -499,10 +500,14 @@ SpaceMissionStudio/
     test_command.py                    -- Phase 6
     test_references.py                 -- Phase 6
     test_validation.py                 -- Phase 6
+    test_migrations.py                 -- schema-version migration registry round-trips
     test_spaceweather.py
     test_results.py
     test_link_budget.py              -- Phase 4
     test_device_catalog.py           -- real, sourced sensor/actuator device catalog, no Basilisk needed
+    test_device_realism.py           -- sensor/actuator fault/saturation/encoder realism, requires_basilisk
+    test_comms_pointing.py           -- Sun-pointing/ground-station comms-pointing mode arbitrator, requires_basilisk
+    test_propellant_bookkeeping.py   -- shared per-tick mass/propellant delta math, no Basilisk needed
     test_constellation.py            -- Phase 4
     test_scenario_templates.py       -- load/validate/round-trip every scenarios/templates/*.json
     test_cli.py
@@ -556,6 +561,7 @@ SpaceMissionStudio/
       test_mission_output_widget.py  -- Phase 6
       test_load_scenario_widget.py   -- "Load Scenario" tab: built-in template picker + browse
       test_template_wizard.py        -- the "Customize: <template name>..." guided wizard
+      test_startup_fetch_dialog.py   -- startup prompt to fetch cached support data/Vizard when missing
 ```
 
 ## Running the tests
