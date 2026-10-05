@@ -251,6 +251,12 @@ class _ItemEditorDialog(QDialog):
         layout = QVBoxLayout(self)
         form = QFormLayout()
         self.kind_combo = QComboBox()
+        self.kind_combo.setToolTip(
+            "Which real piece of hardware this is -- picks which params this needs (see the "
+            "hint text below, which updates for whichever kind is selected) and which FSW "
+            "modes/features can use it (e.g. a 'locationPointing' FSW mode needs no particular "
+            "actuator, but 'momentum_dumping' needs both a reaction_wheel AND a thruster)."
+        )
         self.kind_combo.addItems(list(kind_choices))
         if item is not None:
             index = self.kind_combo.findText(item.kind)

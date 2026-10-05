@@ -6101,3 +6101,76 @@ unrelated `nodePowerOut`/SPICE-kernel-network failures already documented elsewh
 are unchanged by this work (confirmed identical via `git stash` before/after). Full non-Basilisk
 suite: 1026 passed, 136 skipped (+5 for the new `requires_basilisk` tests, correctly skipped
 here), zero regressions.
+
+---
+
+## GUI beginner-friendliness pass: tooltips explaining every setting's real-world effect
+
+**Direct user request**, item 5 of the same 5-item feedback list as the three entries above: "The
+GUI shall be more user friendly. Particularly for beginners, they shall be guided through each
+step and get explanations of everything... They have to know what outcomes their actions have.
+They need to understand what they are doing in each step."
+
+**Audit first, not a blind sweep**: grepped every `gui/*.py` file for existing `setToolTip`
+coverage before touching anything. Several files already had the explanatory discipline this
+request asks for -- `gui/load_scenario_widget.py`'s template picker (an intro label, a live
+description of the selected template, a "Customize wizard" tooltip), `gui/sensor_actuator_editor.py`'s
+per-kind `_hint_text()` (every sensor/actuator kind's required/optional params, with units, shown
+live as a label), `gui/spacecraft_editor.py`'s FSW-mode/control-gains hint labels, and
+`gui/results_widget.py`'s series/x-axis pickers -- left alone rather than padded with redundant
+tooltips. The real gaps were the dense, numeric-field-heavy editors with little or no explanatory
+text at all: `gui/orbit_ic_widget.py` (zero tooltips -- every orbital element was a bare label +
+unit, no explanation of what it means or what changing it does), and `gui/spacecraft_editor.py`'s
+power/station-keeping/constant-thrust/phasing-keeping/momentum-management/fuel-tank/RF-link
+groups, `gui/propagation_setup_dialog.py`'s gravity/integrator/space-weather fields, and
+`gui/ground_station_editor.py`/`gui/monte_carlo_editor.py`/`gui/mission_sequence_editor.py`'s own
+fields (2-4 tooltips each in files with dozens of controls).
+
+**What was added**: a `setToolTip()` on every numeric field, combo box, and checkable group box
+in those files that didn't already have one -- not a generic "set this value" placeholder, but
+the real physical/behavioral meaning and, per the user's own explicit ask, the OUTCOME of
+changing it (e.g. the inclination field doesn't just say "tilt of the orbit" -- it says what
+0/90/~97-98 deg each physically mean; the "Enable atmospheric drag" checkbox says it's the
+dominant force shrinking a LEO orbit and that nothing happens below ~800-1000 km; the station
+-keeping deadband field explains the frequency/size trade-off of narrowing or widening it). Every
+explanation was checked against this project's own `schema/scenario.py` docstrings (already the
+authoritative, unit-annotated source for what each field does) rather than written from memory,
+and against the actual engine behavior for anything non-obvious (e.g. `main_window.py`'s "Run
+Simulation" tooltip naming the Scenario tab's validity indicator was checked against
+`scenario_editor.py`'s real `validation_label` placement, not assumed).
+
+**A real interaction bug caught before it shipped**: `propagation_setup_dialog.py`'s
+`enable_harmonics_check` already had its OWN dynamically-set tooltip (`_on_central_body_changed`
+overwrites it with an Earth-only-restriction note or clears it to `""` depending on the selected
+central body). Adding a static explanatory tooltip at construction time would have been silently
+wiped out the moment `_on_central_body_changed(gravity.central_body)` ran at the end of
+`_build_gravity_group()` -- caught by re-reading the method after writing the tooltip, not by a
+test (none exercise tooltip text). Fixed by moving the explanation INTO `_on_central_body_changed`
+itself as the Earth-body branch's own tooltip, so the two pieces of tooltip logic compose instead
+of one clobbering the other -- verified directly with a headless `QApplication` smoke test that
+switches the central body away from and back to Earth and reads `.toolTip()` both times.
+
+**Files touched**: `orbit_ic_widget.py` (every field, full coverage), `scenario_editor.py`
+(epoch, propagation-setup button), `spacecraft_editor.py` (every group box and essentially every
+field across all its tabs -- by far the largest, since it has the most dense, unexplained numeric
+fields of any editor in the app), `sensor_actuator_editor.py` (the Kind combo -- the per-kind
+param hints were already thorough), `ground_station_editor.py` (every field), `propagation_setup_dialog.py`
+(gravity, integrator, atmosphere/space-weather), `mission_sequence_editor.py` (command Kind, stop
+condition, event kind, delta-V), `monte_carlo_editor.py` (dispersion quantity/kind/bounds/mean/std,
+the Monte Carlo enable/run-count checkboxes), and `main_window.py` (every File/Run menu action's
+tooltip rewritten to state its actual outcome, not just repeat its keyboard shortcut; three
+actions -- Save As, Quit, About -- had no tooltip at all before this).
+
+**Verification**: full non-Basilisk suite (`QT_QPA_PLATFORM=offscreen`): 1026 passed, 136
+skipped, zero regressions. A headless `QApplication` smoke test additionally constructed
+`MainWindow`, `SpacecraftEditorDialog` (toggling every checkable group on), `GroundStationEditorDialog`,
+and `PropagationSetupDialog` (including the central-body-switch tooltip-composition check above)
+to confirm every new tooltip-bearing code path actually runs with no error, not just that it
+parses.
+
+**Honestly scoped, not exhaustive**: this pass covers the editors with the heaviest concentration
+of unexplained numeric/combo fields -- it does not touch every remaining widget in every GUI
+file (e.g. `constellation_dialog.py`, `phasing_formation_dialog.py`, `vizard_dialog.py`,
+`vizard_launcher.py`, `startup_fetch_dialog.py` still have their pre-existing, lighter tooltip
+coverage). A natural follow-on, not required to call this item done: those dialogs are smaller
+and already somewhat less dense with unexplained fields than the ones addressed here.

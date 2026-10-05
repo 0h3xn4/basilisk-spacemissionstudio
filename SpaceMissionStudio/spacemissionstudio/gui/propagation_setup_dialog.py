@@ -166,6 +166,12 @@ class PropagationSetupDialog(QDialog):
         self.central_body_combo = QComboBox()
         self.central_body_combo.addItems(SUPPORTED_CENTRAL_BODIES)
         self.central_body_combo.setCurrentText(gravity.central_body)
+        self.central_body_combo.setToolTip(
+            "Which body's gravity dominates this scenario's orbit -- every spacecraft's "
+            "position/velocity is relative to this body, and it's what 'altitude' means "
+            "throughout this app. Changing it also changes which bodies are even available as "
+            "third-body perturbers below (a body can't perturb itself)."
+        )
         self.central_body_combo.currentTextChanged.connect(self._on_central_body_changed)
         form.addRow("Central body", self.central_body_combo)
 
@@ -186,10 +192,22 @@ class PropagationSetupDialog(QDialog):
         self.central_body_degree_spin.setValue(
             gravity.central_body_degree if gravity.central_body_degree > 0 else _DEFAULT_HARMONICS_DEGREE
         )
+        self.central_body_degree_spin.setToolTip(
+            "How many terms of the real gravity field to include -- higher captures finer "
+            "mass-distribution detail at the cost of more compute per step. Degree 2 alone "
+            "already captures J2 (by far the dominant term); low double digits (e.g. 8-10) is "
+            "a common practical choice for most mission-design work."
+        )
         form.addRow("Degree/order", self.central_body_degree_spin)
 
         self.third_body_list = QListWidget()
         self.third_body_list.setFixedHeight(130)
+        self.third_body_list.setToolTip(
+            "Other bodies whose OWN gravity also pulls on the spacecraft (in addition to the "
+            "central body above) -- e.g. checking 'sun'/'moon' for an Earth-orbiting "
+            "spacecraft adds real lunisolar perturbation, which matters more the higher the "
+            "orbit (negligible in low LEO, significant at GEO and beyond)."
+        )
         form.addRow("Third-body perturbers", self.third_body_list)
         self._refresh_third_body_choices(gravity.third_body_perturbers)
 
@@ -209,7 +227,14 @@ class PropagationSetupDialog(QDialog):
         if not is_earth:
             self.enable_harmonics_check.setChecked(False)
         self.central_body_degree_spin.setEnabled(is_earth and self.enable_harmonics_check.isChecked())
-        tooltip = "" if is_earth else "Spherical-harmonics gravity is only wired up for Earth (GGM03S data)."
+        base_tooltip = (
+            "Checking this ON replaces the idealized point-mass gravity model with Earth's "
+            "real, lumpy mass distribution (the GGM03S gravity field) -- this is what makes "
+            "effects like J2 nodal/apsidal precession real rather than absent, and is REQUIRED "
+            "for a genuine Sun-synchronous orbit to actually stay Sun-synchronous over time. "
+            "Point-mass gravity alone (this unchecked) has no such precession at all."
+        )
+        tooltip = base_tooltip if is_earth else "Spherical-harmonics gravity is only wired up for Earth (GGM03S data)."
         self.enable_harmonics_check.setToolTip(tooltip)
 
     def _on_harmonics_toggled(self, checked: bool) -> None:
@@ -247,17 +272,37 @@ class PropagationSetupDialog(QDialog):
         self.duration_days_spin.setRange(0.0001, 100000.0)
         self.duration_days_spin.setDecimals(4)
         self.duration_days_spin.setValue(sim_settings.duration_days)
+        self.duration_days_spin.setToolTip(
+            "Total simulated time, starting from the epoch. Longer means more wall-clock run "
+            "time (roughly proportional to duration / task rate below) and a bigger recorded "
+            "dataset -- pick just enough to see what you're looking for (e.g. a few orbits for "
+            "a quick geometry check, weeks/months for a real decay/station-keeping study)."
+        )
         form.addRow("Duration [days]", self.duration_days_spin)
 
         self.task_rate_spin = QDoubleSpinBox()
         self.task_rate_spin.setRange(0.001, 1.0e6)
         self.task_rate_spin.setDecimals(3)
         self.task_rate_spin.setValue(sim_settings.dynamics_task_rate_s)
+        self.task_rate_spin.setToolTip(
+            "How often the dynamics are integrated and recorded -- the real numerical time "
+            "step. Smaller = finer resolution and better numerical accuracy, but more compute "
+            "(more steps for the same duration). A fast-moving/rotating spacecraft (active "
+            "attitude control, a fast orbit) typically needs a smaller rate than a slow, "
+            "coasting one to stay both accurate and stable."
+        )
         form.addRow("Dynamics task rate [s]", self.task_rate_spin)
 
         self.integrator_combo = QComboBox()
         self.integrator_combo.addItems(SUPPORTED_INTEGRATORS)
         self.integrator_combo.setCurrentText(sim_settings.integrator)
+        self.integrator_combo.setToolTip(
+            "The numerical method used to step the dynamics forward in time. 'euler'/'rk2' are "
+            "simple, lower-order fixed-step methods -- fast per step, but need a smaller task "
+            "rate above to stay accurate. 'rkf45'/'rkf78' are higher-order Runge-Kutta-Fehlberg "
+            "methods -- more accurate per step, the better default choice for most scenarios "
+            "(rkf78 is this app's own default)."
+        )
         form.addRow("Integrator", self.integrator_combo)
 
         return group
@@ -312,12 +357,27 @@ class PropagationSetupDialog(QDialog):
         self.atmosphere_model_combo.setCurrentIndex(
             0 if space_weather.atmosphere_model == "nrlmsise00" else 1
         )
+        self.atmosphere_model_combo.setToolTip(
+            "What atmospheric density model drag (see each spacecraft's own 'Enable "
+            "atmospheric drag' checkbox) is actually computed from. NRLMSISE-00 is a real, "
+            "physically-detailed density model that responds to solar/geomagnetic activity "
+            "(set via Source/Drag margin below); Exponential is a much simpler fallback with "
+            "no space-weather dependence at all -- only use it when you specifically want to "
+            "isolate drag's effect from solar-cycle variability."
+        )
         self.atmosphere_model_combo.currentIndexChanged.connect(self._on_atmosphere_model_changed)
         form.addRow("Atmosphere model", self.atmosphere_model_combo)
 
         self.space_weather_source_combo = QComboBox()
         self.space_weather_source_combo.addItems(["synthetic", "local_file"])
         self.space_weather_source_combo.setCurrentText(space_weather.source)
+        self.space_weather_source_combo.setToolTip(
+            "Where NRLMSISE-00's solar/geomagnetic activity inputs (F10.7, Ap) come from. "
+            "'synthetic' generates a nominal, solar-cycle-SHAPED profile locally -- plausible "
+            "but not a real historical record, and the only option that needs no extra setup. "
+            "'local_file' reads real historical data from a CSV you supply yourself (this app "
+            "makes no network calls at runtime -- see the field below)."
+        )
         self.space_weather_source_combo.currentTextChanged.connect(self._on_space_weather_source_changed)
         form.addRow("Source", self.space_weather_source_combo)
 
@@ -337,6 +397,11 @@ class PropagationSetupDialog(QDialog):
             if cached is not None:
                 initial_local_file_path = str(cached)
         self.local_file_edit = QLineEdit(initial_local_file_path or "")
+        self.local_file_edit.setToolTip(
+            "Path to a real historical space-weather CSV (e.g. a CelesTrak F10.7/Ap extract "
+            "you downloaded ahead of time) -- only read when Source above is 'local_file'; "
+            "ignored otherwise. This app never fetches this itself at run time."
+        )
         self.local_file_browse_button = QPushButton("Browse...")
         self.local_file_browse_button.clicked.connect(self._on_browse_local_file)
         local_file_row.addWidget(self.local_file_edit)
@@ -350,6 +415,13 @@ class PropagationSetupDialog(QDialog):
         for label, _value in self._activity_level_items:
             self.activity_level_combo.addItem(label)
         self.activity_level_combo.setCurrentIndex(0 if space_weather.activity_level == "nominal" else 1)
+        self.activity_level_combo.setToolTip(
+            "'Nominal' uses the resolved space-weather profile (from Source above) as-is -- "
+            "day-to-day variation included. 'Conservative' instead holds activity at a fixed, "
+            "sustained high percentile (set below) for the WHOLE scenario -- a worst-case "
+            "margin for drag-sensitive design questions (e.g. minimum propellant for station "
+            "-keeping), at the cost of being less representative of an ordinary day."
+        )
         self.activity_level_combo.currentIndexChanged.connect(self._on_activity_level_changed)
         form.addRow("Drag margin", self.activity_level_combo)
 
