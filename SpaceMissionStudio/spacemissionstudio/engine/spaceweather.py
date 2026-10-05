@@ -21,20 +21,33 @@ Space-weather resolution for Basilisk's ``spaceWeatherData`` module (which
 drives ``msisAtmosphere`` for atmospheric drag).
 
 **Closed-off/offline policy**: SpaceMissionStudio never accesses the
-network at runtime (real user requirement -- "the app must be completely
-closed off and offline, only exception is the installation process").
-This module used to also fetch real data from CelesTrak at RUN time as
-its default ``source``; that option has been REMOVED entirely (not just
-defaulted away from -- there is no ``fetch()``/network code left in this
-module at all). ``resolve()`` now only ever does one of two things: use
-a real file the user supplies (``source == "local_file"``), or generate
-a synthetic, solar-cycle-SHAPED (never a real forecast) profile locally
-(``source == "synthetic"``, the default -- no file, no network, always
-available). If you want REAL observed/forecast F10.7/Ap data, download a
-CelesTrak CSV (``https://celestrak.org/SpaceData/SW-All.csv`` or
-``SW-Last5Years.csv``) yourself, OUTSIDE this app, and point
-``local_file_path`` at it -- the loader accepts that exact format
-unmodified (see "Format note" below).
+network implicitly at runtime (real user requirement -- "the app must be
+completely closed off and offline, only exception is the installation
+process"). ``resolve()`` itself NEVER touches the network: ``source`` is
+only ever ``"local_file"`` (a real file the user supplies) or
+``"synthetic"`` (the default -- a solar-cycle-SHAPED, never a real
+forecast, profile generated locally, no file or network needed).
+
+The ONE allowed exception, besides installation itself: a real user
+decision later relaxed the policy to also allow "a one-time fetch during
+each startup of the app, to store everything that is needed locally so
+it can be used later again" -- but ONLY after explicitly asking the user
+first, never automatically or silently. :func:`fetch` is that one-time,
+explicitly-invoked utility: it downloads a real CelesTrak CSV to a local
+cache and returns its path (a no-op, cache-hit return if already fetched
+and ``force`` isn't set). It is NEVER called automatically by
+:func:`resolve` or anything else in this module -- the only caller is
+``gui.startup_fetch_dialog``'s consent-gated startup prompt (see that
+module's own docstring), which calls it ONLY after the user clicks
+"Fetch now" in a dialog asking first. Once fetched, the result is an
+ordinary local file -- point ``local_file_path`` at it (the GUI's
+Propagation Setup dialog pre-fills the most recently fetched path as a
+convenience) to use it, same as any other user-supplied CSV; no further
+network access happens. You can also always download a CelesTrak CSV
+(``https://celestrak.org/SpaceData/SW-All.csv`` or ``SW-Last5Years.csv``)
+yourself, OUTSIDE this app, at any time, and point ``local_file_path`` at
+it directly -- the loader accepts that exact format unmodified (see
+"Format note" below).
 
 No Basilisk import in this module -- it is pure standard library + numpy,
 fully unit-testable without a Basilisk build (see ``tests/test_spaceweather.py``).
@@ -84,6 +97,8 @@ silently picks one interpretation over the other.
 from __future__ import annotations
 
 import csv
+import urllib.error
+import urllib.request
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -97,6 +112,31 @@ REQUIRED_COLUMNS = (
 )
 
 DEFAULT_CACHE_DIR = Path.home() / ".cache" / "SpaceMissionStudio" / "spaceweather"
+
+# The two real CelesTrak CSV endpoints :func:`fetch` can download --
+# SW-Last5Years (smaller, usually enough to cover a scenario's own date
+# range) and SW-All (the full historical record since 1957, needed for a
+# meaningful "conservative" worst-case percentile -- see
+# :func:`compute_worst_case_activity`).
+CELESTRAK_URLS = {
+    "SW-Last5Years": "https://celestrak.org/SpaceData/SW-Last5Years.csv",
+    "SW-All": "https://celestrak.org/SpaceData/SW-All.csv",
+}
+
+# A real user report (on a different, bare-urlopen fetch this project
+# shares the same pattern with -- see gui.vizard_launcher's own
+# _USER_AGENT comment) found urllib's own default User-Agent
+# ("Python-urllib/<version>") gets blocked by basic bot-protection on
+# hosts that have no issue with the exact same public file downloaded by
+# an ordinary browser -- a well-known, standard workaround, not an
+# attempt to bypass any real access control on a file CelesTrak already
+# publishes for anyone to download.
+_USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+# [bytes] CelesTrak's own CSVs are a few MB at most -- cap well above
+# that so a legitimate download never trips this, but refuse to buffer an
+# unbounded response into memory.
+_MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024
 
 # Synthetic fallback: a smooth ~11-year solar-cycle envelope with correlated
 # day-to-day noise and occasional storm episodes -- shaped like real solar
@@ -212,6 +252,68 @@ def validate_file(path, start_utc: datetime, end_utc: datetime) -> ValidationRes
 
     return ValidationResult(ok, covers_range, missing, duplicates, unsorted, first_date, last_date,
                              "OK" if ok else "; ".join(reasons))
+
+
+def fetch(dataset: str = "SW-All", cache_dir: Optional[Path] = None, force: bool = False,
+          timeout_s: float = 30.0) -> Path:
+    """Download a CelesTrak space-weather CSV to a local cache and return
+    its path. Raises :class:`SpaceWeatherError` (never returns a partial/
+    corrupt file) on any network or HTTP failure.
+
+    **Never called automatically** -- see this module's own "Closed-off/
+    offline policy" docstring. The only caller in this app is
+    ``gui.startup_fetch_dialog``'s consent-gated startup prompt, invoked
+    only after the user explicitly agrees to it. Calling this directly
+    (e.g. from a script) is the user's own equivalent explicit choice.
+
+    A no-op, cache-hit return (no network at all) if ``dest`` already
+    exists and ``force`` is left ``False`` -- repeated calls (e.g. one per
+    app startup, if the user agrees each time) don't re-download unless
+    the user specifically asked to refresh.
+    """
+    if dataset not in CELESTRAK_URLS:
+        raise SpaceWeatherError(f"unknown CelesTrak dataset {dataset!r}, expected one of {list(CELESTRAK_URLS)}")
+
+    cache_dir = Path(cache_dir) if cache_dir else DEFAULT_CACHE_DIR
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    dest = cache_dir / f"{dataset}.csv"
+    if dest.exists() and not force:
+        return dest
+
+    url = CELESTRAK_URLS[dataset]
+    request = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
+    try:
+        with urllib.request.urlopen(request, timeout=timeout_s) as response:
+            # Read one byte past the cap rather than response.read() with no
+            # bound: an unbounded read would buffer however much data the
+            # server sends (or never sends, tying up memory/the connection)
+            # before the timeout/error handling below ever gets a chance to
+            # apply -- see _MAX_DOWNLOAD_BYTES.
+            data = response.read(_MAX_DOWNLOAD_BYTES + 1)
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        raise SpaceWeatherError(f"could not fetch {url}: {exc}") from exc
+
+    if len(data) > _MAX_DOWNLOAD_BYTES:
+        raise SpaceWeatherError(
+            f"{url} response exceeded {_MAX_DOWNLOAD_BYTES} bytes -- refusing to buffer an unbounded download"
+        )
+
+    tmp = dest.with_suffix(dest.suffix + ".part")
+    tmp.write_bytes(data)
+    tmp.replace(dest)  # atomic-ish: never leave a half-written file at `dest`
+    return dest
+
+
+def cached_fetch_path(dataset: str = "SW-All", cache_dir: Optional[Path] = None) -> Optional[Path]:
+    """Returns the path :func:`fetch` would already have written for
+    ``dataset``, if it's actually there -- a pure, no-network check so
+    GUI code (e.g. pre-filling the Propagation Setup dialog's local-file
+    field with the most recently startup-fetched CSV) can offer it
+    without triggering a fetch of its own.
+    """
+    cache_dir = Path(cache_dir) if cache_dir else DEFAULT_CACHE_DIR
+    path = cache_dir / f"{dataset}.csv"
+    return path if path.exists() else None
 
 
 def _f107_base(day_index: np.ndarray) -> np.ndarray:

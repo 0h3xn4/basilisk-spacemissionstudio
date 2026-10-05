@@ -54,10 +54,13 @@ its own explicit enable control here:
   what each selects and why (Basilisk has no Jacchia-Roberts model to
   offer, checked directly against its source; the percentile margin is
   computed from real historical F10.7/Ap data the user supplies via a
-  local file -- this app's closed-off/offline policy means there is no
-  longer a "celestrak" source option here, since this module makes no
-  network calls at runtime; see ``engine.spaceweather``'s own
-  "Closed-off/offline policy" docstring).
+  local file). This dialog itself makes no network calls -- there is no
+  "celestrak" source option here, only "local_file"/"synthetic" -- but
+  its Local file field pre-fills with the path of the most recent
+  startup-time fetch (``gui.startup_fetch_dialog``, a real CelesTrak CSV,
+  only ever downloaded after the user explicitly agreed to it) when one
+  exists and the scenario doesn't already have its own path set; see
+  ``engine.spaceweather``'s own "Closed-off/offline policy" docstring.
 
 Construct with the scenario's current ``GravityConfig``/``SimSettings``/
 ``SpaceWeatherConfig``, then read back the (possibly unchanged) values via
@@ -319,7 +322,21 @@ class PropagationSetupDialog(QDialog):
         form.addRow("Source", self.space_weather_source_combo)
 
         local_file_row = QHBoxLayout()
-        self.local_file_edit = QLineEdit(space_weather.local_file_path or "")
+        # Pre-fills with the most recently startup-fetched CelesTrak CSV
+        # (see gui.startup_fetch_dialog) when the scenario doesn't already
+        # have its own local_file_path set -- a real user-visible fetch
+        # that produces a local file nobody can actually USE unless they
+        # know its path isn't much of a convenience. Still just a
+        # suggestion: the field stays plain text, editable/clearable like
+        # any other, and nothing here touches the network -- it only
+        # checks whether a previous fetch already left a file on disk.
+        initial_local_file_path = space_weather.local_file_path
+        if not initial_local_file_path:
+            from ..engine import spaceweather as sw
+            cached = sw.cached_fetch_path()
+            if cached is not None:
+                initial_local_file_path = str(cached)
+        self.local_file_edit = QLineEdit(initial_local_file_path or "")
         self.local_file_browse_button = QPushButton("Browse...")
         self.local_file_browse_button.clicked.connect(self._on_browse_local_file)
         local_file_row.addWidget(self.local_file_edit)

@@ -57,8 +57,20 @@ once, right after spacemissionstudio itself is installed into the venv:
 
 Every later `get_path()` call for the rest of that install's lifetime then
 resolves from Basilisk's own local cache, with no network touched at all --
-this is the ONE exception to the offline policy, confined entirely to
-installation.
+this install-time pre-fetch is the first of two allowed exceptions to the
+offline policy.
+
+The second, relaxed later by a real user decision ("a one time fetch during
+each startup of the app is also allowed, to store everything that is needed
+locally so it can be used later again. But the user always should be asked if
+they want to fetch/update"): the GUI's `gui.startup_fetch_dialog` shows a
+consent prompt once each time it starts, offering to re-check/refresh the
+same support-data kernels (a safety net for a dev checkout or a cleared
+cache -- normally a no-op, since the installer above already did this) and,
+separately, to fetch real space-weather history from CelesTrak. Neither ever
+runs without the user clicking "Fetch now" first; clicking "Skip" touches no
+network, same as before this existed. This is a GUI-only concern -- nothing
+in `packaging/` needed to change for it.
 
 ## What's here
 

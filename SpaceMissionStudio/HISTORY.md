@@ -5742,3 +5742,73 @@ fetch-only tests, zero regressions in what remains). `tests/gui/test_main_window
 Full suite with `QT_QPA_PLATFORM=offscreen`: 968 passed, 130 skipped, zero regressions (the drop
 from 987 to 968 passed is entirely the removed fetch_vizard/VizardFetchWorker/CelesTrak-fallback
 tests described above, not a loss of coverage on anything that still exists).
+
+## Relaxing the offline policy: a consent-gated startup fetch/update prompt
+
+**Real user follow-up, immediately after the previous entry's fully-offline change**: "A one time
+fetch during each startup of the app is also allowed, to store everything that is needed locally
+so it can be used later again. But the user always should be asked if they want to fetch/update."
+This doesn't undo the previous entry's core principle (SpaceMissionStudio never fetches anything
+*silently*) -- it adds one specific, narrow exception: a consent prompt, shown once each GUI
+startup, that CAN fetch real data if the user explicitly agrees, every single time.
+
+**New: `gui/startup_fetch_dialog.py`**. `StartupFetchDialog` -- two independent checkboxes (both
+checked by default), "Fetch now"/"Skip" buttons, never auto-accepting. `maybe_run_startup_fetch()`
+shows it, and only on "Fetch now" (with at least one item still checked) runs
+`StartupFetchWorker` -- a background `QThread` (same cooperative pattern as
+`gui.kernel_status_widget`'s `_KernelFetchWorker`) that calls `engine.kernels.ensure_kernels()`
+and/or `engine.spaceweather.fetch(dataset="SW-All", force=True)` for whichever item(s) were
+checked -- behind a progress dialog, then shows a one-line-per-item summary. Clicking "Skip",
+dismissing the dialog, or unchecking both items touches no network at all, identical to before
+this file existed. Wired into `gui.main_window.MainWindow` via a new `prompt_startup_fetch: bool =
+True` constructor parameter and `QTimer.singleShot(0, ...)` (fires once the window has actually
+rendered, not before) -- `tests/gui/test_main_window.py`'s own `window` fixture passes
+`prompt_startup_fetch=False` so none of its 75+ tests hang on an unanswered modal dialog.
+
+**`engine/spaceweather.py`: `fetch()`/`CELESTRAK_URLS`/`cached_fetch_path()` restored, deliberately
+NOT wired back into `resolve()`**. The previous entry deleted `fetch()` entirely on the theory that
+CelesTrak access was gone for good; this entry restores it verbatim (same CelesTrak URLs,
+User-Agent fix, cache-hit-unless-`force`-set behavior) as a plain utility function, callable only
+by `gui.startup_fetch_dialog`'s consent-gated worker. Deliberately did NOT re-add `"celestrak"` as
+a valid `SpaceWeatherConfig.source` value: that would let a scenario's own config silently trigger
+a network fetch the moment it's RUN, which is not what was asked for ("during startup", not
+"during a run") and would reintroduce exactly the implicit-fetch behavior the previous entry
+removed. `resolve()` itself is unchanged -- still only `"local_file"`/`"synthetic"`, still never
+touches the network -- and a new `test_resolve_never_calls_fetch` test (monkeypatches `sw.fetch`
+to raise `AssertionError` if called, then exercises both valid sources) makes that a guarded
+invariant, not just a comment. New `cached_fetch_path()` is a pure, no-network existence check
+(not a second fetch path) that lets GUI code offer an already-fetched CSV without re-downloading.
+
+**`gui/vizard_launcher.py`/`gui/main_window.py`: `fetch_vizard()`/`VizardFetchWorker`/"Download
+Vizard" restored verbatim** from before the previous entry removed them. Unlike the space-weather
+fetch, this one was never wired to the startup prompt at all -- it's reached only via an explicit
+click on the "Download Vizard" button in the "Vizard not found" dialog (Run menu's Launch Vizard),
+which already satisfies "always ask first" on its own; cramming an unrelated external application
+into a startup checklist nobody asked to see every single time would be nagging, not a convenience
+for a capability most sessions never need. `_locate_vizard` (renamed back from the previous
+entry's rename) offers both "Download Vizard" and "Browse..." again; `_fetch_vizard_with_progress`
+(the blocking-`QEventLoop`-behind-a-progress-dialog pattern) is back too.
+
+**A real, deliberate design decision**: a successful startup space-weather fetch produces an
+ordinary local CSV -- fetching it is worthless if nothing then uses it. `gui/
+propagation_setup_dialog.py`'s Local file field now pre-fills with `engine.spaceweather
+.cached_fetch_path()`'s result when the scenario doesn't already have its own `local_file_path`
+set (never overriding an explicit one) -- a pure, no-network read of whether a previous fetch left
+a file on disk, not a second trigger for anything.
+
+**Verification**: `tests/test_spaceweather.py` gained `test_resolve_never_calls_fetch` plus 7 new
+`fetch()`/`cached_fetch_path()` tests (download+cache, cache-hit-without-force,
+force-redownloads, unknown dataset, network failure, and the two `cached_fetch_path` cases) -- all
+mocking `urllib.request.urlopen`, same convention as the restored `tests/gui/
+test_vizard_launcher.py` fetch tests (27 tests, reconstructed to cover the same ground as before:
+download+extract+find, User-Agent header, executable-bit, network/corrupt-zip/no-executable/
+cancellation/size-cap/zip-slip failures, progress callback, same-named-wrapper-folder and
+stale-extraction-clearing behavior, plus the `VizardFetchWorker` thread wrapper's three signals).
+`tests/gui/test_main_window.py` gained back its Download-Vizard-button and
+`_fetch_vizard_with_progress` tests (77 passed total). New `tests/gui/test_startup_fetch_dialog.py`
+(11 tests: dialog defaults/selection, Skip/both-unchecked no-ops, a successful/failed summary, and
+the worker's own `_fetch_kernels`/`_fetch_space_weather` methods -- the missing-Basilisk case
+exercised for real, this sandbox genuinely having none, same as `test_kernel_status_widget.py`'s
+own equivalent test). `tests/gui/test_propagation_setup_dialog.py` gained 3 tests for the new
+pre-fill behavior (fills when empty and a cache exists, never overrides an explicit path, stays
+empty with nothing cached). Full suite: 1007 passed, 130 skipped, zero regressions.

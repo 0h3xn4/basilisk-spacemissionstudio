@@ -1,8 +1,11 @@
 """Tests for spacemissionstudio.engine.spaceweather -- no Basilisk import, runs
-anywhere. This module makes no network calls at all (see its own
+anywhere. resolve() itself makes no network calls at all (see its own
 "Closed-off/offline policy" docstring) -- only "local_file" and "synthetic"
 are valid source values; "celestrak" (and anything else) is rejected as an
-unknown source.
+unknown source. fetch() is a separate, never-automatically-called utility
+(only reached via gui.startup_fetch_dialog's consent-gated prompt) --
+its own network calls are mocked here (urllib.request.urlopen), same as
+gui/test_vizard_launcher.py's fetch_vizard() tests.
 """
 
 from datetime import datetime
@@ -230,10 +233,97 @@ def test_resolve_unknown_activity_level_raises():
         sw.resolve("synthetic", datetime(2030, 1, 1), datetime(2030, 1, 5), activity_level="extreme")
 
 
-def test_module_has_no_fetch_function():
-    """The closed-off/offline policy removed the CelesTrak network fetch
-    entirely, not just defaulted away from it -- there must be no
-    fetch()/urllib left in this module for anything to accidentally call.
+def test_resolve_never_calls_fetch(tmp_path, monkeypatch):
+    """resolve() itself must NEVER touch the network, regardless of
+    source/activity_level -- fetch() is only ever reached explicitly, via
+    gui.startup_fetch_dialog's consent-gated prompt. Fails loudly (instead
+    of quietly passing) if resolve() is ever wired to call it.
     """
-    assert not hasattr(sw, "fetch")
-    assert not hasattr(sw, "urllib")
+    def _unexpected_fetch(*args, **kwargs):
+        raise AssertionError("resolve() must never call fetch() itself")
+
+    monkeypatch.setattr(sw, "fetch", _unexpected_fetch)
+    start, end = datetime(2030, 1, 1), datetime(2030, 1, 5)
+    local_path = sw.generate_synthetic(start, end, tmp_path / "local.csv")
+
+    sw.resolve("synthetic", start, end)
+    sw.resolve("local_file", start, end, local_file_path=str(local_path))
+
+
+class _FakeFetchResponse:
+    """Minimal stand-in for ``urllib.request.urlopen``'s return value."""
+
+    def __init__(self, data: bytes):
+        self._data = data
+
+    def read(self, n: int = -1) -> bytes:
+        return self._data if n < 0 else self._data[:n]
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc_info):
+        return False
+
+
+def test_fetch_downloads_and_caches(tmp_path, monkeypatch):
+    fake_csv = b"DATE,AP1,AP2,AP3,AP4,AP5,AP6,AP7,AP8,AP_AVG,F10.7_OBS,F10.7_OBS_CENTER81\n"
+    monkeypatch.setattr(sw.urllib.request, "urlopen", lambda *a, **k: _FakeFetchResponse(fake_csv))
+
+    path = sw.fetch(dataset="SW-All", cache_dir=tmp_path)
+
+    assert path == tmp_path / "SW-All.csv"
+    assert path.read_bytes() == fake_csv
+
+
+def test_fetch_is_a_cache_hit_without_force(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(sw.urllib.request, "urlopen",
+                         lambda *a, **k: calls.append(1) or _FakeFetchResponse(b"x"))
+
+    dest = tmp_path / "SW-All.csv"
+    dest.write_bytes(b"already here")
+
+    path = sw.fetch(dataset="SW-All", cache_dir=tmp_path)
+
+    assert path == dest
+    assert path.read_bytes() == b"already here"
+    assert calls == []  # no network touched -- cache hit
+
+
+def test_fetch_force_redownloads_even_if_cached(tmp_path, monkeypatch):
+    fake_csv = b"DATE,AP1,AP2,AP3,AP4,AP5,AP6,AP7,AP8,AP_AVG,F10.7_OBS,F10.7_OBS_CENTER81\nfresh\n"
+    monkeypatch.setattr(sw.urllib.request, "urlopen", lambda *a, **k: _FakeFetchResponse(fake_csv))
+
+    dest = tmp_path / "SW-All.csv"
+    dest.write_bytes(b"stale")
+
+    path = sw.fetch(dataset="SW-All", cache_dir=tmp_path, force=True)
+
+    assert path.read_bytes() == fake_csv
+
+
+def test_fetch_rejects_unknown_dataset():
+    with pytest.raises(sw.SpaceWeatherError, match="unknown CelesTrak dataset"):
+        sw.fetch(dataset="not-a-real-dataset")
+
+
+def test_fetch_reports_network_failure(tmp_path, monkeypatch):
+    def _raise(*args, **kwargs):
+        raise OSError("boom")
+
+    monkeypatch.setattr(sw.urllib.request, "urlopen", _raise)
+
+    with pytest.raises(sw.SpaceWeatherError, match="could not fetch"):
+        sw.fetch(dataset="SW-All", cache_dir=tmp_path)
+
+
+def test_cached_fetch_path_is_none_when_nothing_fetched(tmp_path):
+    assert sw.cached_fetch_path(cache_dir=tmp_path) is None
+
+
+def test_cached_fetch_path_finds_a_real_fetch(tmp_path, monkeypatch):
+    monkeypatch.setattr(sw.urllib.request, "urlopen", lambda *a, **k: _FakeFetchResponse(b"data"))
+    fetched = sw.fetch(dataset="SW-All", cache_dir=tmp_path)
+
+    assert sw.cached_fetch_path(cache_dir=tmp_path) == fetched
