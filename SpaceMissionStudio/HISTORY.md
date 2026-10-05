@@ -6036,3 +6036,68 @@ exclusion has its own reason, not a blanket skip:
 non-Basilisk suite with `QT_QPA_PLATFORM=offscreen`: 1026 passed, 131 skipped, zero regressions
 (including `tests/gui/test_template_wizard.py`'s own prefill/round-trip tests, parametrized over
 every template, which is what caught the rounding issue above before it shipped).
+
+---
+
+## Mission Dashboard telemetry, also in Vizard
+
+**Direct user request**, item 3 of the same 5-item feedback list as the two entries above: "the
+mission panel live stream shall also be in the vizard live visualization, not only in the GUI
+itself" -- referring to `gui.mission_dashboard_widget.MissionDashboardWidget`, template 19's
+live readout of a `comms_pointing` spacecraft's operating mode, pointing error, and RF link
+status (battery/power was already covered: the existing, generic "Battery" `GenericStorage`
+panel fires for any spacecraft with `PowerConfig` set, independent of `comms_pointing`).
+
+**What was added, all sourced directly from `engine.fsw.build_comms_pointing`'s own arbitrator
+-- no second computation, no new bridge `SysModel`** (unlike ground-station access, which needed
+one because `groundLocation.GroundLocation` itself has no "mode" concept; this arbitrator
+already IS the live source of all three states, for its own reasons, every tick):
+
+* `_CommsPointingArbitrator` (`engine/fsw.py`) now also publishes `modeCmdOutMsg`
+  (`DeviceCmdMsgPayload`, the same 0/2 convention the pre-existing ground-station-access
+  `GenericSensor` bridge already uses) and `pointingErrorOutMsg` (`DataStorageStatusMsgPayload`,
+  `storageLevel`/`storageCapacity` = `theta_deg`/180 deg) every tick, from the exact same
+  `hasAccess`/`sigma_BR` values it already reads to do the mode switch itself -- no new geometry,
+  no re-derivation.
+* A third message, `linkStatusCmdOutMsg`, needed a real link-margin number to gate on. Rather
+  than re-implement that math, the arbitrator now optionally takes the spacecraft's own
+  `schema.scenario.RFLinkConfig` and the target ground station's `GroundStationConfig` (wired
+  from `engine.service.py`'s own comms_pointing pass, which already has both in scope) and calls
+  `engine.link_budget.link_margin_db` -- the SAME pure-Python function
+  `gui.mission_dashboard_widget` and `engine.link_budget.link_margin_series` already use for
+  their own numbers, with the SAME gating (real access AND actually comms-pointing, never
+  geometric visibility alone) -- so Vizard's badge and the GUI's detailed dB breakdown can never
+  silently disagree about whether the link is "up". `engine/fsw.py` picking up a `from . import
+  link_budget` (a plain Python import, no new Basilisk dependency: `link_budget.py` has never
+  had one) was the only new coupling needed.
+* `engine.vizard.enable_vizard()` gained a `comms_pointing_by_spacecraft` parameter (same shape
+  as the existing `battery_by_spacecraft`/`station_keeping_by_spacecraft` dicts) and, per
+  spacecraft with one, builds a "Pointing Error" `GenericStorage` bar plus "Mode"/"Link status"
+  `GenericSensor` badges, reading straight off the three messages above.
+* **Deliberately a colored status badge for link status, not a numeric margin bar**: a real
+  margin can be negative (a degraded link is exactly the state worth seeing), and
+  `GenericStorage` has no non-negative-only workaround that doesn't lose the sign -- see this
+  file's own "Real bug found from a real running Vizard screenshot, FOURTH round" entry above for
+  why that was already tried and reverted once for the RTN separation panels, and `README.md`'s
+  own "Scoped but not yet built" note (now updated) for why a live NUMERIC link-margin gauge
+  stays a known, deliberate gap. Pointing error, by contrast, is a plain non-negative angle by
+  construction (`theta_deg = 4*atan(|sigma_BR|)`, always >= 0) and so gets an ordinary
+  `GenericStorage` bar with no such risk.
+
+**Verified directly against a real Basilisk build** (`/tmp/bsk_venv4`, this checkout installed
+editable into it), not just reasoned through: four new tests in `tests/test_comms_pointing.py`
+confirm `modeCmdOutMsg` mirrors `modeLog` in the 0/2 convention, `pointingErrorOutMsg` matches
+`pointingErrorDegLog` exactly with `storageCapacity` always 180, `linkStatusCmdOutMsg` stays "no
+link" when no `rf_link`/ground-station config is given (matching
+`gui.mission_dashboard_widget`'s own fallback), and -- using a real close-range/far-range pair
+independently confirmed via `engine.link_budget.link_margin_db` itself to close/not-close the
+link -- that the badge tracks the real margin's sign exactly, including staying "no link" during
+real access that hasn't yet become actual comms-pointing. One new test in `tests/test_vizard.py`
+exercises `enable_vizard()`'s new `comms_pointing_by_spacecraft` wiring directly (the same
+SPICE-free, bare-`SimulationBaseClass` pattern this file's own ground-station-access test uses)
+and confirms all three new panels actually land in the lists handed to
+`vizSupport.enableUnityVisualization()`. All pass against the real build; the pre-existing,
+unrelated `nodePowerOut`/SPICE-kernel-network failures already documented elsewhere in this file
+are unchanged by this work (confirmed identical via `git stash` before/after). Full non-Basilisk
+suite: 1026 passed, 136 skipped (+5 for the new `requires_basilisk` tests, correctly skipped
+here), zero regressions.

@@ -195,11 +195,38 @@ analytical estimate -- see each source module's own docstring):
   antenna visualization (compare ``Transceiver``/comm-ring visualization,
   which needs a real data-node system this project does not have -- see
   ``PowerConfig``'s docstring on scope).
+* **comms_pointing mode, pointing error, and RF link status** -- real
+  user feedback: "the mission panel live stream shall also be in the
+  vizard live visualization, not only in the GUI itself" (referring to
+  ``gui.mission_dashboard_widget.MissionDashboardWidget``, template 19's
+  GUI counterpart). Three more entries per spacecraft with
+  ``schema.scenario.CommsPointingConfig`` set, all sourced DIRECTLY from
+  ``engine.fsw.build_comms_pointing``'s own arbitrator (no new bridge
+  ``SysModel`` needed here -- unlike ground-station access above, that
+  arbitrator already computes and publishes these every tick for its own
+  reasons): a "Pointing Error" ``GenericStorage`` bar (``theta_deg``,
+  always non-negative by construction -- see that arbitrator's own
+  ``UpdateState``, so this one never risks the negative-``storageLevel``
+  "Unavailable" bug the RTN panels hit); a "Mode" ``GenericSensor`` badge
+  (Sun-pointing vs. ground-station-pointing, same 0/2
+  ``DeviceCmdMsgPayload`` convention as the access indicator); and a
+  "Link status" ``GenericSensor`` badge (link OK vs. no/degraded link),
+  computed live inside the arbitrator from ``engine.link_budget.link_margin_db``
+  -- the SAME pure-Python function and the SAME gating
+  (real access AND actually comms-pointing) ``gui.mission_dashboard_widget``
+  and ``engine.link_budget.link_margin_series`` already use for their own
+  numbers, so Vizard's badge and the GUI's detailed breakdown can never
+  silently disagree about whether the link is "up". Deliberately a
+  colored status badge, not a numeric margin bar: a real margin can be
+  negative (a degraded link is exactly the state worth seeing), and
+  ``GenericStorage`` has no non-negative-only workaround that doesn't lose
+  the sign -- see the RTN-panel bug above for why that was already tried
+  and reverted once for a different panel.
 
 None of this feeds back into simulated physics or the exported CSV/plot
 data -- ``engine.service.run()`` already reports the same battery/
-propellant/access numbers there; this only makes them visible live in
-Vizard too.
+propellant/access/comms_pointing numbers there; this only makes them
+visible live in Vizard too.
 
 Verification status: the ``GenericStorage``/battery+fuel-tank wiring
 matches a real, shipped multi-satellite Basilisk example line-for-line
@@ -559,6 +586,7 @@ def enable_vizard(scSim, task_name: str, sc_objects: List, request: VizardReques
                    station_keeping_by_spacecraft: Optional[Dict[str, object]] = None,
                    phasing_keeping_by_spacecraft: Optional[Dict[str, object]] = None,
                    fuel_tank_by_spacecraft: Optional[Dict[str, object]] = None,
+                   comms_pointing_by_spacecraft: Optional[Dict[str, object]] = None,
                    access_out_msgs: Optional[Dict[tuple, object]] = None,
                    custom_models_by_spacecraft: Optional[Dict[str, dict]] = None):
     """Call once, after every spacecraft/sensor/actuator/FSW module for
@@ -610,6 +638,15 @@ def enable_vizard(scSim, task_name: str, sc_objects: List, request: VizardReques
             "Propellant" panel above (that one's propellant is a plain
             Python scalar belonging to a DIFFERENT, unrelated thruster --
             see ``engine.orbit_maintenance``'s module docstring).
+        comms_pointing_by_spacecraft: ``{spacecraft_name: engine.fsw._CommsPointingArbitrator}``
+            for every spacecraft with ``schema.scenario.CommsPointingConfig``
+            set -- see module docstring's "Live-data panels" section for
+            the "Mode"/"Pointing Error"/"Link status" panels this wires up,
+            all driven by messages that arbitrator already publishes
+            (``modeCmdOutMsg``/``pointingErrorOutMsg``/``linkStatusCmdOutMsg``
+            -- see ``engine.fsw.build_comms_pointing``'s own docstring), so
+            no extra bridge ``SysModel`` is needed here the way ground
+            -station access needed one.
         access_out_msgs: ``{(ground_station_name, spacecraft_name): groundLocation.accessOutMsgs[i]}``
             for every station/spacecraft pair Phase 3's access analysis
             tracks (``engine.service``'s own ``_access_out_msgs``) -- same
@@ -638,6 +675,7 @@ def enable_vizard(scSim, task_name: str, sc_objects: List, request: VizardReques
     station_keeping_by_spacecraft = station_keeping_by_spacecraft or {}
     phasing_keeping_by_spacecraft = phasing_keeping_by_spacecraft or {}
     fuel_tank_by_spacecraft = fuel_tank_by_spacecraft or {}
+    comms_pointing_by_spacecraft = comms_pointing_by_spacecraft or {}
     access_out_msgs = access_out_msgs or {}
 
     class _AccessIndicatorBridge(sysModel.SysModel):
@@ -808,6 +846,31 @@ def enable_vizard(scSim, task_name: str, sc_objects: List, request: VizardReques
             tank_panel.fuelTankStateInMsg = fuel_tank_reader
             storages.append(tank_panel)
 
+        # comms_pointing (schema.scenario.CommsPointingConfig): real user
+        # feedback was that the Mission Dashboard's live telemetry "shall
+        # also be in the vizard live visualization, not only in the GUI
+        # itself" -- see module docstring's "Live-data panels" section.
+        # Pointing error is a numeric gauge (always >= 0 by construction,
+        # see engine.fsw._CommsPointingArbitrator.UpdateState -- no risk
+        # of the negative-storageLevel "Unavailable" bug the RTN panels
+        # hit), so it gets a GenericStorage bar here; mode and link status
+        # are binary states, so they get colored GenericSensor badges
+        # below, matching ground-station access's own established pattern
+        # -- no extra bridge SysModel needed, since the arbitrator already
+        # publishes these messages directly (see build_comms_pointing's
+        # own docstring).
+        comms_arbitrator = comms_pointing_by_spacecraft.get(sc_name)
+        if comms_arbitrator is not None:
+            pointing_panel = vizInterface.GenericStorage()
+            pointing_panel.label = "Pointing Error"
+            pointing_panel.type = "Pointing Error"
+            pointing_panel.units = "deg"
+            pointing_panel.color = vizInterface.IntVector(vizSupport.toRGBA255("khaki"))
+            pointing_reader = messaging.DataStorageStatusMsgReader()
+            pointing_reader.subscribeTo(comms_arbitrator.pointingErrorOutMsg)
+            pointing_panel.dataStorageStateInMsg = pointing_reader
+            storages.append(pointing_panel)
+
         generic_storage_list.append(storages or None)
         if storages:
             spacecraft_with_storage_panel.append(sc_name)
@@ -831,6 +894,42 @@ def enable_vizard(scSim, task_name: str, sc_objects: List, request: VizardReques
             sensor.label = f"Access: {gs_name}"
             sensor.genericSensorCmdInMsg = cmd_reader
             sensors.append(sensor)
+
+        if comms_arbitrator is not None:
+            # Same 0/2 DeviceCmdMsgPayload convention as the access bridge
+            # above, sourced directly from the arbitrator's own output
+            # messages -- it already IS the live source of this state, so
+            # no separate bridge SysModel is built here.
+            mode_reader = messaging.DeviceCmdMsgReader()
+            mode_reader.subscribeTo(comms_arbitrator.modeCmdOutMsg)
+            mode_sensor = vizInterface.GenericSensor()
+            mode_sensor.r_SB_B = [0.0, 0.0, 0.0]  # placeholder -- see module docstring
+            mode_sensor.normalVector = [1.0, 0.0, 0.0]  # placeholder -- see module docstring
+            mode_sensor.fieldOfView.push_back(0.1)  # [rad] symbolic, not a real antenna beamwidth
+            # "lightgreen" (Sun-pointing) / "deepskyblue" (ground-station
+            # -pointing) -- matching gui.mission_dashboard_widget's own
+            # mode_badge coloring (SUCCESS for Sun-pointing, ACCENT for
+            # ground-station-pointing).
+            mode_sensor.color = vizInterface.IntVector(
+                vizSupport.toRGBA255("lightgreen") + vizSupport.toRGBA255("deepskyblue")
+            )
+            mode_sensor.label = "Mode"
+            mode_sensor.genericSensorCmdInMsg = mode_reader
+            sensors.append(mode_sensor)
+
+            link_reader = messaging.DeviceCmdMsgReader()
+            link_reader.subscribeTo(comms_arbitrator.linkStatusCmdOutMsg)
+            link_sensor = vizInterface.GenericSensor()
+            link_sensor.r_SB_B = [0.0, 0.0, 0.0]  # placeholder -- see module docstring
+            link_sensor.normalVector = [1.0, 0.0, 0.0]  # placeholder -- see module docstring
+            link_sensor.fieldOfView.push_back(0.1)  # [rad] symbolic, not a real antenna beamwidth
+            # "red" (no link: no access / not yet comms-pointing /
+            # degraded margin) / "lightgreen" (link OK) -- matching
+            # gui.mission_dashboard_widget's own link_status_badge coloring.
+            link_sensor.color = vizInterface.IntVector(vizSupport.toRGBA255("red") + vizSupport.toRGBA255("lightgreen"))
+            link_sensor.label = "Link status"
+            link_sensor.genericSensorCmdInMsg = link_reader
+            sensors.append(link_sensor)
 
         generic_sensor_list.append(sensors or None)
         if sensors:

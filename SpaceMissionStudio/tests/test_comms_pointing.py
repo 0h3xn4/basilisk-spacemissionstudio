@@ -56,7 +56,7 @@ tests/conftest.py).
 import numpy as np
 import pytest
 
-from spacemissionstudio.schema.scenario import CommsPointingConfig
+from spacemissionstudio.schema.scenario import CommsPointingConfig, GroundStationConfig, RFLinkConfig
 
 pytestmark = pytest.mark.requires_basilisk
 
@@ -65,11 +65,13 @@ _INERTIA = [10.0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 10.0]
 _COMMS_POWER_W = 12.0
 
 
-def _write_access(access_msg, has_access: bool, moduleID: int, write_time_ns: int) -> None:
+def _write_access(access_msg, has_access: bool, moduleID: int, write_time_ns: int,
+                   slant_range_m: float = 0.0) -> None:
     from Basilisk.architecture import messaging
 
     payload = messaging.AccessMsgPayload()
     payload.hasAccess = 1 if has_access else 0
+    payload.slantRange = slant_range_m
     access_msg.write(payload, write_time_ns, moduleID)
 
 
@@ -84,12 +86,24 @@ def _build_fixed_att_guid_msg(sigma_br, moduleID: int):
     return messaging.AttGuidMsg().write(payload, 0, moduleID)
 
 
-def _run_comms_pointing(segments):
-    """``segments``: a list of ``(has_access, duration_s)`` pairs, run in
-    order on the SAME simulation (``ConfigureStopTime``/
-    ``ExecuteSimulation()`` called once per segment, resuming from
-    wherever the sim left off -- see this module's own docstring).
-    Returns ``(arbitrator, sigma_BN_history, sc_rec_times_s, power_sink)``.
+def _run_comms_pointing(segments, rf_link=None, ground_station_config=None):
+    """``segments``: a list of ``(has_access, duration_s)`` or
+    ``(has_access, duration_s, slant_range_m)`` tuples, run in order on
+    the SAME simulation (``ConfigureStopTime``/``ExecuteSimulation()``
+    called once per segment, resuming from wherever the sim left off --
+    see this module's own docstring). Returns ``(arbitrator,
+    sigma_BN_history, sc_rec_times_s, power_sink)`` -- the new Vizard
+    -telemetry messages' own recorders (see
+    ``_CommsPointingArbitrator.__init__``) are attached directly to the
+    returned ``arbitrator`` as ``.modeCmdRecorder``/
+    ``.pointingErrorRecorder``/``.linkStatusRecorder`` instead of
+    widening this tuple, so every existing call site below keeps working
+    unchanged.
+
+    ``rf_link``/``ground_station_config``: optional
+    ``schema.scenario.RFLinkConfig``/``GroundStationConfig``, passed
+    straight through to :func:`fsw.build_comms_pointing` -- see that
+    function's own docstring for what they enable.
     """
     from Basilisk.architecture import messaging
     from Basilisk.simulation import extForceTorque, simplePowerSink, spacecraft
@@ -118,7 +132,8 @@ def _run_comms_pointing(segments):
     sun_guid_msg = _build_fixed_att_guid_msg([0.05, 0.0, 0.0], moduleID=1)
     comms_guid_msg = _build_fixed_att_guid_msg([0.0, -0.08, 0.0], moduleID=2)
     access_msg = messaging.AccessMsg()
-    _write_access(access_msg, segments[0][0], moduleID=3, write_time_ns=0)
+    first_slant_range_m = segments[0][2] if len(segments[0]) > 2 else 0.0
+    _write_access(access_msg, segments[0][0], moduleID=3, write_time_ns=0, slant_range_m=first_slant_range_m)
 
     veh_config_msg = fsw.build_vehicle_config_msg(_INERTIA)
     power_sink = simplePowerSink.SimplePowerSink()
@@ -131,18 +146,27 @@ def _run_comms_pointing(segments):
     comms_config = CommsPointingConfig(target_ground_station="gs-1", comms_power_w=_COMMS_POWER_W)
     arbitrator = fsw.build_comms_pointing(
         scSim, task_name, "sat", comms_config, sun_guid_msg, comms_guid_msg, access_msg,
-        comms_power_sink=power_sink,
+        comms_power_sink=power_sink, rf_link=rf_link, ground_station_config=ground_station_config,
     )
     mrp = fsw.build_mrp_feedback(scSim, task_name, "sat", arbitrator.attGuidOutMsg, veh_config_msg, {})
     fsw.build_idealized_actuation(scSim, task_name, "sat", sc_object, mrp)
 
     sc_rec = sc_object.scStateOutMsg.recorder()
     scSim.AddModelToTask(task_name, sc_rec)
+    arbitrator.modeCmdRecorder = arbitrator.modeCmdOutMsg.recorder()
+    arbitrator.pointingErrorRecorder = arbitrator.pointingErrorOutMsg.recorder()
+    arbitrator.linkStatusRecorder = arbitrator.linkStatusCmdOutMsg.recorder()
+    scSim.AddModelToTask(task_name, arbitrator.modeCmdRecorder)
+    scSim.AddModelToTask(task_name, arbitrator.pointingErrorRecorder)
+    scSim.AddModelToTask(task_name, arbitrator.linkStatusRecorder)
 
     scSim.InitializeSimulation()
     elapsed_s = 0.0
-    for has_access, duration_s in segments:
-        _write_access(access_msg, has_access, moduleID=3, write_time_ns=macros.sec2nano(elapsed_s))
+    for segment in segments:
+        has_access, duration_s = segment[0], segment[1]
+        slant_range_m = segment[2] if len(segment) > 2 else 0.0
+        _write_access(access_msg, has_access, moduleID=3, write_time_ns=macros.sec2nano(elapsed_s),
+                      slant_range_m=slant_range_m)
         elapsed_s += duration_s
         scSim.ConfigureStopTime(macros.sec2nano(elapsed_s))
         scSim.ExecuteSimulation()
@@ -211,3 +235,92 @@ def test_switching_guidance_reference_does_not_reset_integrated_attitude():
         f"attitude step at the mode switch ({step_at_switch:.3e}) looks like a discontinuity, "
         f"not a continuous slew (typical step elsewhere: {typical_step:.3e})"
     )
+
+
+def test_mode_cmd_out_msg_mirrors_mode_log_in_the_0_2_vizard_convention():
+    """``modeCmdOutMsg`` is engine.vizard's live "Mode" GenericSensor
+    badge source (real user feedback: the GUI's mission dashboard "shall
+    also be in the vizard live visualization") -- it must use the SAME
+    0 (no/first color)/2 (second color) convention as the pre-existing
+    ground-station-access bridge (see engine.vizard's own "Live-data
+    panels" docstring section), not the 0/1 ``modeLog`` already uses for
+    plain Python telemetry.
+    """
+    arbitrator, _, _, _ = _run_comms_pointing([(False, 10.0), (True, 10.0), (False, 10.0)])
+
+    mode_log = np.array(arbitrator.modeLog)
+    mode_cmd = np.array(arbitrator.modeCmdRecorder.deviceCmd)
+    assert set(np.unique(mode_cmd)).issubset({0, 2})
+    assert np.array_equal(mode_cmd, np.where(mode_log == 1, 2, 0))
+
+
+def test_pointing_error_out_msg_matches_pointing_error_deg_log():
+    """``pointingErrorOutMsg`` (a ``DataStorageStatusMsgPayload``, engine
+    .vizard's live "Pointing Error" GenericStorage bar) must report the
+    exact same angle as the pre-existing ``pointingErrorDegLog``, and a
+    ``storageCapacity`` of 180 deg (the max possible principal rotation
+    angle) -- never a negative ``storageLevel`` (GenericStorage renders
+    that as "Unavailable", see engine.vizard's own documented bug).
+    """
+    arbitrator, _, _, _ = _run_comms_pointing([(False, 10.0), (True, 10.0)])
+
+    error_log = np.array(arbitrator.pointingErrorDegLog)
+    storage_level = np.array(arbitrator.pointingErrorRecorder.storageLevel)
+    storage_capacity = np.array(arbitrator.pointingErrorRecorder.storageCapacity)
+    assert np.allclose(storage_level, error_log)
+    assert np.all(storage_level >= 0.0)
+    assert np.all(storage_capacity == 180.0)
+
+
+def test_link_status_cmd_out_msg_reports_no_link_without_rf_link_config():
+    """Without an ``rf_link``/``ground_station_config`` pair (this
+    project's templates without ``schema.scenario.RFLinkConfig`` set),
+    the live "Link status" badge must always report "no link" (0), even
+    while actually comms-pointing -- matching
+    gui.mission_dashboard_widget's own "no rf_link configured" fallback,
+    never a false "link OK".
+    """
+    arbitrator, _, _, _ = _run_comms_pointing([(False, 10.0), (True, 10.0)])
+
+    link_cmd = np.array(arbitrator.linkStatusRecorder.deviceCmd)
+    assert np.all(link_cmd == 0)
+
+
+def test_link_status_cmd_out_msg_tracks_a_real_link_budget_margin_sign():
+    """With a real ``RFLinkConfig``/``GroundStationConfig`` pair, the live
+    "Link status" badge must report "link OK" (2) exactly when
+    ``engine.link_budget.link_margin_db`` -- the SAME pure-Python function
+    gui.mission_dashboard_widget and engine.link_budget.link_margin_series
+    already use -- reports a non-negative margin for that segment's real
+    slant range, and "no link" (0) otherwise, including while NOT
+    comms-pointing even if the margin at that range would be positive
+    (real access alone is not an actual link attempt -- see
+    engine.link_budget.link_margin_series's own gating).
+    """
+    from spacemissionstudio.engine import link_budget
+
+    rf_link = RFLinkConfig(tx_power_w=5.0, frequency_hz=2.2e9, data_rate_bps=1.0e6, tx_antenna_gain_dbi=6.0,
+                            required_ebno_db=10.0)
+    gs_config = GroundStationConfig(name="gs-1", latitude_deg=0.0, longitude_deg=0.0,
+                                     rx_antenna_gain_dbi=35.0, system_noise_temp_k=150.0)
+
+    close_range_m = 700.0e3  # close enough that the link should close comfortably
+    far_range_m = 2.0e7  # far enough (way past LEO) that the link should not close
+    close_margin_db = link_budget.link_margin_db(close_range_m, rf_link, gs_config)
+    far_margin_db = link_budget.link_margin_db(far_range_m, rf_link, gs_config)
+    assert close_margin_db >= 0.0, "test fixture assumption: the close range should close the link"
+    assert far_margin_db < 0.0, "test fixture assumption: the far range should NOT close the link"
+
+    arbitrator, _, t_s_unused, _ = _run_comms_pointing(
+        [(False, 10.0, close_range_m), (True, 10.0, close_range_m), (True, 10.0, far_range_m)],
+        rf_link=rf_link, ground_station_config=gs_config,
+    )
+
+    t_log = np.array(arbitrator.tLog)
+    link_cmd = np.array(arbitrator.linkStatusRecorder.deviceCmd)
+    # First segment: real access but NOT comms-pointing yet -- no link attempt, regardless of range.
+    assert np.all(link_cmd[t_log < 9.0] == 0)
+    # Second segment: comms-pointing at the close range -- link should read OK.
+    assert np.all(link_cmd[(t_log > 11.0) & (t_log < 19.0)] == 2)
+    # Third segment: comms-pointing at the far range -- link should read degraded/no-link.
+    assert np.all(link_cmd[t_log > 21.0] == 0)

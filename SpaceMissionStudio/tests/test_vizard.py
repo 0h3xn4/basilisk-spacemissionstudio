@@ -146,3 +146,70 @@ def test_enable_vizard_with_a_ground_station_does_not_crash():
     assert viz is not None
     assert len(viz.locations) == 1
     assert viz.locations[0].stationName == "gs-1"
+
+
+def test_enable_vizard_with_comms_pointing_builds_the_three_new_panels():
+    """Real user feedback: the GUI's mission dashboard (``gui.mission_
+    dashboard_widget``, template 19's live telemetry) "shall also be in
+    the vizard live visualization, not only in the GUI itself". This
+    exercises ``engine.vizard.enable_vizard()``'s new
+    ``comms_pointing_by_spacecraft`` wiring directly against a real
+    ``engine.fsw.build_comms_pointing()`` arbitrator -- deliberately NOT
+    through ``SimulationService.build()`` (SPICE-blocked in this sandbox,
+    same already-documented gap as the ground-station test above; this
+    bug has nothing to do with it), confirming both that nothing crashes
+    AND that the three new panels (a "Pointing Error" GenericStorage bar,
+    "Mode"/"Link status" GenericSensor badges) actually land in the
+    per-spacecraft lists ``enable_vizard()`` hands to
+    ``vizSupport.enableUnityVisualization()``.
+    """
+    from Basilisk.architecture import messaging
+    from Basilisk.simulation import spacecraft
+    from Basilisk.utilities import SimulationBaseClass, macros
+
+    from spacemissionstudio.engine import fsw
+    from spacemissionstudio.engine.vizard import VizardRequest, enable_vizard
+    from spacemissionstudio.schema.scenario import CommsPointingConfig
+
+    scSim = SimulationBaseClass.SimBaseClass()
+    task_name = "dynTask"
+    dyn_process = scSim.CreateNewProcess("dynProc")
+    dyn_process.addTask(scSim.CreateNewTask(task_name, macros.sec2nano(1.0)))
+
+    sc_object = spacecraft.Spacecraft()
+    sc_object.ModelTag = "sat-1"
+    scSim.AddModelToTask(task_name, sc_object)
+
+    def _fixed_att_guid_msg(sigma_br, moduleID):
+        payload = messaging.AttGuidMsgPayload()
+        payload.sigma_BR = list(sigma_br)
+        payload.omega_BR_B = [0.0, 0.0, 0.0]
+        payload.omega_RN_B = [0.0, 0.0, 0.0]
+        payload.domega_RN_B = [0.0, 0.0, 0.0]
+        return messaging.AttGuidMsg().write(payload, 0, moduleID)
+
+    sun_guid_msg = _fixed_att_guid_msg([0.05, 0.0, 0.0], moduleID=1)
+    comms_guid_msg = _fixed_att_guid_msg([0.0, -0.08, 0.0], moduleID=2)
+    access_msg = messaging.AccessMsg()
+    access_payload = messaging.AccessMsgPayload()
+    access_payload.hasAccess = 0
+    access_msg.write(access_payload, 0, 3)
+
+    comms_config = CommsPointingConfig(target_ground_station="gs-1", comms_power_w=0.0)
+    arbitrator = fsw.build_comms_pointing(
+        scSim, task_name, "sat-1", comms_config, sun_guid_msg, comms_guid_msg, access_msg,
+    )
+
+    import tempfile
+
+    save_file = Path(tempfile.mkdtemp()) / "comms_pointing.viz.bin"
+    viz, _bridges, storage_list, sensor_list = enable_vizard(
+        scSim, task_name, [sc_object], VizardRequest(save_file=str(save_file)),
+        comms_pointing_by_spacecraft={"sat-1": arbitrator},
+    )
+
+    assert viz is not None
+    assert len(storage_list) == 1 and len(storage_list[0]) == 1  # exactly one GenericStorage panel
+    assert storage_list[0][0].label == "Pointing Error"
+    sensor_labels = {sensor.label for sensor in sensor_list[0]}
+    assert sensor_labels == {"Mode", "Link status"}
