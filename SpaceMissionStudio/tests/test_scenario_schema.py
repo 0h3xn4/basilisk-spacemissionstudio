@@ -385,6 +385,104 @@ def test_named_hardware_reaction_wheel_type_skips_custom_requirements():
     sc.validate()  # must not raise -- named types have their own built-in defaults
 
 
+def test_motor_thermal_requires_all_four_fields_together():
+    # motorThermal.MotorThermal.Reset() hard-exits the whole process (not
+    # a catchable error) on an unset field in this group -- this schema
+    # check exists specifically to never reach that call partially
+    # configured.
+    sc = _minimal_scenario()
+    sc.spacecraft[0].actuators = [
+        ActuatorConfig(kind="reaction_wheel", name="rw-1",
+                        params={"gsHat_B": [1, 0, 0], "rw_type": "Honeywell_HR16",
+                                "motor_thermal_initial_temp_c": 20.0})
+    ]
+    sc.spacecraft[0].fsw_mode = "sunSafePoint"
+    with pytest.raises(ScenarioValidationError, match="motor_thermal"):
+        sc.validate()
+
+
+def test_motor_thermal_efficiency_must_be_strictly_between_zero_and_one():
+    # motorThermal.MotorThermal's own constructor default (1.0) is ITSELF
+    # one of the values Reset() rejects -- confirmed directly against
+    # motorThermal.cpp.
+    sc = _minimal_scenario()
+    sc.spacecraft[0].actuators = [
+        ActuatorConfig(kind="reaction_wheel", name="rw-1",
+                        params={"gsHat_B": [1, 0, 0], "rw_type": "Honeywell_HR16",
+                                "motor_thermal_initial_temp_c": 20.0, "motor_thermal_efficiency": 1.0,
+                                "motor_thermal_ambient_resistance_w_c": 5.0,
+                                "motor_thermal_heat_capacity_j_c": 50.0})
+    ]
+    sc.spacecraft[0].fsw_mode = "sunSafePoint"
+    with pytest.raises(ScenarioValidationError, match="motor_thermal_efficiency"):
+        sc.validate()
+
+
+def test_motor_thermal_with_all_fields_validates():
+    sc = _minimal_scenario()
+    sc.spacecraft[0].actuators = [
+        ActuatorConfig(kind="reaction_wheel", name="rw-1",
+                        params={"gsHat_B": [1, 0, 0], "rw_type": "Honeywell_HR16",
+                                "motor_thermal_initial_temp_c": 20.0, "motor_thermal_efficiency": 0.7,
+                                "motor_thermal_ambient_resistance_w_c": 5.0,
+                                "motor_thermal_heat_capacity_j_c": 50.0})
+    ]
+    sc.spacecraft[0].fsw_mode = "sunSafePoint"
+    sc.validate()  # must not raise
+
+
+def test_thermal_sensor_requires_nHat_B():
+    sc = _minimal_scenario()
+    sc.spacecraft[0].sensors = [SensorConfig(kind="thermal", name="therm-1",
+                                               params={"area_m2": 1.0, "absorptivity": 0.25, "emissivity": 0.34})]
+    with pytest.raises(ScenarioValidationError, match="nHat_B"):
+        sc.validate()
+
+
+def test_thermal_sensor_requires_area_m2():
+    sc = _minimal_scenario()
+    sc.spacecraft[0].sensors = [SensorConfig(kind="thermal", name="therm-1",
+                                               params={"nHat_B": [0, 0, 1], "absorptivity": 0.25,
+                                                       "emissivity": 0.34})]
+    with pytest.raises(ScenarioValidationError, match="area_m2"):
+        sc.validate()
+
+
+def test_thermal_sensor_requires_absorptivity_in_range():
+    sc = _minimal_scenario()
+    sc.spacecraft[0].sensors = [SensorConfig(kind="thermal", name="therm-1",
+                                               params={"nHat_B": [0, 0, 1], "area_m2": 1.0, "absorptivity": 1.5,
+                                                       "emissivity": 0.34})]
+    with pytest.raises(ScenarioValidationError, match="absorptivity"):
+        sc.validate()
+
+
+def test_thermal_sensor_requires_emissivity_in_range():
+    sc = _minimal_scenario()
+    sc.spacecraft[0].sensors = [SensorConfig(kind="thermal", name="therm-1",
+                                               params={"nHat_B": [0, 0, 1], "area_m2": 1.0, "absorptivity": 0.25,
+                                                       "emissivity": 0.0})]
+    with pytest.raises(ScenarioValidationError, match="emissivity"):
+        sc.validate()
+
+
+def test_thermal_sensor_rejects_unrecognized_measurement_fault_mode():
+    sc = _minimal_scenario()
+    sc.spacecraft[0].sensors = [SensorConfig(kind="thermal", name="therm-1",
+                                               params={"nHat_B": [0, 0, 1], "area_m2": 1.0, "absorptivity": 0.25,
+                                                       "emissivity": 0.34, "measurement_fault_mode": "bogus"})]
+    with pytest.raises(ScenarioValidationError, match="measurement_fault_mode"):
+        sc.validate()
+
+
+def test_thermal_sensor_with_required_params_validates():
+    sc = _minimal_scenario()
+    sc.spacecraft[0].sensors = [SensorConfig(kind="thermal", name="therm-1",
+                                               params={"nHat_B": [0, 0, 1], "area_m2": 1.0, "absorptivity": 0.25,
+                                                       "emissivity": 0.34})]
+    sc.validate()  # must not raise
+
+
 def test_sunSafePoint_use_css_estimation_requires_a_coarse_sun_sensor():
     sc = _minimal_scenario()
     sc.spacecraft[0].fsw_mode = "sunSafePoint"
@@ -1256,6 +1354,48 @@ def test_constant_thrust_defaults_to_none():
     sc = _minimal_scenario()
     assert sc.spacecraft[0].constant_thrust is None
     sc.validate()  # must not raise -- not required
+
+
+def test_magnetometer_sensor_without_earth_central_body_is_rejected():
+    """Mirrors engine.fsw.attach_sensors()'s own FswError (magneticFieldWMM,
+    the only magnetic-field model this app wires up, is Earth-only) --
+    a real audit finding: a magnetometer sensor was schema-valid on ANY
+    central_body, only failing much later at Run Simulation time, the
+    exact "validates cleanly but guaranteed to fail at run time" gap
+    this schema already closed for power/station_keeping/enable_srp/
+    comms_pointing needing a sun ephemeris (see the tests above).
+    """
+    sc = _minimal_scenario(gravity=GravityConfig(central_body="mars"))
+    sc.spacecraft[0].sensors = [SensorConfig(kind="magnetometer", name="mag-1")]
+    with pytest.raises(ScenarioValidationError, match="magnetometer"):
+        sc.validate()
+
+
+def test_magnetometer_sensor_with_earth_central_body_validates():
+    sc = _minimal_scenario(gravity=GravityConfig(central_body="earth"))
+    sc.spacecraft[0].sensors = [SensorConfig(kind="magnetometer", name="mag-1")]
+    sc.validate()  # must not raise
+
+
+def test_magnetic_momentum_management_without_earth_central_body_is_rejected():
+    """Mirrors engine.service.SimulationService.build()'s own
+    SimulationServiceError for the same Earth-only magneticFieldWMM
+    restriction -- MagneticMomentumManagementConfig's own docstring
+    already pointed at this exact gap as deferred-to-the-engine-layer;
+    this closes it, same as the magnetometer sensor case above.
+    """
+    sc = _minimal_scenario(gravity=GravityConfig(central_body="mars"))
+    sc.spacecraft[0].actuators = [
+        ActuatorConfig(kind="reaction_wheel", name="rw-1",
+                        params={"gsHat_B": [1.0, 0.0, 0.0], "rw_type": "Honeywell_HR16"}),
+        ActuatorConfig(kind="magnetic_torque_rod", name="mtb-1",
+                        params={"gtHat_B": [1.0, 0.0, 0.0], "max_dipole_a_m2": 0.1}),
+    ]
+    sc.spacecraft[0].magnetic_momentum_management = MagneticMomentumManagementConfig(
+        wheel_speed_biases_rad_s=[0.0]
+    )
+    with pytest.raises(ScenarioValidationError, match="magnetic_momentum_management"):
+        sc.validate()
 
 
 def test_constant_thrust_round_trips_through_save_load(tmp_path):

@@ -185,16 +185,30 @@ analytical estimate -- see each source module's own docstring):
   ``SysModel`` per pair (defined locally inside this function, not at
   module scope, to keep this module's own Basilisk import lazy -- see
   below) that republishes ``AccessMsgPayload.hasAccess`` as that command
-  value. Per ``GenericSensor``'s own field comment in ``vizStructures.h``
-  ("Modes 0 and 1 will use the 0th color, Mode 2 will use the color
-  indexed to 1"), the bridge commands 0 for no-access and 2 (not 1) for
-  access, so the two colors actually differ. This marker's position/
-  boresight (``r_SB_B``/``normalVector``) is a placeholder (body origin,
-  +X) since neither the schema nor Basilisk's ``groundLocation`` model a
-  real antenna mounting direction -- it is a status indicator, not an
-  antenna visualization (compare ``Transceiver``/comm-ring visualization,
-  which needs a real data-node system this project does not have -- see
-  ``PowerConfig``'s docstring on scope).
+  value. **Real bug found directly from Vizard's own Unity source**
+  (``0h3xn4/vizard``, ``GenericSensorHUDMethods.cs``'s ``FixedUpdate``/
+  ``getModeColor``), not from a screenshot this time -- reported as part
+  of a real user complaint that a related panel (see the next bullet)
+  "wasn't showing anything": mode 0 is NOT just "the 0th color" the way
+  ``vizStructures.h``'s own field comment implies -- that value is
+  hardwired to mean "fade the indicator to fully hidden," REGARDLESS of
+  what color is supplied for it. A ``GenericSensor`` commanded 0 for most
+  of a run (as "no access" was here) spends nearly all of that run
+  invisible, not shown in some default/off color -- which reads to a user
+  as "this panel isn't there," not "this panel is currently off." Mode
+  1 and 2 are the two values that actually map to the two user-supplied
+  colors (``modeColors[1]``/``modeColors[2]`` -- index 0 of that internal
+  list is a hardcoded default the Unity code never lets a caller
+  override). Fixed: the bridge now commands 1 for no-access and 2 for
+  access -- never 0 -- so BOTH states render as a persistently visible,
+  distinctly colored marker instead of one of them being an invisible
+  no-op. This marker's position/boresight (``r_SB_B``/``normalVector``)
+  is a placeholder (body origin, +X) since neither the schema nor
+  Basilisk's ``groundLocation`` model a real antenna mounting direction
+  -- it is a status indicator, not an antenna visualization (compare
+  ``Transceiver``/comm-ring visualization, which needs a real data-node
+  system this project does not have -- see ``PowerConfig``'s docstring on
+  scope).
 * **comms_pointing mode, pointing error, and RF link status** -- real
   user feedback: "the mission panel live stream shall also be in the
   vizard live visualization, not only in the GUI itself" (referring to
@@ -208,8 +222,10 @@ analytical estimate -- see each source module's own docstring):
   always non-negative by construction -- see that arbitrator's own
   ``UpdateState``, so this one never risks the negative-``storageLevel``
   "Unavailable" bug the RTN panels hit); a "Mode" ``GenericSensor`` badge
-  (Sun-pointing vs. ground-station-pointing, same 0/2
-  ``DeviceCmdMsgPayload`` convention as the access indicator); and a
+  (Sun-pointing vs. ground-station-pointing, same 1/2
+  ``DeviceCmdMsgPayload`` convention as the access indicator -- see that
+  bullet's own real-Vizard-source finding on why 0 is never one of the
+  two values); and a
   "Link status" ``GenericSensor`` badge (link OK vs. no/degraded link),
   computed live inside the arbitrator from ``engine.link_budget.link_margin_db``
   -- the SAME pure-Python function and the SAME gating
@@ -681,10 +697,12 @@ def enable_vizard(scSim, task_name: str, sc_objects: List, request: VizardReques
     class _AccessIndicatorBridge(sysModel.SysModel):
         """See this module's docstring, "Live-data panels" section,
         "Ground-station access windows" bullet, for why this exists and
-        why 0/2 (not 0/1) are the two command values used.
+        why 1/2 (not 0/2) are the two command values used -- see that
+        bullet's own real-Vizard-source finding for why 0 cannot be one
+        of them.
         """
 
-        _NO_ACCESS_CMD = 0
+        _NO_ACCESS_CMD = 1
         _ACCESS_CMD = 2
 
         def __init__(self, name: str, access_out_msg):
@@ -896,10 +914,12 @@ def enable_vizard(scSim, task_name: str, sc_objects: List, request: VizardReques
             sensors.append(sensor)
 
         if comms_arbitrator is not None:
-            # Same 0/2 DeviceCmdMsgPayload convention as the access bridge
-            # above, sourced directly from the arbitrator's own output
-            # messages -- it already IS the live source of this state, so
-            # no separate bridge SysModel is built here.
+            # Same 1/2 DeviceCmdMsgPayload convention as the access bridge
+            # above (never 0 -- see that bullet's own real-Vizard-source
+            # finding in this module's docstring for why), sourced
+            # directly from the arbitrator's own output messages -- it
+            # already IS the live source of this state, so no separate
+            # bridge SysModel is built here.
             mode_reader = messaging.DeviceCmdMsgReader()
             mode_reader.subscribeTo(comms_arbitrator.modeCmdOutMsg)
             mode_sensor = vizInterface.GenericSensor()

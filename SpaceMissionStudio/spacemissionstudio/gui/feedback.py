@@ -149,6 +149,7 @@ def _reposition_toasts(window: QWidget, stack: List[QLabel]) -> None:
 
 _ERROR_STATE_PROPERTY = "state"
 _ERROR_STATE_VALUE = "error"
+_SAVED_TOOLTIP_PROPERTY = "_feedback_saved_tooltip"
 
 
 def mark_invalid(widget: QWidget, message: str) -> None:
@@ -159,7 +160,17 @@ def mark_invalid(widget: QWidget, message: str) -> None:
     Save/Run dialog. Does not clear itself -- call :func:`clear_invalid`
     once the field holds an acceptable value again (typically wired to
     that widget's own ``textChanged``/``valueChanged`` signal).
+
+    Stashes whatever tooltip the widget already had (if any, and if this
+    isn't already a repeat ``mark_invalid`` call) in a dynamic property so
+    :func:`clear_invalid` can restore it afterwards, instead of just
+    blanking it -- every call site today happens to set no tooltip of its
+    own first, so this is currently latent, but a future widget with a
+    real, static tooltip (e.g. a units hint) would otherwise lose it
+    permanently the first time validation ever flagged that field.
     """
+    if widget.property(_ERROR_STATE_PROPERTY) != _ERROR_STATE_VALUE:
+        widget.setProperty(_SAVED_TOOLTIP_PROPERTY, widget.toolTip())
     widget.setProperty(_ERROR_STATE_PROPERTY, _ERROR_STATE_VALUE)
     widget.setToolTip(message)
     _repolish(widget)
@@ -168,11 +179,14 @@ def mark_invalid(widget: QWidget, message: str) -> None:
 def clear_invalid(widget: QWidget) -> None:
     """Undoes :func:`mark_invalid` -- a no-op if the widget wasn't
     marked, so this is always safe to call unconditionally (e.g. at the
-    top of a field's change handler, before re-validating).
+    top of a field's change handler, before re-validating). Restores
+    whatever tooltip the widget had before :func:`mark_invalid` was first
+    called, rather than always blanking it.
     """
     if widget.property(_ERROR_STATE_PROPERTY) == _ERROR_STATE_VALUE:
         widget.setProperty(_ERROR_STATE_PROPERTY, "")
-        widget.setToolTip("")
+        widget.setToolTip(widget.property(_SAVED_TOOLTIP_PROPERTY) or "")
+        widget.setProperty(_SAVED_TOOLTIP_PROPERTY, None)
         _repolish(widget)
 
 

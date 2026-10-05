@@ -31,6 +31,7 @@ with a different UI toolkit entirely without touching
 
 from __future__ import annotations
 
+import logging
 import subprocess
 from pathlib import Path
 from typing import Optional
@@ -73,6 +74,8 @@ from .vizard_launcher import (
 
 _FILE_FILTER = "SpaceMissionStudio scenario (*.json)"
 
+_logger = logging.getLogger(__name__)
+
 
 def _with_log_file_hint(message: str) -> str:
     """Appends where the FULL traceback for ``message`` was just logged
@@ -105,6 +108,7 @@ class MainWindow(QMainWindow):
         self._dirty = False
         self._run_worker: RunWorker | None = None
         self._mc_worker: MonteCarloWorker | None = None
+        self._progress_error_shown = False  # see _on_run_progress's own comment
         self._vizard_request = None  # engine.vizard.VizardRequest, or None -- set via the Run menu's "Vizard Configuration..." action
         self._vizard_process = None  # subprocess.Popen, or None -- set via the Run menu's "Launch Vizard" action
         # The direct_comm_address self._vizard_process was actually launched
@@ -779,6 +783,20 @@ class MainWindow(QMainWindow):
         since there is no reliable way to ask an arbitrary already
         -running Vizard process "are you already connected".
 
+        This method's own "reuse if already running and matching"
+        behavior still applies when called directly from the "Launch
+        Vizard" menu action -- but :meth:`on_run` (a live-stream run
+        specifically) always terminates a self-launched
+        ``self._vizard_process`` BEFORE calling this method, so that
+        branch is effectively never reached from there: real user
+        feedback was that reusing a running instance across separate runs
+        left a live-streamed Vizard showing a mix of the previous run's
+        and the current run's data, since a running Vizard Main Scene has
+        no way to reset itself live (confirmed directly from Vizard's own
+        Unity source, not merely suspected -- see ``on_run``'s own
+        comment for specifics). Forcing a fresh relaunch there is the
+        only way this app can guarantee a truly clean scene per run.
+
         Returns True once Vizard is confirmed running (already was, or
         was just started) by the end of this call, False if the user
         cancelled a browse prompt or launching genuinely failed (an
@@ -837,10 +855,17 @@ class MainWindow(QMainWindow):
         :meth:`on_launch_vizard` is about to replace -- see its own
         docstring) and waits (bounded, so a Vizard that refuses to exit
         can't hang the GUI thread forever) for it to actually stop before
-        returning, so the port it may have bound is free for the
-        replacement instance. ``terminate()`` first (a clean exit, in
-        case Vizard has anything to flush/save), ``kill()`` only if that
-        doesn't work within the timeout.
+        returning, so the replacement instance doesn't briefly coexist
+        with it. ``terminate()`` first (a clean exit, in case Vizard has
+        anything to flush/save), ``kill()`` only if that doesn't work
+        within the timeout.
+
+        Audit correction: this used to say waiting frees "the port it may
+        have bound" -- wrong. ``launch_vizard()`` only ever starts the
+        external Vizard GUI as a CLIENT process that dials OUT to
+        Basilisk's own ``vizInterface`` (the engine side, which is what
+        actually binds the port); see ``docs/source/Vizard/vizardAdvanced/
+        vizardLiveComm.rst``. Nothing this process does binds a port.
         """
         self._vizard_process.terminate()
         try:
@@ -859,6 +884,30 @@ class MainWindow(QMainWindow):
             return
 
         if self._vizard_request is not None and self._vizard_request.live_stream:
+            # Real user feedback: "when running a new simulation after a
+            # previous simulation finished, vizard should completely
+            # refresh so it actually displays only stuff from the current
+            # simulation, and not the previous one." Confirmed directly
+            # from Vizard's own Unity source (0h3xn4/vizard,
+            # MessageList.cs/ScenarioSceneManager.cs): a running Vizard
+            # Main Scene has NO live "reset" capability -- its scene
+            # objects are built exactly ONCE, from the very first message
+            # ever received, and every later message (from ANY later run
+            # that reconnects to the SAME process) just keeps appending to
+            # the same ever-growing timeline. on_launch_vizard()'s own
+            # "reuse an already-running, matching instance" behavior
+            # (deliberate, see its own docstring -- avoids forcing a
+            # needless extra "Start Visualization" click) is exactly what
+            # was causing a new run to reuse that stale scene. A run this
+            # session itself launched Vizard for is therefore always
+            # terminated and relaunched fresh here -- an instance this
+            # session never launched (started manually, or in an earlier
+            # session) is left alone, same as on_launch_vizard()'s own
+            # policy, since killing a process this app didn't start is
+            # not this app's call to make.
+            if self._vizard_process is not None and self._vizard_process.poll() is None:
+                self._terminate_vizard_process()
+
             # Basilisk's InitializeSimulation() BLOCKS (inside native
             # C++, with no Python-level hook -- see RunWorker's own
             # module docstring on why there's no cancellation checkpoint
@@ -888,15 +937,22 @@ class MainWindow(QMainWindow):
         # when there's no mission sequence to execute instead.
         live = self.live_plot_action.isChecked() and not scenario.mission_sequence
         self._start_busy(f"Running {scenario.name}...", determinate=live)
+        # Always clear the PREVIOUS run's results before this one starts --
+        # not just when live (a real gap: a non-live run, or a scenario
+        # with a mission_sequence, used to leave whatever the last run
+        # produced on screen for the whole duration of this new run, which
+        # looks exactly like this run already has results before it
+        # actually does -- part of the "running another simulation seems
+        # to break a lot of things" feedback).
+        self.results_widget.set_result(None)
+        self.mission_dashboard_widget.set_result(None)
         if live:
-            # Clear any previous run's plot rather than leaving it up
-            # while this run's first chunk is still in flight -- it would
-            # otherwise look like this run already has results before it
-            # actually does.
-            self.results_widget.set_result(None)
-            self.mission_dashboard_widget.set_result(None)
             self.right_tabs.setCurrentWidget(self.results_widget)
         self.mission_output_widget.clear()
+        # Reset once per run -- see _on_run_progress's own comment for why
+        # this exists: suppresses a dialog-per-chunk storm if something
+        # about THIS run's own data keeps failing on every single update.
+        self._progress_error_shown = False
         # Captured now (not read back from self.scenario_editor later,
         # e.g. in _on_run_finished()): the editor isn't locked while a run
         # is in flight, so it could hold different, later edits by the
@@ -931,29 +987,69 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("Aborting... this takes effect at the next checkpoint, not instantly.")
 
     def _on_run_progress(self, partial_result, fraction: float) -> None:
-        self.results_widget.set_live_result(partial_result, self._last_run_epoch_utc)
-        self.mission_dashboard_widget.set_live_result(partial_result, self._last_run_scenario)
-        self._busy_progress.setValue(int(round(fraction * 100)))
+        # Real user feedback ("the app really should be robust and
+        # resilient and not crash whenever something unusual happens"):
+        # this slot runs on every single live-progress chunk, so if
+        # anything it touches ever raised (e.g. a widget hitting an edge
+        # case specific to this scenario's own series/spacecraft set), the
+        # exception would propagate back through Qt's signal dispatch on
+        # EVERY subsequent chunk too -- deterministically leaving the
+        # Results tab stuck on its placeholder for the rest of the run
+        # while the simulation itself (a separate thread, unaffected)
+        # keeps going and completes normally, which looks exactly like
+        # "the GUI broke" with no error ever shown. Caught here, logged
+        # once with a full traceback, and surfaced ONCE per run (not a
+        # dialog-per-chunk storm) via self._progress_error_shown -- the
+        # run itself is never aborted by this, only this chunk's GUI
+        # update is skipped.
+        try:
+            self.results_widget.set_live_result(partial_result, self._last_run_epoch_utc)
+            self.mission_dashboard_widget.set_live_result(partial_result, self._last_run_scenario)
+            self._busy_progress.setValue(int(round(fraction * 100)))
+        except Exception as exc:  # noqa: BLE001 -- see this method's own comment on why ANY failure is caught here
+            _logger.exception("Failed to apply a live progress update")
+            if not self._progress_error_shown:
+                self._progress_error_shown = True
+                QMessageBox.warning(
+                    self, "Live update failed",
+                    _with_log_file_hint(
+                        f"Updating the live display failed ({exc}) -- the simulation itself is still running "
+                        "normally in the background and this won't be shown again for this run, but the "
+                        "Results/Mission Dashboard tabs may lag until it finishes."
+                    ),
+                )
 
     def _on_run_finished(self, result, command_summary=None) -> None:
         self._stop_busy(f"Run complete: {len(result.series)} result series.")
         show_toast(self, f"Run complete -- {len(result.series)} result series")
-        # set_live_result(), not set_result(): a live run's final chunk and
-        # its "finished" result always share the same series names, so
-        # using set_result() here would rebuild series_combo and silently
-        # snap the user's current selection back to the first series the
-        # instant the run they were watching actually completes -- see
-        # ResultsWidget.set_live_result()'s docstring for why that rebuild
-        # is skipped when the series set hasn't changed. Also correct for
-        # a non-live run: set_live_result() still rebuilds normally
-        # whenever the series set differs from whatever was shown before.
-        self.results_widget.set_live_result(result, self._last_run_epoch_utc)
-        self.mission_dashboard_widget.set_live_result(result, self._last_run_scenario)
-        if command_summary is not None:
-            self.mission_output_widget.set_command_summary(command_summary)
-            self.right_tabs.setCurrentWidget(self.mission_output_widget)
-        else:
-            self.right_tabs.setCurrentWidget(self.results_widget)
+        try:
+            # set_live_result(), not set_result(): a live run's final chunk
+            # and its "finished" result always share the same series names,
+            # so using set_result() here would rebuild series_combo and
+            # silently snap the user's current selection back to the first
+            # series the instant the run they were watching actually
+            # completes -- see ResultsWidget.set_live_result()'s docstring
+            # for why that rebuild is skipped when the series set hasn't
+            # changed. Also correct for a non-live run: set_live_result()
+            # still rebuilds normally whenever the series set differs from
+            # whatever was shown before.
+            self.results_widget.set_live_result(result, self._last_run_epoch_utc)
+            self.mission_dashboard_widget.set_live_result(result, self._last_run_scenario)
+            if command_summary is not None:
+                self.mission_output_widget.set_command_summary(command_summary)
+                self.right_tabs.setCurrentWidget(self.mission_output_widget)
+            else:
+                self.right_tabs.setCurrentWidget(self.results_widget)
+        except Exception as exc:  # noqa: BLE001 -- the run itself DID succeed; never hide that behind a GUI bug
+            _logger.exception("Run completed, but displaying its results failed")
+            QMessageBox.warning(
+                self, "Run complete, but the display failed",
+                _with_log_file_hint(
+                    f"The simulation finished successfully with {len(result.series)} result series, but "
+                    f"showing them failed ({exc}). The run itself is not affected; try File > Save to keep "
+                    "the scenario, or re-run to try displaying the results again."
+                ),
+            )
 
     def _on_run_failed(self, message: str) -> None:
         self._stop_busy("Run failed.")
@@ -968,13 +1064,20 @@ class MainWindow(QMainWindow):
         """
         self._stop_busy("Run cancelled by user.")
         show_toast(self, "Run cancelled", kind="info")
-        self.results_widget.set_live_result(partial_result, self._last_run_epoch_utc)
-        self.mission_dashboard_widget.set_live_result(partial_result, self._last_run_scenario)
-        if command_summary is not None:
-            self.mission_output_widget.set_command_summary(command_summary)
-            self.right_tabs.setCurrentWidget(self.mission_output_widget)
-        else:
-            self.right_tabs.setCurrentWidget(self.results_widget)
+        try:
+            self.results_widget.set_live_result(partial_result, self._last_run_epoch_utc)
+            self.mission_dashboard_widget.set_live_result(partial_result, self._last_run_scenario)
+            if command_summary is not None:
+                self.mission_output_widget.set_command_summary(command_summary)
+                self.right_tabs.setCurrentWidget(self.mission_output_widget)
+            else:
+                self.right_tabs.setCurrentWidget(self.results_widget)
+        except Exception:  # noqa: BLE001 -- same reasoning as _on_run_finished's own try/except
+            _logger.exception("Run was cancelled, but displaying its partial results failed")
+            QMessageBox.warning(
+                self, "Run cancelled, but the display failed",
+                _with_log_file_hint("The run was cancelled, but showing its partial results failed."),
+            )
 
     def on_run_monte_carlo(self) -> None:
         try:
@@ -1000,19 +1103,24 @@ class MainWindow(QMainWindow):
         self._mc_worker.start()
 
     def _on_monte_carlo_finished(self, failures: list) -> None:
-        if failures:
-            self._stop_busy(f"Monte Carlo complete with {len(failures)} failed run(s).")
-            QMessageBox.warning(self, "Monte Carlo finished with failures",
-                                 f"Run indices that failed: {failures}")
-        else:
-            self._stop_busy("Monte Carlo complete -- all runs succeeded.")
-            # A QMessageBox.warning already covers the failures>0 branch
-            # above (strong enough feedback on its own, matching
-            # _on_run_failed's reasoning for why IT has no toast either)
-            # -- this all-succeeded branch had none at all, unlike its
-            # single-run sibling _on_run_finished's own toast, found
-            # while checking this tab's feedback for consistency.
-            show_toast(self, "Monte Carlo complete -- all runs succeeded")
+        self._stop_busy(
+            f"Monte Carlo complete with {len(failures)} failed run(s)." if failures
+            else "Monte Carlo complete -- all runs succeeded."
+        )
+        try:
+            if failures:
+                QMessageBox.warning(self, "Monte Carlo finished with failures",
+                                     f"Run indices that failed: {failures}")
+            else:
+                # A QMessageBox.warning already covers the failures>0 branch
+                # above (strong enough feedback on its own, matching
+                # _on_run_failed's reasoning for why IT has no toast either)
+                # -- this all-succeeded branch had none at all, unlike its
+                # single-run sibling _on_run_finished's own toast, found
+                # while checking this tab's feedback for consistency.
+                show_toast(self, "Monte Carlo complete -- all runs succeeded")
+        except Exception:  # noqa: BLE001 -- the batch itself DID finish; never hide that behind a GUI bug
+            _logger.exception("Monte Carlo batch finished, but reporting its outcome failed")
 
     def _on_monte_carlo_failed(self, message: str) -> None:
         self._stop_busy("Monte Carlo run failed.")

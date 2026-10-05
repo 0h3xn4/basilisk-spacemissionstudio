@@ -100,8 +100,25 @@ ANOMALY_TYPES = ("true", "mean")
 # flags, which stayed inert booleans, an actuator kind that silently did
 # nothing would be a live foot-gun -- a spacecraft configured to detumble
 # on magnetic torque rods that simply never fire).
-SUPPORTED_SENSOR_KINDS = ("star_tracker", "imu", "coarse_sun_sensor", "magnetometer")
+SUPPORTED_SENSOR_KINDS = ("star_tracker", "imu", "coarse_sun_sensor", "magnetometer", "thermal")
 SUPPORTED_ACTUATOR_KINDS = ("reaction_wheel", "thruster", "magnetic_torque_rod")
+
+# "thermal" (sensorThermal.SensorThermal, optionally chained into
+# tempMeasurement.TempMeasurement for measurement noise/bias/fault) models
+# the temperature of any flat-plate component -- a generic thermal sensor,
+# not tied to one specific piece of hardware the way star_tracker/imu/
+# coarse_sun_sensor/magnetometer each map to a real physical device. Real
+# radiative heating from the sun (gated on the real simulated attitude and,
+# when a power/station_keeping/enable_srp spacecraft's own eclipse model is
+# shared with it, real eclipse shadowing) plus any configured internal
+# power-to-heat dissipation, not an analytical estimate -- see
+# engine.fsw.attach_sensors's own "thermal" branch and
+# engine.service.SimulationService.build()'s eclipse-sharing comment.
+# "reaction_wheel" actuators separately gain an OPTIONAL motor-thermal
+# model (motorThermal.MotorThermal, one per wheel) when a wheel's own
+# params set the motor_thermal_* group below -- a reaction wheel's spin
+# losses/friction generate real heat, independent of whether this
+# spacecraft has any "thermal" sensor configured at all.
 SUPPORTED_FSW_MODES = ("inertial3D", "hillPoint", "velocityPoint", "sunSafePoint", "locationPointing")
 
 # Phase 3: Monte Carlo dispersion quantities engine.monte_carlo actually
@@ -197,7 +214,9 @@ class OrbitIC:
 class SensorConfig:
     """One sensor instance. ``kind`` is one of :data:`SUPPORTED_SENSOR_KINDS`
     (see the capability matrix for which Basilisk module each one maps to:
-    ``starTracker``, ``imuSensor``, ``coarseSunSensor``, ``magnetometer``).
+    ``starTracker``, ``imuSensor``, ``coarseSunSensor``, ``magnetometer``,
+    ``sensorThermal`` -- see :data:`SUPPORTED_SENSOR_KINDS`'s own comment
+    for ``"thermal"``'s extra ``tempMeasurement`` measurement-noise layer).
     ``params`` is an open dict of module-specific settings (noise std devs,
     mounting direction, ...) -- kept generic here rather than one dataclass
     per sensor type so new sensor kinds can be added without another schema
@@ -606,10 +625,15 @@ class MagneticMomentumManagementConfig:
     requirement), and ``gravity.central_body == "earth"`` (Basilisk's
     WMM magnetic field model is Earth-only, same restriction as a
     ``"magnetometer"`` sensor -- see ``engine.fsw``'s module docstring).
-    That central-body check happens at the engine layer when the
-    scenario actually runs (not here), matching this schema's existing
-    precedent for the same Earth-only WMM restriction on magnetometer
-    sensors.
+    That central-body check is enforced twice: once here for immediate,
+    in-dialog feedback, and once more at the engine layer
+    (``engine.service.SimulationService.build()``) when the scenario
+    actually runs, which is what this is mirroring -- see
+    :meth:`Scenario.validate`'s own central_body != "earth" block,
+    which checks this field (and the analogous ``"magnetometer"``
+    sensor case) directly, since neither this class nor
+    :class:`SensorConfig` has access to the scenario's own
+    ``gravity.central_body`` on their own.
 
     ``wheel_speed_biases_rad_s`` needs exactly one entry per
     ``"reaction_wheel"`` actuator on this spacecraft, in the same order
@@ -810,6 +834,37 @@ class SpacecraftConfig:
                 _require(nHat_B is not None and len(nHat_B) == 3,
                           f"{self.name}: coarse_sun_sensor {sensor.name!r} needs params['nHat_B'] "
                           "as a 3-element body-frame boresight unit vector")
+            if sensor.kind == "thermal":
+                nHat_B = sensor.params.get("nHat_B")
+                _require(nHat_B is not None and len(nHat_B) == 3,
+                          f"{self.name}: thermal sensor {sensor.name!r} needs params['nHat_B'] "
+                          "as a 3-element body-frame face-normal unit vector")
+                # Confirmed directly against sensorThermal.cpp's own Reset():
+                # a non-positive sensorArea/sensorMass/sensorSpecificHeat, or
+                # an absorptivity/emissivity outside (0, 1], each hard-exits
+                # the whole process via bskLogger.bskError (not a catchable
+                # exception) -- area/absorptivity/emissivity have no sane
+                # Basilisk-side default (constructor sets them to -1)
+                # precisely so a forgotten value is caught here instead of
+                # silently building a sensor that can never radiate/absorb
+                # anything. mass_kg/specific_heat_j_kg_k DO have real,
+                # physically reasonable Basilisk defaults (1 kg, 890 J/kg/K,
+                # aluminum) and so stay optional.
+                area_m2 = sensor.params.get("area_m2")
+                _require(area_m2 is not None and area_m2 > 0,
+                          f"{self.name}: thermal sensor {sensor.name!r} needs params['area_m2'] > 0")
+                absorptivity = sensor.params.get("absorptivity")
+                _require(absorptivity is not None and 0.0 < absorptivity <= 1.0,
+                          f"{self.name}: thermal sensor {sensor.name!r} needs params['absorptivity'] in (0, 1]")
+                emissivity = sensor.params.get("emissivity")
+                _require(emissivity is not None and 0.0 < emissivity <= 1.0,
+                          f"{self.name}: thermal sensor {sensor.name!r} needs params['emissivity'] in (0, 1]")
+                measurement_fault_mode = sensor.params.get("measurement_fault_mode", "none")
+                _THERMAL_FAULT_MODES = ("none", "stuck_current", "stuck_value", "spiking")
+                _require(measurement_fault_mode in _THERMAL_FAULT_MODES,
+                          f"{self.name}: thermal sensor {sensor.name!r} has an unrecognized "
+                          f"params['measurement_fault_mode'] {measurement_fault_mode!r} -- must be one of "
+                          f"{_THERMAL_FAULT_MODES}")
 
         actuator_names = [a.name for a in self.actuators]
         _require(len(actuator_names) == len(set(actuator_names)),
@@ -867,6 +922,43 @@ class SpacecraftConfig:
                               "set -- rwFactory.create() hard-exits the whole process because it builds this "
                               "wheel's inertia exactly one way, never both; remove params['Js'] (let it be "
                               "derived from Omega_max/maxMomentum) or remove the Omega_max/maxMomentum pair")
+                # Optional motor-thermal model (motorThermal.MotorThermal,
+                # see engine.fsw.build_reaction_wheel_motor_thermal) -- an
+                # all-or-nothing group, confirmed directly against
+                # motorThermal.cpp's own Reset(): currentTemperature at or
+                # below absolute zero (its constructor default, -273.15),
+                # a non-positive ambientThermalResistance/motorHeatCapacity
+                # (both default to -1.0), or an efficiency outside the
+                # OPEN interval (0, 1) -- note 1.0 itself is rejected, not
+                # just values above it; its own constructor default is
+                # exactly 1.0, which would otherwise hard-exit the whole
+                # process the moment ANY motor-thermal field was set -- all
+                # hard-exit the whole process via bskLogger.bskError (not a
+                # catchable exception), so every field in this group is
+                # required together the moment any one of them is set,
+                # rather than ever reaching Basilisk with a partially
+                # -configured motor-thermal model.
+                _MOTOR_THERMAL_KEYS = (
+                    "motor_thermal_initial_temp_c", "motor_thermal_efficiency",
+                    "motor_thermal_ambient_resistance_w_c", "motor_thermal_heat_capacity_j_c",
+                )
+                if any(key in actuator.params for key in _MOTOR_THERMAL_KEYS):
+                    missing = [key for key in _MOTOR_THERMAL_KEYS if key not in actuator.params]
+                    _require(not missing,
+                              f"{self.name}: reaction_wheel {actuator.name!r} has some but not all of "
+                              f"{_MOTOR_THERMAL_KEYS} set -- motorThermal.MotorThermal hard-exits the whole "
+                              f"process on an unset field in this group; missing {missing}")
+                    efficiency = actuator.params["motor_thermal_efficiency"]
+                    _require(0.0 < efficiency < 1.0,
+                              f"{self.name}: reaction_wheel {actuator.name!r} needs "
+                              "0 < params['motor_thermal_efficiency'] < 1 (1.0 itself is rejected by "
+                              "motorThermal.MotorThermal, which models it as a real inefficiency)")
+                    _require(actuator.params["motor_thermal_ambient_resistance_w_c"] > 0,
+                              f"{self.name}: reaction_wheel {actuator.name!r} needs "
+                              "params['motor_thermal_ambient_resistance_w_c'] > 0")
+                    _require(actuator.params["motor_thermal_heat_capacity_j_c"] > 0,
+                              f"{self.name}: reaction_wheel {actuator.name!r} needs "
+                              "params['motor_thermal_heat_capacity_j_c'] > 0")
             if actuator.kind == "thruster":
                 r_B = actuator.params.get("r_B")
                 _require(r_B is not None and len(r_B) == 3,
@@ -1325,6 +1417,33 @@ class Scenario:
                       "gate/SRP/comms_pointing's own sunSafePoint chain all need a sun ephemeris. Add 'sun' "
                       "to gravity.third_body_perturbers, or remove power/station_keeping/enable_srp/"
                       "comms_pointing from every spacecraft")
+        # Same mirroring reasoning as needs_sun just above:
+        # engine.fsw.attach_sensors() raises an FswError for a
+        # "magnetometer" sensor the moment gravity.central_body != "earth"
+        # (magneticFieldWMM is only wired up for Earth) -- but that's an
+        # engine-layer check that only runs when a scenario is actually
+        # simulated. Mirrored here so validation can't report a clean
+        # bill of health for a scenario guaranteed to fail at run time.
+        if self.gravity.central_body != "earth":
+            for sc in self.spacecraft:
+                _require(not any(sensor.kind == "magnetometer" for sensor in sc.sensors),
+                          f"{sc.name}: has a 'magnetometer' sensor, but gravity.central_body is "
+                          f"{self.gravity.central_body!r}, not 'earth' -- magneticFieldWMM (the only "
+                          "magnetic-field model this app wires up) is Earth-only. Remove the magnetometer "
+                          "sensor, or set gravity.central_body to 'earth'")
+                # Same Earth-only WMM restriction, same mirroring reasoning
+                # -- engine.service.SimulationService.build() raises this
+                # exact condition (central_body != "earth" ->
+                # self._mag_field_model stays None) as a
+                # SimulationServiceError at run time (see that module's
+                # own "needs an Earth central body" message); mirrored
+                # here, same as magnetic_momentum_management's own
+                # docstring already said it SHOULD be (it previously
+                # pointed at this exact gap as deferred-to-engine-layer).
+                _require(sc.magnetic_momentum_management is None,
+                          f"{sc.name}: has magnetic_momentum_management configured, but gravity.central_body "
+                          f"is {self.gravity.central_body!r}, not 'earth' -- magneticFieldWMM is Earth-only. "
+                          "Remove magnetic_momentum_management, or set gravity.central_body to 'earth'")
         self.space_weather.validate()
         self.sim_settings.validate()
         self.monte_carlo.validate()

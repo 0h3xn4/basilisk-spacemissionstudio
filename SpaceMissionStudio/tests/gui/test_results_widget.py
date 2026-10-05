@@ -348,6 +348,52 @@ def test_user_series_change_is_never_throttled_during_a_live_run(widget, monkeyp
     assert push_calls == [1]
 
 
+def test_selecting_a_series_via_the_completer_popup_redraws_the_plot(widget):
+    """Real user report, reproduced here: picking a series by typing to
+    filter and then selecting a suggestion from the completer popup (the
+    combo's own documented reason for being editable -- see its
+    construction comment) left the OLD series' plot on screen even
+    though the text box showed the newly-picked series name. Root cause:
+    series_combo.currentIndexChanged (what _redraw() was wired to) does
+    not reliably fire for a completer-driven pick in this combo's
+    configuration -- only for a plain dropdown-arrow click. Simulates the
+    actual completer path (QCompleter.activated, emitted the instant a
+    popup suggestion is chosen by click or Enter-within-the-popup), not
+    series_combo.setCurrentIndex() directly (already covered by
+    test_user_series_change_is_never_throttled_during_a_live_run, which
+    is deliberately the OTHER, dropdown-arrow pick path).
+    """
+    widget.set_result(_sample_result_set())
+    first_series = widget.series_combo.currentText()
+    other_series = next(name for name in widget._result.series if name != first_series)
+    original_y_title = widget.figure.layout.yaxis.title.text
+
+    widget.series_combo.completer().activated.emit(other_series)
+
+    assert widget.series_combo.currentText() == other_series
+    assert widget.figure.layout.yaxis.title.text != original_y_title  # the plot actually rebuilt, not just the combo text
+
+
+def test_typing_an_exact_series_name_and_pressing_enter_redraws_the_plot(widget, qtbot):
+    """Same real report, other reliable commit path: typing a series
+    name out in full (no popup suggestion ever clicked) and pressing
+    Enter -- QLineEdit.editingFinished, not the completer at all.
+    """
+    from PySide6.QtCore import Qt
+
+    widget.set_result(_sample_result_set())
+    first_series = widget.series_combo.currentText()
+    other_series = next(name for name in widget._result.series if name != first_series)
+    original_y_title = widget.figure.layout.yaxis.title.text
+
+    widget.series_combo.setFocus()
+    widget.series_combo.lineEdit().setText(other_series)
+    qtbot.keyClick(widget.series_combo.lineEdit(), Qt.Key.Key_Return)
+
+    assert widget.series_combo.currentText() == other_series
+    assert widget.figure.layout.yaxis.title.text != original_y_title  # the plot actually rebuilt, not just the combo text
+
+
 def test_position_series_plots_in_raw_meters(widget):
     """Regression guard for a real, explicit user request ("state vector
     elements shall be displayed in meters for position and m/s for

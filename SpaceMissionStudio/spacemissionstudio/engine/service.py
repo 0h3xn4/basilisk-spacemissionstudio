@@ -456,6 +456,10 @@ class _SpacecraftHandle:
     mtb_dipole_recorder: Optional[object] = None  # Phase 2: only set if sc_config.magnetic_momentum_management was configured
     num_mtb: int = 0
     sensor_recorders: Dict[str, object] = field(default_factory=dict)  # sensor.name -> (kind, recorder)
+    # Thermal simulation: actuator.name -> recorder, only for reaction_wheel
+    # actuators whose own params set the motor_thermal_* group -- most
+    # wheels have none, so this is usually empty.
+    rw_motor_thermal_recorders: Dict[str, object] = field(default_factory=dict)
     battery_recorder: Optional[object] = None  # Phase 4: only set if sc_config.power was configured
     battery_module: Optional[object] = None  # Phase 4: the simpleBattery.SimpleBattery itself, for engine.vizard
     station_keeping_controller: Optional[object] = None  # Phase 4: only set if sc_config.station_keeping was configured
@@ -730,14 +734,17 @@ class SimulationService:
         # magnetic-field model, eclipse geometry isn't Earth-specific, so
         # this isn't gated on gravity.central_body == "earth".
         needs_eclipse = any(
-            sc.power is not None or sc.station_keeping is not None or sc.enable_srp for sc in scenario.spacecraft
+            sc.power is not None or sc.station_keeping is not None or sc.enable_srp
+            or any(sensor.kind == "thermal" for sensor in sc.sensors)
+            for sc in scenario.spacecraft
         )
         if needs_eclipse:
             if self._sun_state_out_msg is None:
                 raise SimulationServiceError(
-                    "a spacecraft has a power budget, station-keeping, or SRP (enable_srp) configured, but "
-                    "'sun' is not one of this scenario's SPICE-tracked bodies -- simpleSolarPanel/the eclipse "
-                    "gate/SRP needs a sun ephemeris. Add 'sun' to gravity.third_body_perturbers."
+                    "a spacecraft has a power budget, station-keeping, SRP (enable_srp), or a 'thermal' sensor "
+                    "configured, but 'sun' is not one of this scenario's SPICE-tracked bodies -- "
+                    "simpleSolarPanel/the eclipse gate/SRP/sensorThermal needs a sun ephemeris. Add 'sun' to "
+                    "gravity.third_body_perturbers."
                 )
             from Basilisk.simulation import eclipse
 
@@ -882,6 +889,31 @@ class SimulationService:
             handle = _SpacecraftHandle(sc_config.name, sc_object, recorder)
             sc_objects_in_order.append(sc_object)
 
+            # Phase 4: this spacecraft's eclipse output message, shared by
+            # the power-budget and station-keeping blocks below (and, as of
+            # the thermal-simulation feature, a "thermal" sensor's own
+            # optional sunEclipseInMsg) -- added to the shared eclipse model
+            # at most once per spacecraft (adding it twice would desync
+            # eclipseOutMsgs' indexing from sc_objects_in_order for every
+            # spacecraft after it). Computed BEFORE the sensor-attachment
+            # block below (moved up from its original position after it)
+            # specifically so a "thermal" sensor can be given this
+            # spacecraft's real eclipse message instead of always reading
+            # "fully lit" -- sensorThermal.sunEclipseInMsg is optional
+            # (confirmed against sensorThermal.cpp), so this reordering
+            # changes nothing for every pre-existing power/station_keeping/
+            # enable_srp use of sc_eclipse_out_msg below.
+            sc_eclipse_out_msg = None
+            needs_eclipse_for_this_sc = (
+                sc_config.power is not None or sc_config.station_keeping is not None or sc_config.enable_srp
+                or any(sensor.kind == "thermal" for sensor in sc_config.sensors)
+            )
+            if needs_eclipse_for_this_sc:
+                self._eclipse_object.addSpacecraftToModel(sc_object.scStateOutMsg)
+                sc_eclipse_out_msg = self._eclipse_object.eclipseOutMsgs[eclipse_index]
+                eclipse_index += 1
+                handle.eclipse_out_msg = sc_eclipse_out_msg
+
             # -- Phase 2: sensors are independent of fsw_mode (they read
             # truth spacecraft state / SPICE / the magnetic-field model
             # directly, not simpleNav -- see engine.fsw.attach_sensors), so
@@ -891,24 +923,13 @@ class SimulationService:
                     sensor_out_msgs = fsw.attach_sensors(
                         self.scSim, dyn_task_name, sc_config.name, sc_object, sc_config.sensors,
                         sun_state_out_msg=self._sun_state_out_msg, mag_field_model=self._mag_field_model,
+                        sun_eclipse_in_msg=sc_eclipse_out_msg,
                     )
                 except fsw.FswError as exc:
                     raise SimulationServiceError(str(exc)) from exc
                 for sensor in sc_config.sensors:
                     handle.sensor_recorders[sensor.name] = (sensor.kind, sensor_out_msgs[sensor.name].recorder())
                     self.scSim.AddModelToTask(dyn_task_name, handle.sensor_recorders[sensor.name][1])
-
-            # Phase 4: this spacecraft's eclipse output message, shared by
-            # the power-budget and station-keeping blocks below -- added to
-            # the shared eclipse model at most once per spacecraft (adding
-            # it twice would desync eclipseOutMsgs' indexing from
-            # sc_objects_in_order for every spacecraft after it).
-            sc_eclipse_out_msg = None
-            if sc_config.power is not None or sc_config.station_keeping is not None or sc_config.enable_srp:
-                self._eclipse_object.addSpacecraftToModel(sc_object.scStateOutMsg)
-                sc_eclipse_out_msg = self._eclipse_object.eclipseOutMsgs[eclipse_index]
-                eclipse_index += 1
-                handle.eclipse_out_msg = sc_eclipse_out_msg
 
             # -- Phase 4: power budget, independent of fsw_mode/sensors like
             # the sensor block above -- a real simpleSolarPanel/battery, not
@@ -1140,6 +1161,21 @@ class SimulationService:
                     handle.rw_speed_recorder = rw_state_effector.rwSpeedOutMsg.recorder()
                     self.scSim.AddModelToTask(dyn_task_name, handle.rw_speed_recorder)
                     rw_effector_for_viz = rw_state_effector
+
+                    # Thermal simulation: an OPTIONAL motor-thermal model
+                    # (motorThermal.MotorThermal) for whichever wheels in
+                    # rw_actuators actually set the motor_thermal_* param
+                    # group -- most have none, so this is usually a no-op.
+                    # Must pass rw_actuators (the exact list/order just used
+                    # to build rw_state_effector above), not sc_config.actuators,
+                    # since rwOutMsgs is indexed by THAT creation order --
+                    # see build_reaction_wheel_motor_thermal's own docstring.
+                    rw_thermal_out_msgs = fsw.build_reaction_wheel_motor_thermal(
+                        self.scSim, dyn_task_name, sc_config.name, rw_state_effector, rw_actuators
+                    )
+                    for actuator_name, temp_msg in rw_thermal_out_msgs.items():
+                        handle.rw_motor_thermal_recorders[actuator_name] = temp_msg.recorder()
+                        self.scSim.AddModelToTask(dyn_task_name, handle.rw_motor_thermal_recorders[actuator_name])
 
                     # Reaction-wheel momentum desaturation via thrusters
                     # (schema.scenario.MomentumDumpingConfig) -- a SEPARATE
@@ -1697,6 +1733,14 @@ class SimulationService:
                     result.add(TimeSeries(series_name, sensor_t_s, ("output",), recorder.OutputData, units="-"))
                 elif kind == "magnetometer":
                     result.add(TimeSeries(series_name, sensor_t_s, ("x", "y", "z"), recorder.tam_S, units="T"))
+                elif kind == "thermal":
+                    result.add(TimeSeries(series_name, sensor_t_s, ("temperature",), recorder.temperature,
+                                           units="C"))
+
+            for actuator_name, rw_thermal_recorder in handle.rw_motor_thermal_recorders.items():
+                rwt_t_s = rw_thermal_recorder.times() * macros.NANO2SEC
+                result.add(TimeSeries(f"{name}.actuator.{actuator_name}.motor_temperature", rwt_t_s,
+                                       ("temperature",), rw_thermal_recorder.temperature, units="C"))
 
             if handle.battery_recorder is not None:
                 battery_t_s = handle.battery_recorder.times() * macros.NANO2SEC

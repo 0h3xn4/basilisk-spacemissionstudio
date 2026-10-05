@@ -34,7 +34,7 @@ template with a registered spec here; every other template still only
 opens straight into the full editor via the existing "Open Template"
 button, unchanged.
 
-Every bundled template ('01' through '19') has a registered spec. The
+Every bundled template ('01' through '20') has a registered spec. The
 first pass covered three representative ones ('03' GEO station-keeping,
 '18' LEO station-keeping, '07' full attitude + hardware + power) to
 validate the spec format and the UX before this full rollout -- adding a
@@ -151,6 +151,22 @@ def _set_rw_max_momentum(scenario: Scenario, value: float) -> None:
     for actuator in _sc(scenario).actuators:
         if actuator.kind == "reaction_wheel":
             actuator.params["maxMomentum"] = value
+
+
+def _thermal_sensor(scenario: Scenario):
+    # Found by kind, not a fixed index -- '20' has 4 sensors (star_tracker/
+    # imu/coarse_sun_sensor/thermal, in that order), so sensors[3] would
+    # work today but silently break if that order ever changed.
+    return next(s for s in _sc(scenario).sensors if s.kind == "thermal")
+
+
+def _rw_with_motor_thermal(scenario: Scenario):
+    # Found by which wheel actually has the motor_thermal_* group set --
+    # '20' deliberately configures it on only ONE of its three wheels (see
+    # that template's own description), so this must not just be
+    # actuators[0].
+    return next(a for a in _sc(scenario).actuators
+                if a.kind == "reaction_wheel" and "motor_thermal_initial_temp_c" in a.params)
 
 
 def _leo_altitude_km(scenario: Scenario) -> float:
@@ -1188,6 +1204,64 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
                         lambda s: s.sim_settings.duration_days,
                         lambda s, v: setattr(s.sim_settings, "duration_days", v),
                         0.1, 14.0, decimals=2, step=0.1, suffix=" days",
+                    ),
+                ],
+            ),
+        ],
+    ),
+    "20_thermal_simulation.json": TemplateWizardSpec(
+        template_filename="20_thermal_simulation.json",
+        pages=[
+            WizardPageSpec(
+                title="Thermal sensor",
+                intro="therm-1 (sensorThermal.SensorThermal) models an externally-mounted "
+                      "component's real temperature as it cycles through sunlight and eclipse.",
+                fields=[
+                    WizardField(
+                        "Surface area", "Larger means more solar absorption AND more radiative "
+                        "emission -- both scale together.",
+                        lambda s: _thermal_sensor(s).params["area_m2"],
+                        lambda s, v: _thermal_sensor(s).params.__setitem__("area_m2", v),
+                        0.001, 10.0, decimals=3, step=0.01, suffix=" m^2",
+                    ),
+                    WizardField(
+                        "Mass", "Combined with specific heat below, this is the sensor's thermal "
+                        "mass -- larger means a slower, smoother response to each sunlight/eclipse "
+                        "transition.",
+                        lambda s: _thermal_sensor(s).params["mass_kg"],
+                        lambda s, v: _thermal_sensor(s).params.__setitem__("mass_kg", v),
+                        0.01, 50.0, decimals=2, step=0.1, suffix=" kg",
+                    ),
+                    WizardField(
+                        "Internal power draw", "Electrical power dissipated as heat inside the "
+                        "sensor itself -- adds a constant heating term on top of the solar one.",
+                        lambda s: _thermal_sensor(s).params["power_draw_w"],
+                        lambda s, v: _thermal_sensor(s).params.__setitem__("power_draw_w", v),
+                        0.0, 50.0, decimals=2, step=0.5, suffix=" W",
+                    ),
+                ],
+            ),
+            WizardPageSpec(
+                title="Reaction wheel motor thermal",
+                intro="rw-1 (motorThermal.MotorThermal) separately models real motor heat from "
+                      "spin losses/inefficiency, independent of the sensor above.",
+                fields=[
+                    WizardField(
+                        "Motor efficiency", "Closer to 1.0 means less waste heat and a flatter "
+                        "temperature curve -- 1.0 itself is rejected (modeled as a real "
+                        "inefficiency).",
+                        lambda s: _rw_with_motor_thermal(s).params["motor_thermal_efficiency"],
+                        lambda s, v: _rw_with_motor_thermal(s).params.__setitem__(
+                            "motor_thermal_efficiency", v),
+                        0.01, 0.99, decimals=2, step=0.05,
+                    ),
+                    WizardField(
+                        "Ambient thermal resistance", "Lower means heat dissipates to the "
+                        "surroundings faster -- the motor temperature settles closer to ambient.",
+                        lambda s: _rw_with_motor_thermal(s).params["motor_thermal_ambient_resistance_w_c"],
+                        lambda s, v: _rw_with_motor_thermal(s).params.__setitem__(
+                            "motor_thermal_ambient_resistance_w_c", v),
+                        0.1, 100.0, decimals=2, step=0.5, suffix=" C/W",
                     ),
                 ],
             ),

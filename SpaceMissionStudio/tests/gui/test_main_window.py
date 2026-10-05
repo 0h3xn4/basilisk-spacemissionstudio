@@ -482,6 +482,127 @@ def test_run_progress_updates_results_widget_and_busy_bar(window):
     assert window._busy_progress.value() == 50
 
 
+def test_run_progress_exception_is_caught_not_propagated(window, monkeypatch):
+    """Real user feedback: running another simulation after a previous
+    one "seems to break a lot of things in the GUI" -- the app should
+    never crash or get stuck just because something unusual happened.
+    If a live-progress update ever raises (for whatever reason, on
+    whichever chunk), _on_run_progress must swallow it (logged, surfaced
+    once via a warning dialog) rather than let it propagate out through
+    Qt's own signal dispatch -- the simulation itself, on its own
+    thread, is completely unaffected either way.
+    """
+    from spacemissionstudio.engine.results import ResultSet
+    from spacemissionstudio.gui import main_window as main_window_module
+
+    window._start_busy("Running test...", determinate=True)
+    monkeypatch.setattr(
+        window.results_widget, "set_live_result",
+        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
+    warnings = []
+    monkeypatch.setattr(main_window_module.QMessageBox, "warning",
+                         lambda *a, **k: warnings.append(a) or None)
+
+    window._on_run_progress(ResultSet(scenario_name="test"), 0.5)  # must not raise
+
+    assert len(warnings) == 1
+
+
+def test_run_progress_exception_dialog_shown_only_once_per_run(window, monkeypatch):
+    from spacemissionstudio.engine.results import ResultSet
+    from spacemissionstudio.gui import main_window as main_window_module
+
+    window._start_busy("Running test...", determinate=True)
+    monkeypatch.setattr(
+        window.results_widget, "set_live_result",
+        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
+    warnings = []
+    monkeypatch.setattr(main_window_module.QMessageBox, "warning",
+                         lambda *a, **k: warnings.append(a) or None)
+
+    for _ in range(5):
+        window._on_run_progress(ResultSet(scenario_name="test"), 0.5)
+
+    assert len(warnings) == 1  # not a dialog-per-chunk storm
+
+    # A fresh on_run() (a new run starting) resets the suppression --
+    # confirmed via the same flag on_run() itself resets, not by driving
+    # a full real run here.
+    window._progress_error_shown = False
+    window._on_run_progress(ResultSet(scenario_name="test"), 0.5)
+    assert len(warnings) == 2
+
+
+def test_run_finished_exception_still_stops_busy_indicator(window, monkeypatch):
+    """Same robustness principle as _on_run_progress's own tests, for the
+    terminal handler: if displaying a successfully-finished run's results
+    ever raises, the busy/Run-disabled state must still clear -- the
+    historically worst form of "breaks a lot of things" is the user
+    being unable to start another run at all without restarting the app.
+    """
+    from spacemissionstudio.engine.results import ResultSet
+    from spacemissionstudio.gui import main_window as main_window_module
+
+    window._start_busy("Running test...")
+    monkeypatch.setattr(
+        window.results_widget, "set_live_result",
+        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
+    monkeypatch.setattr(main_window_module.QMessageBox, "warning", lambda *a, **k: None)
+
+    window._on_run_finished(ResultSet(scenario_name="test", series={}))  # must not raise
+
+    assert not window._busy_timer.isActive()
+    assert window.run_action.isEnabled()
+
+
+def test_run_cancelled_exception_still_stops_busy_indicator(window, monkeypatch):
+    from spacemissionstudio.engine.results import ResultSet
+    from spacemissionstudio.gui import main_window as main_window_module
+
+    window._start_busy("Running test...")
+    window.abort_action.setEnabled(True)
+    monkeypatch.setattr(
+        window.results_widget, "set_live_result",
+        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
+    monkeypatch.setattr(main_window_module.QMessageBox, "warning", lambda *a, **k: None)
+
+    window._on_run_cancelled(ResultSet(scenario_name="test", series={}))  # must not raise
+
+    assert not window._busy_timer.isActive()
+    assert window.run_action.isEnabled()
+    assert not window.abort_action.isEnabled()
+
+
+def test_on_run_clears_previous_results_even_when_not_live(window, monkeypatch):
+    """Real gap found while investigating the "breaks a lot of things"
+    report: results_widget/mission_dashboard_widget were only cleared at
+    the start of a new run when Live Plot was on -- a non-live run (or
+    one with a mission_sequence) left the PREVIOUS run's plot on screen
+    for the entire new run, indistinguishable from this run already
+    having (stale, wrong) results before it actually does.
+    """
+    from spacemissionstudio.engine.results import ResultSet, TimeSeries
+    from spacemissionstudio.gui.run_worker import RunWorker
+
+    _add_valid_spacecraft(window)
+    stale = ResultSet(scenario_name="stale")
+    stale.add(TimeSeries("sat-1.position_N", [0.0, 1.0], ("x", "y", "z"),
+                          [[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]], units="m"))
+    window.results_widget.set_result(stale)
+    assert window.results_widget.series_combo.count() == 1
+
+    window.live_plot_action.setChecked(False)
+    monkeypatch.setattr(RunWorker, "start", lambda self: None)  # don't actually spin up the thread
+
+    window.on_run()
+
+    assert window.results_widget.series_combo.count() == 0
+
+
 def test_on_run_captures_epoch_and_passes_it_to_results_widget(window, monkeypatch):
     from spacemissionstudio.gui.run_worker import RunWorker
 
@@ -1227,6 +1348,52 @@ def test_run_refuses_to_start_when_vizard_cannot_be_confirmed(window, monkeypatc
     assert len(critical_calls) == 1
     assert start_calls == []
     assert window._run_worker is None  # never even constructed
+
+
+def test_run_always_relaunches_vizard_fresh_for_a_live_stream_run(window, monkeypatch):
+    """Real user feedback: "when running a new simulation after a
+    previous simulation finished, vizard should completely refresh so it
+    actually displays only stuff from the current simulation, and not the
+    previous one." Confirmed directly from Vizard's own Unity source (see
+    on_run()'s own comment): a running Vizard Main Scene has no way to
+    reset itself live, so reusing an already-running, matching instance
+    across separate runs (on_launch_vizard()'s own deliberate behavior,
+    still correct for its OWN "Launch Vizard" menu entry point) must NOT
+    happen when on_run() itself starts a new live-stream run -- the
+    previous self-launched process must always be terminated and a fresh
+    one started, even though it would otherwise "match" and be reused.
+    """
+    from pathlib import Path
+
+    from PySide6.QtWidgets import QMessageBox
+
+    from spacemissionstudio.engine.vizard import VizardRequest
+    from spacemissionstudio.gui import main_window
+    from spacemissionstudio.gui.run_worker import RunWorker
+
+    _add_valid_spacecraft(window)
+    window._vizard_request = VizardRequest(live_stream=True)
+    monkeypatch.setattr(main_window, "find_vizard_executable", lambda: Path("/fake/Vizard"))
+    launch_calls = []
+    processes = [_FakeVizardProcess(pid=1), _FakeVizardProcess(pid=2)]
+    monkeypatch.setattr(
+        main_window, "launch_vizard",
+        lambda path, direct_comm_address=None: launch_calls.append(direct_comm_address) or processes[len(launch_calls) - 1]
+    )
+    monkeypatch.setattr(QMessageBox, "information", staticmethod(lambda *a, **k: None))
+    monkeypatch.setattr(RunWorker, "start", lambda self: None)
+
+    window.on_run()  # first run: nothing to terminate yet, launches process 1
+    first_process = window._vizard_process
+    assert first_process is processes[0]
+    assert first_process.terminate_calls == 0
+
+    window.on_run()  # second run: must terminate process 1 and launch a fresh one
+
+    assert first_process.terminate_calls == 1
+    assert window._vizard_process is processes[1]
+    assert window._vizard_process is not first_process
+    assert len(launch_calls) == 2
 
 
 def test_run_never_touches_vizard_without_a_live_stream_request(window, monkeypatch):

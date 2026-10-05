@@ -190,6 +190,21 @@ def link_margin_series(result: ResultSet, ground_station_name: str, spacecraft_n
     active_mode_series = result.series.get(f"{spacecraft_name}.comms_pointing.active_mode")
     pointing_error_series = result.series.get(f"{spacecraft_name}.comms_pointing.pointing_error_deg")
 
+    # Defensive, not currently reachable: every recorder in this app
+    # shares one time grid today, so these always line up in practice --
+    # but range_series/access_series/active_mode_series/pointing_error_series
+    # are looked up independently here and then indexed by the SAME
+    # integer index i below, with no length check. A future recorder
+    # decimated independently of the others would silently misalign
+    # rather than raise, same failure shape TimeSeries.__post_init__
+    # already guards against for a single series's own time_s/data pair.
+    for other in (active_mode_series, pointing_error_series):
+        if other is not None and len(other.time_s) != len(range_series.time_s):
+            raise ResultsError(
+                f"{prefix}: {other.name!r} has {len(other.time_s)} samples but "
+                f"{range_series.name!r} has {len(range_series.time_s)} -- these must share one time grid"
+            )
+
     has_access = access_series.data[:, 0] > 0.5
     if active_mode_series is not None:
         has_access = has_access & (active_mode_series.data[:, 0] > 0.5)

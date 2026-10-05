@@ -117,6 +117,33 @@ def test_assignment_target_reference_is_found():
     assert "params['target']" in refs[0].path
 
 
+def test_report_series_reference_is_found():
+    """Real audit finding: report.params["series"] entries like
+    "sat-1.position_N" are dotted spacecraft-prefixed strings exactly like
+    assignment.target, but _command_references() had no "report" case at
+    all -- so a report command referencing a spacecraft didn't block its
+    deletion and wasn't updated on rename.
+    """
+    scenario = _scenario(mission_sequence=[
+        Command(kind="report", params={"series": ["sat-1.position_N", "sat-1.velocity_N"]}),
+    ])
+
+    refs = find_spacecraft_references(scenario, "sat-1")
+
+    assert len(refs) == 2
+    assert "params['series'][0]" in refs[0].path
+    assert "params['series'][1]" in refs[1].path
+
+
+def test_report_series_reference_to_other_spacecraft_is_not_found():
+    scenario = _scenario(spacecraft=[SpacecraftConfig(name="sat-1", orbit=_orbit()),
+                                       SpacecraftConfig(name="sat-2", orbit=_orbit())],
+                          mission_sequence=[
+        Command(kind="report", params={"series": ["sat-2.position_N"]}),
+    ])
+    assert find_spacecraft_references(scenario, "sat-1") == []
+
+
 def test_reference_nested_inside_if_is_found():
     scenario = _scenario(mission_sequence=[
         Command(kind="if", params={"condition": "True"}, children=[

@@ -84,6 +84,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ..engine.device_catalog import catalog_entries_for_kind
 from .feedback import clear_invalid, mark_invalid, show_toast
 
 
@@ -116,19 +117,71 @@ class _ParamSpec(NamedTuple):
 _KIND_PARAM_SPECS: dict[str, list[_ParamSpec]] = {
     "star_tracker": [
         _ParamSpec("noise_arcsec", False, 0.0, "1-sigma attitude noise [arcsec]"),
+        # Device-interface realism (real user feedback: "the user should
+        # be able to... select from a range of commonly used devices...
+        # with faults/saturation/encoders"). All real, Basilisk-native
+        # StarTracker/ImuSensor/CoarseSunSensor/Magnetometer fields
+        # (StarTracker.walkBounds, ImuSensor.senRotBias/senTransBias/
+        # senRotMax/senTransMax/setLSBs, CoarseSunSensor.senBias/
+        # maxOutput/minOutput/faultState, Magnetometer.senBias/
+        # maxOutput/minOutput/setFaultState/stuckValue/spikeProbability/
+        # spikeAmount) -- applied automatically by Basilisk's own
+        # UpdateState() every tick once set, exactly like the
+        # noise_arcsec/noise_std/etc. fields above, so there is no
+        # separate "enable" flag to also set.
+        _ParamSpec("bias_walk_bound_arcsec", False, 0.0, "long-run random-walk BOUND on the noise above "
+                    "[arcsec] -- 0 (default) means no bounded long-term drift is modeled, only the "
+                    "per-tick noise"),
     ],
     "imu": [
         _ParamSpec("gyro_noise_rad_s", False, 0.0, "1-sigma gyro noise [rad/s]"),
         _ParamSpec("accel_noise_m_s2", False, 0.0, "1-sigma accelerometer noise [m/s^2]"),
+        _ParamSpec("gyro_bias_rad_s", False, [0.0, 0.0, 0.0], "fixed per-axis gyro bias [rad/s]",
+                    normalizable=False),
+        _ParamSpec("accel_bias_m_s2", False, [0.0, 0.0, 0.0], "fixed per-axis accelerometer bias [m/s^2]",
+                    normalizable=False),
+        _ParamSpec("gyro_saturation_rad_s", False, 1000000.0, "gyro output saturation magnitude [rad/s] -- "
+                    "effectively unbounded by default"),
+        _ParamSpec("accel_saturation_m_s2", False, 1000000.0, "accelerometer output saturation magnitude "
+                    "[m/s^2] -- effectively unbounded by default"),
+        _ParamSpec("gyro_lsb_rad_s", False, 0.0, "gyro encoder/ADC quantization step size [rad/s] -- 0 "
+                    "(default) means effectively continuous, no quantization"),
+        _ParamSpec("accel_lsb_m_s2", False, 0.0, "accelerometer encoder/ADC quantization step size "
+                    "[m/s^2] -- 0 (default) means effectively continuous, no quantization"),
     ],
     "coarse_sun_sensor": [
         _ParamSpec("nHat_B", True, [1.0, 0.0, 0.0], "sensor boresight direction, body frame, unit vector [-]"),
         _ParamSpec("fov_deg", False, 90.0, "full field of view [deg]"),
         _ParamSpec("noise_std", False, 0.0, "1-sigma output noise (cosine-law output units) [-]"),
+        _ParamSpec("bias", False, 0.0, "fixed sensor bias (cosine-law output units) [-]"),
+        _ParamSpec("saturation_max", False, 1000000.0, "output saturation upper bound (cosine-law output "
+                    "units) [-] -- effectively unbounded by default"),
+        _ParamSpec("saturation_min", False, 0.0, "output saturation lower bound (cosine-law output "
+                    "units) [-]"),
+        _ParamSpec("fault_mode", False, "none", "hardware fault to simulate: 'none' / 'stuck_current' "
+                    "(freezes at the last real reading) / 'stuck_max' (freezes at saturation_max) / "
+                    "'stuck_rand' (freezes at one random value for the whole run) / 'random' (every "
+                    "sample replaced with fresh noise of fault_noise_std)"),
+        _ParamSpec("fault_noise_std", False, 0.0, "noise std dev used only when fault_mode='random' [-]"),
     ],
     "magnetometer": [
         _ParamSpec("noise_std_tesla", False, [0.0, 0.0, 0.0], "1-sigma noise per body axis [T]",
                     normalizable=False),
+        _ParamSpec("bias_tesla", False, [0.0, 0.0, 0.0], "fixed per-axis bias [T]", normalizable=False),
+        _ParamSpec("saturation_tesla", False, 1000000.0, "symmetric output saturation magnitude [T] "
+                    "(clips at +/- this value) -- effectively unbounded by default"),
+        _ParamSpec("fault_mode", False, "none", "hardware fault to simulate on fault_axis below: 'none' "
+                    "/ 'stuck_current' (freezes at the last real reading) / 'stuck_value' (freezes at "
+                    "stuck_value_tesla) / 'spiking' (randomly multiplies the true reading by "
+                    "spike_amount with probability spike_probability each tick)"),
+        _ParamSpec("fault_axis", False, 0, "which body axis (0/1/2) fault_mode above applies to -- a "
+                    "real single-axis sensor-element failure does not take out the other two axes"),
+        _ParamSpec("stuck_value_tesla", False, 0.0, "value fault_axis freezes at when fault_mode="
+                    "'stuck_value' [T]"),
+        _ParamSpec("spike_probability", False, 0.1, "per-tick probability of a spike when fault_mode="
+                    "'spiking' [-]"),
+        _ParamSpec("spike_amount", False, 2.0, "multiplier applied to the true reading on a spike when "
+                    "fault_mode='spiking' [-]"),
     ],
     "reaction_wheel": [
         _ParamSpec("gsHat_B", True, [0.0, 0.0, 1.0], "spin-axis direction, body frame, unit vector [-]"),
@@ -139,6 +192,40 @@ _KIND_PARAM_SPECS: dict[str, list[_ParamSpec]] = {
         _ParamSpec("Js", False, 0.028, "wheel inertia about the spin axis [kg*m^2] -- rw_type='custom' can "
                     "derive this from maxMomentum [N*m*s] instead, but NOT both: rwFactory.create() hard"
                     "-exits the whole process if Js and maxMomentum are both set"),
+        # Device-interface realism: real simIncludeRW.rwFactory() kwargs,
+        # already passed straight through by this app's own
+        # engine.fsw._coerce_rw_kwargs() -- these were already wired, just
+        # not previously surfaced here for discovery.
+        _ParamSpec("useRWfriction", False, False, "enable the internal wheel friction model below -- off "
+                    "by default, matching simIncludeRW's own default"),
+        _ParamSpec("fCoulomb", False, 0.0, "Coulomb (constant-magnitude) friction torque [N*m] -- only "
+                    "applied when useRWfriction is true"),
+        _ParamSpec("fStatic", False, 0.0, "static friction torque magnitude [N*m] -- only applied when "
+                    "useRWfriction is true"),
+        _ParamSpec("cViscous", False, 0.0, "viscous friction coefficient [N*m*s/rad] -- only applied "
+                    "when useRWfriction is true"),
+        _ParamSpec("betaStatic", False, -1.0, "Stribeck friction coefficient [-] -- positive enables "
+                    "Stribeck friction, negative (default) disables it; only relevant when "
+                    "useRWfriction is true"),
+        # Thermal simulation: an OPTIONAL motor-thermal model
+        # (motorThermal.MotorThermal) -- an all-or-nothing group (see
+        # schema.scenario.SpacecraftConfig.validate()'s own
+        # motor_thermal_* check): set NONE of these four for no thermal
+        # model on this wheel (the default, and the common case), or ALL
+        # four together to add one. motor_thermal_ambient_temp_c (not
+        # listed as its own row -- it has a real 0 C Basilisk-side default
+        # and is independently optional even within this group) can still
+        # be added by hand in the params box below if needed.
+        _ParamSpec("motor_thermal_initial_temp_c", False, 20.0, "starting motor temperature [C] -- set this "
+                    "(together with the other three motor_thermal_* fields below) to enable a motor-thermal "
+                    "model for this wheel; leave all four unset for none"),
+        _ParamSpec("motor_thermal_efficiency", False, 0.7, "mechanical efficiency [-], strictly between 0 "
+                    "and 1 -- motorThermal.MotorThermal rejects 1.0 itself (modeled as a real inefficiency), "
+                    "not just values above it"),
+        _ParamSpec("motor_thermal_ambient_resistance_w_c", False, 5.0, "thermal resistance to the "
+                    "surrounding environment [C/W] -- lower means heat dissipates faster"),
+        _ParamSpec("motor_thermal_heat_capacity_j_c", False, 50.0, "motor heat capacity [J/C] -- "
+                    "mass * specific heat, e.g. a steel motor's specific heat is about 466 J/kg/C"),
     ],
     "thruster": [
         _ParamSpec("r_B", True, [1.0, 0.0, 0.0], "thruster location, body frame [m]", normalizable=False),
@@ -150,10 +237,50 @@ _KIND_PARAM_SPECS: dict[str, list[_ParamSpec]] = {
                     "params here as-is"),
         _ParamSpec("steadyIsp", False, 220.0, "fuel efficiency [s]"),
         _ParamSpec("MinOnTime", False, 0.020, "minimum on time [s]"),
+        # Device-interface realism: a real simIncludeThruster.thrusterFactory()
+        # kwarg, already passed straight through by this app's own
+        # engine.fsw._coerce_thruster_kwargs() -- already wired, just not
+        # previously surfaced here for discovery.
+        _ParamSpec("thrusterMagDisp", False, 0.0, "thrust-magnitude manufacturing/performance dispersion, "
+                    "applied once at build time [%]"),
     ],
     "magnetic_torque_rod": [
         _ParamSpec("gtHat_B", True, [1.0, 0.0, 0.0], "dipole-axis direction, body frame, unit vector [-]"),
         _ParamSpec("max_dipole_a_m2", True, 0.1, "maximum commandable dipole magnitude [A*m^2]"),
+    ],
+    # Thermal simulation: models the temperature of ANY flat-plate
+    # component (not a specific physical device the way the other kinds
+    # above are -- see SUPPORTED_SENSOR_KINDS's own comment), via
+    # sensorThermal.SensorThermal, chained into an optional
+    # tempMeasurement.TempMeasurement measurement-noise/fault layer below
+    # (same device-interface-realism shape as every other sensor kind).
+    "thermal": [
+        _ParamSpec("nHat_B", True, [0.0, 0.0, 1.0], "face-normal direction, body frame, unit vector [-]"),
+        _ParamSpec("area_m2", True, 1.0, "radiative surface area [m^2]"),
+        _ParamSpec("absorptivity", True, 0.25, "absorptivity coefficient (0, 1] [-]"),
+        _ParamSpec("emissivity", True, 0.34, "emissivity coefficient (0, 1] [-]"),
+        _ParamSpec("mass_kg", False, 2.0, "mass [kg] -- defaults to 1 kg if unset"),
+        _ParamSpec("specific_heat_j_kg_k", False, 890.0, "specific heat [J/kg/K] -- defaults to 890 "
+                    "(aluminum) if unset"),
+        _ParamSpec("initial_temp_c", False, 0.0, "starting temperature [C] -- defaults to 30 C if unset"),
+        _ParamSpec("power_draw_w", False, 0.0, "internal power dissipated as heat [W] -- 0 (default) means "
+                    "none"),
+        _ParamSpec("measurement_bias_c", False, 0.0, "fixed measurement bias, always added [C] -- 0 "
+                    "(default) means none"),
+        _ParamSpec("measurement_noise_std_c", False, 0.0, "1-sigma measurement noise [C] -- 0 (default) "
+                    "means none"),
+        _ParamSpec("measurement_walk_bound_c", False, 0.0, "long-run random-walk BOUND on the noise above "
+                    "[C] -- 0 (default) means no bounded long-term drift is modeled"),
+        _ParamSpec("measurement_fault_mode", False, "none", "hardware fault to simulate: 'none' / "
+                    "'stuck_current' (freezes at the last real reading) / 'stuck_value' (freezes at "
+                    "measurement_stuck_value_c) / 'spiking' (randomly multiplies the reading by "
+                    "measurement_spike_amount with probability measurement_spike_probability each tick)"),
+        _ParamSpec("measurement_stuck_value_c", False, 0.0, "value measurement_fault_mode='stuck_value' "
+                    "freezes at [C]"),
+        _ParamSpec("measurement_spike_probability", False, 0.1, "per-tick probability of a spike when "
+                    "measurement_fault_mode='spiking' [-]"),
+        _ParamSpec("measurement_spike_amount", False, 2.0, "multiplier applied to the reading on a spike "
+                    "when measurement_fault_mode='spiking' [-]"),
     ],
 }
 
@@ -274,6 +401,48 @@ class _ItemEditorDialog(QDialog):
         self.hint_label.setStyleSheet("color: palette(mid);")
         layout.addWidget(self.hint_label)
 
+        # Direct user feedback: "the user should be able to either create
+        # their own sensor/actuator or select from a range of commonly
+        # used devices from the space industry. They must be ITAR free
+        # and available in europe." -- engine.device_catalog holds a
+        # small set of real, sourced, European-manufactured devices (see
+        # that module's own docstring for the sourcing/honesty
+        # discipline). Selecting one and clicking "Apply device preset"
+        # is just a faster path to the SAME fields "Reset to template"
+        # already fills -- never a separate/locked mode, so the result
+        # stays fully editable afterward like any other sensor/actuator
+        # here. Hidden entirely for a kind with no catalog entry yet
+        # (falls back to the ordinary custom editor silently, not an
+        # error).
+        self._catalog_container = QWidget()
+        catalog_layout = QVBoxLayout(self._catalog_container)
+        catalog_layout.setContentsMargins(0, 0, 0, 0)
+        catalog_row = QHBoxLayout()
+        catalog_row.addWidget(QLabel("Catalog"))
+        self.catalog_combo = QComboBox()
+        self.catalog_combo.setToolTip(
+            "A real, commercially available device for this Kind -- selecting one previews its real "
+            "specs and source below. Click \"Apply device preset\" to actually fill the fields with "
+            "it (same effect as \"Reset to template\", but with a real device's own numbers instead "
+            "of a generic example)."
+        )
+        self.catalog_combo.currentIndexChanged.connect(self._on_catalog_selection_changed)
+        catalog_row.addWidget(self.catalog_combo, 1)
+        self.apply_catalog_button = QPushButton("Apply device preset")
+        self.apply_catalog_button.setToolTip(
+            "Fill the fields above and the params box below with the selected catalog device's real "
+            "specs -- overwrites whatever is currently typed/set there, same as \"Reset to template\"."
+        )
+        self.apply_catalog_button.clicked.connect(self._on_apply_catalog_entry)
+        catalog_row.addWidget(self.apply_catalog_button)
+        catalog_layout.addLayout(catalog_row)
+        self.catalog_info_label = QLabel()
+        self.catalog_info_label.setWordWrap(True)
+        self.catalog_info_label.setStyleSheet("color: palette(mid);")
+        catalog_layout.addWidget(self.catalog_info_label)
+        layout.addWidget(self._catalog_container)
+        self._rebuild_catalog_row(self.kind_combo.currentText())
+
         # Vector-shaped params (nHat_B, gsHat_B, ...) get their own X/Y/Z
         # spin-box row instead of living inside the JSON params box -- see
         # this module's docstring. Rebuilt whenever Kind changes, since
@@ -361,6 +530,51 @@ class _ItemEditorDialog(QDialog):
     def _on_kind_changed(self, kind: str) -> None:
         self.hint_label.setText(_hint_text(kind))
         self._rebuild_vector_rows(kind)
+        self._rebuild_catalog_row(kind)
+
+    def _rebuild_catalog_row(self, kind: str) -> None:
+        entries = catalog_entries_for_kind(kind)
+        self._catalog_container.setVisible(bool(entries))
+        self.catalog_combo.blockSignals(True)
+        self.catalog_combo.clear()
+        self.catalog_combo.addItem("-- custom (no preset) --")
+        for entry in entries:
+            self.catalog_combo.addItem(entry.display_name)
+        self.catalog_combo.setCurrentIndex(0)
+        self.catalog_combo.blockSignals(False)
+        self._current_catalog_entries = entries
+        self._on_catalog_selection_changed(0)
+
+    def _on_catalog_selection_changed(self, index: int) -> None:
+        entries = getattr(self, "_current_catalog_entries", [])
+        if index <= 0 or index - 1 >= len(entries):
+            self.catalog_info_label.setText("")
+            self.apply_catalog_button.setEnabled(False)
+            return
+        entry = entries[index - 1]
+        self.apply_catalog_button.setEnabled(True)
+        self.catalog_info_label.setText(
+            f"{entry.description}\n\nSource: {entry.source_url}\n\nExport control: {entry.itar_free_note}"
+            + (f"\n\n{entry.notes}" if entry.notes else "")
+        )
+
+    def _on_apply_catalog_entry(self) -> None:
+        entries = getattr(self, "_current_catalog_entries", [])
+        index = self.catalog_combo.currentIndex()
+        if index <= 0 or index - 1 >= len(entries):
+            return
+        entry = entries[index - 1]
+        kind = entry.kind
+        for spec in _vector_specs(kind):
+            x, y, z = self._vector_boxes[spec.key]
+            value = entry.params.get(spec.key, spec.example)
+            x.setValue(value[0])
+            y.setValue(value[1])
+            z.setValue(value[2])
+        vector_keys = {spec.key for spec in _vector_specs(kind)}
+        non_vector_params = {k: v for k, v in entry.params.items() if k not in vector_keys}
+        self.params_edit.setPlainText(json.dumps(non_vector_params, indent=2))
+        show_toast(self.window(), f"Applied {entry.display_name} preset", kind="info")
 
     def _on_normalize(self, key: str) -> None:
         x, y, z = self._vector_boxes[key]

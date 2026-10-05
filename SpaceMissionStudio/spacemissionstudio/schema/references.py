@@ -48,12 +48,13 @@ targets a ground station). Kept in one place specifically so that's a
 one-file change, the same discipline ``engine.monte_carlo``'s
 ``_QUANTITY_PATHS`` dict already documents for itself for the same reason.
 
-``assignment`` commands are a deliberate, narrower exception: ``target``
-is a dotted path STRING (``"sat-1.station_keeping.thrust_n"``), not a
-clean dict key, so the reference is the string's first path segment --
-see :func:`_command_references` for exactly how that's parsed, and its
-v1 limitation (assignment targets are assumed spacecraft-scoped; nothing
-else parses a dotted target yet).
+``assignment`` and ``report`` commands are a deliberate, narrower
+exception: ``assignment.target`` and each entry of ``report.series`` are
+dotted path STRINGS (``"sat-1.station_keeping.thrust_n"``,
+``"sat-1.position_N"``), not a clean dict key, so the reference is the
+string's first path segment -- see :func:`_command_references` for
+exactly how that's parsed, and its v1 limitation (these dotted targets
+are assumed spacecraft-scoped; nothing else parses a dotted target yet).
 """
 
 from __future__ import annotations
@@ -109,6 +110,19 @@ def _command_references(commands: List["Command"], path_prefix: str) -> List[Ref
                 name = target.split(".", 1)[0]
                 if name:
                     refs.append(Reference(path=f"{path}.params['target']", resource_kind="spacecraft", name=name))
+        elif command.kind == "report" and isinstance(command.params.get("series"), list):
+            # Same dotted-first-segment parsing as "assignment" above: each
+            # "series" entry is a string like "sat-1.position_N", where the
+            # leading segment is the spacecraft that series belongs to.
+            # Unlike "assignment"/"maneuver", a single report can reference
+            # several spacecraft at once (one per series entry).
+            for j, series in enumerate(command.params["series"]):
+                if isinstance(series, str) and "." in series:
+                    name = series.split(".", 1)[0]
+                    if name:
+                        refs.append(Reference(
+                            path=f"{path}.params['series'][{j}]", resource_kind="spacecraft", name=name,
+                        ))
 
         if command.kind in ("if", "while"):
             refs.extend(_command_references(command.children, f"{path}.children"))
@@ -223,6 +237,12 @@ def _rename_in_commands(commands: List["Command"], resource_kind: str, old_name:
                 if "." in target and target.split(".", 1)[0] == old_name:
                     command.params["target"] = new_name + target[len(old_name):]
                     updated += 1
+            elif command.kind == "report" and isinstance(command.params.get("series"), list):
+                series_list = command.params["series"]
+                for j, series in enumerate(series_list):
+                    if isinstance(series, str) and "." in series and series.split(".", 1)[0] == old_name:
+                        series_list[j] = new_name + series[len(old_name):]
+                        updated += 1
         if command.kind in ("if", "while"):
             updated += _rename_in_commands(command.children, resource_kind, old_name, new_name)
     return updated
