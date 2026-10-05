@@ -14,8 +14,8 @@
         "type": "classical_elements",
         "semi_major_axis_km": 6778.0,
         "eccentricity": 0.0,
-        "inclination_deg": 51.6,
-        "raan_deg": 0.0,
+        "inclination_deg": 97.03,
+        "raan_deg": 259.03,
         "arg_periapsis_deg": 0.0,
         "anomaly_type": "true",
         "true_anomaly_deg": 0.0,
@@ -108,6 +108,6 @@
     "dispersions": []
   },
   "mission_sequence": [],
-  "description": "The simplest possible orbit: a single spacecraft in a circular low-Earth orbit around a point-mass Earth (no J2, no drag, no third-body gravity, no attitude dynamics -- simulation_mode is 'orbit_only'). This is the orbital-mechanics equivalent of a 'hello world' -- a clean two-body Keplerian orbit with nothing else going on.\n\nWhat to look at: plot 'sat-1.position_N' after running -- it traces a perfect circle in the orbit plane. The orbital period should match Kepler's third law, T = 2*pi*sqrt(a^3/mu), for a = 6778 km and Earth's mu (~398600.4418 km^3/s^2): about 5554 s (~92.6 minutes), so a 1-day run completes about 15.5 orbits.\n\nTry changing: the semi_major_axis_km (higher = slower, longer period), the inclination_deg (watch the ground track in Vizard change), or the eccentricity (still 0 here -- see '02 - Elliptical orbit with perturbations' for a non-circular example).",
+  "description": "The simplest possible orbit: a single spacecraft in a circular low-Earth orbit around a point-mass Earth (no J2, no drag, no third-body gravity, no attitude dynamics -- simulation_mode is 'orbit_only'). This is the orbital-mechanics equivalent of a 'hello world' -- a clean two-body Keplerian orbit with nothing else going on.\n\nWhat to look at: plot 'sat-1.position_N' after running -- it traces a perfect circle in the orbit plane. The orbital period should match Kepler's third law, T = 2*pi*sqrt(a^3/mu), for a = 6778 km and Earth's mu (~398600.4418 km^3/s^2): about 5554 s (~92.6 minutes), so a 1-day run completes about 15.5 orbits.\n\nTry changing: the semi_major_axis_km (higher = slower, longer period), the inclination_deg (watch the ground track in Vizard change), or the eccentricity (still 0 here -- see '02 - Elliptical orbit with perturbations' for a non-circular example).\n\nOrbit is Sun-synchronous (inclination_deg derived via scripts/_generate_templates.sun_synchronous_inclination_deg() from this real J2 formula, not a round number picked by hand) at a 10:30 AM local time of ascending node (raan_deg via raan_for_ltan_deg()) -- the most common real choice for an Earth-observation/commercial smallsat, and the new default baseline orbit for this template catalog's generic LEO examples.",
   "schema_version": 2
 }

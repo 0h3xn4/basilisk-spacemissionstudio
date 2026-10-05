@@ -30,6 +30,7 @@ place to regenerate from.
 from __future__ import annotations
 
 import math
+from datetime import datetime
 from pathlib import Path
 
 from spacemissionstudio.engine.constellation import WalkerConstellationRequest, generate_walker_constellation
@@ -72,6 +73,112 @@ _MTB_DEMO_RW_AXES = [
     [math.cos(_MTB_DEMO_BETA_RAD), -math.sin(_MTB_DEMO_BETA_RAD), 0.0],
     [-math.cos(_MTB_DEMO_BETA_RAD), -math.sin(_MTB_DEMO_BETA_RAD), 0.0],
 ]
+
+# -- Sun-synchronous (10:30 AM LTAN) orbit + Berlin ground station ---------
+# Real user request: templates should default to a realistic Sun
+# -synchronous orbit (10:30 AM local time of ascending node -- the most
+# common real operational choice for Earth-observation/commercial
+# smallsats) and a Berlin, Germany ground station, wherever a template's
+# own lesson doesn't specifically need something else (GEO/Walker
+# -coverage/transfer-trajectory geometry, or a sun-angle/geomagnetic-field
+# -sensitive demo whose numeric claims were confirmed against its CURRENT
+# orbit -- see each affected build_*() function's own comment for which
+# templates keep their existing orbit and why).
+#
+# J2/Req/mu below are Basilisk's own real Earth constants, confirmed
+# directly against a real build (not guessed):
+#   from Basilisk.utilities import orbitalMotion, simIncludeGravBody
+#   orbitalMotion.J2_EARTH == 0.001082616
+#   simIncludeGravBody.gravBodyFactory().createEarth().radEquator == 6378136.6 [m]
+#   simIncludeGravBody.gravBodyFactory().createEarth().mu == 398600436000000.0 [m^3/s^2]
+# _EARTH_REQUATOR_KM/_EARTH_MU_KM3_S2 match gui.template_wizard's own
+# already-established _EARTH_RADIUS_KM constant exactly (same source).
+_EARTH_J2 = 0.001082616  # [-]
+_EARTH_REQUATOR_KM = 6378.1366  # [km]
+_EARTH_MU_KM3_S2 = 398600.436  # [km^3/s^2]
+_TROPICAL_YEAR_DAYS = 365.2421897  # [day] mean interval between vernal equinoxes
+
+# Default LTAN for every SSO template below -- the real user request's own
+# number ("SSO (10:30 AM) orbits").
+_DEFAULT_LTAN_HOUR = 10.5  # [hr]
+
+
+def sun_synchronous_inclination_deg(semi_major_axis_km: float, eccentricity: float = 0.0) -> float:
+    """The real inclination (deg) whose J2 secular nodal regression rate
+    exactly matches the mean Sun's own apparent eastward motion
+    (360 deg / tropical year) -- the defining property of a Sun
+    -synchronous orbit (RAAN drifts in step with the Sun, so local solar
+    time at the ascending node stays constant year-round).
+
+    Standard first-order J2 secular RAAN-rate formula (e.g. Vallado,
+    *Fundamentals of Astrodynamics and Applications*):
+    ``dRAAN/dt = -1.5 * n * J2 * (Req/p)^2 * cos(i)``, ``n = sqrt(mu/a^3)``,
+    ``p = a*(1-e^2)``. Solved here for ``i`` given the target rate.
+
+    Verified directly against this project's own existing reference value
+    (not just derived in the abstract): evaluates to 97.40 deg at a
+    6878.1366 km semi-major axis (500 km altitude circular) -- matching
+    ``engine.spacecraft_templates._placeholder_orbit()``'s own
+    ``inclination_deg=97.4  # sun-synchronous at ~500 km`` comment exactly.
+    """
+    a = semi_major_axis_km
+    p = a * (1.0 - eccentricity**2)
+    mean_motion = math.sqrt(_EARTH_MU_KM3_S2 / a**3)  # [rad/s]
+    target_raan_rate = 2.0 * math.pi / (_TROPICAL_YEAR_DAYS * 86400.0)  # [rad/s]
+    cos_i = -target_raan_rate / (1.5 * mean_motion * _EARTH_J2 * (_EARTH_REQUATOR_KM / p) ** 2)
+    # Rounded to 2 decimal places: real orbit-insertion dispersion and the
+    # first-order J2-only model above both dwarf anything past this
+    # precision, so carrying more digits would be false precision -- and
+    # it keeps this value exactly representable by the Customize wizard's
+    # own 2-decimal inclination spin box (template_wizard.py).
+    return round(math.degrees(math.acos(cos_i)), 2)
+
+
+def _sun_right_ascension_deg(epoch_utc: str) -> float:
+    """The Sun's real right ascension (deg, J2000-ish mean-of-date frame)
+    at ``epoch_utc`` -- the Astronomical Almanac's own "low precision
+    formula for the Sun" (accurate to about 0.01 deg through 2050;
+    e.g. Vallado section 5.1 reproduces the identical formula), not a
+    guess: verified directly here against three real, independently-known
+    reference points before being trusted -- the Sun's RA is 0 deg at the
+    vernal equinox, 90 deg at the summer solstice, and 180 deg at the
+    autumnal equinox, and this function reproduces all three to within
+    0.25 deg (``2000-03-20T12:00``, ``2030-06-21T12:00``,
+    ``2030-09-23T06:00``).
+    """
+    days_since_j2000 = (datetime.fromisoformat(epoch_utc) - datetime(2000, 1, 1, 12, 0, 0)).total_seconds() / 86400.0
+    mean_longitude_deg = (280.460 + 0.9856474 * days_since_j2000) % 360.0
+    mean_anomaly_rad = math.radians((357.528 + 0.9856003 * days_since_j2000) % 360.0)
+    ecliptic_longitude_rad = math.radians((
+        mean_longitude_deg
+        + 1.915 * math.sin(mean_anomaly_rad)
+        + 0.020 * math.sin(2.0 * mean_anomaly_rad)
+    ) % 360.0)
+    obliquity_rad = math.radians(23.439 - 0.0000004 * days_since_j2000)
+    ra_rad = math.atan2(math.cos(obliquity_rad) * math.sin(ecliptic_longitude_rad), math.cos(ecliptic_longitude_rad))
+    return math.degrees(ra_rad) % 360.0
+
+
+def raan_for_ltan_deg(epoch_utc: str, ltan_hour: float = _DEFAULT_LTAN_HOUR) -> float:
+    """RAAN (deg) that gives an ascending node at local time of ascending
+    node ``ltan_hour`` (24h clock) at ``epoch_utc`` -- standard relation
+    ``RAAN = RA_sun + 15 deg/hr * (LTAN - 12h)`` (RAAN equals the Sun's own
+    RA exactly at a 12:00/noon LTAN, by definition of local solar time).
+    """
+    raan = (_sun_right_ascension_deg(epoch_utc) + 15.0 * (ltan_hour - 12.0)) % 360.0
+    return round(raan, 2)
+
+
+def _berlin_ground_station(**overrides) -> GroundStationConfig:
+    """Berlin, Germany (city-center reference: Alexanderplatz, ~34 m
+    above the WGS84 ellipsoid) -- the real user-requested baseline ground
+    station for every template that has one.
+    """
+    params = dict(name="berlin-gs", latitude_deg=52.5200, longitude_deg=13.4050, altitude_m=34.0,
+                  min_elevation_deg=10.0)
+    params.update(overrides)
+    return GroundStationConfig(**params)
+
 
 def _conservative_drag_margin() -> SpaceWeatherConfig:
     """A nominal, synthetic atmospheric-drag environment -- a fresh
@@ -120,7 +227,13 @@ def build_01_two_body_circular_orbit() -> Scenario:
             "5554 s (~92.6 minutes), so a 1-day run completes about 15.5 orbits.\n\n"
             "Try changing: the semi_major_axis_km (higher = slower, longer period), the "
             "inclination_deg (watch the ground track in Vizard change), or the eccentricity (still "
-            "0 here -- see '02 - Elliptical orbit with perturbations' for a non-circular example)."
+            "0 here -- see '02 - Elliptical orbit with perturbations' for a non-circular example).\n\n"
+            "Orbit is Sun-synchronous (inclination_deg derived via "
+            "scripts/_generate_templates.sun_synchronous_inclination_deg() from this real J2 "
+            "formula, not a round number picked by hand) at a 10:30 AM local time of ascending node "
+            "(raan_deg via raan_for_ltan_deg()) -- the most common real choice for an "
+            "Earth-observation/commercial smallsat, and the new default baseline orbit for this "
+            "template catalog's generic LEO examples."
         ),
         epoch_utc="2030-01-01T00:00:00",
         simulation_mode="orbit_only",
@@ -130,7 +243,9 @@ def build_01_two_body_circular_orbit() -> Scenario:
             SpacecraftConfig(
                 name="sat-1",
                 orbit=OrbitIC(type="classical_elements", semi_major_axis_km=6778.0, eccentricity=0.0,
-                               inclination_deg=51.6, raan_deg=0.0, arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
+                               inclination_deg=sun_synchronous_inclination_deg(6778.0),
+                               raan_deg=raan_for_ltan_deg("2030-01-01T00:00:00"),
+                               arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
                 dry_mass_kg=500.0,
             ),
         ],
@@ -352,7 +467,9 @@ def build_05_formation_flying_phasing() -> Scenario:
                 # using Basilisk's own orbit-element math the way it's designed
                 # to be used rather than routing around it.
                 orbit=OrbitIC(type="classical_elements", semi_major_axis_km=6928.0, eccentricity=0.001,
-                               inclination_deg=45.0, raan_deg=0.0, arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
+                               inclination_deg=sun_synchronous_inclination_deg(6928.0, 0.001),
+                               raan_deg=raan_for_ltan_deg("2030-01-01T00:00:00"),
+                               arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
                 dry_mass_kg=400.0,
                 enable_drag=True, drag_coeff=2.2, drag_area_m2=1.0,
                 enable_srp=True, srp_coeff=1.3, srp_area_m2=1.0,
@@ -360,7 +477,9 @@ def build_05_formation_flying_phasing() -> Scenario:
             SpacecraftConfig(
                 name="follower-1",
                 orbit=OrbitIC(type="classical_elements", semi_major_axis_km=6928.0, eccentricity=0.001,
-                               inclination_deg=45.0, raan_deg=0.0, arg_periapsis_deg=0.0, true_anomaly_deg=-0.5),
+                               inclination_deg=sun_synchronous_inclination_deg(6928.0, 0.001),
+                               raan_deg=raan_for_ltan_deg("2030-01-01T00:00:00"),
+                               arg_periapsis_deg=0.0, true_anomaly_deg=-0.5),
                 dry_mass_kg=400.0,
                 enable_drag=True, drag_coeff=2.2, drag_area_m2=1.0,
                 enable_srp=True, srp_coeff=1.3, srp_area_m2=1.0,
@@ -429,7 +548,9 @@ def build_06_attitude_pointing_basic() -> Scenario:
             SpacecraftConfig(
                 name="sat-1",
                 orbit=OrbitIC(type="classical_elements", semi_major_axis_km=6928.0, eccentricity=0.0,
-                               inclination_deg=45.0, raan_deg=0.0, arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
+                               inclination_deg=sun_synchronous_inclination_deg(6928.0),
+                               raan_deg=raan_for_ltan_deg("2030-01-01T00:00:00"),
+                               arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
                 dry_mass_kg=300.0,
                 inertia_kg_m2=list(_INERTIA_MEDIUM),
                 sigma_bn_init=[0.1, 0.2, -0.15],
@@ -487,7 +608,9 @@ def build_07_attitude_pointing_with_adcs_hardware() -> Scenario:
             SpacecraftConfig(
                 name="sat-1",
                 orbit=OrbitIC(type="classical_elements", semi_major_axis_km=6928.0, eccentricity=0.0,
-                               inclination_deg=45.0, raan_deg=0.0, arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
+                               inclination_deg=sun_synchronous_inclination_deg(6928.0),
+                               raan_deg=raan_for_ltan_deg("2030-01-01T00:00:00"),
+                               arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
                 dry_mass_kg=50.0,
                 enable_drag=True, drag_coeff=2.2, drag_area_m2=1.0,
                 enable_srp=True, srp_coeff=1.3, srp_area_m2=1.0,
@@ -581,7 +704,9 @@ def build_08_mission_sequence_orbit_raise() -> Scenario:
             SpacecraftConfig(
                 name="sat-1",
                 orbit=OrbitIC(type="classical_elements", semi_major_axis_km=6778.0, eccentricity=0.0,
-                               inclination_deg=28.5, raan_deg=0.0, arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
+                               inclination_deg=sun_synchronous_inclination_deg(6778.0),
+                               raan_deg=raan_for_ltan_deg("2030-01-01T00:00:00"),
+                               arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
                 dry_mass_kg=500.0,
                 enable_drag=True, drag_coeff=2.2, drag_area_m2=1.0,
                 enable_srp=True, srp_coeff=1.3, srp_area_m2=1.0,
@@ -631,7 +756,9 @@ def build_09_monte_carlo_dispersion_analysis() -> Scenario:
             SpacecraftConfig(
                 name="sat-1",
                 orbit=OrbitIC(type="classical_elements", semi_major_axis_km=6778.0, eccentricity=0.0,
-                               inclination_deg=51.6, raan_deg=0.0, arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
+                               inclination_deg=sun_synchronous_inclination_deg(6778.0),
+                               raan_deg=raan_for_ltan_deg("2030-01-01T00:00:00"),
+                               arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
                 dry_mass_kg=500.0,
             ),
         ],
@@ -680,7 +807,9 @@ def build_10_gravity_gradient_torque() -> Scenario:
             SpacecraftConfig(
                 name="sat-1",
                 orbit=OrbitIC(type="classical_elements", semi_major_axis_km=6778.0, eccentricity=0.0,
-                               inclination_deg=51.6, raan_deg=0.0, arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
+                               inclination_deg=sun_synchronous_inclination_deg(6778.0),
+                               raan_deg=raan_for_ltan_deg("2030-01-01T00:00:00"),
+                               arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
                 dry_mass_kg=500.0,
                 inertia_kg_m2=list(_INERTIA_MEDIUM),
                 sigma_bn_init=[0.0, 0.0, 0.0],
@@ -773,7 +902,9 @@ def build_12_reaction_wheel_momentum_dumping() -> Scenario:
             SpacecraftConfig(
                 name="sat-1",
                 orbit=OrbitIC(type="classical_elements", semi_major_axis_km=6928.0, eccentricity=0.0,
-                               inclination_deg=45.0, raan_deg=0.0, arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
+                               inclination_deg=sun_synchronous_inclination_deg(6928.0),
+                               raan_deg=raan_for_ltan_deg("2030-01-01T00:00:00"),
+                               arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
                 dry_mass_kg=2500.0,
                 inertia_kg_m2=[1700.0, 0.0, 0.0, 0.0, 1700.0, 0.0, 0.0, 0.0, 1800.0],
                 sigma_bn_init=[0.0, 0.0, 0.0],
@@ -997,7 +1128,9 @@ def build_15_celestial_body_pointing() -> Scenario:
             SpacecraftConfig(
                 name="sat-1",
                 orbit=OrbitIC(type="classical_elements", semi_major_axis_km=6928.0, eccentricity=0.0,
-                               inclination_deg=45.0, raan_deg=0.0, arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
+                               inclination_deg=sun_synchronous_inclination_deg(6928.0),
+                               raan_deg=raan_for_ltan_deg("2030-01-01T00:00:00"),
+                               arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
                 dry_mass_kg=300.0,
                 inertia_kg_m2=list(_INERTIA_MEDIUM),
                 sigma_bn_init=[0.1, 0.2, -0.15],
@@ -1196,7 +1329,9 @@ def build_18_leo_station_keeping() -> Scenario:
             SpacecraftConfig(
                 name="leo-sat-1",
                 orbit=OrbitIC(type="classical_elements", semi_major_axis_km=6778.0, eccentricity=0.0,
-                               inclination_deg=51.6, raan_deg=0.0, arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
+                               inclination_deg=sun_synchronous_inclination_deg(6778.0),
+                               raan_deg=raan_for_ltan_deg("2030-01-01T00:00:00"),
+                               arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
                 dry_mass_kg=120.0,
                 enable_drag=True, drag_coeff=2.2, drag_area_m2=1.5,
                 station_keeping=StationKeepingConfig(
@@ -1228,15 +1363,16 @@ def build_19_sun_pointing_comms_link() -> Scenario:
     # keeping it there), which is why this risk is believed low -- but
     # please report back if a real run shows otherwise.
     #
-    # Ground-station pass geometry: a near-polar inclination (97.8 deg)
-    # covers every longitude under the station's latitude band within
-    # about one nodal period regardless of the exact RAAN chosen, so this
-    # doesn't depend on fine-tuning raan_deg/true_anomaly_deg against a
-    # specific station longitude the way, say, a GEO station-keeping
-    # template would -- but the exact NUMBER and duration of passes over
-    # half a day couldn't be independently re-confirmed against a real
-    # Basilisk run here either. If a run shows zero access windows, the
-    # most likely fix is sim_settings.duration_days (try 1.0 instead of
+    # Ground-station pass geometry: sun_synchronous_inclination_deg(6928.0)
+    # (see that function's own derivation/verification comment) is
+    # near-polar and covers every longitude under the station's latitude
+    # band within about one nodal period regardless of the exact RAAN
+    # chosen, so this doesn't depend on fine-tuning raan_deg/true_anomaly_deg
+    # against a specific station longitude the way, say, a GEO
+    # station-keeping template would -- but the exact NUMBER and duration of
+    # passes over half a day couldn't be independently re-confirmed against
+    # a real Basilisk run here either. If a run shows zero access windows,
+    # the most likely fix is sim_settings.duration_days (try 1.0 instead of
     # 0.5) rather than the orbit geometry itself.
     return Scenario(
         name="19 - Sun-pointing spacecraft with automatic ground-station comms link",
@@ -1245,7 +1381,7 @@ def build_19_sun_pointing_comms_link() -> Scenario:
             "normal at the real, live Sun (fsw_mode-equivalent 'sunSafePoint' behavior, continuously "
             "tracking the actual Sun direction, never a fixed inertial attitude) to maximize power "
             "generation. Whenever this spacecraft comes into REAL, geometry-driven access of the "
-            "'boulder-gs' ground station (Basilisk's own groundLocation.GroundLocation elevation-mask "
+            "'berlin-gs' ground station (Basilisk's own groundLocation.GroundLocation elevation-mask "
             "access analysis -- never a manually-specified time window), comms_pointing "
             "(schema.scenario.CommsPointingConfig) automatically takes over and re-points the "
             "spacecraft's antenna boresight at the ground station instead, switching back to "
@@ -1271,18 +1407,18 @@ def build_19_sun_pointing_comms_link() -> Scenario:
             "though hasAccess is already true: this is the 'geometric visibility vs actual RF link "
             "availability' distinction made concrete, not just asserted.\n\n"
             "What to look at: after running, find one access window in "
-            "'boulder-gs.access_to_leo-comms-1.has_access' and, across that SAME window, cross-plot: "
+            "'berlin-gs.access_to_leo-comms-1.has_access' and, across that SAME window, cross-plot: "
             "'leo-comms-1.comms_pointing.active_mode' (0 -> 1 at access start, back to 0 at access "
             "end), 'leo-comms-1.comms_pointing.pointing_error_deg' (large right at the transition, "
             "decaying toward ~0 as the slew converges), 'leo-comms-1.power.battery_soc' (dips a bit "
             "faster while comms_power_w is drawing, recovers once Sun-pointing resumes and the panel "
-            "is well-illuminated), and 'boulder-gs.access_to_leo-comms-1.link_margin_db' (should be "
+            "is well-illuminated), and 'berlin-gs.access_to_leo-comms-1.link_margin_db' (should be "
             "poor/undefined right at the transition, then settle to a healthy positive margin once "
             "pointing converges, and should also visibly worsen as elevation drops toward the pass's "
             "edges -- real free-space-path-loss growing with slant range). Compare against a window "
             "with NO access at all, where active_mode should stay continuously 0 and link_margin_db "
             "should be entirely NaN (no link attempted).\n\n"
-            "Try changing: boulder-gs's min_elevation_deg (lower = longer, more frequent but lower "
+            "Try changing: berlin-gs's min_elevation_deg (lower = longer, more frequent but lower "
             "-quality passes), rf_link.antenna_beamwidth_deg (narrower = pointing error matters MORE, "
             "a bigger dip in margin during each transition's slew), comms_pointing.comms_power_w "
             "(higher = a more visible battery drain during each pass), or sim_settings.duration_days "
@@ -1306,16 +1442,15 @@ def build_19_sun_pointing_comms_link() -> Scenario:
         gravity=GravityConfig(central_body="earth", central_body_degree=10, third_body_perturbers=["sun", "moon"]),
         sim_settings=SimSettings(duration_days=0.5, dynamics_task_rate_s=0.1, integrator="rkf78"),
         ground_stations=[
-            GroundStationConfig(
-                name="boulder-gs", latitude_deg=40.0150, longitude_deg=-105.2705, altitude_m=1655.0,
-                min_elevation_deg=10.0, rx_antenna_gain_dbi=35.0, system_noise_temp_k=150.0,
-            ),
+            _berlin_ground_station(rx_antenna_gain_dbi=35.0, system_noise_temp_k=150.0),
         ],
         spacecraft=[
             SpacecraftConfig(
                 name="leo-comms-1",
                 orbit=OrbitIC(type="classical_elements", semi_major_axis_km=6928.0, eccentricity=0.0,
-                               inclination_deg=97.8, raan_deg=0.0, arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
+                               inclination_deg=sun_synchronous_inclination_deg(6928.0),
+                               raan_deg=raan_for_ltan_deg("2030-01-01T00:00:00"),
+                               arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
                 dry_mass_kg=60.0,
                 inertia_kg_m2=list(_INERTIA_MEDIUM),
                 sigma_bn_init=[0.2, -0.1, 0.15],
@@ -1333,7 +1468,7 @@ def build_19_sun_pointing_comms_link() -> Scenario:
                     # the downlink patch antenna sits on a different face than the solar
                     # panel, so Sun-pointing and ground-station-pointing are genuinely
                     # different whole-body attitudes, not the same axis re-aimed twice.
-                    target_ground_station="boulder-gs", antenna_boresight_b=[1.0, 0.0, 0.0],
+                    target_ground_station="berlin-gs", antenna_boresight_b=[1.0, 0.0, 0.0],
                     comms_power_w=15.0,
                 ),
             ),

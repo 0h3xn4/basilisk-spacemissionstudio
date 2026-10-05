@@ -5969,3 +5969,70 @@ the new ground-station test, which needs no SPICE at all, passes cleanly against
 Basilisk build. Full non-Basilisk suite with `QT_QPA_PLATFORM=offscreen`: 1023 passed, 131 skipped
 (+1 for the new Basilisk-marked test, correctly skipped in the main sandbox venv that has no
 Basilisk at all), zero regressions.
+
+---
+
+## Templates: Sun-synchronous (10:30 LTAN) orbits and a Berlin ground station
+
+**Direct user request**, part of a 5-item feedback list after a real run on their own machine:
+"All example/template scenarios shall be, where it makes sense, SSO (10:30 AM) orbits and
+baseline groundstation shall be in Berlin, Germany, wherever applicable."
+
+**Derived, not guessed, and verified against two independent references.** Two new helpers in
+`scripts/_generate_templates.py`:
+
+* `sun_synchronous_inclination_deg(semi_major_axis_km, eccentricity=0.0)` solves the standard
+  first-order J2 secular RAAN-rate equation (Vallado, *Fundamentals of Astrodynamics and
+  Applications*: `dRAAN/dt = -1.5 * n * J2 * (Req/p)^2 * cos(i)`, `n = sqrt(mu/a^3)`,
+  `p = a*(1-e^2)`) for the inclination whose nodal regression exactly matches the Sun's own mean
+  motion (360 deg / tropical year) -- the defining property of a Sun-synchronous orbit. `J2`,
+  `Req`, and `mu` were read directly off a real installed Basilisk build (`/tmp/bsk_venv4`:
+  `orbitalMotion.J2_EARTH = 0.001082616`, `gravBodyFactory().createEarth().radEquator =
+  6378136.6` m, `.mu = 398600436000000.0` m^3/s^2), not assumed. Verified against this project's
+  own pre-existing, independently hand-picked reference value: evaluates to 97.40 deg at a
+  6878.1366 km semi-major axis (500 km circular altitude), matching
+  `engine.spacecraft_templates._placeholder_orbit()`'s own `inclination_deg=97.4  # sun
+  -synchronous at ~500 km` comment exactly.
+* `raan_for_ltan_deg(epoch_utc, ltan_hour=10.5)` computes the RAAN that places the ascending node
+  at the requested local time of ascending node (LTAN), via the standard relation
+  `RAAN = RA_sun + 15 deg/hr * (LTAN - 12h)`, using the Astronomical Almanac's own "low precision
+  formula for the Sun" (accurate to about 0.01 deg through 2050) for the Sun's real right
+  ascension at the scenario's epoch. Verified against known Sun RA values at the equinoxes/
+  solstices (0h at the vernal equinox, ~90 deg at the summer solstice, ~180 deg at the autumnal
+  equinox) before being trusted in any template. Default LTAN is 10:30 (the user's own stated
+  value); both helpers round to 2 decimal places -- real orbit-insertion dispersion and the
+  first-order J2-only model both dwarf anything past that precision, and it keeps every value
+  exactly representable by the Customize wizard's existing 2-decimal spin boxes (a round-trip
+  test with the full, unrounded value caught this: `test_every_spec_round_trips_with_no_edits`
+  failed on template 01 with `97.03 != 97.0296092274072` until the rounding was added at the
+  source).
+* `_berlin_ground_station(**overrides)` returns a `GroundStationConfig` for Berlin, Germany
+  (city-center reference: Alexanderplatz, 52.5200 N, 13.4050 E, ~34 m above the WGS84 ellipsoid),
+  the new baseline ground station for every template that has one.
+
+**Applied to every template where it makes sense, and deliberately NOT to the rest** -- each
+exclusion has its own reason, not a blanket skip:
+
+* **Changed** (11 of 19): `01` (two-body circular orbit), `05` (formation flying/phasing, both
+  spacecraft), `06`/`07` (attitude pointing, basic and with ADCS hardware), `08` (mission
+  sequence/orbit raise), `09` (Monte Carlo dispersion), `10` (gravity-gradient torque), `12`
+  (RW momentum dumping), `15` (celestial body pointing), `18` (LEO station-keeping), and `19`
+  (Sun-pointing + comms link, which also gets the ground-station rename: `boulder-gs` ->
+  `berlin-gs` throughout its description text, `gui/template_wizard.py`'s matching wizard-page
+  intro text, and `scenarios/templates/README.md`'s catalog row).
+* **Not changed, each for a template-specific physical/pedagogical reason**: `02` (elliptical
+  orbit) and `03` (GEO station-keeping) are about perturbation/stationkeeping effects that have
+  nothing to do with LTAN and GEO can't be Sun-synchronous at all; `04` (Walker constellation)
+  is about relative-phasing geometry, not absolute LTAN; `11` (thruster attitude control) and
+  `17` (fuel tank depletion) are deliberately kept as the two exceptions to the separate "never
+  use thrusters for attitude control" item in the same feedback list -- their entire teaching
+  purpose IS thruster-based ADCS, confirmed with the user before proceeding; `13` (magnetic
+  torque rod) and `14` (CSS Sun-heading estimation) depend on their current orbit/attitude
+  geometry for their own specific demonstration (geomagnetic field direction, Sun-vector
+  estimation geometry) in ways re-deriving the orbit risked silently breaking; `16` (Lambert
+  transfer) is a two-point boundary-value transfer problem, not an operational orbit.
+
+**Verification**: all 19 regenerated templates reload and `Scenario.validate()` cleanly; full
+non-Basilisk suite with `QT_QPA_PLATFORM=offscreen`: 1026 passed, 131 skipped, zero regressions
+(including `tests/gui/test_template_wizard.py`'s own prefill/round-trip tests, parametrized over
+every template, which is what caught the rounding issue above before it shipped).
