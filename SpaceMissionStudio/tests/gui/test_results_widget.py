@@ -42,6 +42,41 @@ def test_set_result_populates_series_combo_and_plots(widget):
     assert len(widget.figure.data) == 3  # x, y, z
 
 
+def test_set_result_with_no_provenance_leaves_label_blank(widget):
+    widget.set_result(_sample_result_set())
+    assert widget.provenance_label.text() == ""
+
+
+def test_set_result_with_provenance_shows_version_and_run_time(widget):
+    from spacemissionstudio.engine.results import RunProvenance
+
+    rs = _sample_result_set()
+    rs.provenance = RunProvenance(
+        spacemissionstudio_version="9.9.9", basilisk_version="2.12.0",
+        run_started_utc="2030-01-01T00:00:00+00:00", integrator="rkf78", dynamics_task_rate_s=10.0,
+    )
+    widget.set_result(rs)
+    label = widget.provenance_label.text()
+    assert "9.9.9" in label
+    assert "2.12.0" in label
+    assert "rkf78" in label
+    assert "2030-01-01T00:00:00+00:00" in label
+    assert "deterministic" in widget.provenance_label.toolTip()
+
+
+def test_set_result_none_clears_provenance_label(widget):
+    from spacemissionstudio.engine.results import RunProvenance
+
+    rs = _sample_result_set()
+    rs.provenance = RunProvenance(
+        spacemissionstudio_version="9.9.9", basilisk_version="2.12.0",
+        run_started_utc="2030-01-01T00:00:00+00:00", integrator="rkf78", dynamics_task_rate_s=10.0,
+    )
+    widget.set_result(rs)
+    widget.set_result(None)
+    assert widget.provenance_label.text() == ""
+
+
 def test_series_combo_is_searchable_by_substring(widget):
     """Real scenarios (e.g. the built-in 6-satellite Walker constellation
     template) produce 30-40+ series named after the dotted

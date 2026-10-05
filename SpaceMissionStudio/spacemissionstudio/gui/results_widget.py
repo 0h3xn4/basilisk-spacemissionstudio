@@ -547,6 +547,16 @@ class ResultsWidget(QWidget):
         top_row.addWidget(self.save_png_button)
         layout.addLayout(top_row)
 
+        # Design-philosophy audit finding (docs/ux_audit.md, "no run
+        # provenance captured with results"): one line, always visible
+        # once a result exists, naming exactly what produced it --
+        # ResultSet.provenance is None for a hand-built/synthetic result
+        # (e.g. a test), so this stays blank rather than guessing.
+        self.provenance_label = QLabel("")
+        self.provenance_label.setStyleSheet("color: palette(mid); font-size: 90%;")
+        self.provenance_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        layout.addWidget(self.provenance_label)
+
         self.web_view = QWebEngineView()
         layout.addWidget(self.web_view)
         self._redraw()  # shows the empty-state message immediately, not just after the first set_result() call
@@ -561,7 +571,21 @@ class ResultsWidget(QWidget):
                 self.series_combo.addItem(name)
         self.series_combo.blockSignals(False)
         self.export_button.setEnabled(result is not None and bool(result.series))
+        self._update_provenance_label()
         self._redraw()
+
+    def _update_provenance_label(self) -> None:
+        provenance = self._result.provenance if self._result is not None else None
+        if provenance is None:
+            self.provenance_label.setText("")
+            self.provenance_label.setToolTip("")
+            return
+        self.provenance_label.setText(
+            f"SpaceMissionStudio {provenance.spacemissionstudio_version} · "
+            f"Basilisk {provenance.basilisk_version} · {provenance.integrator} @ "
+            f"{provenance.dynamics_task_rate_s:g} s · run started {provenance.run_started_utc}"
+        )
+        self.provenance_label.setToolTip(provenance.rng_seed_note)
 
     def set_live_result(self, result: ResultSet, epoch_utc: Optional[str] = None) -> None:
         """Updates the plot with one chunk's worth of a still-running
@@ -593,6 +617,7 @@ class ResultsWidget(QWidget):
                 self.series_combo.addItem(name)
             self.series_combo.blockSignals(False)
             self.export_button.setEnabled(bool(result.series))
+            self._update_provenance_label()
             self._redraw()
             self._live_redraw_elapsed.start()
             return

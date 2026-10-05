@@ -153,18 +153,20 @@ import logging
 import os
 import tempfile
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Callable, Dict, List, Optional
 
 import numpy as np
 
+import Basilisk
 from Basilisk.simulation import spacecraft, svIntegrators
 from Basilisk.utilities import SimulationBaseClass, macros, orbitalMotion, simHelpers, simIncludeGravBody
 from Basilisk.utilities.supportDataTools.dataFetcher import DataFile, get_path
 
+from .. import __version__ as _SPACEMISSIONSTUDIO_VERSION
 from ..schema.scenario import OrbitIC, Scenario
 from . import fsw, kernels, link_budget, orbit_maintenance, time_system, vizard
-from .results import ResultSet, TimeSeries
+from .results import ResultSet, RunProvenance, TimeSeries
 from .vizard import VizardRequest
 
 # Maps schema.SimSettings.integrator -> the svIntegrator* class it selects.
@@ -493,6 +495,7 @@ class SimulationService:
         self.vizard_request = vizard_request
         self.scSim: Optional[SimulationBaseClass.SimBaseClass] = None
         self.mu: Optional[float] = None
+        self._run_started_utc: Optional[str] = None  # set by build() -- see RunProvenance
         # Set below, during gravity setup, only when a real J2 term is
         # actually being modeled for the central body -- see that
         # assignment's own comment and _mean_elements()'s docstring for
@@ -573,6 +576,13 @@ class SimulationService:
             raise SimulationServiceError(
                 "build() was already called on this SimulationService -- create a new instance per run"
             )
+
+        # Captured here, not lazily in _extract_results(), so it reflects
+        # when this run actually STARTED (build() is called exactly once,
+        # immediately before ExecuteSimulation() in every call path --
+        # run()/run_live()/MissionEngine.run() -- see RunProvenance's own
+        # docstring for why this matters).
+        self._run_started_utc = datetime.now(timezone.utc).isoformat()
 
         scenario = self.scenario
         scenario.validate()  # re-validate: the scenario object may have been mutated after load
@@ -1642,6 +1652,14 @@ class SimulationService:
         whatever has been logged so far, whether that's a full run's worth
         (:meth:`run`) or one chunk's worth mid-run (:meth:`run_live`)."""
         result = ResultSet(scenario_name=self.scenario.name)
+        if self._run_started_utc is not None:  # always true once build() has run; guards a hand-built test double
+            result.provenance = RunProvenance(
+                spacemissionstudio_version=_SPACEMISSIONSTUDIO_VERSION,
+                basilisk_version=Basilisk.__version__,
+                run_started_utc=self._run_started_utc,
+                integrator=self.scenario.sim_settings.integrator,
+                dynamics_task_rate_s=self.scenario.sim_settings.dynamics_task_rate_s,
+            )
         for name, handle in self._handles.items():
             t_s = handle.recorder.times() * macros.NANO2SEC
             result.add(TimeSeries(f"{name}.position_N", t_s, ("x", "y", "z"), handle.recorder.r_BN_N, units="m"))

@@ -125,7 +125,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         return 3
 
     paths = result.export_csv(args.out_dir)
-    print(f"Wrote {len(paths)} CSV file(s) to {args.out_dir}:")
+    print(f"Wrote {len(paths)} result file(s) to {args.out_dir}:")
     for name, path in sorted(paths.items()):
         print(f"  {name}: {path}")
 

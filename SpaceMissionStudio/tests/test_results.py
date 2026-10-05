@@ -2,10 +2,19 @@
 
 import csv
 
+import json
+
 import numpy as np
 import pytest
 
-from spacemissionstudio.engine.results import CommandSummary, ReportEntry, ResultSet, ResultsError, TimeSeries
+from spacemissionstudio.engine.results import (
+    CommandSummary,
+    ReportEntry,
+    ResultSet,
+    ResultsError,
+    RunProvenance,
+    TimeSeries,
+)
 
 
 def _sample_series(name="s", n=10):
@@ -54,6 +63,55 @@ def test_result_set_add_and_export(tmp_path):
     assert set(paths) == {"sat-1.position_N", "sat-1.velocity_N"}
     for p in paths.values():
         assert p.exists()
+
+
+def _sample_provenance(**overrides) -> RunProvenance:
+    defaults = dict(
+        spacemissionstudio_version="9.9.9", basilisk_version="2.12.0",
+        run_started_utc="2030-01-01T00:00:00+00:00", integrator="rkf78", dynamics_task_rate_s=10.0,
+    )
+    defaults.update(overrides)
+    return RunProvenance(**defaults)
+
+
+def test_result_set_provenance_defaults_to_none():
+    rs = ResultSet(scenario_name="test")
+    assert rs.provenance is None
+
+
+def test_result_set_export_csv_without_provenance_writes_no_sidecar(tmp_path):
+    rs = ResultSet(scenario_name="test")
+    rs.add(_sample_series("sat-1.position_N"))
+    paths = rs.export_csv(tmp_path / "out")
+    assert "provenance" not in paths
+    assert not (tmp_path / "out" / "provenance.json").exists()
+
+
+def test_result_set_export_csv_with_provenance_writes_sidecar_json(tmp_path):
+    rs = ResultSet(scenario_name="test", provenance=_sample_provenance())
+    rs.add(_sample_series("sat-1.position_N"))
+    paths = rs.export_csv(tmp_path / "out")
+    assert "provenance" in paths
+    written = json.loads(paths["provenance"].read_text())
+    assert written == {
+        "spacemissionstudio_version": "9.9.9",
+        "basilisk_version": "2.12.0",
+        "run_started_utc": "2030-01-01T00:00:00+00:00",
+        "integrator": "rkf78",
+        "dynamics_task_rate_s": 10.0,
+        "rng_seed_note": RunProvenance.__dataclass_fields__["rng_seed_note"].default,
+    }
+
+
+def test_result_set_export_csv_with_provenance_and_no_series_still_writes_sidecar(tmp_path):
+    # export_csv() must mkdir the output directory itself in this case --
+    # with at least one series, TimeSeries.to_csv() already does that, but
+    # a ResultSet with ONLY provenance and no series (e.g. a mission with
+    # no propagate command) must not silently skip writing it.
+    rs = ResultSet(scenario_name="test", provenance=_sample_provenance())
+    paths = rs.export_csv(tmp_path / "out")
+    assert set(paths) == {"provenance"}
+    assert paths["provenance"].exists()
 
 
 def test_result_set_rejects_duplicate_series_name():
