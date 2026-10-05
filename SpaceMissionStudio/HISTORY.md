@@ -5908,3 +5908,64 @@ at `schema_version: 2` via `load_scenario()`/`.validate()` after the hand-edits.
 `tests/gui/test_results_widget.py`: 33 passed (30 + 3 new). `tests/test_spaceweather.py`: 31
 passed (29 + 2 new). `tests/gui/test_startup_fetch_dialog.py`: 13 passed (11 + 2 new). Full suite
 with `QT_QPA_PLATFORM=offscreen`: 1023 passed, 130 skipped, zero regressions (up from 1007/130).
+
+## Real user-reported crash: ground station + Vizard both enabled
+
+**Real user report** (a traceback from their own machine, where a real Basilisk build and real
+cached SPICE kernels both exist -- something this development sandbox has never had): every run
+with a ground station AND Vizard output configured crashed inside
+`engine.vizard.enable_vizard()`'s ground-station loop:
+
+```
+TypeError: only 0-dimensional arrays can be converted to Python scalars
+SystemError: <built-in function LocationPbMsg_gHat_P_set> returned a result with an exception set
+```
+
+**Root cause, confirmed directly against a real Basilisk build, not reasoned about in the
+abstract**: this development sandbox doesn't have cached SPICE kernels either (naif.jpl.nasa.gov
+is blocked here, same already-documented gap as always), but it DOES have a real Basilisk install
+in a throwaway venv (`/tmp/bsk_venv4`, used earlier this session to verify the offline-policy
+PNG/startup-fetch work) -- `pip install -e .` into it and reproducing the EXACT reported traceback
+took one Python one-liner, not a guess:
+`groundLocation.GroundLocation.r_LP_P_Init` (a real Basilisk `Eigen::Vector3d`) is exposed to
+Python as a NESTED `[[x], [y], [z]]` list, confirmed directly, never a flat `[x, y, z]` one.
+`enable_vizard()`'s ground-station loop passed it to `vizSupport.addLocation()` via a plain
+`list(gs.r_LP_P_Init)` call, which leaves that nesting untouched. `addLocation()` itself tolerates
+the nested `r_GP_P` shape fine (its own setter apparently squeezes it) -- but since this call
+never passes its own `gHat_P`, `addLocation()` computes one internally as `r_GP_P /
+np.linalg.norm(r_GP_P)`; fed the STILL-nested `r_GP_P`, that division produces a genuinely
+(3, 1)-shaped numpy array instead of a flat (3,) one, and THAT shape is what breaks `gHat_P`'s own
+setter, which tries to convert each of the 3 "rows" to a scalar and chokes on each being itself a
+1-element sub-array (`TypeError: only 0-dimensional arrays can be converted to Python scalars`,
+surfacing through SWIG's generic exception-forwarding as the `SystemError` above).
+
+**The fix**: `simHelpers.EigenVector3d2list()` instead of bare `list()` -- the exact conversion
+every real Basilisk example that passes a `GroundLocation`'s own `r_LP_P_Init` to `addLocation()`
+already uses (`examples/scenarioAttLocPoint.py`, `examples/scenarioGroundDownlink.py`,
+`examples/scenarioGroundLocationImaging.py`, `examples/scenarioSpacecraftLocation.py`,
+`examples/scenarioStripImaging.py` -- confirmed by grepping every real `addLocation` call site in
+this checkout's own `examples/`, not just one). A project-wide re-grep for the same `list(...)`
+-on-a-Basilisk-vector pattern elsewhere in `engine/` turned up nothing else at risk.
+
+**Verified end-to-end against the real Basilisk build, both directions**: confirmed the OLD code
+(via `git stash`) reproduces the user's EXACT traceback (same `SystemError`, same inner
+`TypeError`, same shape -- `array([[-0.20...], [-0.74...], [0.64...]])`, a genuine (3, 1)); then
+confirmed the fix resolves it. New `tests/test_vizard.py::test_enable_vizard_with_a_ground_station_
+does_not_crash` calls `engine.vizard.enable_vizard()` directly against a real
+`groundLocation.GroundLocation`/`vizInterface.VizInterface` pair, deliberately NOT through
+`SimulationService.build()` (which would need the SPICE kernels this sandbox still can't fetch --
+a real, separate, already-documented gap this bug has nothing to do with) -- the ground-station/
+Vizard wiring needs no SPICE at all, so this test genuinely runs and passes against the real
+Basilisk build in `/tmp/bsk_venv4`, not just a reasoned-through fix. Reverted the fix one more
+time with this new test in place and watched it fail with the identical traceback, then restored
+it and watched it pass -- the same "prove the regression test actually catches the bug" discipline
+as the two fixes in the entry above.
+
+**Verification**: `tests/test_vizard.py` (3 tests, one new): the 2 pre-existing SPICE-dependent
+tests fail in THIS sandbox with exactly the already-documented, unrelated `KernelError` (SPICE
+kernels can't be fetched here) -- raised inside `service.build()` well BEFORE it ever reaches the
+ground-station/Vizard code this fix touches, so not a regression this change could have caused;
+the new ground-station test, which needs no SPICE at all, passes cleanly against the real
+Basilisk build. Full non-Basilisk suite with `QT_QPA_PLATFORM=offscreen`: 1023 passed, 131 skipped
+(+1 for the new Basilisk-marked test, correctly skipped in the main sandbox venv that has no
+Basilisk at all), zero regressions.

@@ -623,7 +623,7 @@ def enable_vizard(scSim, task_name: str, sc_objects: List, request: VizardReques
     """
     from Basilisk.architecture import messaging, sysModel
     from Basilisk.simulation import vizInterface
-    from Basilisk.utilities import vizSupport
+    from Basilisk.utilities import simHelpers, vizSupport
 
     if request.save_file and request.live_stream:
         raise VizardError("VizardRequest: set at most one of save_file/live_stream, not both")
@@ -882,9 +882,28 @@ def enable_vizard(scSim, task_name: str, sc_objects: List, request: VizardReques
         # (elevation measured from the local horizon): a zenith-centered cone of
         # half-angle (pi/2 - minimumElevation) has full angle pi - 2*minimumElevation.
         field_of_view = math.pi - 2.0 * gs.minimumElevation
+        # gs.r_LP_P_Init is Basilisk's own Eigen::Vector3d, which SWIG
+        # exposes to Python as a NESTED [[x], [y], [z]] list (confirmed
+        # directly against a real build, not assumed), never a flat
+        # [x, y, z] one -- plain list(...) leaves it nested. addLocation()
+        # itself tolerates that nested shape fine for r_GP_P, but when
+        # gHat_P is omitted (as here) it computes
+        # gHat_P = r_GP_P / np.linalg.norm(r_GP_P) internally, which turns
+        # a nested r_GP_P into a (3, 1)-shaped array instead of a flat
+        # (3,) one -- its own gHat_P setter then fails trying to convert
+        # each 1-element sub-array to a scalar ("TypeError: only
+        # 0-dimensional arrays can be converted to Python scalars",
+        # surfacing as a SystemError through the SWIG setter). Real user
+        # report: this crashed every run with a ground station and Vizard
+        # both enabled. simHelpers.EigenVector3d2list() is the exact
+        # conversion every real Basilisk example passing a GroundLocation's
+        # own r_LP_P_Init to addLocation() already uses (e.g.
+        # examples/scenarioAttLocPoint.py, examples/scenarioGroundDownlink.py)
+        # -- it flattens to a genuine 3-element list, avoiding this
+        # upstream quirk entirely rather than working around it here.
         vizSupport.addLocation(
             viz, stationName=gs_name, parentBodyName=central_body_name,
-            r_GP_P=list(gs.r_LP_P_Init), fieldOfView=field_of_view,
+            r_GP_P=simHelpers.EigenVector3d2list(gs.r_LP_P_Init), fieldOfView=field_of_view,
             color="cyan", label=gs_name,
         )
 
