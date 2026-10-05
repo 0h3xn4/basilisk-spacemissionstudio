@@ -582,3 +582,138 @@ def test_phasing_keeping_rtn_separation_is_unclamped_when_within_capacity():
     assert controller.lastTransverseKm == pytest.approx(transverse_payload.storageLevel, abs=1e-9)
     assert abs(controller.lastRadialKm) == pytest.approx(radial_payload.storageLevel, abs=1e-9)
     assert controller.lastNormalKm == pytest.approx(normal_payload.storageLevel, abs=1e-9)
+
+
+# -- Divergence guard: a correction cycle that never actually brings the
+# error back inside tolerance must not be retried forever ---------------
+#
+# Real bug found via a real numerical diagnostic (31-day two-body sim, not
+# just reasoned about -- see HISTORY.md): a modest 50 km radial placement
+# offset, combined with orbitalMotion.rv2elem()'s own documented
+# near-circular decomposition ambiguity (engine.formation's docstring),
+# can decouple this controller's mean-anomaly-based error metric from
+# reality badly enough that corrections make the real separation WORSE,
+# not better, and the error metric itself oscillates between two
+# phase-locked values on alternating cycles rather than monotonically
+# growing -- so comparing a cycle's ending error against its own starting
+# error (tried first) is fooled by that oscillation. These tests drive the
+# guard directly via hand-crafted state messages and forced state
+# transitions (fast and deterministic), rather than a slow full
+# simulation -- the full-sim confirmation lives in the scratch diagnostic
+# referenced above, not in this suite.
+
+def _build_non_convergent_phasing_controller():
+    """A controller whose chief/follower state never actually moves (a
+    frozen mean-anomaly mismatch), with a target separation tiny enough
+    that this fixed mismatch is always far outside tolerance -- a correction
+    cycle against this state can never converge, by construction.
+    """
+    from Basilisk.architecture import messaging
+    from Basilisk.simulation import extForceTorque
+    from Basilisk.utilities import orbitalMotion
+
+    from spacemissionstudio.engine.orbit_maintenance import PhasingKeepingController, SeparationSchedule
+
+    nominal_a_m = 6928e3
+    target_km = 5.0  # ~0.04 deg -- tiny next to the fixed ~30 deg mismatch below
+    controller = PhasingKeepingController(
+        name="pk", mu=3.986004418e14, nominal_a_m=nominal_a_m,
+        separation_schedule=SeparationSchedule(distances_km=[target_km], interval_days=0.0,
+                                                semi_major_axis_m=nominal_a_m),
+        tolerance_fraction=0.1, restore_tolerance_fraction=0.5, correction_window_days=1.0,
+        max_drift_days=5.0, max_delta_a_m=1000.0, thrust_n=0.05, isp_s=1500.0, dry_mass_kg=400.0,
+    )
+    controller.extForceEffectorB = extForceTorque.ExtForceTorque()
+    state_a = messaging.SCStatesMsg()
+    state_b = messaging.SCStatesMsg()
+    oe = orbitalMotion.ClassicElements()
+    oe.a, oe.e, oe.i, oe.Omega, oe.omega = nominal_a_m, 0.001, 0.0, 0.0, 0.0
+    oe.f = 0.0
+    r_a, v_a = orbitalMotion.elem2rv(controller.mu, oe)
+    oe.f = np.radians(30.0)  # frozen ~30 deg mismatch, never actually corrected
+    r_b, v_b = orbitalMotion.elem2rv(controller.mu, oe)
+    _write_sc_state(state_a, r_a, v_a)
+    _write_sc_state(state_b, r_b, v_b)
+    controller.scStateInMsgA.subscribeTo(state_a)
+    controller.scStateInMsgB.subscribeTo(state_b)
+    controller.Reset(0)
+    return controller
+
+
+def test_phasing_keeping_divergence_guard_suspends_after_non_convergent_cycles():
+    from spacemissionstudio.engine.orbit_maintenance import _MAX_NON_CONVERGENT_CYCLES
+
+    controller = _build_non_convergent_phasing_controller()
+
+    controller.UpdateState(0)  # IDLE -> BURN_OUT: the fixed ~30 deg error is far outside tolerance
+    assert controller.state == controller.BURN_OUT
+    assert controller.suspendedDueToNonConvergence is False
+
+    for cycle in range(_MAX_NON_CONVERGENT_CYCLES):
+        # Fast-forward straight to the BURN_RESTORE -> IDLE decision point
+        # -- this test is about the convergence bookkeeping made AT that
+        # transition, not the burn-duration arithmetic that gets a real
+        # run there over several ticks (already covered elsewhere in this
+        # file). The chief/follower state never changes, so the error at
+        # this decision point is the same ~30 deg mismatch every cycle --
+        # always outside this scenario's tiny tolerance band.
+        controller.state = controller.BURN_RESTORE
+        controller._accumDv = controller._targetDv
+        controller.UpdateState(int((cycle + 1) * 1e9))
+        assert controller.state == controller.IDLE
+
+        if cycle < _MAX_NON_CONVERGENT_CYCLES - 1:
+            assert controller.suspendedDueToNonConvergence is False
+        else:
+            assert controller.suspendedDueToNonConvergence is True
+        assert controller._consecutiveNonConvergentCycles == cycle + 1
+
+
+def test_phasing_keeping_suspends_further_burns_once_guard_trips():
+    """Once suspended, IDLE must not re-trigger a new correction (no
+    burn commanded) even though the fixed mismatch is still far outside
+    tolerance -- otherwise the guard would stop counting but not actually
+    stop the propellant drain it exists to prevent.
+    """
+    from spacemissionstudio.engine.orbit_maintenance import _MAX_NON_CONVERGENT_CYCLES
+
+    controller = _build_non_convergent_phasing_controller()
+    controller.UpdateState(0)
+    for cycle in range(_MAX_NON_CONVERGENT_CYCLES):
+        controller.state = controller.BURN_RESTORE
+        controller._accumDv = controller._targetDv
+        controller.UpdateState(int((cycle + 1) * 1e9))
+    assert controller.suspendedDueToNonConvergence is True
+
+    dv_before = controller._cumulativeDv
+    controller.UpdateState(int((_MAX_NON_CONVERGENT_CYCLES + 1) * 1e9))
+
+    assert controller.state == controller.IDLE  # never re-triggered BURN_OUT
+    assert controller._cumulativeDv == dv_before  # no further propellant spent
+    assert _flat(controller.extForceEffectorB.extForce_N) == [0.0, 0.0, 0.0]
+
+
+def test_phasing_keeping_new_schedule_target_clears_the_suspension():
+    """A fresh schedule entry (the schedule ticking over, e.g. a scripted
+    reconfiguration) is a genuinely new situation worth trying again, even
+    after a previous target was given up on -- see UpdateState's own
+    comment at the divergence-guard check.
+    """
+    from spacemissionstudio.engine.orbit_maintenance import _MAX_NON_CONVERGENT_CYCLES
+
+    controller = _build_non_convergent_phasing_controller()
+    controller.UpdateState(0)
+    for cycle in range(_MAX_NON_CONVERGENT_CYCLES):
+        controller.state = controller.BURN_RESTORE
+        controller._accumDv = controller._targetDv
+        controller.UpdateState(int((cycle + 1) * 1e9))
+    assert controller.suspendedDueToNonConvergence is True
+
+    # Simulate the schedule ticking over to a new target.
+    controller.separationSchedule.targetsRad[0] = controller.separationSchedule.targetsRad[0] * 2.0
+
+    controller.UpdateState(int((_MAX_NON_CONVERGENT_CYCLES + 1) * 1e9))
+
+    assert controller.suspendedDueToNonConvergence is False
+    assert controller._consecutiveNonConvergentCycles == 0
+    assert controller.state == controller.BURN_OUT  # got a clean new attempt

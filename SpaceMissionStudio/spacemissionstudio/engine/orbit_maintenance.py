@@ -154,6 +154,14 @@ from .propellant_bookkeeping import apply_propellant_burn, total_delta_v_budget
 
 _LOGGER = logging.getLogger(__name__)
 
+# PhasingKeepingController's own divergence guard (see its UpdateState's
+# own comment): how many consecutive full correction cycles may fail to
+# reduce the tracking error before automatic corrections are suspended.
+# 2 (not 1): a single non-improving cycle alone is not yet a strong
+# signal of genuine non-convergence (could be ordinary smoothing-window
+# noise right at a cycle boundary); two in a row is.
+_MAX_NON_CONVERGENT_CYCLES = 2
+
 
 def _wrap_pm_pi(angle_rad: float) -> float:
     """Wrap an angle [rad] to (-pi, pi]."""
@@ -618,6 +626,19 @@ class PhasingKeepingController(sysModel.SysModel):
         self._accumDv = 0.0  # [m/s]
         self._burnSign = 1.0  # [-] +1 prograde (raise a), -1 retrograde (lower a)
         self._driftStartT = 0.0  # [s]
+        # Divergence guard -- see UpdateState's own comment at the
+        # BURN_RESTORE -> IDLE transition.
+        self._errorAtCycleStartRad = 0.0  # [rad] error when the ACTIVE cycle started
+        self._consecutiveNonConvergentCycles = 0  # [-]
+        self._lastScheduledTargetRad = 0.0  # [rad] detects the schedule ticking over to a new target
+        # Public (not underscore-prefixed): real, user-visible telemetry --
+        # True once automatic corrections have been suspended because they
+        # were not converging (see UpdateState's own comment). Not fed
+        # into any live Vizard panel yet (a reasonable follow-on, not done
+        # here -- this attribute exists so it's at least inspectable/
+        # testable and logged, matching this project's own "surface it,
+        # don't silently drop it" discipline elsewhere).
+        self.suspendedDueToNonConvergence = False
 
         self.tLog: list = []
         self.errorDegLog: list = []
@@ -640,6 +661,14 @@ class PhasingKeepingController(sysModel.SysModel):
         # once) must not let stale pre-reset error samples leak into the
         # smoothed error average computed just after it.
         self._errorHistory = []
+        # Same reasoning as _errorHistory just above: algorithmic state for
+        # the divergence guard, not cumulative telemetry, so a second
+        # Reset() must not carry over a suspension (or its non-convergence
+        # count) decided before this reset.
+        self._errorAtCycleStartRad = 0.0
+        self._consecutiveNonConvergentCycles = 0
+        self._lastScheduledTargetRad = 0.0
+        self.suspendedDueToNonConvergence = False
         if self.extForceEffectorB is not None:
             self.extForceEffectorB.extForce_N = [0.0, 0.0, 0.0]
 
@@ -812,11 +841,20 @@ class PhasingKeepingController(sysModel.SysModel):
 
         thrustMag = 0.0  # [N]
 
+        # Divergence guard: a fresh schedule target (the schedule ticking
+        # over to a new entry) is a genuinely new situation worth trying
+        # again, even after a previous target was given up on below.
+        if scheduledTargetRad != self._lastScheduledTargetRad:
+            self.suspendedDueToNonConvergence = False
+            self._consecutiveNonConvergentCycles = 0
+            self._lastScheduledTargetRad = scheduledTargetRad
+
         if self.state == self.IDLE:
             # Tolerance scales with the CURRENT target, not a fixed angle.
             tolRad = self.toleranceFraction * abs(scheduledTargetRad)
-            if abs(error) > tolRad:
+            if abs(error) > tolRad and not self.suspendedDueToNonConvergence:
                 self._activeTargetRad = scheduledTargetRad
+                self._errorAtCycleStartRad = error
                 n = np.sqrt(self.mu / self.aNom ** 3)  # [rad/s] mean motion
                 # Two-body mean-motion offset from an SMA offset:
                 #   dn = -1.5 * n * (deltaA / a)
@@ -852,6 +890,48 @@ class PhasingKeepingController(sysModel.SysModel):
             if self._accumDv >= self._targetDv:
                 self.state = self.IDLE
                 thrustMag = 0.0
+                # Real numerical confirmation (not just reasoned about, see
+                # this class's own docstring): a severely mis-conditioned
+                # starting geometry -- notably ANY nonzero radial placement
+                # offset, see engine.formation's own docstring -- can push
+                # the follower's real orbit far enough from the
+                # near-circular assumption this controller's linearized
+                # deltaA model relies on that a "correction" leaves the
+                # REAL separation no better than before, and the error
+                # metric itself oscillates between two phase-locked values
+                # on alternating cycles (observed numerically: -36 deg ->
+                # +162 deg -> -36 deg -> ...) rather than monotonically
+                # growing -- so comparing a cycle's ending error against its
+                # OWN starting error is fooled by that oscillation (it looks
+                # "better" every other cycle and never accumulates). Instead
+                # each full correction cycle is judged against the SAME
+                # tolerance band IDLE itself uses to decide a correction is
+                # even needed: if the error is still outside that band after
+                # a full correction, the cycle didn't actually fix anything.
+                # Exhausting a small budget of such cycles suspends further
+                # automatic corrections entirely, rather than burning
+                # propellant into an unbounded, non-converging spiral with
+                # no other natural stopping point. A fresh schedule target
+                # (see above) gives this a clean new attempt.
+                activeTolRad = self.toleranceFraction * abs(self._activeTargetRad)
+                if abs(error) > activeTolRad:
+                    self._consecutiveNonConvergentCycles += 1
+                else:
+                    self._consecutiveNonConvergentCycles = 0
+                if (self._consecutiveNonConvergentCycles >= _MAX_NON_CONVERGENT_CYCLES
+                        and not self.suspendedDueToNonConvergence):
+                    self.suspendedDueToNonConvergence = True
+                    _LOGGER.warning(
+                        "%s: phasing correction did not reduce its own tracking error over %d "
+                        "consecutive cycles (%.3f deg -> %.3f deg) -- suspending further automatic "
+                        "corrections rather than keep burning propellant into a non-converging "
+                        "spiral. This usually means the follower's real orbit has drifted too far "
+                        "from the near-circular assumption this controller's own model relies on "
+                        "(e.g. from a large initial radial/cross-track placement offset) -- see "
+                        "PhasingKeepingController's own docstring.",
+                        self.ModelTag, self._consecutiveNonConvergentCycles,
+                        np.degrees(self._errorAtCycleStartRad), np.degrees(error),
+                    )
 
         tracker = self._propellant_tracker()
         # Achieved acceleration/delta-v needs the spacecraft's TRUE total
