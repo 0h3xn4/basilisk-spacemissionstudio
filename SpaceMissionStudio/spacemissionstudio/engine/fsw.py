@@ -1163,6 +1163,21 @@ def attach_sensors(scSim, task_name: str, tag: str, sc_object, sensor_configs: L
             mod.scStateInMsg.subscribeTo(sc_object.scStateOutMsg)
             noise_rad = np.radians(float(params.get("noise_arcsec", 0.0)) / 3600.0)
             mod.PMatrix = (noise_rad * np.eye(3)).tolist()
+            # Device-interface realism (real user feedback, see this
+            # function's own module docstring note below): a long-run
+            # random-walk BOUND on the noise above -- real star trackers'
+            # attitude-estimate noise is not pure white noise, it slowly
+            # drifts (thermal/alignment effects) up to a bounded limit.
+            # Basilisk's own StarTracker module already integrates
+            # PMatrix-driven noise into a running bias every tick; without
+            # a bound (walkBounds, this module's own default of all-zero)
+            # that accumulated bias has nowhere further to grow anyway, so
+            # this is a purely ADDITIVE realism knob (enables a bounded
+            # long-term drift), not a fix for an existing default.
+            walk_bound_arcsec = params.get("bias_walk_bound_arcsec")
+            if walk_bound_arcsec is not None:
+                walk_bound_rad = np.radians(float(walk_bound_arcsec) / 3600.0)
+                mod.walkBounds = [walk_bound_rad] * 3
             scSim.AddModelToTask(task_name, mod)
             out_msgs[sensor.name] = mod.sensorOutMsg
 
@@ -1174,6 +1189,30 @@ def attach_sensors(scSim, task_name: str, tag: str, sc_object, sensor_configs: L
             accel_noise = float(params.get("accel_noise_m_s2", 0.0))
             mod.PMatrixGyro = (gyro_noise * np.eye(3)).tolist()
             mod.PMatrixAccel = (accel_noise * np.eye(3)).tolist()
+            # Device-interface realism: fixed sensor bias (senRotBias/
+            # senTransBias -- Basilisk's ImuSensor applies these every
+            # tick automatically, no separate enable flag needed, same as
+            # every other *.applySensorErrors()-internal field below),
+            # output saturation (senRotMax/senTransMax -- Basilisk's own
+            # default, 1e6, is effectively unbounded unless overridden
+            # smaller), and encoder quantization (setLSBs -- the real
+            # finite resolution of the ADC/encoder digitizing the
+            # analog sensor signal, 0.0 meaning Basilisk's own
+            # "effectively continuous, no quantization" default).
+            gyro_bias = params.get("gyro_bias_rad_s")
+            if gyro_bias is not None:
+                mod.senRotBias = [[float(v)] for v in gyro_bias]
+            accel_bias = params.get("accel_bias_m_s2")
+            if accel_bias is not None:
+                mod.senTransBias = [[float(v)] for v in accel_bias]
+            if "gyro_saturation_rad_s" in params:
+                mod.senRotMax = float(params["gyro_saturation_rad_s"])
+            if "accel_saturation_m_s2" in params:
+                mod.senTransMax = float(params["accel_saturation_m_s2"])
+            gyro_lsb = float(params.get("gyro_lsb_rad_s", 0.0))
+            accel_lsb = float(params.get("accel_lsb_m_s2", 0.0))
+            if gyro_lsb or accel_lsb:
+                mod.setLSBs(accel_lsb, gyro_lsb)
             scSim.AddModelToTask(task_name, mod)
             out_msgs[sensor.name] = mod.sensorOutMsg
 
@@ -1194,6 +1233,49 @@ def attach_sensors(scSim, task_name: str, tag: str, sc_object, sensor_configs: L
             # would silently accept twice the field of view the user asked for.
             mod.fov = np.radians(float(params.get("fov_deg", 90.0)) / 2.0)
             mod.senNoiseStd = float(params.get("noise_std", 0.0))
+            # Device-interface realism: fixed bias (senBias), output
+            # saturation (maxOutput/minOutput -- Basilisk's own defaults,
+            # 1e6/0.0, already clip to a sane non-negative cosine-law
+            # range), and an explicit hardware FAULT mode -- a real
+            # CoarseSunSensor-native enum (CSSFaultState), not invented
+            # here: "stuck_current" freezes the output at whatever it last
+            # read; "stuck_max" forces it to 1.0 BEFORE this same tick's
+            # own saturation_max/scaleFactor still apply on top (so a
+            # saturation_max below 1.0 clips it further -- confirmed
+            # directly against coarseSunSensor.cpp's own UpdateState()
+            # ordering: applySensorErrors() runs the fault override,
+            # THEN scaleSensorValues()/applySaturation() run after);
+            # "stuck_rand" freezes it at one random value for the whole
+            # run; "random" replaces every sample with fresh noise of
+            # faultNoiseStd. "none" maps to the enum's real NOMINAL
+            # value, NOT CSSFAULT_OFF -- a real, confirmed-the-hard-way
+            # gotcha: CSSFAULT_OFF is itself a FAULT (coarseSunSensor.h's
+            # own comment: "CSS measurement is set to 0 for all future
+            # time"), not "no fault"; `NOMINAL` is the separate,
+            # differently-named enum member that actually means normal
+            # operation (and doesn't contain the substring "FAULT", easy
+            # to miss when enumerating the module's own fault constants).
+            mod.senBias = float(params.get("bias", 0.0))
+            if "saturation_max" in params:
+                mod.maxOutput = float(params["saturation_max"])
+            if "saturation_min" in params:
+                mod.minOutput = float(params["saturation_min"])
+            fault_mode = params.get("fault_mode", "none")
+            css_fault_states = {
+                "none": coarseSunSensor.NOMINAL,
+                "stuck_current": coarseSunSensor.CSSFAULT_STUCK_CURRENT,
+                "stuck_max": coarseSunSensor.CSSFAULT_STUCK_MAX,
+                "stuck_rand": coarseSunSensor.CSSFAULT_STUCK_RAND,
+                "random": coarseSunSensor.CSSFAULT_RAND,
+            }
+            if fault_mode not in css_fault_states:
+                raise FswError(
+                    f"{tag}: coarse_sun_sensor {sensor.name!r} has an unrecognized fault_mode {fault_mode!r} -- "
+                    f"must be one of {sorted(css_fault_states)}"
+                )
+            mod.faultState = css_fault_states[fault_mode]
+            if "fault_noise_std" in params:
+                mod.faultNoiseStd = float(params["fault_noise_std"])
             mod.sunInMsg.subscribeTo(sun_state_out_msg)
             mod.stateInMsg.subscribeTo(sc_object.scStateOutMsg)
             scSim.AddModelToTask(task_name, mod)
@@ -1209,6 +1291,47 @@ def attach_sensors(scSim, task_name: str, tag: str, sc_object, sensor_configs: L
             mod.ModelTag = f"{tag}_{sensor.name}"
             noise_tesla = params.get("noise_std_tesla", [0.0, 0.0, 0.0])
             mod.senNoiseStd = [float(v) for v in noise_tesla]
+            # Device-interface realism: fixed per-axis bias (senBias),
+            # symmetric output saturation (maxOutput/-maxOutput -- a real
+            # magnetometer's ADC clips at the same magnitude for either
+            # polarity), and an explicit per-AXIS hardware fault -- a real
+            # Magnetometer-native enum (MagFaultState_t), applied via
+            # setFaultState(axis, state) to exactly one axis (fault_axis,
+            # default 0) since a real single-axis sensor-element failure
+            # does not take out the other two axes' own elements.
+            bias_tesla = params.get("bias_tesla")
+            if bias_tesla is not None:
+                mod.senBias = [[float(v)] for v in bias_tesla]
+            if "saturation_tesla" in params:
+                sat = float(params["saturation_tesla"])
+                mod.maxOutput = sat
+                mod.minOutput = -sat
+            fault_mode = params.get("fault_mode", "none")
+            fault_axis = int(params.get("fault_axis", 0))
+            mag_fault_states = {
+                "stuck_current": magnetometer.MAG_FAULT_STUCK_CURRENT,
+                "stuck_value": magnetometer.MAG_FAULT_STUCK_VALUE,
+                "spiking": magnetometer.MAG_FAULT_SPIKING,
+            }
+            if fault_mode != "none":
+                if fault_mode not in mag_fault_states:
+                    raise FswError(
+                        f"{tag}: magnetometer {sensor.name!r} has an unrecognized fault_mode {fault_mode!r} -- "
+                        f"must be 'none' or one of {sorted(mag_fault_states)}"
+                    )
+                if "stuck_value_tesla" in params:
+                    stuck = mod.stuckValue
+                    stuck[fault_axis] = [float(params["stuck_value_tesla"])]
+                    mod.stuckValue = stuck
+                if "spike_probability" in params:
+                    spike_p = mod.spikeProbability
+                    spike_p[fault_axis] = [float(params["spike_probability"])]
+                    mod.spikeProbability = spike_p
+                if "spike_amount" in params:
+                    spike_a = mod.spikeAmount
+                    spike_a[fault_axis] = [float(params["spike_amount"])]
+                    mod.spikeAmount = spike_a
+                mod.setFaultState(fault_axis, mag_fault_states[fault_mode])
             mod.stateInMsg.subscribeTo(sc_object.scStateOutMsg)
             env_index = len(mag_field_model.scStateInMsgs)
             mag_field_model.addSpacecraftToModel(sc_object.scStateOutMsg)

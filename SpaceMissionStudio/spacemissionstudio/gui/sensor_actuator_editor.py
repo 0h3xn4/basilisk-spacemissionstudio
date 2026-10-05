@@ -117,19 +117,71 @@ class _ParamSpec(NamedTuple):
 _KIND_PARAM_SPECS: dict[str, list[_ParamSpec]] = {
     "star_tracker": [
         _ParamSpec("noise_arcsec", False, 0.0, "1-sigma attitude noise [arcsec]"),
+        # Device-interface realism (real user feedback: "the user should
+        # be able to... select from a range of commonly used devices...
+        # with faults/saturation/encoders"). All real, Basilisk-native
+        # StarTracker/ImuSensor/CoarseSunSensor/Magnetometer fields
+        # (StarTracker.walkBounds, ImuSensor.senRotBias/senTransBias/
+        # senRotMax/senTransMax/setLSBs, CoarseSunSensor.senBias/
+        # maxOutput/minOutput/faultState, Magnetometer.senBias/
+        # maxOutput/minOutput/setFaultState/stuckValue/spikeProbability/
+        # spikeAmount) -- applied automatically by Basilisk's own
+        # UpdateState() every tick once set, exactly like the
+        # noise_arcsec/noise_std/etc. fields above, so there is no
+        # separate "enable" flag to also set.
+        _ParamSpec("bias_walk_bound_arcsec", False, 0.0, "long-run random-walk BOUND on the noise above "
+                    "[arcsec] -- 0 (default) means no bounded long-term drift is modeled, only the "
+                    "per-tick noise"),
     ],
     "imu": [
         _ParamSpec("gyro_noise_rad_s", False, 0.0, "1-sigma gyro noise [rad/s]"),
         _ParamSpec("accel_noise_m_s2", False, 0.0, "1-sigma accelerometer noise [m/s^2]"),
+        _ParamSpec("gyro_bias_rad_s", False, [0.0, 0.0, 0.0], "fixed per-axis gyro bias [rad/s]",
+                    normalizable=False),
+        _ParamSpec("accel_bias_m_s2", False, [0.0, 0.0, 0.0], "fixed per-axis accelerometer bias [m/s^2]",
+                    normalizable=False),
+        _ParamSpec("gyro_saturation_rad_s", False, 1000000.0, "gyro output saturation magnitude [rad/s] -- "
+                    "effectively unbounded by default"),
+        _ParamSpec("accel_saturation_m_s2", False, 1000000.0, "accelerometer output saturation magnitude "
+                    "[m/s^2] -- effectively unbounded by default"),
+        _ParamSpec("gyro_lsb_rad_s", False, 0.0, "gyro encoder/ADC quantization step size [rad/s] -- 0 "
+                    "(default) means effectively continuous, no quantization"),
+        _ParamSpec("accel_lsb_m_s2", False, 0.0, "accelerometer encoder/ADC quantization step size "
+                    "[m/s^2] -- 0 (default) means effectively continuous, no quantization"),
     ],
     "coarse_sun_sensor": [
         _ParamSpec("nHat_B", True, [1.0, 0.0, 0.0], "sensor boresight direction, body frame, unit vector [-]"),
         _ParamSpec("fov_deg", False, 90.0, "full field of view [deg]"),
         _ParamSpec("noise_std", False, 0.0, "1-sigma output noise (cosine-law output units) [-]"),
+        _ParamSpec("bias", False, 0.0, "fixed sensor bias (cosine-law output units) [-]"),
+        _ParamSpec("saturation_max", False, 1000000.0, "output saturation upper bound (cosine-law output "
+                    "units) [-] -- effectively unbounded by default"),
+        _ParamSpec("saturation_min", False, 0.0, "output saturation lower bound (cosine-law output "
+                    "units) [-]"),
+        _ParamSpec("fault_mode", False, "none", "hardware fault to simulate: 'none' / 'stuck_current' "
+                    "(freezes at the last real reading) / 'stuck_max' (freezes at saturation_max) / "
+                    "'stuck_rand' (freezes at one random value for the whole run) / 'random' (every "
+                    "sample replaced with fresh noise of fault_noise_std)"),
+        _ParamSpec("fault_noise_std", False, 0.0, "noise std dev used only when fault_mode='random' [-]"),
     ],
     "magnetometer": [
         _ParamSpec("noise_std_tesla", False, [0.0, 0.0, 0.0], "1-sigma noise per body axis [T]",
                     normalizable=False),
+        _ParamSpec("bias_tesla", False, [0.0, 0.0, 0.0], "fixed per-axis bias [T]", normalizable=False),
+        _ParamSpec("saturation_tesla", False, 1000000.0, "symmetric output saturation magnitude [T] "
+                    "(clips at +/- this value) -- effectively unbounded by default"),
+        _ParamSpec("fault_mode", False, "none", "hardware fault to simulate on fault_axis below: 'none' "
+                    "/ 'stuck_current' (freezes at the last real reading) / 'stuck_value' (freezes at "
+                    "stuck_value_tesla) / 'spiking' (randomly multiplies the true reading by "
+                    "spike_amount with probability spike_probability each tick)"),
+        _ParamSpec("fault_axis", False, 0, "which body axis (0/1/2) fault_mode above applies to -- a "
+                    "real single-axis sensor-element failure does not take out the other two axes"),
+        _ParamSpec("stuck_value_tesla", False, 0.0, "value fault_axis freezes at when fault_mode="
+                    "'stuck_value' [T]"),
+        _ParamSpec("spike_probability", False, 0.1, "per-tick probability of a spike when fault_mode="
+                    "'spiking' [-]"),
+        _ParamSpec("spike_amount", False, 2.0, "multiplier applied to the true reading on a spike when "
+                    "fault_mode='spiking' [-]"),
     ],
     "reaction_wheel": [
         _ParamSpec("gsHat_B", True, [0.0, 0.0, 1.0], "spin-axis direction, body frame, unit vector [-]"),
@@ -140,6 +192,21 @@ _KIND_PARAM_SPECS: dict[str, list[_ParamSpec]] = {
         _ParamSpec("Js", False, 0.028, "wheel inertia about the spin axis [kg*m^2] -- rw_type='custom' can "
                     "derive this from maxMomentum [N*m*s] instead, but NOT both: rwFactory.create() hard"
                     "-exits the whole process if Js and maxMomentum are both set"),
+        # Device-interface realism: real simIncludeRW.rwFactory() kwargs,
+        # already passed straight through by this app's own
+        # engine.fsw._coerce_rw_kwargs() -- these were already wired, just
+        # not previously surfaced here for discovery.
+        _ParamSpec("useRWfriction", False, False, "enable the internal wheel friction model below -- off "
+                    "by default, matching simIncludeRW's own default"),
+        _ParamSpec("fCoulomb", False, 0.0, "Coulomb (constant-magnitude) friction torque [N*m] -- only "
+                    "applied when useRWfriction is true"),
+        _ParamSpec("fStatic", False, 0.0, "static friction torque magnitude [N*m] -- only applied when "
+                    "useRWfriction is true"),
+        _ParamSpec("cViscous", False, 0.0, "viscous friction coefficient [N*m*s/rad] -- only applied "
+                    "when useRWfriction is true"),
+        _ParamSpec("betaStatic", False, -1.0, "Stribeck friction coefficient [-] -- positive enables "
+                    "Stribeck friction, negative (default) disables it; only relevant when "
+                    "useRWfriction is true"),
     ],
     "thruster": [
         _ParamSpec("r_B", True, [1.0, 0.0, 0.0], "thruster location, body frame [m]", normalizable=False),
@@ -151,6 +218,12 @@ _KIND_PARAM_SPECS: dict[str, list[_ParamSpec]] = {
                     "params here as-is"),
         _ParamSpec("steadyIsp", False, 220.0, "fuel efficiency [s]"),
         _ParamSpec("MinOnTime", False, 0.020, "minimum on time [s]"),
+        # Device-interface realism: a real simIncludeThruster.thrusterFactory()
+        # kwarg, already passed straight through by this app's own
+        # engine.fsw._coerce_thruster_kwargs() -- already wired, just not
+        # previously surfaced here for discovery.
+        _ParamSpec("thrusterMagDisp", False, 0.0, "thrust-magnitude manufacturing/performance dispersion, "
+                    "applied once at build time [%]"),
     ],
     "magnetic_torque_rod": [
         _ParamSpec("gtHat_B", True, [1.0, 0.0, 0.0], "dipole-axis direction, body frame, unit vector [-]"),
