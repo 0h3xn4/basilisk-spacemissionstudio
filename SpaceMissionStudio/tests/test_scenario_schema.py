@@ -385,6 +385,104 @@ def test_named_hardware_reaction_wheel_type_skips_custom_requirements():
     sc.validate()  # must not raise -- named types have their own built-in defaults
 
 
+def test_motor_thermal_requires_all_four_fields_together():
+    # motorThermal.MotorThermal.Reset() hard-exits the whole process (not
+    # a catchable error) on an unset field in this group -- this schema
+    # check exists specifically to never reach that call partially
+    # configured.
+    sc = _minimal_scenario()
+    sc.spacecraft[0].actuators = [
+        ActuatorConfig(kind="reaction_wheel", name="rw-1",
+                        params={"gsHat_B": [1, 0, 0], "rw_type": "Honeywell_HR16",
+                                "motor_thermal_initial_temp_c": 20.0})
+    ]
+    sc.spacecraft[0].fsw_mode = "sunSafePoint"
+    with pytest.raises(ScenarioValidationError, match="motor_thermal"):
+        sc.validate()
+
+
+def test_motor_thermal_efficiency_must_be_strictly_between_zero_and_one():
+    # motorThermal.MotorThermal's own constructor default (1.0) is ITSELF
+    # one of the values Reset() rejects -- confirmed directly against
+    # motorThermal.cpp.
+    sc = _minimal_scenario()
+    sc.spacecraft[0].actuators = [
+        ActuatorConfig(kind="reaction_wheel", name="rw-1",
+                        params={"gsHat_B": [1, 0, 0], "rw_type": "Honeywell_HR16",
+                                "motor_thermal_initial_temp_c": 20.0, "motor_thermal_efficiency": 1.0,
+                                "motor_thermal_ambient_resistance_w_c": 5.0,
+                                "motor_thermal_heat_capacity_j_c": 50.0})
+    ]
+    sc.spacecraft[0].fsw_mode = "sunSafePoint"
+    with pytest.raises(ScenarioValidationError, match="motor_thermal_efficiency"):
+        sc.validate()
+
+
+def test_motor_thermal_with_all_fields_validates():
+    sc = _minimal_scenario()
+    sc.spacecraft[0].actuators = [
+        ActuatorConfig(kind="reaction_wheel", name="rw-1",
+                        params={"gsHat_B": [1, 0, 0], "rw_type": "Honeywell_HR16",
+                                "motor_thermal_initial_temp_c": 20.0, "motor_thermal_efficiency": 0.7,
+                                "motor_thermal_ambient_resistance_w_c": 5.0,
+                                "motor_thermal_heat_capacity_j_c": 50.0})
+    ]
+    sc.spacecraft[0].fsw_mode = "sunSafePoint"
+    sc.validate()  # must not raise
+
+
+def test_thermal_sensor_requires_nHat_B():
+    sc = _minimal_scenario()
+    sc.spacecraft[0].sensors = [SensorConfig(kind="thermal", name="therm-1",
+                                               params={"area_m2": 1.0, "absorptivity": 0.25, "emissivity": 0.34})]
+    with pytest.raises(ScenarioValidationError, match="nHat_B"):
+        sc.validate()
+
+
+def test_thermal_sensor_requires_area_m2():
+    sc = _minimal_scenario()
+    sc.spacecraft[0].sensors = [SensorConfig(kind="thermal", name="therm-1",
+                                               params={"nHat_B": [0, 0, 1], "absorptivity": 0.25,
+                                                       "emissivity": 0.34})]
+    with pytest.raises(ScenarioValidationError, match="area_m2"):
+        sc.validate()
+
+
+def test_thermal_sensor_requires_absorptivity_in_range():
+    sc = _minimal_scenario()
+    sc.spacecraft[0].sensors = [SensorConfig(kind="thermal", name="therm-1",
+                                               params={"nHat_B": [0, 0, 1], "area_m2": 1.0, "absorptivity": 1.5,
+                                                       "emissivity": 0.34})]
+    with pytest.raises(ScenarioValidationError, match="absorptivity"):
+        sc.validate()
+
+
+def test_thermal_sensor_requires_emissivity_in_range():
+    sc = _minimal_scenario()
+    sc.spacecraft[0].sensors = [SensorConfig(kind="thermal", name="therm-1",
+                                               params={"nHat_B": [0, 0, 1], "area_m2": 1.0, "absorptivity": 0.25,
+                                                       "emissivity": 0.0})]
+    with pytest.raises(ScenarioValidationError, match="emissivity"):
+        sc.validate()
+
+
+def test_thermal_sensor_rejects_unrecognized_measurement_fault_mode():
+    sc = _minimal_scenario()
+    sc.spacecraft[0].sensors = [SensorConfig(kind="thermal", name="therm-1",
+                                               params={"nHat_B": [0, 0, 1], "area_m2": 1.0, "absorptivity": 0.25,
+                                                       "emissivity": 0.34, "measurement_fault_mode": "bogus"})]
+    with pytest.raises(ScenarioValidationError, match="measurement_fault_mode"):
+        sc.validate()
+
+
+def test_thermal_sensor_with_required_params_validates():
+    sc = _minimal_scenario()
+    sc.spacecraft[0].sensors = [SensorConfig(kind="thermal", name="therm-1",
+                                               params={"nHat_B": [0, 0, 1], "area_m2": 1.0, "absorptivity": 0.25,
+                                                       "emissivity": 0.34})]
+    sc.validate()  # must not raise
+
+
 def test_sunSafePoint_use_css_estimation_requires_a_coarse_sun_sensor():
     sc = _minimal_scenario()
     sc.spacecraft[0].fsw_mode = "sunSafePoint"

@@ -99,11 +99,22 @@ def test_every_sensor_and_actuator_kind_has_at_least_one_catalog_entry():
     project currently ships DOES have a real entry -- this test documents
     and protects that current state, so losing coverage for a kind is a
     visible, deliberate test change, not a silent regression.
+
+    ``"thermal"`` is the one deliberate exception: unlike every other
+    sensor kind (each a real, physical, separately-selectable piece of
+    hardware -- a star tracker, an IMU, ...), it models the temperature of
+    ANY flat-plate component already represented by one of the OTHER
+    sensor/actuator entries (or by no sensor at all, e.g. the spacecraft
+    bus itself) -- there is no distinct "thermal sensor" product to catalog
+    separately, so a catalog entry for it would not represent a real,
+    additional, sourceable device the way every other entry does.
     """
     from spacemissionstudio.engine.device_catalog import catalog_entries_for_kind
     from spacemissionstudio.schema.scenario import SUPPORTED_ACTUATOR_KINDS, SUPPORTED_SENSOR_KINDS
 
-    for kind in list(SUPPORTED_SENSOR_KINDS) + list(SUPPORTED_ACTUATOR_KINDS):
+    kinds_needing_a_catalog_entry = [k for k in list(SUPPORTED_SENSOR_KINDS) + list(SUPPORTED_ACTUATOR_KINDS)
+                                      if k != "thermal"]
+    for kind in kinds_needing_a_catalog_entry:
         assert catalog_entries_for_kind(kind), f"{kind!r} has no catalog entry"
 
 

@@ -207,6 +207,25 @@ _KIND_PARAM_SPECS: dict[str, list[_ParamSpec]] = {
         _ParamSpec("betaStatic", False, -1.0, "Stribeck friction coefficient [-] -- positive enables "
                     "Stribeck friction, negative (default) disables it; only relevant when "
                     "useRWfriction is true"),
+        # Thermal simulation: an OPTIONAL motor-thermal model
+        # (motorThermal.MotorThermal) -- an all-or-nothing group (see
+        # schema.scenario.SpacecraftConfig.validate()'s own
+        # motor_thermal_* check): set NONE of these four for no thermal
+        # model on this wheel (the default, and the common case), or ALL
+        # four together to add one. motor_thermal_ambient_temp_c (not
+        # listed as its own row -- it has a real 0 C Basilisk-side default
+        # and is independently optional even within this group) can still
+        # be added by hand in the params box below if needed.
+        _ParamSpec("motor_thermal_initial_temp_c", False, 20.0, "starting motor temperature [C] -- set this "
+                    "(together with the other three motor_thermal_* fields below) to enable a motor-thermal "
+                    "model for this wheel; leave all four unset for none"),
+        _ParamSpec("motor_thermal_efficiency", False, 0.7, "mechanical efficiency [-], strictly between 0 "
+                    "and 1 -- motorThermal.MotorThermal rejects 1.0 itself (modeled as a real inefficiency), "
+                    "not just values above it"),
+        _ParamSpec("motor_thermal_ambient_resistance_w_c", False, 5.0, "thermal resistance to the "
+                    "surrounding environment [C/W] -- lower means heat dissipates faster"),
+        _ParamSpec("motor_thermal_heat_capacity_j_c", False, 50.0, "motor heat capacity [J/C] -- "
+                    "mass * specific heat, e.g. a steel motor's specific heat is about 466 J/kg/C"),
     ],
     "thruster": [
         _ParamSpec("r_B", True, [1.0, 0.0, 0.0], "thruster location, body frame [m]", normalizable=False),
@@ -228,6 +247,40 @@ _KIND_PARAM_SPECS: dict[str, list[_ParamSpec]] = {
     "magnetic_torque_rod": [
         _ParamSpec("gtHat_B", True, [1.0, 0.0, 0.0], "dipole-axis direction, body frame, unit vector [-]"),
         _ParamSpec("max_dipole_a_m2", True, 0.1, "maximum commandable dipole magnitude [A*m^2]"),
+    ],
+    # Thermal simulation: models the temperature of ANY flat-plate
+    # component (not a specific physical device the way the other kinds
+    # above are -- see SUPPORTED_SENSOR_KINDS's own comment), via
+    # sensorThermal.SensorThermal, chained into an optional
+    # tempMeasurement.TempMeasurement measurement-noise/fault layer below
+    # (same device-interface-realism shape as every other sensor kind).
+    "thermal": [
+        _ParamSpec("nHat_B", True, [0.0, 0.0, 1.0], "face-normal direction, body frame, unit vector [-]"),
+        _ParamSpec("area_m2", True, 1.0, "radiative surface area [m^2]"),
+        _ParamSpec("absorptivity", True, 0.25, "absorptivity coefficient (0, 1] [-]"),
+        _ParamSpec("emissivity", True, 0.34, "emissivity coefficient (0, 1] [-]"),
+        _ParamSpec("mass_kg", False, 2.0, "mass [kg] -- defaults to 1 kg if unset"),
+        _ParamSpec("specific_heat_j_kg_k", False, 890.0, "specific heat [J/kg/K] -- defaults to 890 "
+                    "(aluminum) if unset"),
+        _ParamSpec("initial_temp_c", False, 0.0, "starting temperature [C] -- defaults to 30 C if unset"),
+        _ParamSpec("power_draw_w", False, 0.0, "internal power dissipated as heat [W] -- 0 (default) means "
+                    "none"),
+        _ParamSpec("measurement_bias_c", False, 0.0, "fixed measurement bias, always added [C] -- 0 "
+                    "(default) means none"),
+        _ParamSpec("measurement_noise_std_c", False, 0.0, "1-sigma measurement noise [C] -- 0 (default) "
+                    "means none"),
+        _ParamSpec("measurement_walk_bound_c", False, 0.0, "long-run random-walk BOUND on the noise above "
+                    "[C] -- 0 (default) means no bounded long-term drift is modeled"),
+        _ParamSpec("measurement_fault_mode", False, "none", "hardware fault to simulate: 'none' / "
+                    "'stuck_current' (freezes at the last real reading) / 'stuck_value' (freezes at "
+                    "measurement_stuck_value_c) / 'spiking' (randomly multiplies the reading by "
+                    "measurement_spike_amount with probability measurement_spike_probability each tick)"),
+        _ParamSpec("measurement_stuck_value_c", False, 0.0, "value measurement_fault_mode='stuck_value' "
+                    "freezes at [C]"),
+        _ParamSpec("measurement_spike_probability", False, 0.1, "per-tick probability of a spike when "
+                    "measurement_fault_mode='spiking' [-]"),
+        _ParamSpec("measurement_spike_amount", False, 2.0, "multiplier applied to the reading on a spike "
+                    "when measurement_fault_mode='spiking' [-]"),
     ],
 }
 

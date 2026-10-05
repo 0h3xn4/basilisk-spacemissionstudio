@@ -1476,6 +1476,121 @@ def build_19_sun_pointing_comms_link() -> Scenario:
     )
 
 
+def build_20_thermal_simulation() -> Scenario:
+    # Verification note (same sandbox limitation as every other template's
+    # own comment): no Basilisk build exists here, so this couldn't be run
+    # end-to-end in this environment. sunSafePoint + idealized-ish hardware
+    # control reuses the EXACT control_params/_INERTIA_SMALL combination
+    # '07'/'15' already confirmed stable against a real Basilisk build
+    # (see build_07_attitude_pointing_with_adcs_hardware()'s own comment);
+    # the "thermal" sensor/motor-thermal physical parameters themselves
+    # (area_m2/absorptivity/emissivity/mass_kg/specific_heat_j_kg_k) were
+    # run for real against this project's own Basilisk venv in
+    # tests/test_thermal_simulation.py (realistic values, not the
+    # numerically-unstable simplification an early draft of that test
+    # file briefly used -- see that test module's own comment on why a
+    # tiny heat capacity explodes sensorThermal's explicit-Euler
+    # integration at a 1 Hz task rate).
+    return Scenario(
+        name="20 - Thermal simulation: sensor heating/cooling + reaction-wheel motor heat",
+        description=(
+            "Adds Basilisk's real thermal modules on top of '07's own ADCS hardware suite: a "
+            "'thermal' sensor (sensorThermal.SensorThermal) models the temperature of an externally "
+            "-mounted component (e.g. a star-tracker baffle or avionics panel) as it heats under "
+            "direct sunlight and cools in Earth's shadow -- real radiative absorption/emission plus "
+            "an internal power-to-heat draw, not an analytical estimate; its own optional "
+            "measurement_* params add noise/bias/fault on top, same device-interface-realism shape "
+            "as every other sensor kind (see schema.scenario's own SUPPORTED_SENSOR_KINDS comment). "
+            "Separately, 'rw-1' also carries an OPTIONAL motor-thermal model "
+            "(motorThermal.MotorThermal, the motor_thermal_* params) -- a reaction wheel generates "
+            "real heat from motor inefficiency and friction, independent of whether any 'thermal' "
+            "sensor is configured at all; 'rw-2'/'rw-3' deliberately have none set, showing this is "
+            "per-wheel opt-in, not an all-or-nothing spacecraft setting.\n\n"
+            "What to look at: 'sat-1.sensor.therm-1.temperature' should visibly rise while the orbit "
+            "is in sunlight and fall across each eclipse pass (compare its timing against this "
+            "spacecraft's own eclipse windows, inferred from where power.battery_soc stops "
+            "recharging) -- a handful of full orbits are simulated specifically so more than one "
+            "heating/cooling cycle is visible. 'sat-1.actuator.rw-1.motor_temperature' separately "
+            "drifts toward motor_thermal_ambient_temp_c as the wheel spins (friction/inefficiency "
+            "heat vs. ambient dissipation), decoupled from the sensor's own sun-driven cycle.\n\n"
+            "Try changing: therm-1's nHat_B (a face pointed away from the Sun-pointing axis sees a "
+            "very different, possibly inverted, heating pattern -- see sunSafePoint's own "
+            "sHatBdyCmd below for which body axis is actually Sun-pointed), area_m2/absorptivity/"
+            "emissivity/mass_kg/specific_heat_j_kg_k (a larger mass_kg*specific_heat_j_kg_k heat "
+            "capacity makes the whole temperature curve respond more slowly/smoothly to each "
+            "sunlight/eclipse transition), or rw-1's motor_thermal_efficiency (closer to 1.0 means "
+            "less waste heat, a flatter motor-temperature curve -- note 1.0 itself is rejected, see "
+            "that field's own validation message).\n\n"
+            "Known, deliberately-not-used real Basilisk capability: engine.fsw.attach_sensors's own "
+            "'thermal' kind does not yet expose sensorThermal's sensorStatusInMsg (a DeviceStatusMsg "
+            "that can turn sensorPowerDraw on/off at run time, e.g. tied to a duty cycle) -- this "
+            "template's power_draw_w is a constant, always-on draw instead. A real future upgrade "
+            "would wire a DeviceStatusMsg source (this app has none today) to that input."
+        ),
+        epoch_utc="2030-01-01T00:00:00",
+        simulation_mode="full_attitude",
+        gravity=GravityConfig(central_body="earth", central_body_degree=10, third_body_perturbers=["sun", "moon"]),
+        # duration_days=0.3 (~7.2 hours) at this orbit's ~100-minute period
+        # covers roughly 4 full orbits -- several complete sunlight/eclipse
+        # cycles for therm-1's temperature to visibly track, without the
+        # dataset size of a much longer run.
+        sim_settings=SimSettings(duration_days=0.3, dynamics_task_rate_s=1.0, integrator="rkf78"),
+        spacecraft=[
+            SpacecraftConfig(
+                name="sat-1",
+                orbit=OrbitIC(type="classical_elements", semi_major_axis_km=6928.0, eccentricity=0.0,
+                               inclination_deg=sun_synchronous_inclination_deg(6928.0),
+                               raan_deg=raan_for_ltan_deg("2030-01-01T00:00:00"),
+                               arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
+                dry_mass_kg=50.0,
+                inertia_kg_m2=list(_INERTIA_SMALL),
+                sigma_bn_init=[0.1, 0.2, -0.15],
+                omega_bn_b_init_rad_s=[0.001, -0.001, 0.0005],
+                sensors=[
+                    SensorConfig(kind="star_tracker", name="st-1", params={"noise_arcsec": 5.0}),
+                    SensorConfig(kind="imu", name="imu-1", params={"gyro_noise_rad_s": 1e-5}),
+                    SensorConfig(kind="coarse_sun_sensor", name="css-1", params={"nHat_B": [1.0, 0.0, 0.0]}),
+                    # A small (0.05 m^2), externally-mounted panel sharing
+                    # the CSS's own sun-facing normal, so it genuinely
+                    # tracks this spacecraft's real sunlight/eclipse cycle
+                    # rather than always reading near-zero projected area.
+                    SensorConfig(kind="thermal", name="therm-1", params={
+                        "nHat_B": [1.0, 0.0, 0.0], "area_m2": 0.05, "absorptivity": 0.25, "emissivity": 0.34,
+                        "mass_kg": 0.3, "specific_heat_j_kg_k": 890.0, "initial_temp_c": 0.0,
+                        "power_draw_w": 0.5, "measurement_noise_std_c": 0.2,
+                    }),
+                ],
+                actuators=[
+                    ActuatorConfig(kind="reaction_wheel", name="rw-1",
+                                    params={"gsHat_B": [1.0, 0.0, 0.0], "rw_type": "Honeywell_HR16",
+                                            "maxMomentum": 100.0,
+                                            # Optional motor-thermal model
+                                            # -- see this template's own
+                                            # description above for why
+                                            # only this ONE wheel has it.
+                                            "motor_thermal_initial_temp_c": 20.0,
+                                            "motor_thermal_ambient_temp_c": 20.0,
+                                            "motor_thermal_efficiency": 0.7,
+                                            "motor_thermal_ambient_resistance_w_c": 5.0,
+                                            "motor_thermal_heat_capacity_j_c": 50.0}),
+                    ActuatorConfig(kind="reaction_wheel", name="rw-2",
+                                    params={"gsHat_B": [0.0, 1.0, 0.0], "rw_type": "Honeywell_HR16",
+                                            "maxMomentum": 100.0}),
+                    ActuatorConfig(kind="reaction_wheel", name="rw-3",
+                                    params={"gsHat_B": [0.0, 0.0, 1.0], "rw_type": "Honeywell_HR16",
+                                            "maxMomentum": 100.0}),
+                ],
+                fsw_mode="sunSafePoint",
+                # Same inertia-scaled gains as '07'/'15' (_INERTIA_SMALL,
+                # 5 kg*m^2) -- see build_07_attitude_pointing_with_adcs_hardware()'s
+                # own comment for the real-Basilisk-confirmed derivation.
+                control_params={"K": 0.0194, "P": 0.167},
+                power=PowerConfig(panel_area_m2=0.3, panel_efficiency=0.28, battery_capacity_wh=80.0),
+            ),
+        ],
+    )
+
+
 def main() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     _save(build_01_two_body_circular_orbit(), "01_two_body_circular_orbit.json")
@@ -1498,6 +1613,7 @@ def main() -> None:
     _save(build_17_fuel_tank_depletion(), "17_fuel_tank_depletion.json")
     _save(build_18_leo_station_keeping(), "18_leo_station_keeping.json")
     _save(build_19_sun_pointing_comms_link(), "19_sun_pointing_comms_link.json")
+    _save(build_20_thermal_simulation(), "20_thermal_simulation.json")
 
 
 if __name__ == "__main__":

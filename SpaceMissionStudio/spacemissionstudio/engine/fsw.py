@@ -72,6 +72,31 @@ project's "never fabricate a Basilisk API" rule:
   against a real Basilisk build (not assumed from the example's comment
   alone) -- see this feature's ``HISTORY.md`` entry for the actual
   before/after numbers.
+* ``sensorThermal`` (``nHat_B``/``sunInMsg``/``stateInMsg``/
+  ``sunEclipseInMsg``, the latter confirmed optional directly against
+  ``sensorThermal.cpp``'s own ``readMessages()`` -- ``illuminationFactor``
+  stays its constructor default of 1.0, i.e. "always fully lit", if
+  ``sunEclipseInMsg`` is left unconnected) + ``tempMeasurement`` (chained
+  onto ``sensorThermal``'s own ``temperatureOutMsg`` for measurement
+  noise/bias/fault, exactly the way ``tempMeasList[item].tempInMsg``
+  subscribes to ``rwTempList[item].temperatureOutMsg`` below): the former
+  from ``examples/scenarioSensorThermal.py``, the latter's wiring pattern
+  (and its real, source-confirmed ``TempFaultState_t`` enum/``senBias``
+  -is-always-additive semantics) from ``examples/
+  scenarioTempMeasurementAttitude.py`` and ``tempMeasurement.cpp`` itself.
+* ``motorThermal`` (``rwStateInMsg.subscribeTo(rwStateEffector.rwOutMsgs[item])``
+  -- confirmed this is genuinely ``rwOutMsgs``, a PER-WHEEL message array
+  indexed in the exact order each wheel was ``rwFactory.create()``'d, not
+  the combined ``rwSpeedOutMsg`` ``build_reaction_wheels`` already uses
+  elsewhere in this file): ``examples/scenarioTempMeasurementAttitude.py``.
+  ``currentTemperature``/``ambientThermalResistance``/``motorHeatCapacity``
+  have no safe Basilisk-side default (confirmed directly against
+  ``motorThermal.cpp``'s own ``Reset()``: each hard-exits the whole
+  process via ``bskLogger.bskError`` if left unset) and ``efficiency``'s
+  own constructor default (1.0) is ITSELF one of the values ``Reset()``
+  rejects -- see :meth:`schema.scenario.SpacecraftConfig.validate`'s
+  ``motor_thermal_*`` group, which requires all four together before this
+  file ever reaches ``Reset()`` with a partially-configured instance.
 
 Scoping decisions made explicit here (see ``engine/service.py``'s Phase 2
 docstring for the full list):
@@ -148,10 +173,13 @@ from Basilisk.simulation import (
     imuSensor,
     magnetometer,
     magneticFieldWMM,
+    motorThermal,
     MtbEffector,
     reactionWheelStateEffector,
+    sensorThermal,
     simpleNav,
     starTracker,
+    tempMeasurement,
     thrusterDynamicEffector,
 )
 from Basilisk.utilities import macros, simIncludeRW, simIncludeThruster
@@ -786,6 +814,51 @@ def build_reaction_wheels(scSim, task_name: str, tag: str, sc_object, actuator_c
     return rw_factory, rw_state_effector, rw_config_msg
 
 
+def build_reaction_wheel_motor_thermal(scSim, task_name: str, tag: str, rw_state_effector,
+                                        actuator_configs: List) -> Dict[str, object]:
+    """Builds one ``motorThermal.MotorThermal()`` for each
+    ``ActuatorConfig(kind="reaction_wheel")`` entry in ``actuator_configs``
+    whose own params set the ``motor_thermal_*`` group (see
+    :meth:`schema.scenario.SpacecraftConfig.validate` -- all-or-nothing,
+    already guaranteed complete by the time this runs). Most wheels have
+    none of these set, so the common case is an empty return.
+
+    ``actuator_configs`` MUST be the exact same list, in the exact same
+    order, already passed to :func:`build_reaction_wheels` for this
+    spacecraft -- ``rw_state_effector.rwOutMsgs`` is indexed by wheel
+    -creation order (confirmed against ``examples/
+    scenarioTempMeasurementAttitude.py``'s own ``rwStateEffector.
+    rwOutMsgs[item]`` usage), which is this SAME list's order (each
+    ``build_reaction_wheels`` call iterates ``actuator_configs`` in order
+    and calls ``rw_factory.create()`` once per entry) -- not
+    ``actuator.name``, which ``rwOutMsgs`` knows nothing about.
+
+    Returns ``{actuator.name: temperatureOutMsg}`` for
+    :class:`~spacemissionstudio.engine.results.ResultSet` recording, only
+    for the wheels that actually have a motor-thermal model.
+    """
+    out_msgs: Dict[str, object] = {}
+    for idx, actuator in enumerate(actuator_configs):
+        params = actuator.params
+        if "motor_thermal_initial_temp_c" not in params:
+            continue  # schema guarantees the other three keys are also absent when this one is
+        mod = motorThermal.MotorThermal()
+        mod.ModelTag = f"{tag}_{actuator.name}_motorThermal"
+        mod.currentTemperature = float(params["motor_thermal_initial_temp_c"])
+        mod.efficiency = float(params["motor_thermal_efficiency"])
+        mod.ambientThermalResistance = float(params["motor_thermal_ambient_resistance_w_c"])
+        mod.motorHeatCapacity = float(params["motor_thermal_heat_capacity_j_c"])
+        # ambientTemperature alone has a real, physically reasonable
+        # Basilisk-side default (0.0 C) and so stays optional even within
+        # this otherwise-all-or-nothing group -- see schema's own comment.
+        if "motor_thermal_ambient_temp_c" in params:
+            mod.ambientTemperature = float(params["motor_thermal_ambient_temp_c"])
+        mod.rwStateInMsg.subscribeTo(rw_state_effector.rwOutMsgs[idx])
+        scSim.AddModelToTask(task_name, mod)
+        out_msgs[actuator.name] = mod.temperatureOutMsg
+    return out_msgs
+
+
 def _coerce_thruster_kwargs(params: dict) -> dict:
     kwargs = {k: v for k, v in params.items() if k not in ("r_B", "tHat_B", "thruster_type")}
     for key in _THRUSTER_FLOAT_KWARGS:
@@ -1143,16 +1216,19 @@ def build_magnetic_field_wmm(scSim, task_name: str, planet_state_out_msg, centra
 
 
 def attach_sensors(scSim, task_name: str, tag: str, sc_object, sensor_configs: List,
-                    sun_state_out_msg=None, mag_field_model=None) -> Dict[str, object]:
+                    sun_state_out_msg=None, mag_field_model=None, sun_eclipse_in_msg=None) -> Dict[str, object]:
     """Builds every :class:`schema.scenario.SensorConfig` entry for one
     spacecraft and returns ``{sensor.name: output_message}`` for
     :class:`~spacemissionstudio.engine.results.ResultSet` recording.
     ``sun_state_out_msg``/``mag_field_model`` are ``None`` unless the
     scenario actually provides them (see ``engine.service`` for the
     preconditions -- "sun" SPICE-tracked, Earth central body respectively);
-    a ``coarse_sun_sensor``/``magnetometer`` entry without the matching
-    precondition raises :class:`FswError` with a specific message rather
-    than silently building a sensor that would output nothing.
+    a ``coarse_sun_sensor``/``magnetometer``/``thermal`` entry without the
+    matching precondition raises :class:`FswError` with a specific message
+    rather than silently building a sensor that would output nothing.
+    ``sun_eclipse_in_msg`` (also ``None`` unless provided) is used only by
+    a ``"thermal"`` sensor, and is itself optional even then -- see that
+    branch's own comment.
     """
     out_msgs: Dict[str, object] = {}
     for sensor in sensor_configs:
@@ -1357,6 +1433,97 @@ def attach_sensors(scSim, task_name: str, tag: str, sc_object, sensor_configs: L
             mod.magInMsg.subscribeTo(mag_field_model.envOutMsgs[env_index])
             scSim.AddModelToTask(task_name, mod)
             out_msgs[sensor.name] = mod.tamDataOutMsg
+
+        elif sensor.kind == "thermal":
+            if sun_state_out_msg is None:
+                raise FswError(
+                    f"{tag}: thermal sensor {sensor.name!r} needs 'sun' to be SPICE-tracked -- add 'sun' to "
+                    "gravity.third_body_perturbers (or set it as gravity.central_body)"
+                )
+            mod = sensorThermal.SensorThermal()
+            mod.ModelTag = f"{tag}_{sensor.name}"
+            mod.nHat_B = [float(v) for v in params["nHat_B"]]  # required, schema-validated
+            mod.sensorArea = float(params["area_m2"])  # required, schema-validated
+            mod.sensorAbsorptivity = float(params["absorptivity"])  # required, schema-validated
+            mod.sensorEmissivity = float(params["emissivity"])  # required, schema-validated
+            # mass_kg/specific_heat_j_kg_k/initial_temp_c/power_draw_w all
+            # have real, physically reasonable Basilisk-side defaults (1
+            # kg, 890 J/kg/K aluminum, 30 C, 0 W) -- only overridden when set.
+            if "mass_kg" in params:
+                mod.sensorMass = float(params["mass_kg"])
+            if "specific_heat_j_kg_k" in params:
+                mod.sensorSpecificHeat = float(params["specific_heat_j_kg_k"])
+            if "initial_temp_c" in params:
+                mod.T_0 = float(params["initial_temp_c"])
+            if "power_draw_w" in params:
+                mod.sensorPowerDraw = float(params["power_draw_w"])
+            mod.sunInMsg.subscribeTo(sun_state_out_msg)
+            mod.stateInMsg.subscribeTo(sc_object.scStateOutMsg)
+            # Optional, confirmed directly against sensorThermal.cpp's own
+            # readMessages(): illuminationFactor simply stays its
+            # constructor default of 1.0 ("always fully lit") if this is
+            # left unconnected, rather than erroring -- unlike sunInMsg/
+            # stateInMsg, which Reset() hard-exits the process over if
+            # unlinked (both always subscribed above, so never an issue
+            # here).
+            if sun_eclipse_in_msg is not None:
+                mod.sunEclipseInMsg.subscribeTo(sun_eclipse_in_msg)
+            scSim.AddModelToTask(task_name, mod)
+            true_temp_msg = mod.temperatureOutMsg
+
+            # Device-interface realism, same shape as every other sensor
+            # in this function: an OPTIONAL measurement noise/bias/fault
+            # layer, chained onto the true-physics output above via a
+            # separate Basilisk module (tempMeasurement.TempMeasurement,
+            # confirmed against that module's own .cpp: senBias is always
+            # additive regardless of faultState, matching every other
+            # sensor's own bias field in this function; TEMP_FAULT_BIASED/
+            # TEMP_FAULT_GAUSS_MARKOV are real enum members but have no
+            # distinct effect in applySensorErrors() beyond the always
+            # -applied noise/bias above, so they're deliberately not
+            # exposed here -- only the fault modes that actually do
+            # something different are, matching magnetometer's own
+            # "none"/"stuck_current"/"stuck_value"/"spiking" naming).
+            measurement_bias_c = params.get("measurement_bias_c")
+            measurement_noise_std_c = params.get("measurement_noise_std_c")
+            measurement_walk_bound_c = params.get("measurement_walk_bound_c")
+            measurement_fault_mode = params.get("measurement_fault_mode", "none")
+            temp_fault_states = {
+                "none": tempMeasurement.TEMP_FAULT_NOMINAL,
+                "stuck_current": tempMeasurement.TEMP_FAULT_STUCK_CURRENT,
+                "stuck_value": tempMeasurement.TEMP_FAULT_STUCK_VALUE,
+                "spiking": tempMeasurement.TEMP_FAULT_SPIKING,
+            }
+            needs_measurement_layer = (
+                measurement_bias_c is not None or measurement_noise_std_c is not None
+                or measurement_walk_bound_c is not None or measurement_fault_mode != "none"
+            )
+            out_msg = true_temp_msg
+            if needs_measurement_layer:
+                # measurement_fault_mode is already schema-validated to be
+                # one of temp_fault_states' keys (or "none") by
+                # SpacecraftConfig.validate() -- no raise needed here,
+                # unlike coarse_sun_sensor/magnetometer above, which have
+                # no equivalent schema-level check.
+                meas = tempMeasurement.TempMeasurement()
+                meas.ModelTag = f"{tag}_{sensor.name}_measurement"
+                meas.tempInMsg.subscribeTo(true_temp_msg)
+                if measurement_bias_c is not None:
+                    meas.senBias = float(measurement_bias_c)
+                if measurement_noise_std_c is not None:
+                    meas.senNoiseStd = float(measurement_noise_std_c)
+                if measurement_walk_bound_c is not None:
+                    meas.walkBounds = float(measurement_walk_bound_c)
+                meas.faultState = temp_fault_states[measurement_fault_mode]
+                if "measurement_stuck_value_c" in params:
+                    meas.stuckValue = float(params["measurement_stuck_value_c"])
+                if "measurement_spike_probability" in params:
+                    meas.spikeProbability = float(params["measurement_spike_probability"])
+                if "measurement_spike_amount" in params:
+                    meas.spikeAmount = float(params["measurement_spike_amount"])
+                scSim.AddModelToTask(task_name, meas)
+                out_msg = meas.tempOutMsg
+            out_msgs[sensor.name] = out_msg
 
         else:  # unreachable if SpacecraftConfig.validate() passed
             raise FswError(f"sensor {sensor.name!r} kind {sensor.kind!r} has no engine.fsw builder")
