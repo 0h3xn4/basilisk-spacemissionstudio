@@ -128,7 +128,7 @@ from pathlib import Path
 from typing import Dict, Optional
 
 import plotly.graph_objects as go
-from PySide6.QtCore import Qt, QTimer, QUrl
+from PySide6.QtCore import QElapsedTimer, Qt, QTimer, QUrl
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import (
     QCompleter,
@@ -189,6 +189,24 @@ _SAVE_PNG_PENDING_SENTINEL = "__spacemissionstudio_png_pending__"
 _SAVE_PNG_ERROR_PREFIX = "__spacemissionstudio_png_error__:"
 _SAVE_PNG_POLL_INTERVAL_MS = 100
 _SAVE_PNG_MAX_POLL_ATTEMPTS = 100  # 100 * 100ms = 10s -- Plotly.toImage took ~200ms in practice
+
+# [ms] Real user report: during a live-updating run, clicking the Series
+# dropdown to switch plots appeared to do nothing. Root cause:
+# set_live_result() used to call _redraw() -- a FULL QWebEngineView.setHtml()
+# page reload (re-parsing the whole HTML document, reloading plotly.js,
+# re-running Plotly.newPlot()) -- on every single progress chunk, with no
+# throttling. A scenario that simulates faster than it can be watched (the
+# common case for anything but a very long run) fires chunks faster than a
+# full page reload can settle, so each setHtml() call interrupts the
+# previous one's still-in-flight page load before it ever finishes
+# rendering -- the view never visibly updates to anything, including a
+# series the user just picked, because no reload during the storm ever
+# completes. Throttling live redraws to this interval guarantees the
+# QWebEngineView gets a real chance to finish each page load it starts.
+# 300ms still reads as "live" to someone watching a plot update, while
+# being generous enough for a full page reload to settle on a typical
+# machine -- not tuned to any specific scenario.
+_LIVE_REDRAW_MIN_INTERVAL_MS = 300
 
 
 @dataclass(frozen=True)
@@ -453,6 +471,8 @@ class ResultsWidget(QWidget):
         self._epoch_utc: Optional[str] = None
         self.figure: Optional[go.Figure] = None  # the currently-plotted go.Figure, or None (empty state)
         self._png_poll_state: Optional[dict] = None  # set by _on_save_plot_png, read by _poll_plot_png
+        self._live_redraw_elapsed = QElapsedTimer()  # throttles set_live_result()'s own redraws -- see
+        # _LIVE_REDRAW_MIN_INTERVAL_MS's own comment
 
         layout = QVBoxLayout(self)
 
@@ -531,6 +551,14 @@ class ResultsWidget(QWidget):
         been recorded), so rebuilding it every chunk would keep resetting
         whatever series the user is currently looking at, fighting them
         while they watch it run.
+
+        The actual ``QWebEngineView`` redraw is throttled to at most once
+        per :data:`_LIVE_REDRAW_MIN_INTERVAL_MS` -- see that constant's
+        own comment for the real bug this fixes (a fast-running scenario
+        firing chunks faster than a full page reload can settle, which
+        left the plot visibly stuck and made switching series look like
+        clicking did nothing). :attr:`figure` itself is still rebuilt
+        from ``result`` on every single call, throttled or not.
         """
         is_first_update = self._result is None or set(self._result.series) != set(result.series)
         self._result = result
@@ -542,7 +570,27 @@ class ResultsWidget(QWidget):
                 self.series_combo.addItem(name)
             self.series_combo.blockSignals(False)
             self.export_button.setEnabled(bool(result.series))
-        self._redraw()
+            self._redraw()
+            self._live_redraw_elapsed.start()
+            return
+        # Throttled -- see _LIVE_REDRAW_MIN_INTERVAL_MS's own comment: a
+        # scenario that simulates faster than it can be watched fires
+        # chunks faster than a full QWebEngineView page reload can settle,
+        # so redrawing on every single chunk left the view stuck mid
+        # -reload forever, including while the user tried to switch which
+        # series is shown. Skipping a throttled chunk's WEBVIEW push only
+        # delays the on-screen display catching up to self._result by at
+        # most this interval -- self.figure itself is kept fresh every
+        # single chunk regardless (_update_figure() is cheap, no page
+        # reload), a user-initiated series/x-axis change still calls
+        # _redraw() directly (see series_combo/x_axis_combo's own
+        # currentIndexChanged connections) and is never throttled, and the
+        # final frame always renders anyway once the run finishes and
+        # set_result() is called.
+        self._update_figure()
+        if self._live_redraw_elapsed.elapsed() >= _LIVE_REDRAW_MIN_INTERVAL_MS:
+            self._push_figure_to_webview()
+            self._live_redraw_elapsed.restart()
 
     def _x_axis_values(self, time_s):
         """Returns ``(x_values, axis_label)``. "Epoch (UTC)" needs both a
@@ -616,7 +664,15 @@ class ResultsWidget(QWidget):
         )
         return fig
 
-    def _redraw(self) -> None:
+    def _update_figure(self) -> None:
+        """Rebuilds :attr:`figure` from the current :attr:`_result`/selected
+        series -- cheap (no HTML string building, no ``QWebEngineView``
+        page reload), so it's always kept fresh even on a chunk
+        :meth:`set_live_result` otherwise throttles (see that method's own
+        comment): other code (the PNG-save button's enabled state,
+        tests) reads :attr:`figure` directly and must never see stale
+        data just because the webview push itself was skipped.
+        """
         self.figure = None
         if self._result is not None and self.series_combo.count() > 0:
             name = self.series_combo.currentText()
@@ -624,6 +680,13 @@ class ResultsWidget(QWidget):
             if series is not None:
                 self.figure = self._build_figure(name, series)
 
+    def _push_figure_to_webview(self) -> None:
+        """Pushes :attr:`figure` (already current -- see
+        :meth:`_update_figure`) to the ``QWebEngineView`` via a full
+        ``setHtml()`` page reload. The expensive, disruptive half of what
+        used to be one ``_redraw()`` -- see :meth:`set_live_result`'s own
+        throttling comment for why this is split out separately.
+        """
         if self.figure is None:
             html = _empty_state_html()
             base_url = QUrl()
@@ -643,6 +706,10 @@ class ResultsWidget(QWidget):
         # actually finishes.
         if self._png_poll_state is None:
             self.save_png_button.setEnabled(self.figure is not None)
+
+    def _redraw(self) -> None:
+        self._update_figure()
+        self._push_figure_to_webview()
 
     def _on_export(self) -> None:
         if self._result is None:

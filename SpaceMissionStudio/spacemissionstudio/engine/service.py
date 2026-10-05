@@ -1362,11 +1362,15 @@ class SimulationService:
             handle = self._handles[sc_config.name]
             comms_config = sc_config.comms_pointing
             access_out_msg = self._access_out_msgs[(comms_config.target_ground_station, sc_config.name)]
+            target_gs_config = next(
+                (gs for gs in scenario.ground_stations if gs.name == comms_config.target_ground_station), None
+            )
 
             arbitrator = fsw.build_comms_pointing(
                 self.scSim, dyn_task_name, sc_config.name, comms_config,
                 sun_guid_msg=handle.comms_sun_guid_msg, comms_guid_msg=handle.comms_station_guid_msg,
                 access_out_msg=access_out_msg, comms_power_sink=handle.comms_power_sink,
+                rf_link=sc_config.rf_link, ground_station_config=target_gs_config,
             )
             handle.comms_pointing_arbitrator = arbitrator
 
@@ -1395,6 +1399,10 @@ class SimulationService:
                 name: handle.fuel_tank_effector for name, handle in self._handles.items()
                 if handle.fuel_tank_effector is not None
             }
+            comms_pointing_by_spacecraft = {
+                name: handle.comms_pointing_arbitrator for name, handle in self._handles.items()
+                if handle.comms_pointing_arbitrator is not None
+            }
             custom_models_by_spacecraft = {
                 sc_config.name: {
                     "path": sc_config.vizard_model_path,
@@ -1419,6 +1427,7 @@ class SimulationService:
                     station_keeping_by_spacecraft=station_keeping_by_spacecraft,
                     phasing_keeping_by_spacecraft=phasing_keeping_by_spacecraft,
                     fuel_tank_by_spacecraft=fuel_tank_by_spacecraft,
+                    comms_pointing_by_spacecraft=comms_pointing_by_spacecraft,
                     access_out_msgs=self._access_out_msgs,
                     custom_models_by_spacecraft=custom_models_by_spacecraft,
                 )

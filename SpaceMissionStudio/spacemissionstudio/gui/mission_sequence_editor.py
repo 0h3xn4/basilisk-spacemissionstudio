@@ -113,6 +113,19 @@ class _CommandEditorDialog(QDialog):
         layout = QVBoxLayout(self)
         form = QFormLayout()
         self.kind_combo = QComboBox()
+        self.kind_combo.setToolTip(
+            "What this step in the mission sequence actually does, run in order (top to bottom "
+            "in the tree) starting from the scenario's own initial conditions -- each command "
+            "picks up exactly where the previous one left off:\n\n"
+            "propagate: just advance the simulation (no maneuver) until a stop condition.\n"
+            "maneuver: an instantaneous delta-V impulse.\n"
+            "lambert_transfer: solve for, and apply, the delta-V to reach a target position by "
+            "a given time.\n"
+            "assignment: change a running controller's parameter (e.g. thrust) mid-mission.\n"
+            "report: snapshot named series at this point in time.\n"
+            "if / while: run nested child commands conditionally/repeatedly.\n"
+            "script_block: arbitrary unsandboxed Python."
+        )
         self.kind_combo.addItems(list(SUPPORTED_COMMAND_KINDS))
         # Changing kind on an existing command would orphan whatever
         # children it has in the tree (only "if"/"while" carry children,
@@ -165,6 +178,13 @@ class _CommandEditorDialog(QDialog):
         form = QFormLayout(page)
 
         self.stop_condition_combo = QComboBox()
+        self.stop_condition_combo.setToolTip(
+            "When this propagate step stops and moves on to the next command:\n"
+            "duration: after a fixed number of days (below).\n"
+            "epoch: at a specific calendar date/time (below).\n"
+            "event: as soon as a chosen spacecraft event happens (e.g. apoapsis, periapsis) -- "
+            "below."
+        )
         self.stop_condition_combo.addItems(list(SUPPORTED_STOP_CONDITIONS))
         index = self.stop_condition_combo.findText(params.get("stop_condition", "duration"))
         if index >= 0:
@@ -196,6 +216,10 @@ class _CommandEditorDialog(QDialog):
         event_form = QFormLayout(event_page)
         event_form.setContentsMargins(0, 0, 0, 0)
         self.event_kind_combo = QComboBox()
+        self.event_kind_combo.setToolTip(
+            "periapsis: stop at the next closest approach to the central body.\n"
+            "apoapsis: stop at the next farthest point from the central body."
+        )
         self.event_kind_combo.addItems(list(SUPPORTED_EVENT_KINDS))
         event_index = self.event_kind_combo.findText(params.get("event_kind", SUPPORTED_EVENT_KINDS[0]))
         if event_index >= 0:
@@ -234,6 +258,13 @@ class _CommandEditorDialog(QDialog):
         self.delta_v_x_spin = _spin_component(delta_v[0] if len(delta_v) > 0 else 0.0)
         self.delta_v_y_spin = _spin_component(delta_v[1] if len(delta_v) > 1 else 0.0)
         self.delta_v_z_spin = _spin_component(delta_v[2] if len(delta_v) > 2 else 0.0)
+        _delta_v_tip = (
+            "An INSTANTANEOUS velocity change applied the moment this command runs (an idealized "
+            "impulsive burn -- no finite burn duration or propellant/thrust-hardware modeling), "
+            "in the frame chosen below."
+        )
+        for box in (self.delta_v_x_spin, self.delta_v_y_spin, self.delta_v_z_spin):
+            box.setToolTip(_delta_v_tip)
         row.addWidget(self.delta_v_x_spin)
         row.addWidget(self.delta_v_y_spin)
         row.addWidget(self.delta_v_z_spin)

@@ -156,7 +156,8 @@ from Basilisk.simulation import (
 )
 from Basilisk.utilities import macros, simIncludeRW, simIncludeThruster
 
-from ..schema.scenario import SUPPORTED_FSW_MODES
+from ..schema.scenario import SUPPORTED_FSW_MODES, GroundStationConfig, RFLinkConfig
+from . import link_budget
 
 DEFAULT_MRP_GAINS: Dict[str, float] = {"K": 3.5, "P": 30.0}
 
@@ -492,7 +493,9 @@ class _CommsPointingArbitrator(sysModel.SysModel):
     function wires every input/output message this needs.
     """
 
-    def __init__(self, name: str, comms_power_w: float):
+    def __init__(self, name: str, comms_power_w: float,
+                 rf_link: Optional[RFLinkConfig] = None,
+                 ground_station_config: Optional[GroundStationConfig] = None):
         super().__init__()
         self.ModelTag = name
 
@@ -510,6 +513,33 @@ class _CommsPointingArbitrator(sysModel.SysModel):
         self.commsPowerSink = None
         self.commsPowerW = comms_power_w  # [W]
 
+        # Live Vizard telemetry (engine.vizard's "Live-data panels" section):
+        # real user feedback was that the mission dashboard's live readout
+        # (gui.mission_dashboard_widget) -- active mode, pointing error, RF
+        # link status -- "shall also be in the vizard live visualization,
+        # not only in the GUI itself". These three messages mirror exactly
+        # what that widget already shows, computed from the SAME real,
+        # already-simulated quantities (this arbitrator's own hasAccess/
+        # sigma_BR, not a re-derivation), so engine.vizard.enable_vizard()
+        # can wire them straight into native Vizard panels with no second
+        # source of truth.
+        self.modeCmdOutMsg = messaging.DeviceCmdMsg()  # 0 = Sun-pointing, 2 = ground-station-pointing (see vizard.py's 0/2 GenericSensor convention)
+        self.pointingErrorOutMsg = messaging.DataStorageStatusMsg()  # storageLevel/storageCapacity = theta_deg/180.0 [deg]
+        self.linkStatusCmdOutMsg = messaging.DeviceCmdMsg()  # 0 = no link (no access / not comms-pointing / degraded), 2 = link OK
+
+        # Only set when the caller (build_comms_pointing, from
+        # engine.service) passed both -- enables the live link-status
+        # computation above, gated the SAME way
+        # engine.link_budget.link_margin_series()/
+        # gui.mission_dashboard_widget already gate their own margin:
+        # real access AND actually comms-pointing, never geometric
+        # visibility alone. Left None (either, or both) when the
+        # spacecraft has no rf_link configured -- linkStatusCmdOutMsg then
+        # always reports "no link", matching mission_dashboard_widget's
+        # own "no rf_link configured" fallback.
+        self.rfLink = rf_link
+        self.groundStationConfig = ground_station_config
+
         # Python-side telemetry -- same convention as
         # engine.orbit_maintenance's controllers (see class docstring).
         self.tLog: list = []
@@ -522,7 +552,8 @@ class _CommsPointingArbitrator(sysModel.SysModel):
 
     def UpdateState(self, CurrentSimNanos):
         t = CurrentSimNanos * macros.NANO2SEC  # [s]
-        active_comms = bool(self.accessInMsg().hasAccess)
+        access_payload = self.accessInMsg()
+        active_comms = bool(access_payload.hasAccess)
 
         guid = self.commsGuidInMsg() if active_comms else self.sunGuidInMsg()
         self.attGuidOutMsg.write(guid, CurrentSimNanos, self.moduleID)
@@ -537,13 +568,39 @@ class _CommsPointingArbitrator(sysModel.SysModel):
         sigma_br_norm = float(np.linalg.norm(guid.sigma_BR))
         theta_deg = float(np.degrees(4.0 * np.arctan(sigma_br_norm)))
 
+        mode_cmd = messaging.DeviceCmdMsgPayload()
+        mode_cmd.deviceCmd = 2 if active_comms else 0
+        self.modeCmdOutMsg.write(mode_cmd, CurrentSimNanos, self.moduleID)
+
+        # GenericStorage requires a non-negative storageLevel (a negative
+        # value renders the panel "Unavailable" -- see engine.vizard's own
+        # "Real bug found ... FOURTH round" docstring note); theta_deg is
+        # always >= 0 by construction above, so no clamping is needed here,
+        # unlike that earlier RTN-panel bug.
+        pointing_msg = messaging.DataStorageStatusMsgPayload()
+        pointing_msg.storageLevel = theta_deg
+        pointing_msg.storageCapacity = 180.0  # [deg] the max possible principal rotation angle
+        self.pointingErrorOutMsg.write(pointing_msg, CurrentSimNanos, self.moduleID)
+
+        link_ok_cmd = 0
+        if active_comms and self.rfLink is not None and self.groundStationConfig is not None:
+            margin_db = link_budget.link_margin_db(
+                float(access_payload.slantRange), self.rfLink, self.groundStationConfig, theta_deg
+            )
+            if not np.isnan(margin_db) and margin_db >= 0.0:
+                link_ok_cmd = 2
+        link_cmd = messaging.DeviceCmdMsgPayload()
+        link_cmd.deviceCmd = link_ok_cmd
+        self.linkStatusCmdOutMsg.write(link_cmd, CurrentSimNanos, self.moduleID)
+
         self.tLog.append(t)
         self.modeLog.append(1 if active_comms else 0)
         self.pointingErrorDegLog.append(theta_deg)
 
 
 def build_comms_pointing(scSim, task_name: str, tag: str, comms_config, sun_guid_msg, comms_guid_msg,
-                          access_out_msg, comms_power_sink=None) -> _CommsPointingArbitrator:
+                          access_out_msg, comms_power_sink=None, rf_link: Optional[RFLinkConfig] = None,
+                          ground_station_config: Optional[GroundStationConfig] = None) -> _CommsPointingArbitrator:
     """Builds and wires one spacecraft's :class:`_CommsPointingArbitrator`.
 
     Args:
@@ -567,6 +624,17 @@ def build_comms_pointing(scSim, task_name: str, tag: str, comms_config, sun_guid
             whose ``nodePowerOut`` this arbitrator drives live while
             ground-station-pointing is active -- omit (default ``None``)
             when ``comms_config.comms_power_w == 0.0``.
+        rf_link: the spacecraft's own ``schema.scenario.RFLinkConfig``
+            (``sc_config.rf_link``), or ``None`` if not configured --
+            enables the arbitrator's own live ``linkStatusCmdOutMsg``
+            (see that message's own comment in
+            :meth:`_CommsPointingArbitrator.__init__`) when given
+            together with ``ground_station_config``.
+        ground_station_config: ``comms_config.target_ground_station``'s
+            own ``schema.scenario.GroundStationConfig`` (looked up by name
+            from ``scenario.ground_stations``), or ``None``. Both this and
+            ``rf_link`` must be given for the live link-status message to
+            report anything other than "no link".
 
     Returns the arbitrator (feed its ``attGuidOutMsg`` to
     :func:`build_mrp_feedback`) -- the CALLER must keep this object alive
@@ -575,7 +643,10 @@ def build_comms_pointing(scSim, task_name: str, tag: str, comms_config, sun_guid
     gotcha for custom SysModels (see e.g.
     ``build_css_sun_estimation``'s docstring).
     """
-    arbitrator = _CommsPointingArbitrator(name=f"{tag}_commsPointing", comms_power_w=comms_config.comms_power_w)
+    arbitrator = _CommsPointingArbitrator(
+        name=f"{tag}_commsPointing", comms_power_w=comms_config.comms_power_w,
+        rf_link=rf_link, ground_station_config=ground_station_config,
+    )
     arbitrator.accessInMsg.subscribeTo(access_out_msg)
     arbitrator.sunGuidInMsg.subscribeTo(sun_guid_msg)
     arbitrator.commsGuidInMsg.subscribeTo(comms_guid_msg)

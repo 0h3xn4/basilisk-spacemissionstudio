@@ -65,6 +65,15 @@ class OrbitIcWidget(QWidget):
         self.type_combo = QComboBox()
         for orbit_type in ORBIT_IC_TYPES:
             self.type_combo.addItem(_TYPE_LABELS[orbit_type], userData=orbit_type)
+        self.type_combo.setToolTip(
+            "How to describe where the spacecraft starts.\n\n"
+            "Classical elements: size/shape/orientation of the orbit (easiest to reason "
+            "about -- e.g. 'a circular orbit at 500 km, tilted 97 deg').\n"
+            "Cartesian state: a raw position + velocity vector at the epoch -- use this if "
+            "you already have an exact state from another tool.\n"
+            "Two-Line Element (TLE): paste a real satellite's TLE (e.g. from CelesTrak) to "
+            "start from its actual, currently-published orbit."
+        )
         layout.addWidget(self.type_combo)
 
         self.stack = QStackedWidget()
@@ -85,6 +94,37 @@ class OrbitIcWidget(QWidget):
         self.inc_deg = _spin(0.0, 180.0, decimals=4, step=1.0)
         self.raan_deg = _spin(0.0, 360.0, decimals=4, step=1.0)
         self.aop_deg = _spin(0.0, 360.0, decimals=4, step=1.0)
+        self.sma_km.setToolTip(
+            "Half the distance across the orbit's long axis, measured from Earth's center -- "
+            "sets the orbit's SIZE and, by Kepler's third law, its PERIOD. Bigger = slower, "
+            "longer orbit (e.g. ~6778 km is a ~500 km-altitude LEO with a ~95 min period; "
+            "~42164 km is geostationary, one orbit per sidereal day)."
+        )
+        self.ecc.setToolTip(
+            "How far from circular the orbit is. 0 = perfectly circular (constant altitude). "
+            "Closer to 1 = a more stretched ellipse (low, fast periapsis; high, slow apoapsis). "
+            "Values at or above 1 describe an escape/hyperbolic trajectory, not a closed orbit, "
+            "so this field is capped below 1."
+        )
+        self.inc_deg.setToolTip(
+            "Tilt of the orbit plane relative to Earth's equator. 0 deg = equatorial (orbits "
+            "directly above the equator); 90 deg = polar (passes over both poles); around "
+            "97-98 deg at low altitude gives a Sun-synchronous orbit (see the RAAN field below) "
+            "that revisits the same local solar time on every pass."
+        )
+        self.raan_deg.setToolTip(
+            "Right ascension of the ascending node -- rotates the WHOLE orbit plane around "
+            "Earth's spin axis, fixing where (in inertial space) the spacecraft crosses the "
+            "equator heading north. Combined with inclination, this sets which longitudes the "
+            "ground track passes over and, for a Sun-synchronous orbit, the local time of day "
+            "those passes happen at."
+        )
+        self.aop_deg.setToolTip(
+            "Argument of periapsis -- rotates the ellipse's long axis WITHIN its own orbit "
+            "plane, fixing where in the orbit the closest approach to Earth (periapsis) falls "
+            "relative to the ascending node. Has no effect for a circular orbit (eccentricity "
+            "0), since a circle has no distinct closest point."
+        )
         form.addRow("Semi-major axis [km]", self.sma_km)
         form.addRow("Eccentricity [-]", self.ecc)
         form.addRow("Inclination [deg]", self.inc_deg)
@@ -100,7 +140,20 @@ class OrbitIcWidget(QWidget):
         self.anomaly_type_combo = QComboBox()
         for anomaly_type in ANOMALY_TYPES:
             self.anomaly_type_combo.addItem(_ANOMALY_TYPE_LABELS[anomaly_type], userData=anomaly_type)
+        self.anomaly_type_combo.setToolTip(
+            "How the spacecraft's starting position ALONG the orbit (below) is specified. "
+            "True anomaly is the real geometric angle from periapsis -- easiest to visualize. "
+            "Mean anomaly is a fictitious angle that increases at a constant rate over one "
+            "orbit -- easier for picking an exact starting TIME offset, but not the same "
+            "number as true anomaly except in a circular orbit. Switching this does NOT "
+            "convert the typed value below (the two scales aren't numerically close in "
+            "general); it resets it to 0 to avoid a silently wrong carry-over."
+        )
         self.anomaly_deg = _spin(0.0, 360.0, decimals=4, step=1.0)
+        self.anomaly_deg.setToolTip(
+            "Where the spacecraft starts along the orbit at the epoch, as the angle type "
+            "selected on the left. 0 deg = starting exactly at periapsis (closest approach)."
+        )
         form.addRow(self.anomaly_type_combo, self.anomaly_deg)
 
         for box in (self.sma_km, self.ecc, self.inc_deg, self.raan_deg, self.aop_deg, self.anomaly_deg):
@@ -117,6 +170,21 @@ class OrbitIcWidget(QWidget):
         self.vel_x_km_s = _spin(-100.0, 100.0, decimals=6, step=0.1)
         self.vel_y_km_s = _spin(-100.0, 100.0, decimals=6, step=0.1, value=7.5)
         self.vel_z_km_s = _spin(-100.0, 100.0, decimals=6, step=0.1)
+        for box in (self.pos_x_km, self.pos_y_km, self.pos_z_km):
+            box.setToolTip(
+                "Spacecraft position at the epoch, in the Earth-centered inertial (J2000-ish) "
+                "frame -- not a frame that rotates with Earth, so these numbers don't 'point' "
+                "at a fixed place on the ground the way latitude/longitude would. Distance "
+                "from Earth's center, not altitude above the surface."
+            )
+        for box in (self.vel_x_km_s, self.vel_y_km_s, self.vel_z_km_s):
+            box.setToolTip(
+                "Spacecraft velocity at the epoch, in the same Earth-centered inertial frame as "
+                "the position above. Position and velocity together fully determine the orbit "
+                "-- get either one wrong and the resulting orbit can look nothing like what "
+                "you intended (e.g. a mismatched speed turns a circular orbit into a highly "
+                "elliptical, or escaping, one)."
+            )
         form.addRow("Position X [km]", self.pos_x_km)
         form.addRow("Position Y [km]", self.pos_y_km)
         form.addRow("Position Z [km]", self.pos_z_km)
@@ -132,8 +200,19 @@ class OrbitIcWidget(QWidget):
         form = QFormLayout(page)
         self.tle_line1 = QLineEdit()
         self.tle_line1.setPlaceholderText("1 25544U 98067A   24001.00000000  .00000000  00000-0  00000-0 0  9990")
+        self.tle_line1.setToolTip(
+            "The FIRST of a real satellite's two-line element (TLE) lines -- starts with '1', "
+            "encodes its catalog number, epoch, and drag term. Copy both lines exactly as "
+            "published (e.g. from CelesTrak) -- a single changed character produces a garbage "
+            "or rejected orbit."
+        )
         self.tle_line2 = QLineEdit()
         self.tle_line2.setPlaceholderText("2 25544  51.6400   0.0000 0000000   0.0000   0.0000 15.50000000000000")
+        self.tle_line2.setToolTip(
+            "The SECOND of the same satellite's two TLE lines -- starts with '2', encodes the "
+            "classical orbital elements (inclination, RAAN, eccentricity, etc.) at that epoch. "
+            "Must be the matching second line for the SAME satellite as line 1 above."
+        )
         form.addRow("TLE line 1", self.tle_line1)
         form.addRow("TLE line 2", self.tle_line2)
         self.tle_line1.textChanged.connect(self.changed)

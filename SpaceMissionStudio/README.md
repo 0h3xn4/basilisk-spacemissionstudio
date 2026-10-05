@@ -352,10 +352,12 @@ delta-V used -- station-keeping and phasing-keeping reported as separate
 panels, since both draw from one shared tank -- for a phasing formation,
 the real chief/follower offset broken out into Radial/Transverse/Normal
 panels (the same R/T/N terms the phasing-formation wizard itself uses,
-not an abstract single number), ground-station access-window indicators
--- all driven by real, already-simulated values, not static snapshots,
-with Vizard's own native live current/max readout on every panel),
-custom 3D models per spacecraft (purely cosmetic), and a **Launch
+not an abstract single number), ground-station access-window indicators,
+and -- for a `comms_pointing` spacecraft -- a pointing-error bar plus
+"Mode"/"Link status" badges mirroring the Mission Dashboard's own live
+GUI telemetry -- all driven by real, already-simulated values, not
+static snapshots, with Vizard's own native live current/max readout on
+every panel), custom 3D models per spacecraft (purely cosmetic), and a **Launch
 Vizard** action that starts the external application itself (offering
 to download AVS's own pre-built binary automatically if none can be
 found -- see "Running the CLI" above), not just configures what feeds
@@ -1164,12 +1166,23 @@ Scoped but not yet built, from real GUI usage feedback (full detail in
   already knows each plane's membership and phase ordering, so it could
   assign chief = "first satellite in the plane" and a sensible default
   target separation automatically.
-* **A live link-margin gauge in Vizard** -- deliberately not built:
-  Vizard's `GenericStorage` only accepts Battery/DataStorage/FuelTank
-  -shaped messages, and forcing a dB margin value through would need a
-  fabricated adapter message with no natural floor/ceiling. If this
-  becomes worth doing anyway, the RIGHT path is a real custom Vizard
-  protobuf message/panel type, not a reused shape.
+* **A live NUMERIC link-margin gauge in Vizard** -- still deliberately
+  not built: Vizard's `GenericStorage` only accepts Battery/DataStorage/
+  FuelTank-shaped messages, and forcing a dB margin value (which can be
+  legitimately negative) through would need a fabricated adapter message
+  with no natural floor/ceiling -- the same bug class the RTN separation
+  panels already hit once and had fixed (see `HISTORY.md`). What WAS
+  built instead, per direct user feedback that the Mission Dashboard's
+  live telemetry "shall also be in the vizard live visualization, not
+  only in the GUI itself": a colored "Link status" `GenericSensor` badge
+  (link OK vs. no/degraded link, computed live from the exact same
+  `engine.link_budget.link_margin_db` the GUI uses), plus "Mode" and
+  "Pointing Error" panels for the rest of that same dashboard -- see
+  `engine.vizard`'s own "Live-data panels" docstring section. The exact
+  dB breakdown still only appears in the GUI's dashboard; if a live
+  NUMBER (not just a status) is wanted in Vizard too, the right path
+  remains a real custom Vizard protobuf message/panel type, not a reused
+  `GenericStorage` shape.
 
 Beyond that, the "Known limitations" section above is the rest of the
 honest map: non-Earth spherical harmonics/magnetometer, navigation

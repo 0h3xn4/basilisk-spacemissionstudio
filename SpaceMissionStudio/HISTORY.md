@@ -5908,3 +5908,269 @@ at `schema_version: 2` via `load_scenario()`/`.validate()` after the hand-edits.
 `tests/gui/test_results_widget.py`: 33 passed (30 + 3 new). `tests/test_spaceweather.py`: 31
 passed (29 + 2 new). `tests/gui/test_startup_fetch_dialog.py`: 13 passed (11 + 2 new). Full suite
 with `QT_QPA_PLATFORM=offscreen`: 1023 passed, 130 skipped, zero regressions (up from 1007/130).
+
+## Real user-reported crash: ground station + Vizard both enabled
+
+**Real user report** (a traceback from their own machine, where a real Basilisk build and real
+cached SPICE kernels both exist -- something this development sandbox has never had): every run
+with a ground station AND Vizard output configured crashed inside
+`engine.vizard.enable_vizard()`'s ground-station loop:
+
+```
+TypeError: only 0-dimensional arrays can be converted to Python scalars
+SystemError: <built-in function LocationPbMsg_gHat_P_set> returned a result with an exception set
+```
+
+**Root cause, confirmed directly against a real Basilisk build, not reasoned about in the
+abstract**: this development sandbox doesn't have cached SPICE kernels either (naif.jpl.nasa.gov
+is blocked here, same already-documented gap as always), but it DOES have a real Basilisk install
+in a throwaway venv (`/tmp/bsk_venv4`, used earlier this session to verify the offline-policy
+PNG/startup-fetch work) -- `pip install -e .` into it and reproducing the EXACT reported traceback
+took one Python one-liner, not a guess:
+`groundLocation.GroundLocation.r_LP_P_Init` (a real Basilisk `Eigen::Vector3d`) is exposed to
+Python as a NESTED `[[x], [y], [z]]` list, confirmed directly, never a flat `[x, y, z]` one.
+`enable_vizard()`'s ground-station loop passed it to `vizSupport.addLocation()` via a plain
+`list(gs.r_LP_P_Init)` call, which leaves that nesting untouched. `addLocation()` itself tolerates
+the nested `r_GP_P` shape fine (its own setter apparently squeezes it) -- but since this call
+never passes its own `gHat_P`, `addLocation()` computes one internally as `r_GP_P /
+np.linalg.norm(r_GP_P)`; fed the STILL-nested `r_GP_P`, that division produces a genuinely
+(3, 1)-shaped numpy array instead of a flat (3,) one, and THAT shape is what breaks `gHat_P`'s own
+setter, which tries to convert each of the 3 "rows" to a scalar and chokes on each being itself a
+1-element sub-array (`TypeError: only 0-dimensional arrays can be converted to Python scalars`,
+surfacing through SWIG's generic exception-forwarding as the `SystemError` above).
+
+**The fix**: `simHelpers.EigenVector3d2list()` instead of bare `list()` -- the exact conversion
+every real Basilisk example that passes a `GroundLocation`'s own `r_LP_P_Init` to `addLocation()`
+already uses (`examples/scenarioAttLocPoint.py`, `examples/scenarioGroundDownlink.py`,
+`examples/scenarioGroundLocationImaging.py`, `examples/scenarioSpacecraftLocation.py`,
+`examples/scenarioStripImaging.py` -- confirmed by grepping every real `addLocation` call site in
+this checkout's own `examples/`, not just one). A project-wide re-grep for the same `list(...)`
+-on-a-Basilisk-vector pattern elsewhere in `engine/` turned up nothing else at risk.
+
+**Verified end-to-end against the real Basilisk build, both directions**: confirmed the OLD code
+(via `git stash`) reproduces the user's EXACT traceback (same `SystemError`, same inner
+`TypeError`, same shape -- `array([[-0.20...], [-0.74...], [0.64...]])`, a genuine (3, 1)); then
+confirmed the fix resolves it. New `tests/test_vizard.py::test_enable_vizard_with_a_ground_station_
+does_not_crash` calls `engine.vizard.enable_vizard()` directly against a real
+`groundLocation.GroundLocation`/`vizInterface.VizInterface` pair, deliberately NOT through
+`SimulationService.build()` (which would need the SPICE kernels this sandbox still can't fetch --
+a real, separate, already-documented gap this bug has nothing to do with) -- the ground-station/
+Vizard wiring needs no SPICE at all, so this test genuinely runs and passes against the real
+Basilisk build in `/tmp/bsk_venv4`, not just a reasoned-through fix. Reverted the fix one more
+time with this new test in place and watched it fail with the identical traceback, then restored
+it and watched it pass -- the same "prove the regression test actually catches the bug" discipline
+as the two fixes in the entry above.
+
+**Verification**: `tests/test_vizard.py` (3 tests, one new): the 2 pre-existing SPICE-dependent
+tests fail in THIS sandbox with exactly the already-documented, unrelated `KernelError` (SPICE
+kernels can't be fetched here) -- raised inside `service.build()` well BEFORE it ever reaches the
+ground-station/Vizard code this fix touches, so not a regression this change could have caused;
+the new ground-station test, which needs no SPICE at all, passes cleanly against the real
+Basilisk build. Full non-Basilisk suite with `QT_QPA_PLATFORM=offscreen`: 1023 passed, 131 skipped
+(+1 for the new Basilisk-marked test, correctly skipped in the main sandbox venv that has no
+Basilisk at all), zero regressions.
+
+---
+
+## Templates: Sun-synchronous (10:30 LTAN) orbits and a Berlin ground station
+
+**Direct user request**, part of a 5-item feedback list after a real run on their own machine:
+"All example/template scenarios shall be, where it makes sense, SSO (10:30 AM) orbits and
+baseline groundstation shall be in Berlin, Germany, wherever applicable."
+
+**Derived, not guessed, and verified against two independent references.** Two new helpers in
+`scripts/_generate_templates.py`:
+
+* `sun_synchronous_inclination_deg(semi_major_axis_km, eccentricity=0.0)` solves the standard
+  first-order J2 secular RAAN-rate equation (Vallado, *Fundamentals of Astrodynamics and
+  Applications*: `dRAAN/dt = -1.5 * n * J2 * (Req/p)^2 * cos(i)`, `n = sqrt(mu/a^3)`,
+  `p = a*(1-e^2)`) for the inclination whose nodal regression exactly matches the Sun's own mean
+  motion (360 deg / tropical year) -- the defining property of a Sun-synchronous orbit. `J2`,
+  `Req`, and `mu` were read directly off a real installed Basilisk build (`/tmp/bsk_venv4`:
+  `orbitalMotion.J2_EARTH = 0.001082616`, `gravBodyFactory().createEarth().radEquator =
+  6378136.6` m, `.mu = 398600436000000.0` m^3/s^2), not assumed. Verified against this project's
+  own pre-existing, independently hand-picked reference value: evaluates to 97.40 deg at a
+  6878.1366 km semi-major axis (500 km circular altitude), matching
+  `engine.spacecraft_templates._placeholder_orbit()`'s own `inclination_deg=97.4  # sun
+  -synchronous at ~500 km` comment exactly.
+* `raan_for_ltan_deg(epoch_utc, ltan_hour=10.5)` computes the RAAN that places the ascending node
+  at the requested local time of ascending node (LTAN), via the standard relation
+  `RAAN = RA_sun + 15 deg/hr * (LTAN - 12h)`, using the Astronomical Almanac's own "low precision
+  formula for the Sun" (accurate to about 0.01 deg through 2050) for the Sun's real right
+  ascension at the scenario's epoch. Verified against known Sun RA values at the equinoxes/
+  solstices (0h at the vernal equinox, ~90 deg at the summer solstice, ~180 deg at the autumnal
+  equinox) before being trusted in any template. Default LTAN is 10:30 (the user's own stated
+  value); both helpers round to 2 decimal places -- real orbit-insertion dispersion and the
+  first-order J2-only model both dwarf anything past that precision, and it keeps every value
+  exactly representable by the Customize wizard's existing 2-decimal spin boxes (a round-trip
+  test with the full, unrounded value caught this: `test_every_spec_round_trips_with_no_edits`
+  failed on template 01 with `97.03 != 97.0296092274072` until the rounding was added at the
+  source).
+* `_berlin_ground_station(**overrides)` returns a `GroundStationConfig` for Berlin, Germany
+  (city-center reference: Alexanderplatz, 52.5200 N, 13.4050 E, ~34 m above the WGS84 ellipsoid),
+  the new baseline ground station for every template that has one.
+
+**Applied to every template where it makes sense, and deliberately NOT to the rest** -- each
+exclusion has its own reason, not a blanket skip:
+
+* **Changed** (11 of 19): `01` (two-body circular orbit), `05` (formation flying/phasing, both
+  spacecraft), `06`/`07` (attitude pointing, basic and with ADCS hardware), `08` (mission
+  sequence/orbit raise), `09` (Monte Carlo dispersion), `10` (gravity-gradient torque), `12`
+  (RW momentum dumping), `15` (celestial body pointing), `18` (LEO station-keeping), and `19`
+  (Sun-pointing + comms link, which also gets the ground-station rename: `boulder-gs` ->
+  `berlin-gs` throughout its description text, `gui/template_wizard.py`'s matching wizard-page
+  intro text, and `scenarios/templates/README.md`'s catalog row).
+* **Not changed, each for a template-specific physical/pedagogical reason**: `02` (elliptical
+  orbit) and `03` (GEO station-keeping) are about perturbation/stationkeeping effects that have
+  nothing to do with LTAN and GEO can't be Sun-synchronous at all; `04` (Walker constellation)
+  is about relative-phasing geometry, not absolute LTAN; `11` (thruster attitude control) and
+  `17` (fuel tank depletion) are deliberately kept as the two exceptions to the separate "never
+  use thrusters for attitude control" item in the same feedback list -- their entire teaching
+  purpose IS thruster-based ADCS, confirmed with the user before proceeding; `13` (magnetic
+  torque rod) and `14` (CSS Sun-heading estimation) depend on their current orbit/attitude
+  geometry for their own specific demonstration (geomagnetic field direction, Sun-vector
+  estimation geometry) in ways re-deriving the orbit risked silently breaking; `16` (Lambert
+  transfer) is a two-point boundary-value transfer problem, not an operational orbit.
+
+**Verification**: all 19 regenerated templates reload and `Scenario.validate()` cleanly; full
+non-Basilisk suite with `QT_QPA_PLATFORM=offscreen`: 1026 passed, 131 skipped, zero regressions
+(including `tests/gui/test_template_wizard.py`'s own prefill/round-trip tests, parametrized over
+every template, which is what caught the rounding issue above before it shipped).
+
+---
+
+## Mission Dashboard telemetry, also in Vizard
+
+**Direct user request**, item 3 of the same 5-item feedback list as the two entries above: "the
+mission panel live stream shall also be in the vizard live visualization, not only in the GUI
+itself" -- referring to `gui.mission_dashboard_widget.MissionDashboardWidget`, template 19's
+live readout of a `comms_pointing` spacecraft's operating mode, pointing error, and RF link
+status (battery/power was already covered: the existing, generic "Battery" `GenericStorage`
+panel fires for any spacecraft with `PowerConfig` set, independent of `comms_pointing`).
+
+**What was added, all sourced directly from `engine.fsw.build_comms_pointing`'s own arbitrator
+-- no second computation, no new bridge `SysModel`** (unlike ground-station access, which needed
+one because `groundLocation.GroundLocation` itself has no "mode" concept; this arbitrator
+already IS the live source of all three states, for its own reasons, every tick):
+
+* `_CommsPointingArbitrator` (`engine/fsw.py`) now also publishes `modeCmdOutMsg`
+  (`DeviceCmdMsgPayload`, the same 0/2 convention the pre-existing ground-station-access
+  `GenericSensor` bridge already uses) and `pointingErrorOutMsg` (`DataStorageStatusMsgPayload`,
+  `storageLevel`/`storageCapacity` = `theta_deg`/180 deg) every tick, from the exact same
+  `hasAccess`/`sigma_BR` values it already reads to do the mode switch itself -- no new geometry,
+  no re-derivation.
+* A third message, `linkStatusCmdOutMsg`, needed a real link-margin number to gate on. Rather
+  than re-implement that math, the arbitrator now optionally takes the spacecraft's own
+  `schema.scenario.RFLinkConfig` and the target ground station's `GroundStationConfig` (wired
+  from `engine.service.py`'s own comms_pointing pass, which already has both in scope) and calls
+  `engine.link_budget.link_margin_db` -- the SAME pure-Python function
+  `gui.mission_dashboard_widget` and `engine.link_budget.link_margin_series` already use for
+  their own numbers, with the SAME gating (real access AND actually comms-pointing, never
+  geometric visibility alone) -- so Vizard's badge and the GUI's detailed dB breakdown can never
+  silently disagree about whether the link is "up". `engine/fsw.py` picking up a `from . import
+  link_budget` (a plain Python import, no new Basilisk dependency: `link_budget.py` has never
+  had one) was the only new coupling needed.
+* `engine.vizard.enable_vizard()` gained a `comms_pointing_by_spacecraft` parameter (same shape
+  as the existing `battery_by_spacecraft`/`station_keeping_by_spacecraft` dicts) and, per
+  spacecraft with one, builds a "Pointing Error" `GenericStorage` bar plus "Mode"/"Link status"
+  `GenericSensor` badges, reading straight off the three messages above.
+* **Deliberately a colored status badge for link status, not a numeric margin bar**: a real
+  margin can be negative (a degraded link is exactly the state worth seeing), and
+  `GenericStorage` has no non-negative-only workaround that doesn't lose the sign -- see this
+  file's own "Real bug found from a real running Vizard screenshot, FOURTH round" entry above for
+  why that was already tried and reverted once for the RTN separation panels, and `README.md`'s
+  own "Scoped but not yet built" note (now updated) for why a live NUMERIC link-margin gauge
+  stays a known, deliberate gap. Pointing error, by contrast, is a plain non-negative angle by
+  construction (`theta_deg = 4*atan(|sigma_BR|)`, always >= 0) and so gets an ordinary
+  `GenericStorage` bar with no such risk.
+
+**Verified directly against a real Basilisk build** (`/tmp/bsk_venv4`, this checkout installed
+editable into it), not just reasoned through: four new tests in `tests/test_comms_pointing.py`
+confirm `modeCmdOutMsg` mirrors `modeLog` in the 0/2 convention, `pointingErrorOutMsg` matches
+`pointingErrorDegLog` exactly with `storageCapacity` always 180, `linkStatusCmdOutMsg` stays "no
+link" when no `rf_link`/ground-station config is given (matching
+`gui.mission_dashboard_widget`'s own fallback), and -- using a real close-range/far-range pair
+independently confirmed via `engine.link_budget.link_margin_db` itself to close/not-close the
+link -- that the badge tracks the real margin's sign exactly, including staying "no link" during
+real access that hasn't yet become actual comms-pointing. One new test in `tests/test_vizard.py`
+exercises `enable_vizard()`'s new `comms_pointing_by_spacecraft` wiring directly (the same
+SPICE-free, bare-`SimulationBaseClass` pattern this file's own ground-station-access test uses)
+and confirms all three new panels actually land in the lists handed to
+`vizSupport.enableUnityVisualization()`. All pass against the real build; the pre-existing,
+unrelated `nodePowerOut`/SPICE-kernel-network failures already documented elsewhere in this file
+are unchanged by this work (confirmed identical via `git stash` before/after). Full non-Basilisk
+suite: 1026 passed, 136 skipped (+5 for the new `requires_basilisk` tests, correctly skipped
+here), zero regressions.
+
+---
+
+## GUI beginner-friendliness pass: tooltips explaining every setting's real-world effect
+
+**Direct user request**, item 5 of the same 5-item feedback list as the three entries above: "The
+GUI shall be more user friendly. Particularly for beginners, they shall be guided through each
+step and get explanations of everything... They have to know what outcomes their actions have.
+They need to understand what they are doing in each step."
+
+**Audit first, not a blind sweep**: grepped every `gui/*.py` file for existing `setToolTip`
+coverage before touching anything. Several files already had the explanatory discipline this
+request asks for -- `gui/load_scenario_widget.py`'s template picker (an intro label, a live
+description of the selected template, a "Customize wizard" tooltip), `gui/sensor_actuator_editor.py`'s
+per-kind `_hint_text()` (every sensor/actuator kind's required/optional params, with units, shown
+live as a label), `gui/spacecraft_editor.py`'s FSW-mode/control-gains hint labels, and
+`gui/results_widget.py`'s series/x-axis pickers -- left alone rather than padded with redundant
+tooltips. The real gaps were the dense, numeric-field-heavy editors with little or no explanatory
+text at all: `gui/orbit_ic_widget.py` (zero tooltips -- every orbital element was a bare label +
+unit, no explanation of what it means or what changing it does), and `gui/spacecraft_editor.py`'s
+power/station-keeping/constant-thrust/phasing-keeping/momentum-management/fuel-tank/RF-link
+groups, `gui/propagation_setup_dialog.py`'s gravity/integrator/space-weather fields, and
+`gui/ground_station_editor.py`/`gui/monte_carlo_editor.py`/`gui/mission_sequence_editor.py`'s own
+fields (2-4 tooltips each in files with dozens of controls).
+
+**What was added**: a `setToolTip()` on every numeric field, combo box, and checkable group box
+in those files that didn't already have one -- not a generic "set this value" placeholder, but
+the real physical/behavioral meaning and, per the user's own explicit ask, the OUTCOME of
+changing it (e.g. the inclination field doesn't just say "tilt of the orbit" -- it says what
+0/90/~97-98 deg each physically mean; the "Enable atmospheric drag" checkbox says it's the
+dominant force shrinking a LEO orbit and that nothing happens below ~800-1000 km; the station
+-keeping deadband field explains the frequency/size trade-off of narrowing or widening it). Every
+explanation was checked against this project's own `schema/scenario.py` docstrings (already the
+authoritative, unit-annotated source for what each field does) rather than written from memory,
+and against the actual engine behavior for anything non-obvious (e.g. `main_window.py`'s "Run
+Simulation" tooltip naming the Scenario tab's validity indicator was checked against
+`scenario_editor.py`'s real `validation_label` placement, not assumed).
+
+**A real interaction bug caught before it shipped**: `propagation_setup_dialog.py`'s
+`enable_harmonics_check` already had its OWN dynamically-set tooltip (`_on_central_body_changed`
+overwrites it with an Earth-only-restriction note or clears it to `""` depending on the selected
+central body). Adding a static explanatory tooltip at construction time would have been silently
+wiped out the moment `_on_central_body_changed(gravity.central_body)` ran at the end of
+`_build_gravity_group()` -- caught by re-reading the method after writing the tooltip, not by a
+test (none exercise tooltip text). Fixed by moving the explanation INTO `_on_central_body_changed`
+itself as the Earth-body branch's own tooltip, so the two pieces of tooltip logic compose instead
+of one clobbering the other -- verified directly with a headless `QApplication` smoke test that
+switches the central body away from and back to Earth and reads `.toolTip()` both times.
+
+**Files touched**: `orbit_ic_widget.py` (every field, full coverage), `scenario_editor.py`
+(epoch, propagation-setup button), `spacecraft_editor.py` (every group box and essentially every
+field across all its tabs -- by far the largest, since it has the most dense, unexplained numeric
+fields of any editor in the app), `sensor_actuator_editor.py` (the Kind combo -- the per-kind
+param hints were already thorough), `ground_station_editor.py` (every field), `propagation_setup_dialog.py`
+(gravity, integrator, atmosphere/space-weather), `mission_sequence_editor.py` (command Kind, stop
+condition, event kind, delta-V), `monte_carlo_editor.py` (dispersion quantity/kind/bounds/mean/std,
+the Monte Carlo enable/run-count checkboxes), and `main_window.py` (every File/Run menu action's
+tooltip rewritten to state its actual outcome, not just repeat its keyboard shortcut; three
+actions -- Save As, Quit, About -- had no tooltip at all before this).
+
+**Verification**: full non-Basilisk suite (`QT_QPA_PLATFORM=offscreen`): 1026 passed, 136
+skipped, zero regressions. A headless `QApplication` smoke test additionally constructed
+`MainWindow`, `SpacecraftEditorDialog` (toggling every checkable group on), `GroundStationEditorDialog`,
+and `PropagationSetupDialog` (including the central-body-switch tooltip-composition check above)
+to confirm every new tooltip-bearing code path actually runs with no error, not just that it
+parses.
+
+**Honestly scoped, not exhaustive**: this pass covers the editors with the heaviest concentration
+of unexplained numeric/combo fields -- it does not touch every remaining widget in every GUI
+file (e.g. `constellation_dialog.py`, `phasing_formation_dialog.py`, `vizard_dialog.py`,
+`vizard_launcher.py`, `startup_fetch_dialog.py` still have their pre-existing, lighter tooltip
+coverage). A natural follow-on, not required to call this item done: those dialogs are smaller
+and already somewhat less dense with unexplained fields than the ones addressed here.

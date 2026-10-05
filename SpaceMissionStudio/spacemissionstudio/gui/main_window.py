@@ -218,27 +218,41 @@ class MainWindow(QMainWindow):
 
         new_action = QAction(style.standardIcon(QStyle.StandardPixmap.SP_FileIcon), "&New Scenario", self)
         new_action.setShortcut(QKeySequence.StandardKey.New)
-        new_action.setToolTip("New Scenario (Ctrl+N)")
+        new_action.setToolTip(
+            "New Scenario (Ctrl+N) -- discards the scenario currently open (you'll be prompted "
+            "to save first if it has unsaved changes) and replaces it with a fresh, empty one."
+        )
         new_action.triggered.connect(self.on_new)
         file_menu.addAction(new_action)
         self.new_action = new_action
 
         open_action = QAction(style.standardIcon(QStyle.StandardPixmap.SP_DialogOpenButton), "&Open...", self)
         open_action.setShortcut(QKeySequence.StandardKey.Open)
-        open_action.setToolTip("Open a scenario file (Ctrl+O)")
+        open_action.setToolTip(
+            "Open a scenario file (Ctrl+O) -- loads a previously saved .json scenario, "
+            "replacing what's currently open (you'll be prompted to save first if it has "
+            "unsaved changes)."
+        )
         open_action.triggered.connect(self.on_open)
         file_menu.addAction(open_action)
         self.open_action = open_action
 
         save_action = QAction(style.standardIcon(QStyle.StandardPixmap.SP_DialogSaveButton), "&Save", self)
         save_action.setShortcut(QKeySequence.StandardKey.Save)
-        save_action.setToolTip("Save (Ctrl+S)")
+        save_action.setToolTip(
+            "Save (Ctrl+S) -- writes the current scenario to its file. If it has never been "
+            "saved before, this asks where to save it, same as Save As."
+        )
         save_action.triggered.connect(self.on_save)
         file_menu.addAction(save_action)
         self.save_action = save_action
 
         save_as_action = QAction("Save &As...", self)
         save_as_action.setShortcut(QKeySequence.StandardKey.SaveAs)
+        save_as_action.setToolTip(
+            "Saves the current scenario to a file you choose -- future Saves go to that new "
+            "file. Use this to branch off a variant without overwriting the original."
+        )
         save_as_action.triggered.connect(self.on_save_as)
         file_menu.addAction(save_as_action)
         self.save_as_action = save_as_action
@@ -246,13 +260,23 @@ class MainWindow(QMainWindow):
         file_menu.addSeparator()
         quit_action = QAction("&Quit", self)
         quit_action.setShortcut(QKeySequence.StandardKey.Quit)
+        quit_action.setToolTip(
+            "Closes SpaceMissionStudio -- you'll be prompted to save first if the current "
+            "scenario has unsaved changes."
+        )
         quit_action.triggered.connect(self.close)
         file_menu.addAction(quit_action)
 
         run_menu = self.menuBar().addMenu("&Run")
         run_action = QAction(style.standardIcon(QStyle.StandardPixmap.SP_MediaPlay), "&Run Simulation", self)
         run_action.setShortcut("Ctrl+R")
-        run_action.setToolTip("Run Simulation (Ctrl+R)")
+        run_action.setToolTip(
+            "Run Simulation (Ctrl+R) -- builds the current scenario in Basilisk and propagates "
+            "it for its full configured duration, showing results live in the Results tab as "
+            "it progresses (see Live Plot below to toggle that) and the final results once it "
+            "finishes. The scenario must be valid first -- check the validity indicator at the "
+            "bottom of the Scenario tab if this doesn't start."
+        )
         run_action.triggered.connect(self.on_run)
         run_menu.addAction(run_action)
         self.run_action = run_action
@@ -282,7 +306,11 @@ class MainWindow(QMainWindow):
 
         check_kernels_action = QAction(style.standardIcon(QStyle.StandardPixmap.SP_BrowserReload),
                                         "&Check Kernels", self)
-        check_kernels_action.setToolTip("Check/fetch SPICE kernels")
+        check_kernels_action.setToolTip(
+            "Checks whether the SPICE ephemeris kernels every run needs (for real Sun/Moon/"
+            "planet positions) are already cached locally, fetching any that are missing -- "
+            "needs network access once; after that, every run works fully offline."
+        )
         check_kernels_action.triggered.connect(self.kernel_status_widget.refresh)
         run_menu.addAction(check_kernels_action)
         self.check_kernels_action = check_kernels_action
@@ -322,6 +350,7 @@ class MainWindow(QMainWindow):
         # app itself.
         help_menu = self.menuBar().addMenu("&Help")
         about_action = QAction("&About SpaceMissionStudio", self)
+        about_action.setToolTip("Shows the installed version and licensing information.")
         about_action.triggered.connect(self.on_about)
         help_menu.addAction(about_action)
 

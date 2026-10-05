@@ -70,22 +70,43 @@ class GroundStationEditorDialog(QDialog):
         self.name_edit.textChanged.connect(self._on_name_changed)
         form.addRow("Name", self.name_edit)
         self.lat_deg = _spin(-90.0, 90.0, decimals=6, step=1.0, value=config.latitude_deg if config else 0.0)
+        self.lat_deg.setToolTip("Ground station's real latitude (0 = equator, +90 = north pole, -90 = south pole).")
         form.addRow("Latitude [deg]", self.lat_deg)
         self.lon_deg = _spin(-180.0, 180.0, decimals=6, step=1.0, value=config.longitude_deg if config else 0.0)
+        self.lon_deg.setToolTip("Ground station's real longitude (0 = Greenwich meridian, east positive).")
         form.addRow("Longitude [deg]", self.lon_deg)
         self.alt_m = _spin(-500.0, 9000.0, decimals=1, step=10.0, value=config.altitude_m if config else 0.0)
+        self.alt_m.setToolTip("Height above the reference ellipsoid (sea level) -- a small effect on access geometry.")
         form.addRow("Altitude [m]", self.alt_m)
         self.min_elev_deg = _spin(0.0, 89.9, decimals=2, step=1.0,
                                    value=config.min_elevation_deg if config else 10.0)
+        self.min_elev_deg.setToolTip(
+            "The lowest elevation angle above the local horizon counted as real, usable "
+            "access -- real terrain/buildings/RF-noise near the horizon mean a satellite just "
+            "above the geometric horizon usually isn't actually usable. Lower = longer, more "
+            "frequent access windows but at progressively worse link quality near the edges; "
+            "higher = shorter, higher-quality windows only. 5-10 deg is a common real-world "
+            "default."
+        )
         form.addRow("Minimum elevation mask [deg]", self.min_elev_deg)
         # Only meaningful for a spacecraft that also has an RF link budget
         # configured (see spacecraft_editor.py's "Power / link budget" tab
         # and schema.scenario.RFLinkConfig) -- harmless, unused otherwise.
         self.rx_antenna_gain_dbi = _spin(-50.0, 100.0, decimals=2, step=1.0,
                                           value=config.rx_antenna_gain_dbi if config else 45.0)
+        self.rx_antenna_gain_dbi.setToolTip(
+            "This ground station's receive antenna gain -- only used if a spacecraft also has "
+            "an RF link budget configured (Spacecraft editor's Power tab). Higher gain "
+            "improves the reported link margin for any spacecraft downlinking to this station."
+        )
         form.addRow("RX antenna gain [dBi] (for a link budget)", self.rx_antenna_gain_dbi)
         self.system_noise_temp_k = _spin(0.1, 1.0e5, decimals=2, step=10.0,
                                           value=config.system_noise_temp_k if config else 290.0)
+        self.system_noise_temp_k.setToolTip(
+            "This ground station's receiver system noise temperature -- same link-budget-only "
+            "scope as the antenna gain above. Lower (a quieter, better receiver) improves the "
+            "reported link margin."
+        )
         form.addRow("System noise temperature [K] (for a link budget)", self.system_noise_temp_k)
         layout.addLayout(form)
 

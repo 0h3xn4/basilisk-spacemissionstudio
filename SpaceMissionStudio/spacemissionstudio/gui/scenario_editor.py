@@ -127,6 +127,14 @@ class ScenarioEditorWidget(QWidget):
 
         self.epoch_edit = QLineEdit("2030-01-01T00:00:00")
         self.epoch_edit.setPlaceholderText("ISO 8601 UTC, e.g. 2030-01-01T00:00:00")
+        self.epoch_edit.setToolTip(
+            "The real calendar date/time (UTC) the simulation starts at -- 'sim time 0' in "
+            "every plot. This matters beyond just a label: it fixes where the Sun and Moon "
+            "actually are, so it affects eclipse timing, solar-panel power generation, Sun "
+            "-pointing/Sun-safe attitude modes, and (for a Sun-synchronous orbit) which RAAN "
+            "corresponds to a given local time of day. Must be ISO 8601 (as shown in the "
+            "placeholder) -- anything else fails validation."
+        )
         self.epoch_edit.textChanged.connect(self.changed)
         form.addRow("Epoch (UTC)", self.epoch_edit)
 
@@ -181,6 +189,13 @@ class ScenarioEditorWidget(QWidget):
         self._propagation_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         layout.addLayout(self._propagation_form)
         edit_button = QPushButton("Edit Propagation Setup...")
+        edit_button.setToolTip(
+            "Choose how the orbit is propagated: which gravity model and perturbations "
+            "(drag, third-body, SRP) are turned on, the numerical integrator, the simulated "
+            "duration, and the space-weather assumption behind the drag model. These settings "
+            "affect every spacecraft in this scenario, and more realism (e.g. a higher-degree "
+            "gravity field, more perturbations) costs more run time."
+        )
         edit_button.clicked.connect(self._on_edit_propagation_setup)
         layout.addWidget(edit_button)
         self._refresh_propagation_summary()

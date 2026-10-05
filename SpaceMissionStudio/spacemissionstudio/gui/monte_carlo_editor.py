@@ -97,24 +97,42 @@ class _DispersionEditorDialog(QDialog):
         form.addRow("Spacecraft", self.spacecraft_combo)
 
         self.quantity_combo = QComboBox()
+        self.quantity_combo.setToolTip(
+            "Which initial-condition quantity gets randomized, independently, on each Monte "
+            "Carlo run -- e.g. a real uncertainty in orbit insertion or initial attitude. Every "
+            "other dispersion on this spacecraft (if any) varies independently alongside it."
+        )
         self.quantity_combo.addItems(DISPERSION_QUANTITIES)
         self.quantity_combo.currentTextChanged.connect(self._refresh_kind_choices)
         form.addRow("Quantity", self.quantity_combo)
 
         self.kind_combo = QComboBox()
+        self.kind_combo.setToolTip(
+            "The probability distribution each run's random draw is taken from -- 'uniform' "
+            "needs Bounds below (every value in range equally likely); 'normal' needs Mean/Std "
+            "deviation below (a bell curve centered on Mean)."
+        )
         self.kind_combo.currentTextChanged.connect(self._on_kind_changed)
         form.addRow("Kind", self.kind_combo)
 
         self.bounds_lo_spin = _spin(-1.0e9, 1.0e9, decimals=6, value=0.0)
         self.bounds_hi_spin = _spin(-1.0e9, 1.0e9, decimals=6, value=1.0)
+        _bounds_tip = "The [low, high] range each run's uniformly-random draw is taken from, inclusive."
+        self.bounds_lo_spin.setToolTip(_bounds_tip)
+        self.bounds_hi_spin.setToolTip(_bounds_tip)
         self._bounds_row = QHBoxLayout()
         self._bounds_row.addWidget(self.bounds_lo_spin)
         self._bounds_row.addWidget(self.bounds_hi_spin)
         form.addRow("Bounds [lo, hi]", self._bounds_row)
 
         self.mean_spin = _spin(-1.0e9, 1.0e9, decimals=6, value=0.0)
+        self.mean_spin.setToolTip("The center of the normal (bell-curve) distribution each run draws from.")
         form.addRow("Mean", self.mean_spin)
         self.std_spin = _spin(0.0, 1.0e9, decimals=6, value=1.0)
+        self.std_spin.setToolTip(
+            "The spread of the normal distribution -- about 68% of runs land within one std "
+            "deviation of the mean, ~95% within two."
+        )
         form.addRow("Std deviation", self.std_spin)
         self._form = form
 
@@ -311,12 +329,23 @@ class MonteCarloGroupWidget(QGroupBox):
 
         form = QFormLayout()
         self.enabled_check = QCheckBox("Enabled")
+        self.enabled_check.setToolTip(
+            "Checking this ON runs this scenario repeatedly (Number of runs below), each time "
+            "with a fresh random draw for every dispersion configured below, instead of the "
+            "single ordinary run Run Simulation otherwise does -- for statistically "
+            "characterizing how sensitive the outcome is to real initial-condition uncertainty."
+        )
         self.enabled_check.toggled.connect(self.changed)
         form.addRow(self.enabled_check)
 
         self.num_runs_spin = QSpinBox()
         self.num_runs_spin.setRange(1, 1_000_000)
         self.num_runs_spin.setValue(10)
+        self.num_runs_spin.setToolTip(
+            "How many independent randomized runs to execute. More runs give a statistically "
+            "better-characterized spread of outcomes, at a roughly proportional cost in total "
+            "run time."
+        )
         self.num_runs_spin.valueChanged.connect(self.changed)
         form.addRow("Number of runs", self.num_runs_spin)
 

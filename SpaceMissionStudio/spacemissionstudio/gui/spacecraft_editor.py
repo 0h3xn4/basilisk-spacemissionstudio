@@ -251,6 +251,11 @@ class SpacecraftEditorDialog(QDialog):
         self.name_edit.textChanged.connect(self._on_name_changed)
         top_form.addRow("Name", self.name_edit)
         self.dry_mass_kg = _spin(0.001, 1.0e6, decimals=3, step=10.0, value=config.dry_mass_kg if config else 100.0)
+        self.dry_mass_kg.setToolTip(
+            "Spacecraft mass WITHOUT propellant (propellant for any thruster below is tracked "
+            "separately). Affects acceleration from any force (thrust, drag, SRP) -- a heavier "
+            "spacecraft responds less to the same force."
+        )
         top_form.addRow("Dry mass [kg]", self.dry_mass_kg)
         layout.addLayout(top_form)
 
@@ -261,6 +266,13 @@ class SpacecraftEditorDialog(QDialog):
         layout.addWidget(orbit_group)
 
         inertia_group = QGroupBox("Principal moments of inertia [kg*m^2] (off-diagonal terms fixed at 0)")
+        inertia_group.setToolTip(
+            "How the spacecraft's mass is distributed around its own body axes -- resistance to "
+            "being rotated about each axis, the rotational analog of mass. A larger value on an "
+            "axis means a slower response (and a larger commanded torque needed) for a given "
+            "attitude maneuver about that axis. Assumed diagonal (a 'principal axis' body frame, "
+            "no cross-coupling terms) -- the common simplifying assumption for a simple-shaped bus."
+        )
         inertia_form = QFormLayout(inertia_group)
         inertia0 = config.inertia_kg_m2 if config else [10.0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 10.0]
         self.ixx = _spin(0.001, 1.0e8, decimals=3, step=1.0, value=inertia0[0])
@@ -289,26 +301,62 @@ class SpacecraftEditorDialog(QDialog):
         drag_srp_group = QGroupBox("Atmospheric drag / solar radiation pressure")
         drag_srp_form = QFormLayout(drag_srp_group)
         self.enable_drag_check = QCheckBox("Enable atmospheric drag")
+        self.enable_drag_check.setToolTip(
+            "Adds real air-drag deceleration (Basilisk's exponential or NRLMSISE-00 atmosphere "
+            "model, set in Propagation setup) -- the dominant force shrinking a LEO orbit over "
+            "time. Negligible above ~800-1000 km; matters a lot below ~500 km. Turning this on "
+            "with no station-keeping configured means the orbit will genuinely decay over the run."
+        )
         self.enable_drag_check.setChecked(config.enable_drag if config else False)
         drag_srp_form.addRow(self.enable_drag_check)
         self.drag_coeff = _spin(0.1, 10.0, decimals=3, step=0.1,
                                  value=config.drag_coeff if config else SpacecraftConfig.drag_coeff)
+        self.drag_coeff.setToolTip(
+            "Dimensionless drag coefficient (Cd) -- how efficiently the spacecraft's shape "
+            "converts the local atmosphere into drag force. ~2.0-2.2 is a common default for a "
+            "generic convex bus; a real value needs a shape-specific aerodynamic analysis."
+        )
         drag_srp_form.addRow("Drag coefficient [-]", self.drag_coeff)
         self.drag_area_m2 = _spin(0.0001, 1.0e6, decimals=4, step=0.1,
                                    value=config.drag_area_m2 if config else SpacecraftConfig.drag_area_m2)
+        self.drag_area_m2.setToolTip(
+            "Cross-sectional area facing the oncoming atmosphere -- a flat-plate approximation, "
+            "not the spacecraft's full surface area. Bigger = more drag force = faster orbit decay."
+        )
         drag_srp_form.addRow("Drag cross-section area [m^2]", self.drag_area_m2)
         self.enable_srp_check = QCheckBox("Enable solar radiation pressure")
+        self.enable_srp_check.setToolTip(
+            "Adds the real, small push from sunlight photons reflecting/absorbing off the "
+            "spacecraft (Basilisk's radiationPressure model) -- automatically zero while the "
+            "spacecraft is in Earth's shadow. Usually a minor effect next to drag in LEO, but "
+            "the dominant long-term perturbation at GEO and beyond, where drag is negligible."
+        )
         self.enable_srp_check.setChecked(config.enable_srp if config else False)
         drag_srp_form.addRow(self.enable_srp_check)
         self.srp_coeff = _spin(0.0, 3.0, decimals=3, step=0.1,
                                 value=config.srp_coeff if config else SpacecraftConfig.srp_coeff)
+        self.srp_coeff.setToolTip(
+            "Reflectivity coefficient (Cr): 1.0 = a perfectly absorbing (black) surface, 2.0 = "
+            "a perfectly reflecting (mirror) surface -- a reflecting surface feels roughly twice "
+            "the force for the same cross-section, since the photon's momentum reverses instead "
+            "of just stopping."
+        )
         drag_srp_form.addRow("SRP reflectivity coefficient [-]", self.srp_coeff)
         self.srp_area_m2 = _spin(0.0001, 1.0e6, decimals=4, step=0.1,
                                   value=config.srp_area_m2 if config else SpacecraftConfig.srp_area_m2)
+        self.srp_area_m2.setToolTip(
+            "Cross-sectional area facing the Sun -- a flat-plate approximation, same idea as the "
+            "drag area above but for sunlight pressure instead of atmosphere."
+        )
         drag_srp_form.addRow("SRP cross-section area [m^2]", self.srp_area_m2)
         layout.addWidget(drag_srp_group)
 
         attitude_group = QGroupBox("Initial attitude / body rate")
+        attitude_group.setToolTip(
+            "The spacecraft's starting orientation and spin rate at the epoch -- only matters "
+            "if 'Full attitude' mode is selected (rotational dynamics aren't simulated in "
+            "'Orbit only' mode, so these fields are ignored there)."
+        )
         attitude_form = QFormLayout(attitude_group)
         sigma0 = config.sigma_bn_init if config else [0.0, 0.0, 0.0]
         omega0 = config.omega_bn_b_init_rad_s if config else [0.0, 0.0, 0.0]
@@ -318,6 +366,24 @@ class SpacecraftEditorDialog(QDialog):
         self.omega1 = _spin(-10.0, 10.0, decimals=6, step=0.001, value=omega0[0])
         self.omega2 = _spin(-10.0, 10.0, decimals=6, step=0.001, value=omega0[1])
         self.omega3 = _spin(-10.0, 10.0, decimals=6, step=0.001, value=omega0[2])
+        _sigma_tip = (
+            "Starting attitude, as a Modified Rodrigues Parameter (MRP) set -- Basilisk's own "
+            "compact 3-number attitude representation (no gimbal lock, unlike Euler angles; no "
+            "redundant 4th component, unlike quaternions). All zeros means the body frame starts "
+            "exactly aligned with the inertial frame. A magnitude close to 1 means close to a "
+            "180 deg rotation; MRPs switch to an equivalent 'shadow set' past that to stay "
+            "numerically well-behaved, which is why the range here is capped at +/-1."
+        )
+        for box in (self.sigma1, self.sigma2, self.sigma3):
+            box.setToolTip(_sigma_tip)
+        _omega_tip = (
+            "Starting angular velocity about each BODY axis (not inertial) -- how fast the "
+            "spacecraft is tumbling/spinning at the epoch. All zeros means it starts perfectly "
+            "at rest relative to inertial space. A nonzero value here is exactly how a "
+            "'detumble' scenario is set up: start fast, watch the chosen FSW mode slow it down."
+        )
+        for box in (self.omega1, self.omega2, self.omega3):
+            box.setToolTip(_omega_tip)
         attitude_form.addRow("sigma_BN [-] (3 components)",
                               _hbox(self.sigma1, self.sigma2, self.sigma3))
         attitude_form.addRow("omega_BN_B [rad/s] (3 components)",
@@ -348,6 +414,14 @@ class SpacecraftEditorDialog(QDialog):
         fsw_layout = QVBoxLayout(fsw_tab)
         fsw_form = QFormLayout()
         self.fsw_mode_combo = QComboBox()
+        self.fsw_mode_combo.setToolTip(
+            "Which attitude-control GUIDANCE law this spacecraft runs -- what direction it "
+            "tries to point, computed fresh every tick from the real simulated state (never a "
+            "fixed, pre-scripted attitude). 'None' means no active control: the spacecraft "
+            "coasts under whatever torques are actually turned on (e.g. gravity gradient) with "
+            "no corrective response. The hint text below updates with what the selected mode "
+            "needs in 'FSW params' underneath."
+        )
         self.fsw_mode_combo.addItem(_FSW_MODE_NONE_LABEL, userData=None)
         for mode in SUPPORTED_FSW_MODES:
             self.fsw_mode_combo.addItem(mode, userData=mode)
@@ -401,24 +475,59 @@ class SpacecraftEditorDialog(QDialog):
         power0 = config.power if config else None
         self.power_group = QGroupBox("Power budget (solar panel + battery)")
         self.power_group.setCheckable(True)
+        self.power_group.setToolTip(
+            "Checking this ON simulates a real power system for this spacecraft: a solar panel "
+            "whose generation depends on the ACTUAL simulated panel-to-Sun angle and eclipse "
+            "state each tick (not an estimate), feeding a battery that other loads (bus power, "
+            "and comms power if comms_pointing is configured) draw down. Needed for the "
+            "Mission Dashboard/Results tab's battery-charge series to mean anything."
+        )
         self.power_group.setChecked(power0 is not None)
         power_form = QFormLayout(self.power_group)
         self.panel_area_m2 = _spin(0.001, 1.0e4, decimals=3, step=0.1,
                                     value=power0.panel_area_m2 if power0 else 1.2)
+        self.panel_area_m2.setToolTip("Total deployed solar panel area. Bigger = more generated power.")
         self.panel_efficiency = _spin(0.001, 1.0, decimals=4, step=0.01,
                                        value=power0.panel_efficiency if power0 else 0.29)
+        self.panel_efficiency.setToolTip(
+            "Fraction of incident sunlight actually converted to electrical power (0-1). "
+            "~0.28-0.30 is typical for real triple-junction space-grade solar cells."
+        )
         panel_normal0 = power0.panel_normal_b if power0 else [0.0, 0.0, 1.0]
         self.panel_normal_x = _spin(-1.0, 1.0, decimals=4, step=0.1, value=panel_normal0[0])
         self.panel_normal_y = _spin(-1.0, 1.0, decimals=4, step=0.1, value=panel_normal0[1])
         self.panel_normal_z = _spin(-1.0, 1.0, decimals=4, step=0.1, value=panel_normal0[2])
+        _panel_normal_tip = (
+            "Unit vector (in the spacecraft BODY frame) the panel's flat face points along. "
+            "Generated power depends on the real angle between this axis and the actual Sun "
+            "direction each tick -- straight at the Sun generates the most power, edge-on "
+            "generates none. This is also the natural axis for Sun-pointing/Sun-safe FSW modes "
+            "to aim at the Sun."
+        )
+        for box in (self.panel_normal_x, self.panel_normal_y, self.panel_normal_z):
+            box.setToolTip(_panel_normal_tip)
         self.bus_idle_power_w = _spin(0.0, 1.0e5, decimals=2, step=1.0,
                                        value=power0.bus_idle_power_w if power0 else PowerConfig.bus_idle_power_w)
+        self.bus_idle_power_w.setToolTip(
+            "A constant always-on load (avionics/thermal/ADCS housekeeping) that drains the "
+            "battery continuously, day and night, regardless of what the panel is generating."
+        )
         self.battery_capacity_wh = _spin(0.001, 1.0e6, decimals=2, step=10.0,
                                           value=power0.battery_capacity_wh if power0
                                           else PowerConfig.battery_capacity_wh)
+        self.battery_capacity_wh.setToolTip(
+            "Total energy the battery can hold. A smaller capacity means the state-of-charge "
+            "swings faster and further during each eclipse -- watch for it hitting 0% in the "
+            "Results tab if this is set too small for the load."
+        )
         self.battery_initial_soc = _spin(0.0, 1.0, decimals=4, step=0.05,
                                           value=power0.battery_initial_soc if power0
                                           else PowerConfig.battery_initial_soc)
+        self.battery_initial_soc.setToolTip(
+            "Battery charge level at the epoch, as a fraction of capacity above (1.0 = fully "
+            "charged, 0.0 = fully depleted). Only affects the starting point -- the simulated "
+            "charge/discharge cycle afterward is entirely real generation minus real loads."
+        )
         power_form.addRow("Panel area [m^2]", self.panel_area_m2)
         power_form.addRow("Panel efficiency [-]", self.panel_efficiency)
         power_form.addRow("Panel normal (body frame, 3 components)",
@@ -431,16 +540,54 @@ class SpacecraftEditorDialog(QDialog):
         sk0 = config.station_keeping if config else None
         self.station_keeping_group = QGroupBox("Station keeping (altitude maintenance, delta-V + fuel tracking)")
         self.station_keeping_group.setCheckable(True)
+        self.station_keeping_group.setToolTip(
+            "Checking this ON adds an automatic controller that fires a low-thrust reboost burn "
+            "whenever this spacecraft's altitude decays too far below target, holding it there "
+            "and tracking the delta-V/propellant spent doing so. Needs something to actually be "
+            "shrinking the orbit to have any visible effect -- turn on 'Enable atmospheric drag' "
+            "above too, or this will simply never fire."
+        )
         self.station_keeping_group.setChecked(sk0 is not None)
         sk_form = QFormLayout(self.station_keeping_group)
         self.sk_target_altitude_km = _spin(0.001, 1.0e6, decimals=3, step=10.0,
                                             value=sk0.target_altitude_km if sk0 else 500.0)
+        self.sk_target_altitude_km.setToolTip(
+            "Altitude above the central body's surface this controller tries to hold the "
+            "spacecraft at, once decay has pulled it down by the deadband below."
+        )
         self.sk_deadband_km = _spin(0.001, 1.0e5, decimals=3, step=0.5, value=sk0.deadband_km if sk0 else 1.0)
+        self.sk_deadband_km.setToolTip(
+            "How far altitude is allowed to decay below the target before a reboost burn "
+            "starts (simple deadband/hysteresis control, not a continuous correction). "
+            "Smaller = more frequent, smaller burns; larger = the orbit sags further between "
+            "burns, closer to sawtooth decay/reboost."
+        )
         self.sk_thrust_n = _spin(1.0e-6, 1.0e4, decimals=6, step=0.001, value=sk0.thrust_n if sk0 else 0.01)
+        self.sk_thrust_n.setToolTip(
+            "Reboost thruster's thrust level while actively firing (prograde, along the "
+            "velocity direction). Higher thrust restores altitude faster but burns propellant "
+            "faster for the same delta-V (see Isp below for the actual trade)."
+        )
         self.sk_isp_s = _spin(1.0, 1.0e5, decimals=1, step=10.0, value=sk0.isp_s if sk0 else 1500.0)
+        self.sk_isp_s.setToolTip(
+            "Specific impulse -- the thruster's propellant efficiency (effective exhaust "
+            "velocity / g0). Higher Isp means less propellant burned for the same delta-V "
+            "(~1500-2000 s is typical for an electric thruster; ~200-300 s for chemical)."
+        )
         self.sk_propellant_kg = _spin(0.0, 1.0e5, decimals=3, step=0.1, value=sk0.propellant_kg if sk0 else 2.0)
+        self.sk_propellant_kg.setToolTip(
+            "Propellant mass available at the epoch, burned down by the rocket equation as "
+            "reboost burns fire. Once depleted, this controller stops firing and the orbit is "
+            "free to decay -- watch for that in the Results tab if the run is long enough."
+        )
         self.sk_eclipse_sunlit_threshold = _spin(0.001, 1.0, decimals=4, step=0.01,
                                                    value=sk0.eclipse_sunlit_threshold if sk0 else 0.99)
+        self.sk_eclipse_sunlit_threshold.setToolTip(
+            "The real simulated shadow (eclipse) factor must be at or above this before a "
+            "reboost burn is allowed to fire -- a stand-in for a solar-electric bus that can't "
+            "run its thruster off battery alone during eclipse. 1.0 = must be in full sunlight; "
+            "lower values tolerate partial shadow (e.g. penumbra)."
+        )
         sk_form.addRow("Target altitude [km]", self.sk_target_altitude_km)
         sk_form.addRow("Deadband below target [km]", self.sk_deadband_km)
         sk_form.addRow("Reboost thrust [N]", self.sk_thrust_n)
@@ -458,6 +605,13 @@ class SpacecraftEditorDialog(QDialog):
         ct0 = config.constant_thrust if config else None
         self.constant_thrust_group = QGroupBox("Constant thrust (continuous, orbit-frame-relative)")
         self.constant_thrust_group.setCheckable(True)
+        self.constant_thrust_group.setToolTip(
+            "Checking this ON fires a continuous, always-on thruster whose direction is fixed "
+            "relative to the orbit (not a fixed inertial direction, so it doesn't drift as the "
+            "spacecraft moves) -- e.g. a constant prograde or out-of-plane push, with its own "
+            "independent delta-V/propellant budget. Works in either simulation mode (no "
+            "attitude model needed), unlike the station-keeping controller above."
+        )
         self.constant_thrust_group.setChecked(ct0 is not None)
         ct_form = QFormLayout(self.constant_thrust_group)
         self.ct_frame_combo = QComboBox()
@@ -476,13 +630,31 @@ class SpacecraftEditorDialog(QDialog):
         self.ct_dir_x = _spin(-1.0, 1.0, decimals=6, step=0.1, value=ct_dir0[0])
         self.ct_dir_y = _spin(-1.0, 1.0, decimals=6, step=0.1, value=ct_dir0[1])
         self.ct_dir_z = _spin(-1.0, 1.0, decimals=6, step=0.1, value=ct_dir0[2])
+        _ct_dir_tip = (
+            "Unit vector giving the thrust direction, in the rotating Frame selected above -- "
+            "re-evaluated every tick from the spacecraft's current state, so this stays e.g. "
+            "'always prograde' rather than drifting the way a fixed inertial vector would. "
+            "[1,0,0] in VNB is pure prograde (raises the orbit); [0,0,1] in either frame is "
+            "pure out-of-plane (changes inclination/RAAN, not altitude)."
+        )
+        for box in (self.ct_dir_x, self.ct_dir_y, self.ct_dir_z):
+            box.setToolTip(_ct_dir_tip)
         ct_form.addRow("Direction [-] (3 components, in Frame above)",
                         _hbox(self.ct_dir_x, self.ct_dir_y, self.ct_dir_z))
         self.ct_thrust_n = _spin(1.0e-6, 1.0e4, decimals=6, step=0.001, value=ct0.thrust_n if ct0 else 0.01)
+        self.ct_thrust_n.setToolTip("Constant thrust magnitude, always firing in Direction above.")
         ct_form.addRow("Thrust [N]", self.ct_thrust_n)
         self.ct_isp_s = _spin(1.0, 1.0e5, decimals=1, step=10.0, value=ct0.isp_s if ct0 else 1500.0)
+        self.ct_isp_s.setToolTip(
+            "Specific impulse -- propellant efficiency (effective exhaust velocity / g0). "
+            "Higher Isp burns less propellant for the same thrust/duration."
+        )
         ct_form.addRow("Thruster Isp [s]", self.ct_isp_s)
         self.ct_propellant_kg = _spin(0.0, 1.0e5, decimals=3, step=0.1, value=ct0.propellant_kg if ct0 else 2.0)
+        self.ct_propellant_kg.setToolTip(
+            "Propellant mass available at the epoch -- once depleted (by the rocket equation, "
+            "tracked every tick), this thruster stops firing on its own."
+        )
         ct_form.addRow("Propellant available [kg]", self.ct_propellant_kg)
         power_layout.addWidget(self.constant_thrust_group)
 
@@ -492,10 +664,25 @@ class SpacecraftEditorDialog(QDialog):
         pk0 = config.phasing_keeping if config else None
         self.phasing_keeping_group = QGroupBox("Phasing keeping (constellation-wide, vs. a chief spacecraft)")
         self.phasing_keeping_group.setCheckable(True)
+        self.phasing_keeping_group.setToolTip(
+            "Checking this ON holds this spacecraft's along-track spacing from a 'chief' "
+            "spacecraft at a target distance, via an occasional drift-orbit maneuver (a small, "
+            "temporary altitude offset, let it drift, then a restoring burn) -- useful for "
+            "spreading satellites evenly around the SAME orbital plane, e.g. a Walker "
+            "constellation. REQUIRES 'Station keeping' above to also be enabled: both share "
+            "one physical thruster/propellant tank, with altitude-keeping taking priority if "
+            "both want to fire on the same tick. Needs a chief spacecraft in the same scenario "
+            "sharing this one's orbital plane and altitude."
+        )
         self.phasing_keeping_group.setChecked(pk0 is not None)
         pk_form = QFormLayout(self.phasing_keeping_group)
 
         self.pk_chief_combo = QComboBox()
+        self.pk_chief_combo.setToolTip(
+            "The reference spacecraft this one's along-track spacing is measured and held "
+            "relative to. Must share this spacecraft's orbital plane and altitude for the "
+            "measurement to mean anything."
+        )
         if self._other_spacecraft_names:
             for other_name in self._other_spacecraft_names:
                 self.pk_chief_combo.addItem(other_name, userData=other_name)
@@ -508,25 +695,62 @@ class SpacecraftEditorDialog(QDialog):
             ", ".join(f"{d:g}" for d in pk0.target_separation_km) if pk0 else "100"
         )
         self.pk_target_separation_edit.setPlaceholderText("e.g. 1000, 500, 100 (comma-separated, km)")
+        self.pk_target_separation_edit.setToolTip(
+            "One or more along-track distances [km] to hold ahead of the chief. A single "
+            "number holds that spacing for the whole run. Multiple, comma-separated numbers "
+            "step through in order every 'Reconfiguration interval' below (e.g. "
+            "'1000, 500, 100' tightens the formation in stages, holding at 100 km once the "
+            "list is exhausted) -- useful for simulating a constellation that closes up over time."
+        )
         pk_form.addRow("Target separation(s) [km]", self.pk_target_separation_edit)
         self.pk_reconfiguration_interval_days = _spin(
             0.0, 1.0e5, decimals=2, step=1.0, value=pk0.reconfiguration_interval_days if pk0 else 90.0)
+        self.pk_reconfiguration_interval_days.setToolTip(
+            "How often the target separation advances to the next entry in the list above. "
+            "Ignored (no effect) when only one separation is given."
+        )
         pk_form.addRow("Reconfiguration interval [days] (only if >1 separation above)",
                         self.pk_reconfiguration_interval_days)
         self.pk_tolerance_fraction = _spin(0.001, 1.0, decimals=4, step=0.01,
                                             value=pk0.tolerance_fraction if pk0 else 0.10)
+        self.pk_tolerance_fraction.setToolTip(
+            "How far the real separation must drift off target (as a fraction of the current "
+            "target) before a correction maneuver starts. Wider = fewer, larger corrections; "
+            "narrower = tighter formation-keeping at the cost of firing more often -- there's "
+            "no single right answer, it depends on the mission's own tolerance for drift."
+        )
         pk_form.addRow("Trigger tolerance [-] (fraction of target)", self.pk_tolerance_fraction)
         self.pk_restore_tolerance_fraction = _spin(0.001, 1.0, decimals=4, step=0.01,
                                                      value=pk0.restore_tolerance_fraction if pk0 else 0.02)
+        self.pk_restore_tolerance_fraction.setToolTip(
+            "Once a correction is underway, how close to the target counts as 'close enough, "
+            "stop drifting' and settle back onto the target orbit -- tighter than the trigger "
+            "tolerance above, since this is the actual precision the correction aims for."
+        )
         pk_form.addRow("Restore tolerance [-] (fraction of target)", self.pk_restore_tolerance_fraction)
         self.pk_correction_window_days = _spin(0.1, 1.0e4, decimals=2, step=1.0,
                                                 value=pk0.correction_window_days if pk0 else 21.0)
+        self.pk_correction_window_days.setToolTip(
+            "Target time to null a freshly-triggered phasing error -- sets how aggressive the "
+            "temporary drift-orbit altitude offset needs to be (a shorter window needs a "
+            "bigger, faster offset)."
+        )
         pk_form.addRow("Correction window [days]", self.pk_correction_window_days)
         self.pk_max_drift_days = _spin(0.1, 1.0e4, decimals=2, step=1.0,
                                         value=pk0.max_drift_days if pk0 else 90.0)
+        self.pk_max_drift_days.setToolTip(
+            "Safety cap: the drift-orbit coast phase is never allowed to run longer than this, "
+            "even if the correction hasn't finished -- bounds how long this spacecraft can "
+            "spend off its nominal orbit at once."
+        )
         pk_form.addRow("Max drift coast [days]", self.pk_max_drift_days)
         self.pk_max_delta_sma_km = _spin(0.001, 1.0e4, decimals=4, step=0.1,
                                           value=pk0.max_delta_semi_major_axis_km if pk0 else 3.0)
+        self.pk_max_delta_sma_km.setToolTip(
+            "Safety clamp: the temporary semi-major-axis offset used to drift into position is "
+            "never allowed to exceed this -- bounds how far the orbit is allowed to change "
+            "during a correction."
+        )
         pk_form.addRow("Max drift-orbit SMA offset [km]", self.pk_max_delta_sma_km)
         if pk0 is not None:
             chief_index = self.pk_chief_combo.findData(pk0.chief_spacecraft)
@@ -559,15 +783,40 @@ class SpacecraftEditorDialog(QDialog):
         md0 = config.momentum_dumping if config else None
         self.momentum_dumping_group = QGroupBox("Momentum dumping (RW desaturation via thrusters)")
         self.momentum_dumping_group.setCheckable(True)
+        self.momentum_dumping_group.setToolTip(
+            "Checking this ON fires thrusters in short pulses to bleed off reaction-wheel "
+            "momentum whenever it builds up too far -- wheels alone can't shed momentum they've "
+            "absorbed from persistent external torques (e.g. gravity gradient), so without this "
+            "they'd eventually saturate and lose control authority. Thrusters here are used ONLY "
+            "for desaturation, never for primary pointing (that stays on the reaction wheels). "
+            "REQUIRES both 'reaction_wheel' and 'thruster' actuators configured on this "
+            "spacecraft's Sensors/actuators tab."
+        )
         self.momentum_dumping_group.setChecked(md0 is not None)
         md_form = QFormLayout(self.momentum_dumping_group)
         self.md_hs_max = _spin(1.0e-6, 1.0e6, decimals=3, step=1.0, value=md0.hs_max if md0 else 50.0)
+        self.md_hs_max.setToolTip(
+            "Total reaction-wheel angular momentum magnitude that triggers a desaturation "
+            "burn. Set this somewhat BELOW the sum of the wheels' own momentum capacities "
+            "(their maxMomentum params on the Sensors/actuators tab), so desaturation fires "
+            "before any wheel actually saturates, not after."
+        )
         md_form.addRow("Momentum threshold hs_max [N*m*s]", self.md_hs_max)
         self.md_thr_min_fire_time = _spin(1.0e-4, 100.0, decimals=4, step=0.01,
                                            value=md0.thr_min_fire_time if md0 else 0.02)
+        self.md_thr_min_fire_time.setToolTip(
+            "Shortest thruster pulse this controller will command -- a real thruster valve "
+            "can't open for an arbitrarily short time, so a commanded pulse shorter than this "
+            "gets rounded up (or skipped)."
+        )
         md_form.addRow("Thruster firing resolution [s]", self.md_thr_min_fire_time)
         self.md_max_counter_value = _spin(1, 100000, decimals=0, step=10,
                                            value=md0.max_counter_value if md0 else 100)
+        self.md_max_counter_value.setToolTip(
+            "Minimum number of attitude-control cycles to wait between desaturation firings, "
+            "even if the momentum threshold is already crossed -- avoids firing thrusters so "
+            "often that they fight the reaction wheels' own control authority."
+        )
         md_form.addRow("Control periods between firings [-]", self.md_max_counter_value)
         power_layout.addWidget(self.momentum_dumping_group)
 
@@ -584,6 +833,15 @@ class SpacecraftEditorDialog(QDialog):
             "Magnetic momentum management (RW desaturation via torque rods)"
         )
         self.magnetic_momentum_management_group.setCheckable(True)
+        self.magnetic_momentum_management_group.setToolTip(
+            "Checking this ON continuously (not in discrete bursts, unlike 'Momentum dumping' "
+            "above) biases the reaction wheels' commanded motor torque to drive each wheel's "
+            "speed toward a target bias, using whatever magnetic torque Earth's real geomagnetic "
+            "field (the WMM model) allows at the spacecraft's current position. The alternative "
+            "desaturation strategy to 'Momentum dumping' -- use ONE or the other, never both. "
+            "REQUIRES both 'reaction_wheel' and 'magnetic_torque_rod' actuators on this "
+            "spacecraft, and an Earth-centered scenario (the WMM field model is Earth-only)."
+        )
         self.magnetic_momentum_management_group.setChecked(mmm0 is not None)
         mmm_form = QFormLayout(self.magnetic_momentum_management_group)
         self.mmm_wheel_speed_biases_edit = QLineEdit(
@@ -592,8 +850,18 @@ class SpacecraftEditorDialog(QDialog):
         self.mmm_wheel_speed_biases_edit.setPlaceholderText(
             "e.g. 83.8, 62.8 (comma-separated, rad/s, one per reaction_wheel actuator)"
         )
+        self.mmm_wheel_speed_biases_edit.setToolTip(
+            "The target speed this controller continuously pulls each reaction wheel toward -- "
+            "exactly ONE entry per 'reaction_wheel' actuator on the Sensors/actuators tab, in "
+            "the SAME order they're listed there (matched by position, not by name)."
+        )
         mmm_form.addRow("Wheel speed biases [rad/s]", self.mmm_wheel_speed_biases_edit)
         self.mmm_c_gain = _spin(1.0e-9, 1.0e6, decimals=6, step=0.001, value=mmm0.c_gain if mmm0 else 0.003)
+        self.mmm_c_gain.setToolTip(
+            "Control gain mapping each wheel's speed error (from its bias above) to a desired "
+            "magnetic torque. Higher = more aggressively pulls wheel speed toward the bias, at "
+            "the cost of a more aggressive torque-rod command."
+        )
         mmm_form.addRow("Control gain c_gain [-]", self.mmm_c_gain)
         power_layout.addWidget(self.magnetic_momentum_management_group)
 
@@ -604,19 +872,41 @@ class SpacecraftEditorDialog(QDialog):
         ft0 = config.fuel_tank if config else None
         self.fuel_tank_group = QGroupBox("Fuel tank (real propellant depletion for thrusters)")
         self.fuel_tank_group.setCheckable(True)
+        self.fuel_tank_group.setToolTip(
+            "Checking this ON adds a real Basilisk fuel-tank state effector: any 'thruster' "
+            "actuator on this spacecraft draws propellant from it as it fires, and the "
+            "spacecraft's own simulated mass (and center of mass, since the tank has a "
+            "position) decreases as the tank drains -- unlike station-keeping/constant-thrust's "
+            "own simplified propellant bookkeeping above, this feeds back into the real "
+            "simulated dynamics. REQUIRES a 'thruster' actuator configured on the "
+            "Sensors/actuators tab."
+        )
         self.fuel_tank_group.setChecked(ft0 is not None)
         ft_form = QFormLayout(self.fuel_tank_group)
         self.ft_propellant_mass = _spin(0.0, 1.0e6, decimals=3, step=1.0,
                                           value=ft0.propellant_mass_kg if ft0 else 10.0)
+        self.ft_propellant_mass.setToolTip("Propellant mass actually loaded in the tank at the epoch.")
         ft_form.addRow("Propellant mass [kg]", self.ft_propellant_mass)
         self.ft_max_propellant_mass = _spin(1.0e-6, 1.0e6, decimals=3, step=1.0,
                                               value=ft0.max_propellant_mass_kg if ft0 else 20.0)
+        self.ft_max_propellant_mass.setToolTip(
+            "The tank's physical capacity -- must be at least as large as the propellant mass "
+            "above (you can load a partially-full tank, never more than it can hold)."
+        )
         ft_form.addRow("Tank capacity [kg]", self.ft_max_propellant_mass)
         tank_pos = ft0.tank_position_b_m if ft0 else [0.0, 0.0, 0.0]
         tank_pos_row = QHBoxLayout()
         self.ft_tank_pos_x = _spin(-1.0e3, 1.0e3, decimals=3, step=0.1, value=tank_pos[0])
         self.ft_tank_pos_y = _spin(-1.0e3, 1.0e3, decimals=3, step=0.1, value=tank_pos[1])
         self.ft_tank_pos_z = _spin(-1.0e3, 1.0e3, decimals=3, step=0.1, value=tank_pos[2])
+        _ft_tank_pos_tip = (
+            "Where the tank physically sits, in the spacecraft body frame (origin at the body "
+            "reference point). As the tank drains, the spacecraft's real center of mass shifts "
+            "slightly toward or away from this position -- usually a small effect, more "
+            "noticeable for a large tank far from the body's own center."
+        )
+        for box in (self.ft_tank_pos_x, self.ft_tank_pos_y, self.ft_tank_pos_z):
+            box.setToolTip(_ft_tank_pos_tip)
         tank_pos_row.addWidget(self.ft_tank_pos_x)
         tank_pos_row.addWidget(self.ft_tank_pos_y)
         tank_pos_row.addWidget(self.ft_tank_pos_z)
@@ -628,20 +918,55 @@ class SpacecraftEditorDialog(QDialog):
         rf_link0 = config.rf_link if config else None
         self.rf_link_group = QGroupBox("Downlink RF link budget (margin ESTIMATE only)")
         self.rf_link_group.setCheckable(True)
+        self.rf_link_group.setToolTip(
+            "Checking this ON computes a reported downlink Eb/N0 margin estimate (a simplified "
+            "free-space-path-loss budget, evaluated against the real simulated slant range to "
+            "each configured ground station) -- for REPORTING only: it does NOT feed back into "
+            "the simulated physics (no data-rate/duty-cycle simulation). A positive margin means "
+            "the link closes with that much headroom; negative means it doesn't close at that "
+            "range with these numbers."
+        )
         self.rf_link_group.setChecked(rf_link0 is not None)
         rf_form = QFormLayout(self.rf_link_group)
         self.tx_power_w = _spin(0.001, 1.0e4, decimals=3, step=1.0, value=rf_link0.tx_power_w if rf_link0 else 15.0)
+        self.tx_power_w.setToolTip("Downlink transmitter's RF output power. Higher = more margin, longer range.")
         self.frequency_ghz = _spin(0.001, 1.0e3, decimals=6, step=0.1,
                                     value=(rf_link0.frequency_hz / 1.0e9) if rf_link0 else 8.2)
+        self.frequency_ghz.setToolTip(
+            "Downlink carrier frequency. Higher frequencies suffer more free-space path loss "
+            "for the same distance, but typically allow a higher-gain antenna in the same "
+            "physical size (common bands: ~2.2 GHz S-band, ~8.2 GHz X-band)."
+        )
         self.data_rate_mbps = _spin(1.0e-6, 1.0e6, decimals=6, step=1.0,
                                      value=(rf_link0.data_rate_bps / 1.0e6) if rf_link0 else 1.0)
+        self.data_rate_mbps.setToolTip(
+            "Downlink data rate. Higher data rate spreads the same received power over more "
+            "bits per second, which REDUCES the margin -- there's a direct trade between "
+            "downlink speed and link robustness."
+        )
         self.tx_antenna_gain_dbi = _spin(-50.0, 100.0, decimals=2, step=1.0,
                                           value=rf_link0.tx_antenna_gain_dbi if rf_link0
                                           else RFLinkConfig.tx_antenna_gain_dbi)
+        self.tx_antenna_gain_dbi.setToolTip(
+            "Spacecraft downlink antenna's gain -- how much it concentrates its RF power toward "
+            "the ground station rather than radiating it evenly in all directions. 0 dBi is an "
+            "idealized unity-gain (omnidirectional) antenna."
+        )
         self.rf_implementation_loss_db = _spin(0.0, 50.0, decimals=2, step=0.5,
                                                  value=rf_link0.implementation_loss_db if rf_link0 else 2.0)
+        self.rf_implementation_loss_db.setToolTip(
+            "A lumped catch-all loss (pointing error, polarization mismatch, hardware "
+            "imperfection, etc.) subtracted from the link budget as a fixed penalty -- ~2 dB is "
+            "a common rough default when these aren't modeled individually."
+        )
         self.required_ebno_db = _spin(-50.0, 50.0, decimals=2, step=0.5,
                                        value=rf_link0.required_ebno_db if rf_link0 else 6.0)
+        self.required_ebno_db.setToolTip(
+            "The minimum Eb/N0 (energy per bit over noise density) the ground receiver's "
+            "modulation and coding scheme needs to decode the signal reliably. The reported "
+            "margin is the ACTUAL computed Eb/N0 minus this number -- a more robust "
+            "modulation/coding scheme needs a lower number here and is easier to close."
+        )
         rf_form.addRow("TX power [W]", self.tx_power_w)
         rf_form.addRow("Carrier frequency [GHz]", self.frequency_ghz)
         rf_form.addRow("Data rate [Mbit/s]", self.data_rate_mbps)
@@ -680,6 +1005,11 @@ class SpacecraftEditorDialog(QDialog):
         path_row = QHBoxLayout()
         self.viz_model_path_edit = QLineEdit(model0.vizard_model_path if model0 and model0.vizard_model_path else "")
         self.viz_model_path_edit.setPlaceholderText("path to a .obj file, or CUBE / CYLINDER / SPHERE")
+        self.viz_model_path_edit.setToolTip(
+            "Replaces Vizard's default spacecraft icon (a plain cube) with this model instead -- "
+            "either a path to a real .obj 3D model file, or one of the built-in primitive "
+            "shapes (CUBE / CYLINDER / SPHERE)."
+        )
         path_row.addWidget(self.viz_model_path_edit)
         self.viz_model_browse_button = QPushButton("Browse...")
         self.viz_model_browse_button.clicked.connect(self._on_browse_viz_model)
@@ -690,6 +1020,9 @@ class SpacecraftEditorDialog(QDialog):
         self.viz_offset_x = _spin(-1.0e6, 1.0e6, decimals=4, step=0.1, value=offset0[0])
         self.viz_offset_y = _spin(-1.0e6, 1.0e6, decimals=4, step=0.1, value=offset0[1])
         self.viz_offset_z = _spin(-1.0e6, 1.0e6, decimals=4, step=0.1, value=offset0[2])
+        _viz_offset_tip = "Shifts the model's origin away from the spacecraft's body reference point, in the body frame."
+        for box in (self.viz_offset_x, self.viz_offset_y, self.viz_offset_z):
+            box.setToolTip(_viz_offset_tip)
         viz_model_form.addRow("Offset [m] (body frame, 3 components)",
                                _hbox(self.viz_offset_x, self.viz_offset_y, self.viz_offset_z))
 
@@ -697,6 +1030,13 @@ class SpacecraftEditorDialog(QDialog):
         self.viz_rotation_z = _spin(-360.0, 360.0, decimals=3, step=1.0, value=rot0[0])
         self.viz_rotation_y = _spin(-360.0, 360.0, decimals=3, step=1.0, value=rot0[1])
         self.viz_rotation_x = _spin(-360.0, 360.0, decimals=3, step=1.0, value=rot0[2])
+        _viz_rotation_tip = (
+            "Rotates the model relative to the body frame, applied as a 3-2-1 Euler sequence "
+            "(Z first, then Y, then X) -- use this if the model's own built-in orientation "
+            "doesn't already match the spacecraft's body axes."
+        )
+        for box in (self.viz_rotation_z, self.viz_rotation_y, self.viz_rotation_x):
+            box.setToolTip(_viz_rotation_tip)
         viz_model_form.addRow("Rotation [deg] (3-2-1 Euler: Z, Y, X)",
                                _hbox(self.viz_rotation_z, self.viz_rotation_y, self.viz_rotation_x))
 
@@ -704,6 +1044,9 @@ class SpacecraftEditorDialog(QDialog):
         self.viz_scale_x = _spin(0.0001, 1.0e6, decimals=4, step=0.1, value=scale0[0])
         self.viz_scale_y = _spin(0.0001, 1.0e6, decimals=4, step=0.1, value=scale0[1])
         self.viz_scale_z = _spin(0.0001, 1.0e6, decimals=4, step=0.1, value=scale0[2])
+        _viz_scale_tip = "Stretches/shrinks the model along each body axis -- 1.0 keeps its original, modeled size."
+        for box in (self.viz_scale_x, self.viz_scale_y, self.viz_scale_z):
+            box.setToolTip(_viz_scale_tip)
         viz_model_form.addRow("Scale [-] (body x, y, z axes, 3 components)",
                                _hbox(self.viz_scale_x, self.viz_scale_y, self.viz_scale_z))
 

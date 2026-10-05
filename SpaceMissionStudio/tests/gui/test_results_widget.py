@@ -288,6 +288,66 @@ def test_set_live_result_grows_the_plotted_data(widget):
     assert len(widget.figure.data[0].x) > first_trace_length
 
 
+def test_set_live_result_throttles_rapid_webview_redraws(widget, monkeypatch):
+    """Real user report: during a live-updating run, switching the Series
+    dropdown appeared to do nothing. Root cause: a fast-running scenario
+    fires set_live_result() chunks faster than a full QWebEngineView page
+    reload can settle, so redrawing on every single chunk left the view
+    permanently stuck mid-reload -- including while the user tried to
+    pick a different series. Rapid-fire chunks (as happens here, calling
+    set_live_result() back-to-back with no delay) must NOT each trigger
+    a real webview push; self.figure must still update every time
+    regardless (see test_set_live_result_grows_the_plotted_data above).
+    """
+    push_calls = []
+    monkeypatch.setattr(widget, "_push_figure_to_webview", lambda: push_calls.append(1))
+
+    widget.set_live_result(_sample_result_set(n=5))
+    assert push_calls == [1]  # the first chunk always pushes immediately
+
+    for n in (10, 15, 20, 25):
+        widget.set_live_result(_sample_result_set(n=n))
+
+    assert push_calls == [1]  # none of the rapid-fire follow-ups pushed
+    assert len(widget.figure.data[0].x) == 25  # but self.figure is still fully current
+
+
+def test_set_live_result_eventually_pushes_after_the_throttle_window(widget, qtbot, monkeypatch):
+    widget.set_live_result(_sample_result_set(n=5))
+
+    push_calls = []
+    monkeypatch.setattr(widget, "_push_figure_to_webview", lambda: push_calls.append(1))
+    qtbot.wait(350)  # real time past _LIVE_REDRAW_MIN_INTERVAL_MS (300ms)
+    widget.set_live_result(_sample_result_set(n=10))
+
+    assert push_calls == [1]
+
+
+def test_user_series_change_is_never_throttled_during_a_live_run(widget, monkeypatch):
+    """A user-initiated series change must redraw immediately even while
+    still inside a live run's throttle window -- switching series is
+    exactly the interaction the throttle must never block. Checked via
+    _push_figure_to_webview() actually being called (not a second
+    loadFinished wait -- a same-shaped page reload isn't guaranteed to
+    re-emit it differently from the first), matching
+    test_set_live_result_throttles_rapid_webview_redraws's own style.
+    """
+    widget.set_live_result(_sample_result_set(n=5))
+    first_series = widget.series_combo.currentText()
+    other_series = next(name for name in widget._result.series if name != first_series)
+
+    push_calls = []
+    monkeypatch.setattr(widget, "_push_figure_to_webview", lambda: push_calls.append(1))
+    # setCurrentIndex (not setCurrentText): the combo is editable, where
+    # setCurrentText only updates the line-edit's displayed text and
+    # relies on editingFinished (Enter/focus-loss) to sync currentIndex
+    # -- not what a real dropdown pick (this test's actual subject) does.
+    widget.series_combo.setCurrentIndex(widget.series_combo.findText(other_series))  # still inside the throttle window
+
+    assert widget.series_combo.currentText() == other_series
+    assert push_calls == [1]
+
+
 def test_position_series_plots_in_raw_meters(widget):
     """Regression guard for a real, explicit user request ("state vector
     elements shall be displayed in meters for position and m/s for

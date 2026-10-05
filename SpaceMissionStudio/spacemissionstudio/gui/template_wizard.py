@@ -1142,7 +1142,7 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
             WizardPageSpec(
                 title="Ground-station pass geometry",
                 intro="How easy it is for the spacecraft to acquire and hold a real, "
-                      "geometry-driven link with 'boulder-gs'.",
+                      "geometry-driven link with 'berlin-gs'.",
                 fields=[
                     WizardField(
                         "Minimum elevation", "The lowest elevation angle (above the local horizon) "
