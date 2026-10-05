@@ -84,6 +84,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ..engine.device_catalog import catalog_entries_for_kind
 from .feedback import clear_invalid, mark_invalid, show_toast
 
 
@@ -274,6 +275,48 @@ class _ItemEditorDialog(QDialog):
         self.hint_label.setStyleSheet("color: palette(mid);")
         layout.addWidget(self.hint_label)
 
+        # Direct user feedback: "the user should be able to either create
+        # their own sensor/actuator or select from a range of commonly
+        # used devices from the space industry. They must be ITAR free
+        # and available in europe." -- engine.device_catalog holds a
+        # small set of real, sourced, European-manufactured devices (see
+        # that module's own docstring for the sourcing/honesty
+        # discipline). Selecting one and clicking "Apply device preset"
+        # is just a faster path to the SAME fields "Reset to template"
+        # already fills -- never a separate/locked mode, so the result
+        # stays fully editable afterward like any other sensor/actuator
+        # here. Hidden entirely for a kind with no catalog entry yet
+        # (falls back to the ordinary custom editor silently, not an
+        # error).
+        self._catalog_container = QWidget()
+        catalog_layout = QVBoxLayout(self._catalog_container)
+        catalog_layout.setContentsMargins(0, 0, 0, 0)
+        catalog_row = QHBoxLayout()
+        catalog_row.addWidget(QLabel("Catalog"))
+        self.catalog_combo = QComboBox()
+        self.catalog_combo.setToolTip(
+            "A real, commercially available device for this Kind -- selecting one previews its real "
+            "specs and source below. Click \"Apply device preset\" to actually fill the fields with "
+            "it (same effect as \"Reset to template\", but with a real device's own numbers instead "
+            "of a generic example)."
+        )
+        self.catalog_combo.currentIndexChanged.connect(self._on_catalog_selection_changed)
+        catalog_row.addWidget(self.catalog_combo, 1)
+        self.apply_catalog_button = QPushButton("Apply device preset")
+        self.apply_catalog_button.setToolTip(
+            "Fill the fields above and the params box below with the selected catalog device's real "
+            "specs -- overwrites whatever is currently typed/set there, same as \"Reset to template\"."
+        )
+        self.apply_catalog_button.clicked.connect(self._on_apply_catalog_entry)
+        catalog_row.addWidget(self.apply_catalog_button)
+        catalog_layout.addLayout(catalog_row)
+        self.catalog_info_label = QLabel()
+        self.catalog_info_label.setWordWrap(True)
+        self.catalog_info_label.setStyleSheet("color: palette(mid);")
+        catalog_layout.addWidget(self.catalog_info_label)
+        layout.addWidget(self._catalog_container)
+        self._rebuild_catalog_row(self.kind_combo.currentText())
+
         # Vector-shaped params (nHat_B, gsHat_B, ...) get their own X/Y/Z
         # spin-box row instead of living inside the JSON params box -- see
         # this module's docstring. Rebuilt whenever Kind changes, since
@@ -361,6 +404,51 @@ class _ItemEditorDialog(QDialog):
     def _on_kind_changed(self, kind: str) -> None:
         self.hint_label.setText(_hint_text(kind))
         self._rebuild_vector_rows(kind)
+        self._rebuild_catalog_row(kind)
+
+    def _rebuild_catalog_row(self, kind: str) -> None:
+        entries = catalog_entries_for_kind(kind)
+        self._catalog_container.setVisible(bool(entries))
+        self.catalog_combo.blockSignals(True)
+        self.catalog_combo.clear()
+        self.catalog_combo.addItem("-- custom (no preset) --")
+        for entry in entries:
+            self.catalog_combo.addItem(entry.display_name)
+        self.catalog_combo.setCurrentIndex(0)
+        self.catalog_combo.blockSignals(False)
+        self._current_catalog_entries = entries
+        self._on_catalog_selection_changed(0)
+
+    def _on_catalog_selection_changed(self, index: int) -> None:
+        entries = getattr(self, "_current_catalog_entries", [])
+        if index <= 0 or index - 1 >= len(entries):
+            self.catalog_info_label.setText("")
+            self.apply_catalog_button.setEnabled(False)
+            return
+        entry = entries[index - 1]
+        self.apply_catalog_button.setEnabled(True)
+        self.catalog_info_label.setText(
+            f"{entry.description}\n\nSource: {entry.source_url}\n\nExport control: {entry.itar_free_note}"
+            + (f"\n\n{entry.notes}" if entry.notes else "")
+        )
+
+    def _on_apply_catalog_entry(self) -> None:
+        entries = getattr(self, "_current_catalog_entries", [])
+        index = self.catalog_combo.currentIndex()
+        if index <= 0 or index - 1 >= len(entries):
+            return
+        entry = entries[index - 1]
+        kind = entry.kind
+        for spec in _vector_specs(kind):
+            x, y, z = self._vector_boxes[spec.key]
+            value = entry.params.get(spec.key, spec.example)
+            x.setValue(value[0])
+            y.setValue(value[1])
+            z.setValue(value[2])
+        vector_keys = {spec.key for spec in _vector_specs(kind)}
+        non_vector_params = {k: v for k, v in entry.params.items() if k not in vector_keys}
+        self.params_edit.setPlainText(json.dumps(non_vector_params, indent=2))
+        show_toast(self.window(), f"Applied {entry.display_name} preset", kind="info")
 
     def _on_normalize(self, key: str) -> None:
         x, y, z = self._vector_boxes[key]

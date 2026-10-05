@@ -375,3 +375,141 @@ def test_item_editor_dialog_resizes_to_its_own_sizehint_on_construction(qtbot):
     qtbot.addWidget(dialog)
 
     assert dialog.size() == dialog.sizeHint()
+
+
+# -- Device catalog picker: direct user feedback -- "the user should be
+# able to either create their own sensor/actuator or select from a range
+# of commonly used devices from the space industry" --------------------
+
+def test_catalog_row_is_visible_for_a_kind_with_entries(qtbot):
+    from spacemissionstudio.engine.device_catalog import catalog_entries_for_kind
+    from spacemissionstudio.gui.sensor_actuator_editor import _ItemEditorDialog
+    from spacemissionstudio.schema.scenario import SUPPORTED_SENSOR_KINDS, SensorConfig
+
+    dialog = _ItemEditorDialog(SensorConfig, SUPPORTED_SENSOR_KINDS)
+    qtbot.addWidget(dialog)
+    index = dialog.kind_combo.findText("star_tracker")
+    dialog.kind_combo.setCurrentIndex(index)
+
+    assert not dialog._catalog_container.isHidden()
+    entries = catalog_entries_for_kind("star_tracker")
+    assert len(entries) >= 1
+    # First entry is the "custom (no preset)" placeholder.
+    assert dialog.catalog_combo.count() == len(entries) + 1
+    assert dialog.catalog_combo.itemText(1) == entries[0].display_name
+
+
+def test_catalog_row_is_hidden_for_a_kind_with_no_entries(qtbot):
+    """Every SUPPORTED_SENSOR_KINDS/SUPPORTED_ACTUATOR_KINDS value
+    currently has a catalog entry, but the picker must degrade silently
+    (no crash, section hidden) for a kind that doesn't -- confirmed
+    directly rather than assumed, since a future kind could be added to
+    the schema without a matching catalog entry yet.
+    """
+    from spacemissionstudio.gui.sensor_actuator_editor import _ItemEditorDialog
+    from spacemissionstudio.schema.scenario import SensorConfig
+
+    dialog = _ItemEditorDialog(SensorConfig, ["star_tracker", "no_such_kind"])
+    qtbot.addWidget(dialog)
+    index = dialog.kind_combo.findText("no_such_kind")
+    dialog.kind_combo.setCurrentIndex(index)
+
+    assert dialog._catalog_container.isHidden()
+    assert dialog.catalog_combo.count() == 1  # only the placeholder
+    assert not dialog.apply_catalog_button.isEnabled()
+
+
+def test_selecting_a_catalog_entry_previews_its_info_without_changing_fields(qtbot):
+    from spacemissionstudio.engine.device_catalog import catalog_entries_for_kind
+    from spacemissionstudio.gui.sensor_actuator_editor import _ItemEditorDialog, _non_vector_template_params
+    from spacemissionstudio.schema.scenario import SUPPORTED_SENSOR_KINDS, SensorConfig
+
+    dialog = _ItemEditorDialog(SensorConfig, SUPPORTED_SENSOR_KINDS)
+    qtbot.addWidget(dialog)
+    index = dialog.kind_combo.findText("star_tracker")
+    dialog.kind_combo.setCurrentIndex(index)
+    original_params_text = dialog.params_edit.toPlainText()
+    assert json.loads(original_params_text) == _non_vector_template_params("star_tracker")
+
+    entry = catalog_entries_for_kind("star_tracker")[0]
+    dialog.catalog_combo.setCurrentIndex(1)  # the first real entry, index 0 is the placeholder
+
+    assert entry.source_url in dialog.catalog_info_label.text()
+    assert dialog.apply_catalog_button.isEnabled()
+    # Merely selecting/previewing must not touch the actual params yet --
+    # only the explicit "Apply device preset" click does (same
+    # never-clobber-until-an-explicit-action rule "Reset to template"
+    # already follows elsewhere in this dialog).
+    assert dialog.params_edit.toPlainText() == original_params_text
+
+
+def test_applying_a_catalog_entry_fills_real_device_params(qtbot):
+    from spacemissionstudio.engine.device_catalog import catalog_entries_for_kind
+    from spacemissionstudio.gui.sensor_actuator_editor import _ItemEditorDialog, _vector_specs
+    from spacemissionstudio.schema.scenario import SUPPORTED_SENSOR_KINDS, SensorConfig
+
+    dialog = _ItemEditorDialog(SensorConfig, SUPPORTED_SENSOR_KINDS)
+    qtbot.addWidget(dialog)
+    index = dialog.kind_combo.findText("coarse_sun_sensor")
+    dialog.kind_combo.setCurrentIndex(index)
+    entry = catalog_entries_for_kind("coarse_sun_sensor")[0]
+    dialog.catalog_combo.setCurrentIndex(1)
+
+    dialog._on_apply_catalog_entry()
+
+    dialog.name_edit.setText("css-1")
+    config = dialog.to_dataclass()
+    vector_keys = {spec.key for spec in _vector_specs("coarse_sun_sensor")}
+    for key, value in entry.params.items():
+        if key in vector_keys:
+            assert config.params[key] == value
+        else:
+            assert config.params[key] == value
+
+
+def test_applying_a_catalog_entry_leaves_the_result_freely_editable(qtbot):
+    """The core of the user's request: selecting a catalog device is a
+    PRESET, never a lock-in -- every field it fills stays the same
+    ordinary, freely-editable spin box/JSON text the custom editor
+    already exposes.
+    """
+    from spacemissionstudio.engine.device_catalog import catalog_entries_for_kind
+    from spacemissionstudio.gui.sensor_actuator_editor import _ItemEditorDialog
+    from spacemissionstudio.schema.scenario import SUPPORTED_ACTUATOR_KINDS, ActuatorConfig
+
+    dialog = _ItemEditorDialog(ActuatorConfig, SUPPORTED_ACTUATOR_KINDS)
+    qtbot.addWidget(dialog)
+    index = dialog.kind_combo.findText("reaction_wheel")
+    dialog.kind_combo.setCurrentIndex(index)
+    entry = catalog_entries_for_kind("reaction_wheel")[0]
+    dialog.catalog_combo.setCurrentIndex(1)
+    dialog._on_apply_catalog_entry()
+
+    x, y, z = dialog._vector_boxes["gsHat_B"]
+    assert [x.value(), y.value(), z.value()] == entry.params["gsHat_B"]
+    x.setValue(0.0)
+    y.setValue(1.0)
+    z.setValue(0.0)
+    dialog.name_edit.setText("rw-1")
+
+    config = dialog.to_dataclass()
+    assert config.params["gsHat_B"] == [0.0, 1.0, 0.0]  # the hand-edit stuck, not the preset's own value
+    assert config.params["Omega_max"] == entry.params["Omega_max"]  # untouched fields keep the preset
+
+
+def test_catalog_combo_resets_to_custom_placeholder_when_kind_changes(qtbot):
+    from spacemissionstudio.gui.sensor_actuator_editor import _ItemEditorDialog
+    from spacemissionstudio.schema.scenario import SUPPORTED_SENSOR_KINDS, SensorConfig
+
+    dialog = _ItemEditorDialog(SensorConfig, SUPPORTED_SENSOR_KINDS)
+    qtbot.addWidget(dialog)
+    index = dialog.kind_combo.findText("star_tracker")
+    dialog.kind_combo.setCurrentIndex(index)
+    dialog.catalog_combo.setCurrentIndex(1)
+    assert dialog.catalog_combo.currentIndex() == 1
+
+    index = dialog.kind_combo.findText("imu")
+    dialog.kind_combo.setCurrentIndex(index)
+
+    assert dialog.catalog_combo.currentIndex() == 0
+    assert not dialog.catalog_info_label.text()

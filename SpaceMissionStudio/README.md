@@ -425,6 +425,7 @@ SpaceMissionStudio/
       vizard.py                      -- Phase 2: Vizard integration (needs Basilisk, imported lazily)
       monte_carlo.py                 -- Phase 3: Basilisk.utilities.MonteCarlo bridge (needs Basilisk)
       link_budget.py                 -- Phase 4: downlink RF link-margin estimate (no Basilisk needed)
+      device_catalog.py              -- real, sourced, European-manufactured sensor/actuator device presets for gui/sensor_actuator_editor.py (no Basilisk needed)
       orbit_maintenance.py           -- Phase 4/5: station-keeping + phasing-keeping + constant-frame-thrust controllers, delta-V/propellant bookkeeping (needs Basilisk)
       propellant_bookkeeping.py      -- Phase 5: shared per-tick mass/propellant delta math (no Basilisk needed)
       constellation.py               -- Phase 4: Walker-pattern constellation generator + SeparationSchedule (no Basilisk needed)
@@ -444,7 +445,7 @@ SpaceMissionStudio/
       mission_output_widget.py       -- Phase 6: "Mission Output" debug-console tab (CommandSummary/ReportEntry display) + CSV export
       propagation_setup_dialog.py    -- Phase 5: gravity/perturbations + integrator + space weather, one dedicated window
       spacecraft_editor.py           -- spacecraft list + add/edit/remove dialog (tabbed: orbit, sensors/actuators, FSW, power/propulsion/link budget)
-      sensor_actuator_editor.py      -- Phase 2: generic sensor/actuator list + add/edit/remove dialog
+      sensor_actuator_editor.py      -- Phase 2: generic sensor/actuator list + add/edit/remove dialog, with a "select from catalog" picker (engine/device_catalog.py) alongside the fully custom editor
       vizard_dialog.py               -- Phase 2: "enable Vizard for the next run" dialog
       vizard_launcher.py             -- find/launch the external Vizard application (no Basilisk needed)
       monte_carlo_editor.py          -- Phase 3: Monte Carlo settings + dispersion list editor
@@ -501,6 +502,7 @@ SpaceMissionStudio/
     test_spaceweather.py
     test_results.py
     test_link_budget.py              -- Phase 4
+    test_device_catalog.py           -- real, sourced sensor/actuator device catalog, no Basilisk needed
     test_constellation.py            -- Phase 4
     test_scenario_templates.py       -- load/validate/round-trip every scenarios/templates/*.json
     test_cli.py
