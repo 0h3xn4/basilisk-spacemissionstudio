@@ -45,7 +45,17 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QMessageBox, QPlainTextEdit, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QFileDialog,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QPlainTextEdit,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 from ..engine.results import CommandSummary
 
@@ -59,6 +69,22 @@ class MissionOutputWidget(QWidget):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
+
+        # Design-philosophy audit finding (docs/ux_audit.md, "logs not
+        # searchable") -- a VIEW-only filter: narrows which report
+        # blocks are shown below, never affects what _on_export() writes
+        # (that always exports every report, filtered or not, same as
+        # this app's own Results tab -- filtering what you're looking at
+        # is not the same as discarding data you didn't ask to discard).
+        filter_row = QHBoxLayout()
+        filter_row.addWidget(QLabel("Filter:"))
+        self.filter_edit = QLineEdit()
+        self.filter_edit.setPlaceholderText("Filter by label, series name, or value...")
+        self.filter_edit.setClearButtonEnabled(True)
+        self.filter_edit.textChanged.connect(self._refresh_text)
+        filter_row.addWidget(self.filter_edit, stretch=1)
+        layout.addLayout(filter_row)
+
         self.text_edit = QPlainTextEdit()
         self.text_edit.setReadOnly(True)
         font = self.text_edit.font()
@@ -74,7 +100,8 @@ class MissionOutputWidget(QWidget):
         self.export_button = QPushButton("Export to CSV...")
         self.export_button.setToolTip(
             "Writes every report command's snapshot values to one CSV file (long format: one row per "
-            "scalar component of every requested series in every report)."
+            "scalar component of every requested series in every report) -- always every report, "
+            "regardless of the filter above."
         )
         self.export_button.setEnabled(False)
         self.export_button.clicked.connect(self._on_export)
@@ -84,6 +111,7 @@ class MissionOutputWidget(QWidget):
     def clear(self) -> None:
         self._summary = None
         self.export_button.setEnabled(False)
+        self.filter_edit.clear()
         self.text_edit.clear()
 
     def set_command_summary(self, summary: Optional[CommandSummary]) -> None:
@@ -92,12 +120,32 @@ class MissionOutputWidget(QWidget):
             return
         self._summary = summary
         self.export_button.setEnabled(bool(summary.reports))
+        self._refresh_text()
+
+    def _refresh_text(self) -> None:
+        """Rebuilds the displayed text from ``self._summary`` and the
+        current filter text -- called on every run (:meth:`set_command_summary`)
+        and every filter-box edit (``filter_edit.textChanged``), so typing
+        in the filter always reflects the LATEST summary, never a stale one.
+        """
+        summary = self._summary
+        if summary is None:
+            return
+        needle = self.filter_edit.text().strip().lower()
         lines = [f"{summary.commands_executed} command(s) executed, {len(summary.reports)} report(s):", ""]
+        shown = 0
         for i, report in enumerate(summary.reports):
             label = f" ({report.label})" if report.label else ""
-            lines.append(f"[{i}] t = {report.t_s:.3f} s{label}")
-            for series_name, values in report.values.items():
-                lines.append(f"      {series_name} = {values.tolist()}")
+            header = f"[{i}] t = {report.t_s:.3f} s{label}"
+            body_lines = [f"      {series_name} = {values.tolist()}" for series_name, values in report.values.items()]
+            if needle and needle not in "\n".join([header, *body_lines]).lower():
+                continue
+            shown += 1
+            lines.append(header)
+            lines.extend(body_lines)
+        if needle:
+            lines.insert(2, f"({shown} of {len(summary.reports)} report(s) match {needle!r})")
+            lines.insert(3, "")
         self.text_edit.setPlainText("\n".join(lines))
 
     def _on_export(self) -> None:
