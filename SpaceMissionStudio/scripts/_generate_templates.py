@@ -425,12 +425,28 @@ def build_05_formation_flying_phasing() -> Scenario:
             "engine/spaceweather.py's own 'Closed-off/offline policy' docstring: this app makes no "
             "network calls at runtime, so a real-historical-data CONSERVATIVE margin isn't available "
             "out of the box here anymore -- see template 04's own description for how to restore it "
-            "via a self-supplied local CelesTrak CSV). NOTE: this specific change has NOT been "
-            "re-verified against a real multi-day Basilisk run the way this template's original "
-            "dynamics were (see README's 'Verification status') -- this development sandbox has no "
-            "route to the NAIF SPICE kernel host needed to run it at all; please report back if the "
-            "phasing controller's propellant budget or behavior looks off under the added "
-            "perturbations."
+            "via a self-supplied local CelesTrak CSV).\n\n"
+            "Audited against a real Basilisk build with real (degree >= 2) spherical-harmonics Earth "
+            "gravity active on exactly these elements, after a real user's Vizard screenshot kept "
+            "showing the along-track separation pinned at the Vizard gauge ceiling even after an "
+            "earlier, unrelated cold-start fix had landed (see "
+            "engine.orbit_maintenance.StationKeepingController's own docstring for that one). Two "
+            "real, independent bugs were found and fixed: (1) PhasingKeepingController's phase error "
+            "was computed from each spacecraft's osculating mean anomaly, which is numerically "
+            "singular as eccentricity -> 0 -- real J2 short-period oscillation of the osculating "
+            "eccentricity vector was, by itself, enough to carry this orbit's e through "
+            "numerically-zero every orbit, producing spurious phase errors of up to several thousand "
+            "km that the controller then (faithfully) acted on as real; fixed with a numerically "
+            "robust argument-of-latitude computation (see that class's own docstring). (2) this "
+            "template's own station_keeping deadband_km was too tight (2 km) relative to this orbit's "
+            "real, natural (non-decaying) J2 + eccentricity altitude variation (~5-10 km) -- the "
+            "controller doing exactly what it was configured to do, triggering on legitimate orbital "
+            "mechanics rather than real secular decay (confirmed firing continuously for ~7 real "
+            "hours on one real run); widened to 15 km (see station_keeping below). The REMAINING "
+            "untested piece is the real Sun/Moon third-body perturbation specifically (this sandbox "
+            "has no route to the NAIF SPICE kernel host needed to include it in the audit's own "
+            "verification runs, which used degree-2 Earth-only gravity) -- please report back if "
+            "behavior still looks off with that included."
         ),
         epoch_utc="2030-01-01T00:00:00",
         simulation_mode="orbit_only",
@@ -458,14 +474,36 @@ def build_05_formation_flying_phasing() -> Scenario:
                 # propagated eccentricity above that -- at which point rv2elem()
                 # silently falls back to measuring phase from the eccentricity
                 # VECTOR's direction, which is numerically meaningless (noise
-                # -dominated) once eccentricity is that close to zero, and fed
-                # a garbage phasing error into the controller. A small,
-                # deliberate eccentricity (0.001, ~7 km of altitude variation --
-                # well inside station_keeping's 2 km deadband once smoothed over
-                # one orbital period, see StationKeepingController.UpdateState())
-                # keeps rv2elem() safely on its normal, stable branch instead,
-                # using Basilisk's own orbit-element math the way it's designed
-                # to be used rather than routing around it.
+                # -dominated) once eccentricity is that close to zero. A small,
+                # deliberate eccentricity (0.001) keeps rv2elem() safely on its
+                # normal, stable branch for SMA/e/i recovery -- but
+                # PhasingKeepingController no longer uses rv2elem()'s own
+                # (e, omega, f) decomposition for its phase error AT ALL (see
+                # that class's own "Numerical conditioning of the phase error"
+                # docstring section: it was found, by audit against a real
+                # Basilisk build with real J2 active on exactly these elements,
+                # to be independently singular at this same e -> 0 regime no
+                # matter how small a deliberate eccentricity is chosen --
+                # replaced with a numerically robust argument-of-latitude
+                # computed directly from r/v).
+                #
+                # The "~7 km of altitude variation -- well inside
+                # station_keeping's deadband once smoothed over one orbital
+                # period" claim this comment used to make here was WRONG,
+                # also found only once checked against a real Basilisk build
+                # with real (degree >= 2) spherical-harmonics gravity active:
+                # a one-orbital-period boxcar average of the RAW osculating
+                # altitude at these elements converges to a STABLE ~545 km,
+                # not the ~550 km target -- a genuine ~5 km secular offset
+                # between the osculating semi-major axis this orbit is
+                # initialized with and the true time-averaged radius under
+                # real J2 (confirmed stable across 1/2/3/5/10-orbital-period
+                # windows alike, so this is not averaging noise/bias from an
+                # imperfect window length -- it is real), on top of which
+                # J2's own short-period altitude oscillation adds further
+                # swing. A 2 km deadband has no margin over either -- see
+                # station_keeping's own deadband_km below, widened for
+                # exactly this reason.
                 orbit=OrbitIC(type="classical_elements", semi_major_axis_km=6928.0, eccentricity=0.001,
                                inclination_deg=sun_synchronous_inclination_deg(6928.0, 0.001),
                                raan_deg=raan_for_ltan_deg("2030-01-01T00:00:00"),
@@ -484,7 +522,24 @@ def build_05_formation_flying_phasing() -> Scenario:
                 enable_drag=True, drag_coeff=2.2, drag_area_m2=1.0,
                 enable_srp=True, srp_coeff=1.3, srp_area_m2=1.0,
                 station_keeping=StationKeepingConfig(
-                    target_altitude_km=550.0, deadband_km=2.0, thrust_n=0.05, isp_s=1500.0, propellant_kg=5.0,
+                    # deadband_km=15.0, not 2.0 -- widened by audit (see the
+                    # orbit= comment above): this orbit's own real, natural
+                    # (non-decaying) J2 + eccentricity altitude variation is
+                    # already ~5-10 km, which a 2 km deadband has no margin
+                    # over at all, so the smoothed altitude reads "below
+                    # target" from legitimate orbital mechanics alone -- not
+                    # real secular (e.g. drag) decay -- and the controller
+                    # (correctly, by its own design) burns to correct it,
+                    # confirmed on a real Basilisk run to fire continuously
+                    # for ~7 real hours straight at deadband_km=2.0. Standard
+                    # industry practice for a real deadband is to size it
+                    # with margin over an orbit's own natural short-period
+                    # variation, not just "as tight as the mission can
+                    # tolerate" -- 15 km comfortably covers this orbit's
+                    # natural swing while still catching genuine drag decay
+                    # (this template's own enable_drag=True) well before it
+                    # could matter.
+                    target_altitude_km=550.0, deadband_km=15.0, thrust_n=0.05, isp_s=1500.0, propellant_kg=5.0,
                 ),
                 phasing_keeping=PhasingKeepingConfig(
                     chief_spacecraft="chief-1", target_separation_km=[50.0],

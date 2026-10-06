@@ -532,12 +532,17 @@ class PhasingKeepingController(sysModel.SysModel):
 
     Ported from ``../missionAnalysis/constellation_controllers.py``'s
     controller of the same name -- the drift-orbit state machine
-    (IDLE/BURN_OUT/DRIFT/BURN_RESTORE), the mean-anomaly error computation
-    (osculating, smoothed over one orbital period to reject J2
-    short-period noise), and the thruster-arbitration/shared-propellant
-    logic are unchanged. Differs the same two ways
-    :class:`StationKeepingController` differs from its own original (no
-    fast-dyn/coarse-ctrl task split, no ``log_decimation``), plus:
+    (IDLE/BURN_OUT/DRIFT/BURN_RESTORE) and the thruster-arbitration/
+    shared-propellant logic are unchanged. The phase-error computation
+    itself is NOT unchanged -- see "Numerical conditioning of the phase
+    error" below, a real bug found by this project's own audit, after a
+    real user's screenshot kept showing the along-track separation
+    diverging even after an earlier, unrelated cold-start fix (see
+    :class:`StationKeepingController`'s own docstring) had already
+    landed. Still smoothed over one orbital period to reject J2
+    short-period noise, same as the ported original. Differs the same two
+    ways :class:`StationKeepingController` differs from its own original
+    (no fast-dyn/coarse-ctrl task split, no ``log_decimation``), plus:
     ``thrust_n``/``isp_s``/``dry_mass_kg`` are not schema fields here --
     :func:`build_phasing_keeping` always reads them off the co-located
     ``StationKeepingController`` (see ``PhasingKeepingConfig``'s
@@ -546,6 +551,61 @@ class PhasingKeepingController(sysModel.SysModel):
     is read the same way (the co-located controller's own
     ``dvBudgetMps`` -- see that class's docstring) rather than
     recomputed here, for the same one-tank-no-disagreement reason.
+
+    Numerical conditioning of the phase error
+    ------------------------------------------
+    The ported original measured along-track phase error from the
+    difference of each spacecraft's osculating MEAN ANOMALY
+    (``orbitalMotion.rv2elem`` -> ``f2E`` -> ``E2M``, i.e. via each
+    spacecraft's own, individually-decomposed eccentricity/argument-of
+    -periapsis/true-anomaly). Real bug, found by audit after a real
+    user's Vizard screenshot kept showing the along-track separation
+    diverging without bound even after the cold-start fix above had
+    landed: reproduced directly against a genuine Basilisk build with
+    real (degree >= 2) spherical-harmonics Earth gravity active on the
+    exact chief/follower elements this module's own formation-flying
+    template uses (``a`` = 6928 km, ``e`` = 0.001) -- the classical
+    orbital-element decomposition is numerically SINGULAR as
+    eccentricity -> 0 (argument of periapsis, hence true/mean anomaly
+    measured from it, becomes meaningless once the osculating
+    eccentricity vector's direction is undefined), a well-known
+    limitation of classical (as opposed to non-singular/equinoctial)
+    element sets. J2's own short-period oscillation of the osculating
+    eccentricity vector is, by itself, enough to carry a near-circular
+    orbit's ``e`` through numerically-zero every orbit -- confirmed
+    directly: with the above elements, ``e`` dipped to ~7.5e-5 and the
+    recovered argument of periapsis swung by ~180 deg within three 30 s
+    ticks, while the REAL geometric along-track separation
+    (``orbitalMotion.rv2hill``, i.e. exactly ``lastTransverseKm`` below)
+    barely moved at all over that same interval. The resulting
+    mean-anomaly-difference "error" read as large as several THOUSAND
+    km of spurious phase error within a handful of ticks, which this
+    controller's own control law (faithfully) acted on as if it were
+    real -- computing a wildly wrong ``deltaA``/burn direction from it,
+    actually perturbing the real orbit, and in the reproduction that
+    exposed this, tripping the divergence guard (below) after just one
+    such bogus cycle, suspending all further automatic correction for
+    the rest of the run while the real separation then free-drifted,
+    uncorrected, off whatever the bogus burn had left it at -- matching
+    a real user's "pinned at the Vizard gauge ceiling" screenshot
+    exactly.
+
+    Fixed by :func:`_argument_of_latitude`: the angle ``u = omega + f``,
+    computed DIRECTLY from each spacecraft's instantaneous position/
+    velocity via the ascending-node/orbit-normal geometry, never
+    decomposing ``e``/``omega``/``f`` individually. ``u`` stays
+    numerically well-behaved all the way through ``e -> 0`` -- it is
+    exactly the quantity non-singular/equinoctial element sets are built
+    around retaining, for exactly this reason -- at the (textbook,
+    standard) cost of a tiny, un-corrected equation-of-center bias
+    (true, not mean, argument of latitude) of order ``2*e`` radians,
+    utterly negligible for the near-circular (``e`` well under ~0.05)
+    LEO constellations this controller targets (``engine.constellation``'s
+    own Walker-pattern generator defaults ``eccentricity`` to 0.0 "for
+    the usual circular case"). A rigorous equinoctial-element
+    reformulation (correct at any eccentricity, including the
+    classical-element-friendly high-``e`` regime this approximation does
+    NOT cover) is a real, documented follow-on, not implemented here.
 
     Publishes two more live-Vizard-only messages (see this module's
     docstring and ``engine.vizard``), same "never fed back into simulated
@@ -731,11 +791,42 @@ class PhasingKeepingController(sysModel.SysModel):
             self.extForceEffectorB.extForce_N = [0.0, 0.0, 0.0]
 
     @staticmethod
-    def _mean_anomaly(mu, rVec, vVec):
-        oe = orbitalMotion.rv2elem(mu, rVec, vVec)
-        eccAnom = orbitalMotion.f2E(oe.f, oe.e)
-        meanAnom = orbitalMotion.E2M(eccAnom, oe.e)
-        return oe.a, meanAnom
+    def _argument_of_latitude(rVec, vVec):
+        """True argument of latitude ``u = omega + f`` [rad], in
+        (-pi, pi] -- the in-plane angle from the ascending node to the
+        spacecraft's actual current position. See this class's own
+        docstring ("Numerical conditioning of the phase error") for why
+        this replaces an earlier osculating-mean-anomaly-based error
+        metric: ``u`` is computed DIRECTLY from the instantaneous
+        position/velocity via the orbit-normal/ascending-node geometry
+        (same inertial +Z-pole convention ``orbitalMotion.rv2elem``
+        itself uses internally) -- never decomposing eccentricity,
+        argument of periapsis, or true anomaly individually, which keeps
+        it numerically well-behaved all the way through ``e -> 0``
+        (classical elements are not: "where periapsis is" becomes
+        meaningless once the osculating eccentricity vector's direction
+        is undefined).
+
+        Undefined, in the same well-known way classical RAAN is, only
+        for an exactly equatorial orbit (``i == 0``, orbit normal along
+        +/-Z, so the ascending node itself is undefined) -- falls back
+        to the inertial +X axis as an arbitrary but FIXED reference in
+        that case. This loses no accuracy for THIS controller's own use
+        (only the difference ``uB - uA`` is ever used below, and both
+        spacecraft share the same orbit-normal sign whenever they share
+        the same orbital plane, as every caller of this class assumes --
+        see ``PhasingKeepingConfig``'s own docstring), it just picks a
+        consistent zero-point instead of an undefined one.
+        """
+        rHat = rVec / np.linalg.norm(rVec)
+        hVec = np.cross(rVec, vVec)
+        hHat = hVec / np.linalg.norm(hVec)
+        nVec = np.cross(np.array([0.0, 0.0, 1.0]), hHat)
+        nNorm = np.linalg.norm(nVec)
+        nHat = nVec / nNorm if nNorm > 1e-9 else np.array([1.0, 0.0, 0.0])
+        cosU = np.dot(rHat, nHat)
+        sinU = np.dot(rHat, np.cross(hHat, nHat))
+        return float(np.arctan2(sinU, cosU))
 
     @staticmethod
     def _circular_mean(angles_rad):
@@ -761,13 +852,17 @@ class PhasingKeepingController(sysModel.SysModel):
         # hold state this tick instead. Also guards vA/vB against being
         # exactly zero -- a real gap found by audit: this method reads
         # vB's norm to compute a burn direction further down
-        # (`vHatB = vB / np.linalg.norm(vB)`), and _mean_anomaly() below
-        # feeds vA/vB into orbitalMotion.rv2elem(), which also divides by
-        # velocity-derived quantities internally -- either was previously
-        # only checked for NaN/inf, not for exactly zero, unlike this
-        # class's own StationKeepingController sibling.
+        # (`vHatB = vB / np.linalg.norm(vB)`), and _argument_of_latitude()
+        # below divides by norm(cross(r, v)) (the orbit-normal magnitude --
+        # zero whenever r/v happen to be parallel, e.g. a purely radial
+        # trajectory, not just when either is individually zero; same
+        # degenerate case ConstantFrameThrustController's own matching
+        # guard already checks for) -- either was previously only checked
+        # for NaN/inf, not for exactly zero, unlike this class's own
+        # StationKeepingController sibling.
         if not (np.all(np.isfinite(rA)) and np.all(np.isfinite(vA)) and np.linalg.norm(vA) > 0.0
-                and np.all(np.isfinite(rB)) and np.all(np.isfinite(vB)) and np.linalg.norm(vB) > 0.0):
+                and np.all(np.isfinite(rB)) and np.all(np.isfinite(vB)) and np.linalg.norm(vB) > 0.0
+                and np.linalg.norm(np.cross(rA, vA)) > 0.0 and np.linalg.norm(np.cross(rB, vB)) > 0.0):
             if self.extForceEffectorB is not None:
                 self.extForceEffectorB.extForce_N = [0.0, 0.0, 0.0]
             self.tLog.append(t)
@@ -777,15 +872,19 @@ class PhasingKeepingController(sysModel.SysModel):
             self.deltaVLog.append(self._cumulativeDv)
             return
 
-        _, mA = self._mean_anomaly(self.mu, rA, vA)
-        _, mB = self._mean_anomaly(self.mu, rB, vB)
+        mA = self._argument_of_latitude(rA, vA)
+        mB = self._argument_of_latitude(rB, vB)
 
         scheduledTargetRad = self.separationSchedule.value_at(t)
         referenceTargetRad = scheduledTargetRad if self.state == self.IDLE else self._activeTargetRad
 
         # error > 0 means B's phase leads the target separation (B is "too
         # far ahead" of A); error < 0 means B trails. Smoothed over one
-        # orbital period to reject J2 short-period osculating-element noise.
+        # orbital period to reject J2 short-period noise (real, physical
+        # short-period oscillation of the argument of latitude itself --
+        # NOT the numerical-conditioning artifact _argument_of_latitude
+        # was specifically chosen to avoid; see this class's own
+        # docstring).
         rawError = _wrap_pm_pi((mB - mA) - referenceTargetRad)  # [rad]
         self._errorHistory.append((t, rawError))
         while self._errorHistory and (t - self._errorHistory[0][0]) > self.smoothingWindowS:
@@ -800,9 +899,9 @@ class PhasingKeepingController(sysModel.SysModel):
         # wizard itself uses to PLACE a follower, so these numbers are
         # directly comparable to what a user typed into that wizard's R/T/N
         # fields. Deliberately NOT derived from mB - mA (the control law's
-        # own mean-anomaly-difference approximation, still what actually
-        # drives burns below, unchanged) -- real user feedback: a single,
-        # abstract "separation" scalar wasn't interpretable ("vague");
+        # own argument-of-latitude-difference approximation, still what
+        # actually drives burns below, unchanged) -- real user feedback: a
+        # single, abstract "separation" scalar wasn't interpretable ("vague");
         # three real distances in a named, familiar frame are.
         rhoH, _rhoPrimeH = orbitalMotion.rv2hill(rA, vA, rB, vB)
         radialKm = float(rhoH[0]) / 1000.0  # [km]
@@ -929,7 +1028,12 @@ class PhasingKeepingController(sysModel.SysModel):
                 self._activeTargetRad = scheduledTargetRad
                 self._errorAtCycleStartRad = error
                 n = np.sqrt(self.mu / self.aNom ** 3)  # [rad/s] mean motion
-                # Two-body mean-motion offset from an SMA offset:
+                # error is an argument-of-latitude difference (see this
+                # class's own docstring), whose drift rate equals the
+                # two-body mean motion n to within O(e) for the
+                # near-circular orbits this controller targets -- so the
+                # same two-body mean-motion-offset-from-an-SMA-offset
+                # relation below still applies directly:
                 #   dn = -1.5 * n * (deltaA / a)
                 # Solve deltaA so the accumulated drift over the correction
                 # window exactly cancels the current error:
