@@ -23,6 +23,7 @@ from spacemissionstudio.schema import (
     Scenario,
     ScenarioValidationError,
     SensorConfig,
+    SimSettings,
     SpacecraftConfig,
     StationKeepingConfig,
     load_scenario,
@@ -100,6 +101,21 @@ def test_saved_file_is_plain_readable_json(tmp_path):
 def test_scenario_level_validation_errors(bad_field, bad_value, match):
     scenario = _minimal_scenario(**{bad_field: bad_value})
     with pytest.raises(ScenarioValidationError, match=match):
+        scenario.validate()
+
+
+def test_duration_days_at_the_100_day_cap_validates():
+    scenario = _minimal_scenario(sim_settings=SimSettings(duration_days=100.0))
+    scenario.validate()
+
+
+def test_duration_days_beyond_the_basilisk_nanotosec_limit_rejected():
+    # Guards against Basilisk's own nanoToSec() (C++, src/architecture/
+    # utilities/macroDefinitions.h) silently returning NaN simulated time
+    # past its 2**53-ns (~104.25 day) double-precision limit -- see
+    # SimSettings.validate()'s own comment for the full story.
+    scenario = _minimal_scenario(sim_settings=SimSettings(duration_days=120.0))
+    with pytest.raises(ScenarioValidationError, match="duration_days must be <= 100"):
         scenario.validate()
 
 

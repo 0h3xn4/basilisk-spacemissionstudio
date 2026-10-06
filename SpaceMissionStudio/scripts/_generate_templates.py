@@ -412,23 +412,26 @@ def build_05_formation_flying_phasing() -> Scenario:
             "separately, simply to not decay under drag like any other LEO spacecraft).\n\n"
             "What to look at: follower-1 starts EXACTLY at the 50 km target (see the orbit= comment "
             "below for the exact math) -- this is formation-KEEPING, not a rendezvous/phasing-transfer "
-            "maneuver, so the default run should show the separation holding close to 50 km throughout, "
-            "not swinging between 'behind' and 'ahead'. Confirmed on a real Basilisk run (degree-2 J2 "
-            "gravity): over the full 24-day run, the separation drifts only within about +/-3.5 km of "
-            "target (comfortably inside phasing_keeping's own 10% tolerance band) from real, small "
-            "perturbations (J2, differential drag from follower-1's extra propellant mass) -- small "
-            "enough that NO correction burn is needed at all in this particular run, which is itself "
-            "the point: a well-designed formation mostly just holds, with phasing_keeping as the "
-            "safety net for when drift eventually exceeds the tolerance band (try a longer duration, "
-            "a tighter tolerance_fraction, or a deliberately larger starting mismatch -- see 'Try "
-            "changing' below -- to see an actual correction cycle fire). 'spacemissionstudio run' "
-            "prints a phasing delta-V breakdown in its station-keeping summary (see README, 'Running "
-            "the CLI').\n\n"
+            "maneuver, so the separation starts right on target and the interesting behavior is the "
+            "LONG-TERM drift/correction cycle over the full 90-day run, not an instant snapshot. "
+            "Confirmed on a real Basilisk run (degree-2 J2 gravity): real, small perturbations (J2, "
+            "differential drag from follower-1's extra propellant mass) make the separation drift "
+            "naturally between roughly 45-50 km; it crosses phasing_keeping's 10% tolerance band twice "
+            "over the run (around day 35 and again around day 70), firing a real along-track "
+            "correction burn each time and accumulating about 0.015 m/s of delta-V by day 90 -- this "
+            "IS the point of phasing_keeping: a formation mostly drifts on its own and the controller "
+            "only steps in once drift exceeds the tolerance band, rather than fighting every tiny "
+            "perturbation continuously. A shorter run (try duration_days=24.0) stays inside the "
+            "tolerance band the whole time and never shows a correction at all. 'spacemissionstudio "
+            "run' prints a phasing delta-V breakdown in its station-keeping summary (see README, "
+            "'Running the CLI').\n\n"
             "Try changing: target_separation_km (a schedule -- see PhasingKeepingConfig; a single "
             "-element list holds one separation for the whole run, more elements step through a "
-            "schedule), phasing_keeping.tolerance_fraction (tighter triggers a correction sooner), or "
-            "follower-1's own starting mean_anomaly_deg to begin with a deliberate mismatch and watch "
-            "phasing_keeping correct it back onto target.\n\n"
+            "schedule), phasing_keeping.tolerance_fraction (tighter triggers a correction sooner), "
+            "sim_settings.duration_days (shorter than ~35 days and no correction will fire at all; "
+            "SimSettings.validate() caps this at 100.0 days -- see that method's own comment for why), "
+            "or follower-1's own starting mean_anomaly_deg to begin with a deliberate mismatch and "
+            "watch phasing_keeping correct it back onto target sooner.\n\n"
             "Updated to include 10th-degree spherical-harmonics gravity, Sun/Moon third-body gravity, "
             "atmospheric drag, and solar radiation pressure on both spacecraft (identically, so any "
             "chief/follower difference in behavior is real physics, not asymmetric configuration) -- "
@@ -438,8 +441,19 @@ def build_05_formation_flying_phasing() -> Scenario:
             "network calls at runtime, so a real-historical-data CONSERVATIVE margin isn't available "
             "out of the box here anymore -- see template 04's own description for how to restore it "
             "via a self-supplied local CelesTrak CSV).\n\n"
-            "Audit history (most recent first): a real user pointed out that this template's own "
-            "design didn't actually match 'maintain a fixed distance with a margin of error' -- "
+            "Audit history (most recent first): a real user pointed out that a short run here isn't "
+            "interesting -- phasing_keeping's whole point is the long-term drift/correction cycle and "
+            "its accumulated delta-V, neither of which a 24-day run (the previous duration_days) ever "
+            "shows. Fixed by moving to duration_days=90.0 (see that field's own comment below), "
+            "verified on a real Basilisk run to show two real correction cycles and nonzero delta-V, "
+            "while staying safely clear of a separately-discovered real Basilisk platform limit: "
+            "nanoToSec() (C++, src/architecture/utilities/macroDefinitions.h) can only exactly "
+            "represent nanosecond counts up to 2**53 (~104.25 days) as a double, so a duration much "
+            "beyond 90 days risks silently poisoning the whole run with NaN time (see duration_days's "
+            "own comment below, and SimSettings.validate()'s new upper bound, added specifically to "
+            "catch this before it can happen through any scenario, bundled or user-built). A real user "
+            "pointed out that this template's own design didn't actually match 'maintain a fixed "
+            "distance with a margin of error' -- "
             "follower-1 used to start ~60 km BEHIND chief-1 while targeting 50 km AHEAD, which made "
             "the default run demonstrate a one-time ~110 km realignment (passing close by the chief "
             "on the way) rather than steady-state formation-keeping, and chief-1 had no station_keeping "
@@ -470,21 +484,30 @@ def build_05_formation_flying_phasing() -> Scenario:
         # "moon" added alongside "sun" for full-perturbation realism (see
         # this function's own description update above).
         gravity=GravityConfig(central_body="earth", central_body_degree=10, third_body_perturbers=["sun", "moon"]),
-        # duration_days=24.0 -- long enough to show the formation genuinely
-        # HOLDING, not just an instant snapshot. With follower-1 now
-        # starting exactly on its 50 km target (see that spacecraft's own
-        # orbit= comment), confirmed directly against a real Basilisk run
-        # (degree-2 J2 gravity): the separation drifts only within about
-        # +/-3.5 km of target over the full 24 days (comfortably inside
-        # phasing_keeping's own 10% tolerance band), with neither
-        # spacecraft's station_keeping needing to fire even once -- 24 days
-        # is long enough to make that "it just holds" result convincing
-        # (not a lucky one-tick snapshot) while staying a practical runtime.
-        # Earlier revisions of this comment explained a 21-day
-        # correction_window_days margin for a large catch-up maneuver this
-        # template no longer performs by default (see this function's own
-        # description for that history).
-        sim_settings=SimSettings(duration_days=24.0, dynamics_task_rate_s=30.0, integrator="rkf78"),
+        # duration_days=90.0 -- a real user pointed out that a short run here
+        # isn't interesting: phasing_keeping's whole point is the LONG-TERM
+        # along-track drift/correction cycle and its accumulated delta-V, and
+        # a 24-day run (an earlier revision of this template) never drifts
+        # far enough to trigger even one correction -- confirmed directly
+        # against a real Basilisk run (degree-2 J2 gravity): over 90 days the
+        # separation drifts naturally between roughly 45-50 km, crosses
+        # phasing_keeping's 10% tolerance band TWICE (around day 35 and again
+        # around day 70), and each crossing fires a real correction burn,
+        # accumulating about 0.015 m/s of delta-V by day 90 -- exactly the
+        # "drift, then correct" behavior this controller exists to show, not
+        # visible at 24 days.
+        #
+        # 90 days (not longer) is also a real platform ceiling, not just a
+        # stylistic choice: Basilisk's own nanoToSec() (C++,
+        # src/architecture/utilities/macroDefinitions.h) can only exactly
+        # represent a nanosecond count up to 2**53 ns (~104.25 days) as a
+        # double; past that it prints a stderr error on EVERY call and
+        # returns NaN, poisoning all downstream time-dependent math (hit
+        # directly in this audit with a 180-day test run: simulated time
+        # barely progressed past the cliff at all). 90 days stays safely
+        # clear of that limit with margin -- see SimSettings.validate()'s
+        # own upper bound on duration_days, added for exactly this reason.
+        sim_settings=SimSettings(duration_days=90.0, dynamics_task_rate_s=30.0, integrator="rkf78"),
         space_weather=_conservative_drag_margin(),
         spacecraft=[
             SpacecraftConfig(

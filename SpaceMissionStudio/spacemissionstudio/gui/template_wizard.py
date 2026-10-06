@@ -715,7 +715,11 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
                         "Duration", "Total simulated time.",
                         lambda s: s.sim_settings.duration_days,
                         lambda s, v: setattr(s.sim_settings, "duration_days", v),
-                        0.1, 60.0, decimals=2, step=1.0, suffix=" days",
+                        # upper bound 100.0 matches SimSettings._MAX_DURATION_DAYS
+                        # (Basilisk's own nanoToSec() precision ceiling, ~104.25
+                        # days -- see that field's own comment) -- never let this
+                        # wizard field offer a value schema.validate() would reject.
+                        0.1, 100.0, decimals=2, step=1.0, suffix=" days",
                     ),
                 ],
             ),

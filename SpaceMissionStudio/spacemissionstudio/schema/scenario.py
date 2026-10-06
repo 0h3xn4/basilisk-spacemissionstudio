@@ -1365,8 +1365,26 @@ class SimSettings:
     # anything (the GUI, saved scenario files) came to depend on the
     # redundant field -- there is deliberately only one place to set this now.
 
+    # _MAX_DURATION_DAYS: a real Basilisk platform limit, not a stylistic
+    # choice. Basilisk's own nanoToSec() (C++,
+    # src/architecture/utilities/macroDefinitions.h) converts simulated
+    # nanoseconds to a double, which can only exactly represent integers up
+    # to 2**53 (DBL_MANT_DIG) -- 9007199254740992 ns, ~104.25 days. Past
+    # that it prints a stderr error on EVERY call and returns NaN, which
+    # poisons every downstream time-dependent calculation for the rest of
+    # the run -- confirmed directly: a 180-day test run hit this and became
+    # severely degraded (simulated time barely progressed past the cliff at
+    # all, drowned in repeated stderr errors). 100.0 days keeps a safety
+    # margin under the real ~104.25-day cliff rather than sitting right on it.
+    _MAX_DURATION_DAYS = 100.0
+
     def validate(self) -> None:
         _require(self.duration_days > 0, "sim_settings.duration_days must be > 0")
+        _require(self.duration_days <= self._MAX_DURATION_DAYS,
+                  f"sim_settings.duration_days must be <= {self._MAX_DURATION_DAYS} days: Basilisk's own "
+                  "nanoToSec() (C++, src/architecture/utilities/macroDefinitions.h) can only exactly "
+                  "represent simulated time as a double up to 2**53 ns (~104.25 days) -- beyond that it "
+                  "silently returns NaN for simulated time, corrupting the whole run")
         _require(self.dynamics_task_rate_s > 0, "sim_settings.dynamics_task_rate_s must be > 0")
         _require(self.integrator in SUPPORTED_INTEGRATORS,
                   f"sim_settings.integrator {self.integrator!r} must be one of {SUPPORTED_INTEGRATORS}")
