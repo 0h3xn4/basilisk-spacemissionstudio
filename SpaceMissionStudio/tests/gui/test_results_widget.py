@@ -290,6 +290,100 @@ def test_save_plot_as_png_poll_state_resets_after_completion_allowing_a_later_sa
     qtbot.waitUntil(lambda: second_path.exists(), timeout=10000)
 
 
+def test_save_plot_as_svg_writes_a_real_svg_file(widget, tmp_path, monkeypatch, qtbot):
+    """End-to-end mirror of test_save_plot_as_png_writes_a_real_png_file,
+    for the SVG path added alongside PNG (roadmap item M2) -- real
+    plotly.js rendering in the offscreen QWebEngineView, not a mocked JS
+    call. Confirms the SVG is written as plain decoded TEXT (Plotly's
+    own SVG data URL is percent-encoded, not base64 -- see
+    _on_plot_png_rendered's own docstring), not raw/garbled bytes.
+    """
+    from PySide6.QtWidgets import QFileDialog, QMessageBox
+
+    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=10000):
+        widget.set_result(_sample_result_set())
+    assert widget.save_svg_button.isEnabled()
+    out_path = tmp_path / "plot.svg"
+    monkeypatch.setattr(QFileDialog, "getSaveFileName",
+                         staticmethod(lambda *a, **k: (str(out_path), "SVG images (*.svg)")))
+    info_calls = []
+    monkeypatch.setattr(QMessageBox, "information", staticmethod(lambda *a, **k: info_calls.append(a)))
+
+    widget._on_save_plot_svg()
+    qtbot.waitUntil(lambda: out_path.exists(), timeout=10000)
+
+    svg_text = out_path.read_text(encoding="utf-8")
+    assert svg_text.startswith("<svg")
+    assert "</svg>" in svg_text
+    qtbot.waitUntil(lambda: len(info_calls) == 1, timeout=5000)
+
+
+def test_save_plot_as_svg_appends_extension_if_missing(widget, tmp_path, monkeypatch, qtbot):
+    from PySide6.QtWidgets import QFileDialog, QMessageBox
+
+    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=10000):
+        widget.set_result(_sample_result_set())
+    out_path_no_ext = tmp_path / "plot"
+    monkeypatch.setattr(QFileDialog, "getSaveFileName",
+                         staticmethod(lambda *a, **k: (str(out_path_no_ext), "SVG images (*.svg)")))
+    monkeypatch.setattr(QMessageBox, "information", staticmethod(lambda *a, **k: None))
+
+    widget._on_save_plot_svg()
+    expected_path = tmp_path / "plot.svg"
+    qtbot.waitUntil(lambda: expected_path.exists(), timeout=10000)
+    assert not out_path_no_ext.exists()
+
+
+def test_save_plot_as_svg_with_no_result_is_a_no_op(widget, monkeypatch):
+    from PySide6.QtWidgets import QFileDialog
+
+    assert not widget.save_svg_button.isEnabled()
+    calls = []
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", staticmethod(lambda *a, **k: calls.append(1) or ("", "")))
+    widget._on_save_plot_svg()  # self.figure is None
+    assert calls == []
+
+
+def test_save_png_and_save_svg_share_the_same_re_entrancy_guard(widget, qtbot, monkeypatch):
+    """Clicking "Save plot as SVG..." while a PNG save poll (or vice
+    versa) is already in flight must be a no-op too -- both buttons
+    drive the same self._png_poll_state/page-global JS result variable
+    (see _on_save_plot_png's own re-entrancy-guard comment), so a second
+    concurrent poll from EITHER button would orphan the first timer.
+    """
+    from PySide6.QtCore import QTimer
+    from PySide6.QtWidgets import QFileDialog
+
+    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=10000):
+        widget.set_result(_sample_result_set())
+
+    calls = []
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", staticmethod(lambda *a, **k: calls.append(1) or ("", "")))
+    widget._png_poll_state = {"path": "/dev/null", "fmt": "png", "timer": QTimer(widget), "attempts": 0}
+
+    widget._on_save_plot_svg()  # must return immediately, never even open the Save dialog
+
+    assert calls == []
+
+
+def test_redraw_does_not_reenable_save_svg_button_while_a_poll_is_in_flight(widget, qtbot):
+    """SVG counterpart of test_redraw_does_not_reenable_save_button_while_a_png_poll_is_in_flight --
+    save_svg_button must stay disabled across a live-update _redraw()
+    too, for the same reason.
+    """
+    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=10000):
+        widget.set_result(_sample_result_set())
+    assert widget.save_svg_button.isEnabled()
+
+    from PySide6.QtCore import QTimer
+    widget._png_poll_state = {"path": "/dev/null", "fmt": "svg", "timer": QTimer(widget), "attempts": 0}
+    widget.save_svg_button.setEnabled(False)
+
+    widget._redraw()  # simulates a live update landing mid-poll
+
+    assert not widget.save_svg_button.isEnabled()
+
+
 def test_set_live_result_populates_combo_on_first_update(widget):
     widget.set_live_result(_sample_result_set(n=5))
     assert widget.series_combo.count() == 2

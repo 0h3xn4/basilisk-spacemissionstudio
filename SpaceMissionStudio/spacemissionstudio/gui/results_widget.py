@@ -115,6 +115,7 @@ from __future__ import annotations
 import base64
 import math
 import os
+import urllib.parse
 
 # See module docstring's "Running as root" section -- MUST happen before
 # PySide6.QtWebEngineWidgets is imported below (env var read at that
@@ -546,6 +547,17 @@ class ResultsWidget(QWidget):
         self.save_png_button.clicked.connect(self._on_save_plot_png)
         self.save_png_button.setEnabled(False)
         top_row.addWidget(self.save_png_button)
+        # Design-philosophy roadmap item M2 (docs/ux_roadmap.md): a vector
+        # export alongside the existing raster one, for a plot a user wants
+        # to drop into a paper/report at arbitrary scale without it going
+        # blurry. Shares _on_save_plot_png's whole dialog/kickoff/poll
+        # machinery via its ``fmt`` parameter -- see that method's own
+        # docstring -- rather than duplicating it.
+        self.save_svg_button = QPushButton("Save plot as SVG...")
+        self.save_svg_button.setToolTip("Save the currently displayed plot as a scalable vector (SVG) image")
+        self.save_svg_button.clicked.connect(self._on_save_plot_svg)
+        self.save_svg_button.setEnabled(False)
+        top_row.addWidget(self.save_svg_button)
         layout.addLayout(top_row)
 
         # Design-philosophy audit finding (docs/ux_audit.md, "no run
@@ -791,6 +803,7 @@ class ResultsWidget(QWidget):
         # actually finishes.
         if self._png_poll_state is None:
             self.save_png_button.setEnabled(self.figure is not None)
+            self.save_svg_button.setEnabled(self.figure is not None)
 
     def _redraw(self) -> None:
         self._update_figure()
@@ -825,12 +838,30 @@ class ResultsWidget(QWidget):
             return
         QMessageBox.information(self, "Export complete", f"Wrote {len(paths)} CSV file(s) to {out_dir}")
 
-    def _on_save_plot_png(self) -> None:
+    def _on_save_plot_svg(self) -> None:
+        """Thin wrapper around :meth:`_on_save_plot_png` -- see that
+        method's own docstring for the whole dialog/kickoff/poll
+        mechanism, which is format-agnostic and shared as-is. Named/kept
+        separate (rather than exposing ``fmt`` on the button's own
+        ``clicked`` connection) purely so ``save_svg_button``'s signal
+        handler has the same zero-argument shape every other button's
+        does, and so a test can call it by name symmetrically with
+        ``_on_save_plot_png()``.
+        """
+        self._on_save_plot_png(fmt="svg")
+
+    def _on_save_plot_png(self, fmt: str = "png") -> None:
         """Saves the CURRENTLY DISPLAYED plot (only -- see
-        ``_on_export`` for every series at once) as a PNG, to a
-        user-chosen location via a native "Save As" dialog -- real user
-        request ("would be great to also have a button to save the plots
-        as png images in a desired location").
+        ``_on_export`` for every series at once) to a user-chosen
+        location via a native "Save As" dialog, as either a PNG
+        (``fmt="png"``, the default -- every existing call site/test
+        calls this with no arguments and must keep behaving exactly as
+        before) or an SVG (``fmt="svg"``, via :meth:`_on_save_plot_svg`).
+        Real user request for the PNG case ("would be great to also have
+        a button to save the plots as png images in a desired
+        location"); SVG added alongside it (roadmap item M2) for a plot
+        a user wants to drop into a paper/report at arbitrary scale
+        without it going blurry.
 
         Plotly's own modebar already has a built-in camera/download-as
         -png icon (``config={"displaylogo": False}`` above leaves it in;
@@ -839,15 +870,17 @@ class ResultsWidget(QWidget):
         machinery, which this app never wires up
         (``QWebEngineProfile.downloadRequested``) -- confirmed directly
         that clicking it does nothing observable here, not assumed. This
-        button instead renders the chart to a PNG CLIENT-SIDE, via the
-        SAME ``plotly.js`` already loaded on the page (``Plotly.toImage()``),
+        button instead renders the chart CLIENT-SIDE, via the SAME
+        ``plotly.js`` already loaded on the page (``Plotly.toImage()``),
         rather than pulling in a server-side renderer (the ``kaleido``
         package) this project doesn't otherwise depend on -- consistent
         with this module's own "no unnecessary dependency" choice for
-        ``plotly.js`` itself. ``scale: 2`` asks for a higher-than-screen
-        -resolution render (sharper on a high-DPI display/print) at the
-        chart's own current on-screen size, rather than a hardcoded
-        width/height that might not match what's actually visible.
+        ``plotly.js`` itself. ``scale: 2`` (meaningful for the PNG raster
+        case; harmless/ignored by Plotly for SVG) asks for a
+        higher-than-screen-resolution render (sharper on a high-DPI
+        display/print) at the chart's own current on-screen size, rather
+        than a hardcoded width/height that might not match what's
+        actually visible.
 
         ``Plotly.toImage()`` is asynchronous (it returns a ``Promise``).
         ``QWebEnginePage.runJavaScript()`` does NOT await a top-level
@@ -868,26 +901,31 @@ class ResultsWidget(QWidget):
             # Re-entrancy guard, same convention as
             # gui.kernel_status_widget.KernelStatusWidget.refresh()'s own:
             # a live-updating run calls _redraw() repeatedly (see its own
-            # comment on why it must NOT blindly re-enable save_png_button
-            # while a poll is in flight), but belt-and-suspenders here too
-            # -- a second _on_save_plot_png() call while one poll is
-            # already running would overwrite self._png_poll_state AND
-            # the page-global JS result variable both polls share,
-            # orphaning the first poll_timer (nothing would ever stop it,
-            # since state["timer"] would now point at the SECOND timer)
-            # -- it would keep firing forever, re-triggering
+            # comment on why it must NOT blindly re-enable the save
+            # buttons while a poll is in flight), but belt-and-suspenders
+            # here too -- a second _on_save_plot_png() call (PNG or SVG,
+            # either button) while one poll is already running would
+            # overwrite self._png_poll_state AND the page-global JS
+            # result variable both polls share, orphaning the first
+            # poll_timer (nothing would ever stop it, since
+            # state["timer"] would now point at the SECOND timer) -- it
+            # would keep firing forever, re-triggering
             # _on_plot_png_rendered() (a duplicate file write + a
-            # duplicate "Plot saved" dialog, repeating every poll
-            # interval) long after the user thinks they're done.
+            # duplicate "saved" dialog, repeating every poll interval)
+            # long after the user thinks they're done.
             return
-        default_name = f"{self.series_combo.currentText()}.png"
-        path, _ = QFileDialog.getSaveFileName(self, "Save plot as PNG", default_name, "PNG images (*.png)")
+        default_name = f"{self.series_combo.currentText()}.{fmt}"
+        file_filter = "SVG images (*.svg)" if fmt == "svg" else "PNG images (*.png)"
+        path, _ = QFileDialog.getSaveFileName(self, f"Save plot as {fmt.upper()}", default_name, file_filter)
         if not path:
             return
-        if not path.lower().endswith(".png"):
-            path += ".png"
+        if not path.lower().endswith(f".{fmt}"):
+            path += f".{fmt}"
 
-        self.save_png_button.setEnabled(False)  # guards against a second click racing this one's own poll
+        # Guards against a second click (either button) racing this
+        # one's own poll -- see the re-entrancy-guard comment above.
+        self.save_png_button.setEnabled(False)
+        self.save_svg_button.setEnabled(False)
         # tryRender's retry loop guards a real (if narrow) race: this
         # button's own enabled state is set synchronously inside
         # _redraw(), right after kicking off setHtml() -- but setHtml()
@@ -912,7 +950,7 @@ class ResultsWidget(QWidget):
                 }}
                 return;
             }}
-            Plotly.toImage(el, {{format: 'png', scale: 2}})
+            Plotly.toImage(el, {{format: {fmt!r}, scale: 2}})
                 .then(function(url) {{ window.{_PNG_RESULT_JS_VAR} = url; }})
                 .catch(function(err) {{
                     window.{_PNG_RESULT_JS_VAR} =
@@ -923,7 +961,7 @@ class ResultsWidget(QWidget):
         self.web_view.page().runJavaScript(kickoff_script)
 
         poll_timer = QTimer(self)
-        self._png_poll_state = {"path": path, "timer": poll_timer, "attempts": 0}
+        self._png_poll_state = {"path": path, "fmt": fmt, "timer": poll_timer, "attempts": 0}
         poll_timer.timeout.connect(self._poll_plot_png)
         poll_timer.start(_SAVE_PNG_POLL_INTERVAL_MS)
 
@@ -937,20 +975,48 @@ class ResultsWidget(QWidget):
                     state["timer"].stop()
                     self._png_poll_state = None  # see _on_save_plot_png's own re-entrancy-guard comment
                     self.save_png_button.setEnabled(self.figure is not None)
+                    self.save_svg_button.setEnabled(self.figure is not None)
                     QMessageBox.critical(self, "Save failed", "Timed out waiting for the plot to render.")
                 return
             state["timer"].stop()
             self._png_poll_state = None  # see _on_save_plot_png's own re-entrancy-guard comment
             self.save_png_button.setEnabled(self.figure is not None)
-            self._on_plot_png_rendered(value, state["path"])
+            self.save_svg_button.setEnabled(self.figure is not None)
+            self._on_plot_png_rendered(value, state["path"], state["fmt"])
 
         self.web_view.page().runJavaScript(f"window.{_PNG_RESULT_JS_VAR}", on_poll_result)
 
-    def _on_plot_png_rendered(self, data_url: object, path: str) -> None:
-        prefix = "data:image/png;base64,"
+    def _on_plot_png_rendered(self, data_url: object, path: str, fmt: str = "png") -> None:
+        """Decodes ``data_url`` (``Plotly.toImage()``'s resolved value --
+        see :meth:`_on_save_plot_png`'s own docstring for why this
+        arrives via polling rather than an awaited ``Promise``) and
+        writes it to ``path``. PNG and SVG use genuinely different
+        encodings on the JS side -- confirmed directly against the
+        installed ``plotly.min.js`` bundle's own ``encodeSVG``, not
+        assumed -- so this is NOT a single shared prefix-strip: PNG is
+        base64 (``data:image/png;base64,...``), SVG is a
+        percent-encoded TEXT data URL (``data:image/svg+xml,...``,
+        ``encodeURIComponent``-escaped, no base64 anywhere), decoded with
+        ``urllib.parse.unquote`` and written as UTF-8 text, never
+        ``base64.b64decode``.
+        """
         if isinstance(data_url, str) and data_url.startswith(_SAVE_PNG_ERROR_PREFIX):
             QMessageBox.critical(self, "Save failed", data_url[len(_SAVE_PNG_ERROR_PREFIX):])
             return
+        if fmt == "svg":
+            prefix = "data:image/svg+xml,"
+            if not isinstance(data_url, str) or not data_url.startswith(prefix):
+                QMessageBox.critical(self, "Save failed", "Could not render the plot to an SVG image.")
+                return
+            try:
+                svg_text = urllib.parse.unquote(data_url[len(prefix):])
+                Path(path).write_text(svg_text, encoding="utf-8")
+            except OSError as exc:
+                QMessageBox.critical(self, "Save failed", str(exc))
+                return
+            QMessageBox.information(self, "Plot saved", f"Saved plot to {path}")
+            return
+        prefix = "data:image/png;base64,"
         if not isinstance(data_url, str) or not data_url.startswith(prefix):
             QMessageBox.critical(self, "Save failed", "Could not render the plot to a PNG image.")
             return
