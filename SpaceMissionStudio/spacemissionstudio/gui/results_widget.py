@@ -113,7 +113,6 @@ unambiguous, not follow a plot-only display preference):
 from __future__ import annotations
 
 import base64
-import math
 import os
 import urllib.parse
 
@@ -123,10 +122,9 @@ import urllib.parse
 if hasattr(os, "geteuid") and os.geteuid() == 0:
     os.environ.setdefault("QTWEBENGINE_CHROMIUM_FLAGS", "--no-sandbox")
 
-from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Optional
 
 import plotly.graph_objects as go
 from PySide6.QtCore import QElapsedTimer, Qt, QTimer, QUrl
@@ -144,15 +142,11 @@ from PySide6.QtWidgets import (
 )
 
 from ..engine.results import ResultSet, TimeSeries
+from ..plot_categories import SeriesDisplay as _SeriesDisplay
+from ..plot_categories import categorize as _categorize
+from ..plot_categories import legacy_display as _legacy_display
+from ..plot_categories import parse_access_pair as _parse_access_pair
 from .theme import PALETTE
-
-_RAD2DEG = 180.0 / math.pi
-
-# "x"/"y"/"z" columns mean the same thing (an inertial-frame or body-frame
-# vector component) everywhere they appear in this app's own series
-# (position/velocity/body-rate/sun-heading/torque -- see engine.service),
-# so every vector-column series below reuses this one label map.
-_XYZ_LABELS = {"x": "X", "y": "Y", "z": "Z"}
 
 # Categorical series colors -- the first three slots of an 8-hue
 # palette (Claude's dataviz skill, references/palette.md). Three is
@@ -228,247 +222,6 @@ _SAVE_PNG_MAX_POLL_ATTEMPTS = 100  # 100 * 100ms = 10s -- Plotly.toImage took ~2
 # being generous enough for a full page reload to settle on a typical
 # machine -- not tuned to any specific scenario.
 _LIVE_REDRAW_MIN_INTERVAL_MS = 300
-
-
-@dataclass(frozen=True)
-class _SeriesDisplay:
-    """Everything :meth:`ResultsWidget._build_figure` needs to render one
-    named series descriptively, beyond what the bare :class:`TimeSeries`
-    itself already carries -- see :func:`_categorize`'s own docstring for
-    where these come from. ``factor`` multiplies ``series.data`` for
-    display only -- ``export_csv``/``_on_export`` never see it, matching
-    this module's "display choices are plot-only" policy (module
-    docstring). ``standalone_title`` is set for a category (access-window/
-    link-margin series) whose own title already names every identifying
-    detail -- everything else gets the owning spacecraft's name (the
-    series name's own first dotted segment) prefixed automatically.
-    """
-
-    title: str
-    y_label: str
-    unit: str
-    factor: float = 1.0
-    columns: Optional[Dict[str, str]] = None
-    standalone_title: bool = False
-
-
-def _vector_display(name: str) -> Optional[_SeriesDisplay]:
-    """State-vector and attitude/actuator vector series -- every one of
-    these already has ("x","y","z") or equivalent columns in
-    ``engine.service``. Position/velocity display in raw meters/m-s (NOT
-    km/km-s) per explicit user request ("state vector elements shall be
-    displayed in meters for position and m/s for velocity") -- a REVERSAL
-    of this module's own earlier km-conversion decision for exactly these
-    two series, which real user feedback showed went too far (see module
-    docstring). Body rate/torque/etc. are left in Basilisk's own native
-    units -- only position/velocity/delta-V/altitude/semi-major axis were
-    named in that feedback.
-    """
-    if name.endswith(".position_N"):
-        return _SeriesDisplay("Inertial Position (ECI)", "Position", "m", 1.0, dict(_XYZ_LABELS))
-    if name.endswith(".velocity_N"):
-        return _SeriesDisplay("Inertial Velocity (ECI)", "Velocity", "m/s", 1.0, dict(_XYZ_LABELS))
-    if name.endswith(".attitude_sigma_BN"):
-        return _SeriesDisplay("Attitude (MRP, Body to Inertial)", "MRP component", "-")
-    if name.endswith(".body_rate_omega_BN_B"):
-        return _SeriesDisplay("Body Angular Rate", "Angular rate", "rad/s", 1.0, dict(_XYZ_LABELS))
-    if name.endswith(".sun_heading_body"):
-        return _SeriesDisplay("Sun Heading (Body Frame)", "Unit vector component", "-", 1.0, dict(_XYZ_LABELS))
-    if name.endswith(".sun_heading_body_estimated"):
-        return _SeriesDisplay("Sun Heading Estimate (CSS, Body Frame)", "Unit vector component", "-", 1.0,
-                               dict(_XYZ_LABELS))
-    if name.endswith(".control_torque"):
-        return _SeriesDisplay("Commanded Control Torque", "Torque", "N*m", 1.0, dict(_XYZ_LABELS))
-    if name.endswith(".rw_speeds"):
-        return _SeriesDisplay("Reaction Wheel Speeds", "Wheel speed", "rad/s")
-    if name.endswith(".thruster_on_time"):
-        return _SeriesDisplay("Thruster On-Times", "Commanded on-time", "s")
-    if name.endswith(".fuel_mass_remaining"):
-        return _SeriesDisplay("Fuel Tank Remaining Mass", "Propellant mass", "kg", 1.0,
-                               {"fuel_mass_remaining": "Remaining"})
-    if name.endswith(".mtb_dipole_commanded"):
-        return _SeriesDisplay("Magnetic Torque Rod Commanded Dipole", "Dipole moment", "A*m^2")
-    if name.endswith(".battery_charge"):
-        return _SeriesDisplay("Battery State of Charge", "Charge", "W*hr", 1.0, {"charge": "Charge"})
-    if name.endswith(".battery_net_power"):
-        return _SeriesDisplay("Battery Net Power", "Net power", "W", 1.0, {"net_power": "Net power"})
-    return None
-
-
-def _orbit_element_display(name: str) -> Optional[_SeriesDisplay]:
-    """The 6 osculating + 6 mean (first-order-J2) Keplerian element
-    series ``engine.service._extract_results`` produces --
-    ``.orbit_elements.*`` (per-sample ``orbitalMotion.rv2elem``, already
-    existed) and ``.orbit_elements_mean.*`` (new: Basilisk's own
-    ``orbitalMotion.clMeanOscMap``, osc -> mean, the same analytic J2
-    short-period-removal its ``meanOEFeedback`` FSW module uses --
-    conceptually the averaged-element idea the user pointed at via STK's
-    "Brouwer-Lyddane Mean (Short)" data provider, built from a tool
-    Basilisk itself ships rather than a bespoke implementation; see
-    ``engine.service``'s own gating for why this is only computed when
-    the scenario's central body actually has a modeled J2 term).
-
-    Semi-major axis displays in km ("altitudes, semi-major axes shall be
-    displayed in km"); the four angles (inclination/RAAN/argument of
-    periapsis/true anomaly) display in degrees, matching every angle
-    INPUT field this app's own Scenario Editor already uses (e.g.
-    ``inclination_deg``) even though ``engine.service`` records them in
-    Basilisk's native radians.
-    """
-    specs = [
-        ("semi_major_axis", "Semi-Major Axis", "Semi-major axis", "km", 0.001),
-        ("eccentricity", "Eccentricity", "Eccentricity", "-", 1.0),
-        ("inclination", "Inclination", "Inclination", "deg", _RAD2DEG),
-        ("raan", "RAAN", "RAAN", "deg", _RAD2DEG),
-        ("arg_periapsis", "Argument of Periapsis", "Argument of periapsis", "deg", _RAD2DEG),
-        ("true_anomaly", "True Anomaly", "True anomaly", "deg", _RAD2DEG),
-    ]
-    for field, title_suffix, y_label, unit, factor in specs:
-        if name.endswith(f".orbit_elements.{field}"):
-            return _SeriesDisplay(f"Osculating {title_suffix}", y_label, unit, factor)
-        if name.endswith(f".orbit_elements_mean.{field}"):
-            return _SeriesDisplay(f"Mean (first-order J2) {title_suffix}", y_label, unit, factor)
-    return None
-
-
-_CONTROLLER_TITLES = {
-    "station_keeping": "Station-Keeping",
-    "phasing_keeping": "Phasing-Keeping",
-    "constant_thrust": "Constant-Thrust",
-}
-
-
-def _controller_display(name: str) -> Optional[_SeriesDisplay]:
-    """``"{sc}.<controller>.<field>"`` series from
-    ``engine.orbit_maintenance``'s three controllers. ``.delta_v`` is
-    handled identically across all three (one shared branch below) and
-    ALWAYS displays in raw m/s -- "delta-V shall always be displayed in
-    m/s" -- a REVERSAL of this module's own earlier blanket km/s
-    conversion, which real user feedback showed was wrong for delta-V
-    specifically even though it shares the literal "m/s" unit string
-    with velocity (see module docstring).
-    """
-    for key, label in _CONTROLLER_TITLES.items():
-        marker = f".{key}."
-        if marker not in name:
-            continue
-        field = name.rsplit(".", 1)[-1]
-        if field == "delta_v":
-            return _SeriesDisplay(f"{label} Cumulative Delta-V", "Cumulative delta-V", "m/s", 1.0,
-                                   {"cumulative_delta_v": "Delta-V"})
-        if field == "propellant_remaining":
-            return _SeriesDisplay(f"{label} Propellant Remaining", "Propellant mass", "kg")
-        if field == "altitude":
-            return _SeriesDisplay(f"{label} Altitude Tracking", "Altitude", "km", 0.001,
-                                   {"raw": "Raw", "smoothed": "Smoothed (filtered)"})
-        if field == "burn_on":
-            return _SeriesDisplay(f"{label} Thruster State", "Burn on (1) / off (0)", "-")
-        if field == "separation_error":
-            # Already recorded in degrees (engine.service: units="deg") --
-            # factor 1.0, no conversion needed.
-            return _SeriesDisplay(f"{label} Separation Error", "Angle error", "deg")
-        if field == "state":
-            return _SeriesDisplay(f"{label} Controller State", "State", "-")
-        return None
-    return None
-
-
-def _parse_access_pair(name: str) -> Optional[tuple]:
-    """Recovers ``(gs, sc, field)`` from a ``"{gs}.access_to_{sc}.<field>"``
-    series name (``engine.service``'s access-analysis loop, plus
-    ``engine.link_budget.link_margin_series``) -- the literal
-    ``".access_to_"`` separator both producers use -- or ``None`` if
-    ``name`` doesn't match that shape. Shared by :func:`_access_pair_display`
-    and :meth:`ResultsWidget._build_access_timeline_figure` (roadmap item
-    M5) so both agree on exactly which series are "an access pair series"
-    and how to recover the station/spacecraft names from one.
-    """
-    if ".access_to_" not in name:
-        return None
-    prefix, _, field = name.rpartition(".")
-    gs, sep, sc = prefix.partition(".access_to_")
-    if not sep:
-        return None
-    return gs, sc, field
-
-
-def _access_pair_display(name: str) -> Optional[_SeriesDisplay]:
-    """``"{gs}.access_to_{sc}.<field>"`` series -- see
-    :func:`_parse_access_pair`. Slant range displays in km,
-    elevation/azimuth in degrees -- same length/angle display policy as
-    everywhere else in this module.
-    """
-    parsed = _parse_access_pair(name)
-    if parsed is None:
-        return None
-    gs, sc, field = parsed
-    pair = f"{gs} -> {sc}"
-    if field == "has_access":
-        return _SeriesDisplay(f"Access Window: {pair}", "Has access", "-", 1.0,
-                               {"has_access": "Has access"}, standalone_title=True)
-    if field == "slant_range":
-        return _SeriesDisplay(f"Slant Range: {pair}", "Slant range", "km", 0.001, standalone_title=True)
-    if field == "elevation":
-        return _SeriesDisplay(f"Elevation: {pair}", "Elevation angle", "deg", _RAD2DEG, standalone_title=True)
-    if field == "azimuth":
-        return _SeriesDisplay(f"Azimuth: {pair}", "Azimuth angle", "deg", _RAD2DEG, standalone_title=True)
-    if field == "link_margin_db":
-        return _SeriesDisplay(f"Link Margin: {pair}", "Link margin", "dB", 1.0, standalone_title=True)
-    return None
-
-
-def _sensor_display(name: str, series: TimeSeries) -> Optional[_SeriesDisplay]:
-    """``"{sc}.sensor.{sensor_name}[.accel|.gyro]"`` series -- the sensor
-    NAME is user-chosen (``schema.scenario``'s sensor config), so unlike
-    every other category here the series name alone can't say which
-    sensor TYPE produced it; ``series.columns``/``series.units``
-    (already distinct per sensor type in ``engine.service``'s own
-    recording code) disambiguate instead.
-    """
-    if ".sensor." not in name:
-        return None
-    if name.endswith(".accel"):
-        sensor_name = name[: -len(".accel")].rsplit(".sensor.", 1)[-1]
-        return _SeriesDisplay(f"IMU Accelerometer: {sensor_name}", "Acceleration", series.units, 1.0,
-                               dict(_XYZ_LABELS))
-    if name.endswith(".gyro"):
-        sensor_name = name[: -len(".gyro")].rsplit(".sensor.", 1)[-1]
-        return _SeriesDisplay(f"IMU Gyroscope: {sensor_name}", "Angular rate", series.units, 1.0,
-                               dict(_XYZ_LABELS))
-    sensor_name = name.rsplit(".sensor.", 1)[-1]
-    if tuple(series.columns) == ("q0", "q1", "q2", "q3"):
-        return _SeriesDisplay(f"Star Tracker Attitude: {sensor_name}", "Quaternion component", "-")
-    if tuple(series.columns) == ("output",):
-        return _SeriesDisplay(f"Coarse Sun Sensor: {sensor_name}", "Output", "-")
-    if series.units == "T":
-        return _SeriesDisplay(f"Magnetometer: {sensor_name}", "Magnetic field", "T", 1.0, dict(_XYZ_LABELS))
-    return None
-
-
-def _categorize(name: str, series: TimeSeries) -> Optional[_SeriesDisplay]:
-    """Display metadata for every series ``engine.service``/
-    ``engine.link_budget`` are known to produce -- ``None`` for anything
-    else, which :func:`_legacy_display` falls back on: raw series name as
-    title, ``series.units`` unconverted except the ORIGINAL narrow m/m-s
-    -> km/km-s rule this module shipped with before this per-category
-    system replaced it (see module docstring). That fallback means an
-    uncategorized/future series still renders reasonably -- exactly as it
-    would have before this feature existed -- rather than erroring or
-    looking unfinished.
-    """
-    for fn in (_vector_display, _orbit_element_display, _controller_display, _access_pair_display):
-        result = fn(name)
-        if result is not None:
-            return result
-    return _sensor_display(name, series)
-
-
-_LEGACY_UNIT_CONVERSIONS = {"m": ("km", 0.001), "m/s": ("km/s", 0.001)}
-
-
-def _legacy_display(name: str, series: TimeSeries) -> _SeriesDisplay:
-    display_unit, factor = _LEGACY_UNIT_CONVERSIONS.get(series.units, (series.units, 1.0))
-    return _SeriesDisplay(title=name, y_label="", unit=display_unit, factor=factor, standalone_title=True)
 
 
 def _plotlyjs_path() -> Path:
@@ -548,6 +301,13 @@ class ResultsWidget(QWidget):
         self.series_combo.setEditable(True)
         self.series_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
         self.series_combo.setToolTip("Type to filter, or use the dropdown")
+        # A long real series name (e.g. "leo-02-03.orbit_elements_mean.inclination")
+        # needs real room to be readable -- without a floor, this is the
+        # one widget on the row with stretch=1, so it's also the first
+        # one Qt shrinks below its natural size when the row is tight
+        # (see button_row's own comment for the regression this guards
+        # against going forward).
+        self.series_combo.setMinimumWidth(220)
         completer = QCompleter(self.series_combo.model(), self.series_combo)
         completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
         completer.setFilterMode(Qt.MatchFlag.MatchContains)
@@ -588,16 +348,34 @@ class ResultsWidget(QWidget):
         )
         self.x_axis_combo.currentIndexChanged.connect(self._redraw)
         top_row.addWidget(self.x_axis_combo)
+        layout.addLayout(top_row)
+
+        # Real UI regression, caught from a screenshot: this row used to
+        # share ONE QHBoxLayout with the "View"/"Series"/"X-axis" combos
+        # above. Adding the "View" combo (roadmap item M5) and the "Save
+        # plot as SVG..." button (roadmap item M2) on top of what was
+        # already there left too many widgets competing for one row's
+        # width inside the (non-full-window) Results panel -- Qt resolved
+        # that by squeezing series_combo (the one widget with
+        # stretch=1, i.e. the one meant to actually use spare space) down
+        # toward its minimum size instead, which on a real window left it
+        # showing only a few truncated characters of whatever was
+        # selected/typed, looking exactly like garbled text. Splitting
+        # "what am I looking at" (above) from "do something with it"
+        # (below) onto separate rows removes that width pressure
+        # entirely rather than trying to tune individual widths against
+        # an unbounded number of future buttons on the same row.
+        button_row = QHBoxLayout()
         self.export_button = QPushButton("Export all series to CSV...")
         self.export_button.clicked.connect(self._on_export)
         self.export_button.setEnabled(False)
-        top_row.addWidget(self.export_button)
+        button_row.addWidget(self.export_button)
         self.save_png_button = QPushButton("Save plot as PNG...")
         self.save_png_button.setToolTip("Save the currently displayed plot (not every series -- see "
                                          "\"Export all series to CSV...\" for that) as a PNG image")
         self.save_png_button.clicked.connect(self._on_save_plot_png)
         self.save_png_button.setEnabled(False)
-        top_row.addWidget(self.save_png_button)
+        button_row.addWidget(self.save_png_button)
         # Design-philosophy roadmap item M2 (docs/ux_roadmap.md): a vector
         # export alongside the existing raster one, for a plot a user wants
         # to drop into a paper/report at arbitrary scale without it going
@@ -608,8 +386,9 @@ class ResultsWidget(QWidget):
         self.save_svg_button.setToolTip("Save the currently displayed plot as a scalable vector (SVG) image")
         self.save_svg_button.clicked.connect(self._on_save_plot_svg)
         self.save_svg_button.setEnabled(False)
-        top_row.addWidget(self.save_svg_button)
-        layout.addLayout(top_row)
+        button_row.addWidget(self.save_svg_button)
+        button_row.addStretch(1)
+        layout.addLayout(button_row)
 
         # Design-philosophy audit finding (docs/ux_audit.md, "no run
         # provenance captured with results"): one line, always visible
