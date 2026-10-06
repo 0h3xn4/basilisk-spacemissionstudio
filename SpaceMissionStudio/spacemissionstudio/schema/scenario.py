@@ -274,13 +274,28 @@ class PowerConfig:
     battery_initial_soc: float = 1.0  # [-] initial state of charge, fraction of capacity, 0 <= x <= 1
 
     def validate(self, spacecraft_name: str) -> None:
-        _require(self.panel_area_m2 > 0, f"{spacecraft_name}: power.panel_area_m2 must be > 0")
+        # Design-philosophy audit finding (docs/ux_audit.md, "units
+        # enforced only by naming convention"): a plain, generous
+        # upper-bound plausibility check -- 2000 m^2 is already far
+        # larger than any real single spacecraft's solar array (ISS's
+        # own combined 8 arrays total ~2500 m^2, and this field is ONE
+        # spacecraft here) -- catches the likely magnitude typo (a
+        # units mixup, e.g. cm^2 typed where m^2 was meant) without
+        # rejecting anything physically real. Not a type-level unit
+        # system (see that finding's own "decision needed" in
+        # docs/ux_roadmap.md) -- just a sanity floor/ceiling, same
+        # spirit as panel_efficiency's existing (0, 1] check just below.
+        _require(0.0 < self.panel_area_m2 <= 2000.0,
+                  f"{spacecraft_name}: power.panel_area_m2 must be in (0, 2000] m^2 -- if your intended "
+                  "value is outside this range, check for a units mixup (e.g. cm^2 instead of m^2)")
         _require(0.0 < self.panel_efficiency <= 1.0,
                   f"{spacecraft_name}: power.panel_efficiency must be in (0, 1]")
         _require(len(self.panel_normal_b) == 3,
                   f"{spacecraft_name}: power.panel_normal_b must be a 3-element [x, y, z] list")
         _require(self.bus_idle_power_w >= 0, f"{spacecraft_name}: power.bus_idle_power_w must be >= 0")
-        _require(self.battery_capacity_wh > 0, f"{spacecraft_name}: power.battery_capacity_wh must be > 0")
+        _require(0.0 < self.battery_capacity_wh <= 1.0e6,
+                  f"{spacecraft_name}: power.battery_capacity_wh must be in (0, 1e6] W*hr -- if your "
+                  "intended value is outside this range, check for a units mixup (e.g. Wh entered as J)")
         _require(0.0 <= self.battery_initial_soc <= 1.0,
                   f"{spacecraft_name}: power.battery_initial_soc must be in [0, 1]")
 
@@ -317,7 +332,14 @@ class RFLinkConfig:
     antenna_beamwidth_deg: Optional[float] = None
 
     def validate(self, spacecraft_name: str) -> None:
-        _require(self.tx_power_w > 0, f"{spacecraft_name}: rf_link.tx_power_w must be > 0")
+        # Generous plausibility ceiling (docs/ux_audit.md, "units
+        # enforced only by naming convention") -- 10 kW is already far
+        # above any real spacecraft downlink transmitter (typically well
+        # under 100 W); catches a likely magnitude typo without
+        # rejecting anything physically real.
+        _require(0.0 < self.tx_power_w <= 1.0e4,
+                  f"{spacecraft_name}: rf_link.tx_power_w must be in (0, 1e4] W -- if your intended value "
+                  "is outside this range, check for a units mixup (e.g. mW instead of W)")
         _require(self.frequency_hz > 0, f"{spacecraft_name}: rf_link.frequency_hz must be > 0")
         _require(self.data_rate_bps > 0, f"{spacecraft_name}: rf_link.data_rate_bps must be > 0")
         _require(self.implementation_loss_db >= 0,
@@ -782,7 +804,15 @@ class SpacecraftConfig:
 
     def validate(self) -> None:
         _require(bool(self.name), "spacecraft.name must not be empty")
-        _require(self.dry_mass_kg > 0, f"{self.name}: dry_mass_kg must be > 0")
+        # Generous plausibility ceiling (docs/ux_audit.md, "units
+        # enforced only by naming convention") -- 1e6 kg is already far
+        # above any single real spacecraft (the ISS, the largest
+        # crewed structure ever assembled, is about 4.2e5 kg); catches a
+        # likely magnitude typo (e.g. grams instead of kilograms)
+        # without rejecting anything physically real.
+        _require(0.0 < self.dry_mass_kg <= 1.0e6,
+                  f"{self.name}: dry_mass_kg must be in (0, 1e6] -- if your intended value is outside "
+                  "this range, check for a units mixup (e.g. g instead of kg)")
         _require(len(self.inertia_kg_m2) == 9, f"{self.name}: inertia_kg_m2 must have 9 elements (3x3, row-major)")
         _require(len(self.sigma_bn_init) == 3, f"{self.name}: sigma_bn_init must have 3 elements")
         _require(len(self.omega_bn_b_init_rad_s) == 3, f"{self.name}: omega_bn_b_init_rad_s must have 3 elements")
@@ -798,9 +828,18 @@ class SpacecraftConfig:
         # so toggling either flag on later can't resurface an
         # already-invalid value unnoticed.
         _require(self.drag_coeff > 0, f"{self.name}: drag_coeff must be > 0")
-        _require(self.drag_area_m2 > 0, f"{self.name}: drag_area_m2 must be > 0")
+        # Generous plausibility ceilings (docs/ux_audit.md, "units
+        # enforced only by naming convention") -- 10,000 m^2 is already
+        # far above any real spacecraft's cross-sectional area (even the
+        # ISS's combined structure/arrays is a few thousand m^2); catches
+        # a likely magnitude typo without rejecting anything real.
+        _require(0.0 < self.drag_area_m2 <= 1.0e4,
+                  f"{self.name}: drag_area_m2 must be in (0, 1e4] -- if your intended value is outside "
+                  "this range, check for a units mixup (e.g. cm^2 instead of m^2)")
         _require(self.srp_coeff > 0, f"{self.name}: srp_coeff must be > 0")
-        _require(self.srp_area_m2 > 0, f"{self.name}: srp_area_m2 must be > 0")
+        _require(0.0 < self.srp_area_m2 <= 1.0e4,
+                  f"{self.name}: srp_area_m2 must be in (0, 1e4] -- if your intended value is outside "
+                  "this range, check for a units mixup (e.g. cm^2 instead of m^2)")
         self.orbit.validate()
 
         _require(self.fsw_mode is None or self.fsw_mode in SUPPORTED_FSW_MODES,
@@ -851,8 +890,21 @@ class SpacecraftConfig:
                 # physically reasonable Basilisk defaults (1 kg, 890 J/kg/K,
                 # aluminum) and so stay optional.
                 area_m2 = sensor.params.get("area_m2")
-                _require(area_m2 is not None and area_m2 > 0,
-                          f"{self.name}: thermal sensor {sensor.name!r} needs params['area_m2'] > 0")
+                # Generous plausibility ceiling (docs/ux_audit.md, "units
+                # enforced only by naming convention") on top of
+                # sensorThermal's own required-positive check above --
+                # 1000 m^2 is already far larger than any real
+                # externally-mounted component's radiative surface.
+                _require(area_m2 is not None and 0.0 < area_m2 <= 1000.0,
+                          f"{self.name}: thermal sensor {sensor.name!r} needs params['area_m2'] in "
+                          "(0, 1000] -- if your intended value is outside this range, check for a units "
+                          "mixup (e.g. cm^2 instead of m^2)")
+                mass_kg = sensor.params.get("mass_kg")
+                if mass_kg is not None:
+                    _require(0.0 < mass_kg <= 10000.0,
+                              f"{self.name}: thermal sensor {sensor.name!r} params['mass_kg'] must be in "
+                              "(0, 10000] if set -- if your intended value is outside this range, check "
+                              "for a units mixup (e.g. g instead of kg)")
                 absorptivity = sensor.params.get("absorptivity")
                 _require(absorptivity is not None and 0.0 < absorptivity <= 1.0,
                           f"{self.name}: thermal sensor {sensor.name!r} needs params['absorptivity'] in (0, 1]")

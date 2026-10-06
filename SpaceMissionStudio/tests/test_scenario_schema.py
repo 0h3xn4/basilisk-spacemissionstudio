@@ -1115,6 +1115,80 @@ def test_rf_link_config_rejects_non_positive_data_rate():
         sc.validate()
 
 
+# -- Plausibility-bound checks (docs/ux_audit.md, "units enforced only
+# by naming convention") -- a generous ceiling catching a likely
+# magnitude typo (e.g. a units mixup) without rejecting anything
+# physically real. ----------------------------------------------------
+
+def test_power_config_rejects_implausibly_large_panel_area():
+    sc = _minimal_scenario()
+    sc.spacecraft[0].power = PowerConfig(panel_area_m2=1.0e6, panel_efficiency=0.3)
+    with pytest.raises(ScenarioValidationError, match="panel_area_m2"):
+        sc.validate()
+
+
+def test_power_config_rejects_implausibly_large_battery_capacity():
+    sc = _minimal_scenario()
+    sc.spacecraft[0].power = PowerConfig(panel_area_m2=1.0, panel_efficiency=0.3, battery_capacity_wh=1.0e9)
+    with pytest.raises(ScenarioValidationError, match="battery_capacity_wh"):
+        sc.validate()
+
+
+def test_rf_link_config_rejects_implausibly_large_tx_power():
+    sc = _minimal_scenario()
+    sc.spacecraft[0].rf_link = RFLinkConfig(tx_power_w=1.0e8, frequency_hz=8.0e9, data_rate_bps=1.0e6)
+    with pytest.raises(ScenarioValidationError, match="tx_power_w"):
+        sc.validate()
+
+
+def test_spacecraft_rejects_implausibly_large_dry_mass():
+    sc = _minimal_scenario()
+    sc.spacecraft[0].dry_mass_kg = 1.0e12
+    with pytest.raises(ScenarioValidationError, match="dry_mass_kg"):
+        sc.validate()
+
+
+def test_spacecraft_rejects_implausibly_large_drag_area():
+    sc = _minimal_scenario()
+    sc.spacecraft[0].drag_area_m2 = 1.0e8
+    with pytest.raises(ScenarioValidationError, match="drag_area_m2"):
+        sc.validate()
+
+
+def test_spacecraft_rejects_implausibly_large_srp_area():
+    sc = _minimal_scenario()
+    sc.spacecraft[0].srp_area_m2 = 1.0e8
+    with pytest.raises(ScenarioValidationError, match="srp_area_m2"):
+        sc.validate()
+
+
+def test_thermal_sensor_rejects_implausibly_large_area():
+    sc = _minimal_scenario()
+    sc.spacecraft[0].sensors = [SensorConfig(kind="thermal", name="therm-1",
+                                               params={"nHat_B": [0, 0, 1], "area_m2": 1.0e8, "absorptivity": 0.25,
+                                                       "emissivity": 0.34})]
+    with pytest.raises(ScenarioValidationError, match="area_m2"):
+        sc.validate()
+
+
+def test_thermal_sensor_rejects_implausibly_large_mass_when_set():
+    sc = _minimal_scenario()
+    sc.spacecraft[0].sensors = [SensorConfig(kind="thermal", name="therm-1",
+                                               params={"nHat_B": [0, 0, 1], "area_m2": 1.0, "absorptivity": 0.25,
+                                                       "emissivity": 0.34, "mass_kg": 1.0e9})]
+    with pytest.raises(ScenarioValidationError, match="mass_kg"):
+        sc.validate()
+
+
+def test_thermal_sensor_with_no_mass_kg_set_still_validates():
+    # mass_kg stays genuinely optional -- this bound only applies when set.
+    sc = _minimal_scenario()
+    sc.spacecraft[0].sensors = [SensorConfig(kind="thermal", name="therm-1",
+                                               params={"nHat_B": [0, 0, 1], "area_m2": 1.0, "absorptivity": 0.25,
+                                                       "emissivity": 0.34})]
+    sc.validate()  # must not raise
+
+
 def test_ground_station_rejects_non_positive_system_noise_temp():
     gs = GroundStationConfig(name="gs1", latitude_deg=0.0, longitude_deg=0.0, system_noise_temp_k=0.0)
     with pytest.raises(ScenarioValidationError, match="system_noise_temp_k"):
