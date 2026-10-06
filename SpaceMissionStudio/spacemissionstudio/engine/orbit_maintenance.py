@@ -292,6 +292,14 @@ class StationKeepingController(sysModel.SysModel):
         self.burnOn = False
         self._lastT: Optional[float] = None  # [s]
         self._altHistory: list = []  # list of (t [s], alt [m]) for the smoothing window
+        # [s] When the FIRST sample since Reset() was recorded -- tracked
+        # separately from _altHistory[0][0] because the pruning loop
+        # below keeps that oldest-kept-sample's age at or under
+        # smoothingWindowS by construction, so it can never itself reach
+        # or exceed smoothingWindowS; this is the real "has a full
+        # orbital period of history actually accumulated yet" clock (see
+        # UpdateState's own cold-start-guard comment).
+        self._historyStartT: Optional[float] = None  # [s]
 
         # Python-side telemetry (cheap; avoids extra BSK messages/recorders
         # for what is ultimately just a handful of scalars per tick).
@@ -307,6 +315,7 @@ class StationKeepingController(sysModel.SysModel):
         self.burnOn = False
         self._lastT = CurrentSimNanos * macros.NANO2SEC
         self._altHistory = []
+        self._historyStartT = None
         if self.extForceEffector is not None:
             self.extForceEffector.extForce_N = [0.0, 0.0, 0.0]
 
@@ -339,12 +348,61 @@ class StationKeepingController(sysModel.SysModel):
 
         # Orbit-period boxcar smoothing to reject short-period altitude
         # oscillation and only respond to secular (e.g. drag-driven) decay.
+        if self._historyStartT is None:
+            self._historyStartT = t
         self._altHistory.append((t, alt))
         while self._altHistory and (t - self._altHistory[0][0]) > self.smoothingWindowS:
             self._altHistory.pop(0)
         smoothAlt = float(np.mean([a for _, a in self._altHistory]))
 
-        if not self.burnOn and smoothAlt < (self.nominalAlt - self.deadband):
+        # Real bug, found by reproducing a real Vizard screenshot showing
+        # a co-located PhasingKeepingController's along-track separation
+        # diverging without bound instead of converging toward its own
+        # target (see that class's own docstring) -- traced to THIS
+        # controller, not phasing-keeping's own control law. _altHistory
+        # starts EMPTY every Reset(), so smoothAlt at/near t=0 is averaged
+        # over however few samples have accumulated so far -- at the very
+        # first tick, exactly ONE: the raw OSCULATING altitude at
+        # whatever point in the orbit the spacecraft happens to start.
+        # For a spacecraft placed near perigee (a common, deliberate
+        # choice -- e.g. true_anomaly_deg=0, as this module's own
+        # formation-flying template uses), that one sample reads well
+        # BELOW the orbit's true mean altitude from completely normal
+        # Keplerian motion, with nothing secular (drag decay, etc.)
+        # involved at all. Confirmed directly: a bare two-body repro
+        # (point-mass gravity, no drag/J2) with the spacecraft started at
+        # perigee showed burnOn flip True at t=0 and stay True for
+        # roughly half an orbital period, injecting a real, unintended
+        # ~540 m semi-major-axis change before the window held enough
+        # samples to reflect the orbit's genuine, already-on-target
+        # average altitude -- a co-located PhasingKeepingController
+        # sharing this same thruster has no way to distinguish that
+        # perturbation from a real orbital anomaly, and its own single,
+        # correctly-sized correction burn is then overwhelmed by it.
+        # Fixed by gating a NEW burn's START on the window actually
+        # holding a full orbital period of real history -- the exact
+        # same "don't trust a partial window" discipline this smoothing
+        # filter already claims for itself in the comment above, just
+        # not previously applied at cold start. Never gates the
+        # symmetric EXIT condition below, which only matters once a burn
+        # has legitimately begun (by then the window is always full).
+        # Delays reacting to a genuinely real altitude deficiency at
+        # simulation start by at most one orbital period -- consistent
+        # with, not a new tradeoff against, this controller's own stated
+        # purpose of responding only to SECULAR decay, which by
+        # definition unfolds over many orbits anyway.
+        #
+        # Deliberately measured against self._historyStartT (set once,
+        # the first tick after Reset()), NOT self._altHistory[0][0]: the
+        # pruning loop just above keeps the OLDEST entry still in the
+        # window at or under smoothingWindowS old by construction, so
+        # that age can never itself reach smoothingWindowS -- comparing
+        # against it here would make this guard permanently, silently
+        # unsatisfiable (a real bug caught in this fix's own first-draft
+        # test run: the window never read as "full" even after a
+        # genuinely full orbital period of real ticks had elapsed).
+        windowFull = (t - self._historyStartT) >= self.smoothingWindowS
+        if not self.burnOn and windowFull and smoothAlt < (self.nominalAlt - self.deadband):
             self.burnOn = True
         elif self.burnOn and smoothAlt >= self.nominalAlt:
             self.burnOn = False

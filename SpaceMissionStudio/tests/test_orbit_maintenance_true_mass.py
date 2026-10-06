@@ -69,8 +69,9 @@ _R_PLANET_M = 6378137.0
 
 
 def _run_one_tick(include_fuel_tank: bool, dt_s: float = 1.0):
+    import numpy as np
     from Basilisk.simulation import extForceTorque, fuelTank, spacecraft
-    from Basilisk.utilities import SimulationBaseClass, macros, simHelpers
+    from Basilisk.utilities import SimulationBaseClass, macros, simHelpers, simIncludeGravBody
 
     from spacemissionstudio.engine.orbit_maintenance import StationKeepingConfig, build_station_keeping
 
@@ -86,11 +87,25 @@ def _run_one_tick(include_fuel_tank: bool, dt_s: float = 1.0):
     sc_object.hub.r_BcB_B = [0.0, 0.0, 0.0]
     inertia = [10.0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 10.0]
     sc_object.hub.IHubPntBc_B = simHelpers.np2EigenMatrix3d(inertia)
-    # Circular orbit well below the deadband (target 550 km) -> the
-    # controller's smoothed-altitude burn logic engages immediately.
-    sc_object.hub.r_CN_NInit = [[_R_PLANET_M + 500e3], [0.0], [0.0]]
-    sc_object.hub.v_CN_NInit = [[0.0], [7600.0], [0.0]]
+    # Circular orbit well below the deadband (target 550 km, deadband
+    # 2 km -- 400 km alt is comfortably below the 548 km threshold at
+    # EVERY point of a circular orbit, not just on average) -- real
+    # point-mass Earth gravity (attached below) keeps it there, so the
+    # settle phase this function now runs (see below) reads consistently
+    # below-deadband the whole time with no eccentricity-driven swings
+    # to reason about, regardless of what orbital phase it happens to
+    # stop at.
+    r0_m = _R_PLANET_M + 400e3
+    v_circ_mps = float(np.sqrt(_MU / r0_m))
+    sc_object.hub.r_CN_NInit = [[r0_m], [0.0], [0.0]]
+    sc_object.hub.v_CN_NInit = [[0.0], [v_circ_mps], [0.0]]
     scSim.AddModelToTask(task_name, sc_object, 10)
+
+    grav_factory = simIncludeGravBody.gravBodyFactory()
+    earth = grav_factory.createEarth()
+    earth.isCentralBody = True
+    earth.mu = _MU
+    grav_factory.addBodiesTo(sc_object)
 
     if include_fuel_tank:
         tank_model = fuelTank.FuelTankModelUniformBurn()
@@ -118,26 +133,51 @@ def _run_one_tick(include_fuel_tank: bool, dt_s: float = 1.0):
     )
 
     scSim.InitializeSimulation()
-    scSim.ConfigureStopTime(macros.sec2nano(dt_s))
+    # Settle phase: StationKeepingController's altitude-smoothing window
+    # must hold a FULL orbital period of real history before it will
+    # start a burn (a real cold-start bug this project's own HISTORY.md
+    # documents -- see orbit_maintenance.py's own windowFull comment) --
+    # a bare single tick, which this test used to stop at, is no longer
+    # enough to engage burnOn at all. Runs up to that point first so the
+    # ONE tick actually measured below (the second ConfigureStopTime/
+    # ExecuteSimulation call, exactly dt_s further) is a genuine burning
+    # tick, same as this test always intended -- just no longer the very
+    # first tick of the simulation.
+    # +5*dt_s margin (not just +dt_s): smoothingWindowS is not generally
+    # an exact multiple of dt_s, and Basilisk's task grid only executes
+    # ticks on multiples of dt_s up to (not past) the configured stop
+    # time -- a +dt_s margin can under-shoot the real threshold by up to
+    # just under one dt_s due to that quantization, which is exactly
+    # what the first version of this settle phase did.
+    settle_s = controller.smoothingWindowS + 5.0 * dt_s
+    scSim.ConfigureStopTime(macros.sec2nano(settle_s))
+    scSim.ExecuteSimulation()
+    assert controller.burnLog[-1] == 1, "settle phase must already be burning before the measured tick"
+
+    hub_mass_before_measured_tick = sc_object.hub.mHub
+    cumulative_dv_before_measured_tick = controller._cumulativeDv
+
+    scSim.ConfigureStopTime(macros.sec2nano(settle_s + dt_s))
     scSim.ExecuteSimulation()
 
-    return controller, hub_mass
+    return controller, hub_mass_before_measured_tick, cumulative_dv_before_measured_tick
 
 
 def test_station_keeping_cumulative_dv_uses_true_total_mass_including_fuel_tank():
-    controller, hub_mass = _run_one_tick(include_fuel_tank=True, dt_s=1.0)
+    controller, hub_mass, cumulative_dv_before = _run_one_tick(include_fuel_tank=True, dt_s=1.0)
 
     assert controller.burnLog[-1] == 1, "test setup must actually trigger a burn to be meaningful"
 
     true_total_mass = hub_mass + _TANK_PROPELLANT_KG
     expected_dv = (_THRUST_N / true_total_mass) * 1.0
     buggy_dv_if_hub_only = (_THRUST_N / hub_mass) * 1.0
+    dv_this_tick = controller._cumulativeDv - cumulative_dv_before
 
-    assert controller._cumulativeDv == pytest.approx(expected_dv, rel=1e-9), (
-        f"StationKeepingController's own delta-V estimate ({controller._cumulativeDv}) does not match "
+    assert dv_this_tick == pytest.approx(expected_dv, rel=1e-9), (
+        f"StationKeepingController's own delta-V estimate for this tick ({dv_this_tick}) does not match "
         f"thrust / TRUE total mass ({expected_dv}) -- the fuel_tank's mass contribution was not picked up"
     )
-    assert controller._cumulativeDv < buggy_dv_if_hub_only, (
+    assert dv_this_tick < buggy_dv_if_hub_only, (
         "delta-V estimate should be SMALLER with the fuel tank's extra mass correctly included than the "
         "old (buggy) hub.mHub-only computation would give"
     )
@@ -148,12 +188,13 @@ def test_station_keeping_cumulative_dv_unchanged_without_a_fuel_tank():
     must behave exactly as before -- hub.mHub alone IS the true total
     mass in that case, so scMassOutMsg.massSC must agree with it exactly.
     """
-    controller, hub_mass = _run_one_tick(include_fuel_tank=False, dt_s=1.0)
+    controller, hub_mass, cumulative_dv_before = _run_one_tick(include_fuel_tank=False, dt_s=1.0)
 
     assert controller.burnLog[-1] == 1, "test setup must actually trigger a burn to be meaningful"
 
     expected_dv = (_THRUST_N / hub_mass) * 1.0
-    assert controller._cumulativeDv == pytest.approx(expected_dv, rel=1e-9)
+    dv_this_tick = controller._cumulativeDv - cumulative_dv_before
+    assert dv_this_tick == pytest.approx(expected_dv, rel=1e-9)
 
 
 def test_station_keeping_propellant_burn_write_back_does_not_double_count_fuel_tank_mass():
@@ -162,7 +203,7 @@ def test_station_keeping_propellant_burn_write_back_does_not_double_count_fuel_t
     get double-counted (once in the tank's own state, once baked into
     hub.mHub).
     """
-    controller, hub_mass = _run_one_tick(include_fuel_tank=True, dt_s=1.0)
+    controller, hub_mass, _cumulative_dv_before = _run_one_tick(include_fuel_tank=True, dt_s=1.0)
 
     mdot = _THRUST_N / (_ISP_S * controller.g0)
     burned_kg = mdot * 1.0

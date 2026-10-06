@@ -390,6 +390,11 @@ def test_station_keeping_dv_budget_is_tsiolkovsky_closed_form():
 
 
 def test_station_keeping_publishes_delta_v_message_after_update():
+    """Below the deadband -> burnOn (once the altitude-smoothing window
+    has a FULL orbital period of real history -- see the cold-start
+    regression test below for why a single below-deadband sample must
+    NOT trigger this immediately) -> nonzero delta-V.
+    """
     from Basilisk.architecture import messaging
     from Basilisk.simulation import extForceTorque
 
@@ -401,17 +406,94 @@ def test_station_keeping_publishes_delta_v_message_after_update():
     )
     controller.extForceEffector = extForceTorque.ExtForceTorque()
     sc_state_msg = messaging.SCStatesMsg()
-    # Below the deadband -> burnOn immediately -> nonzero delta-V this tick.
     _write_sc_state(sc_state_msg, [6378137.0 + 540e3, 0.0, 0.0], [0.0, 7500.0, 0.0])
     controller.scStateInMsg.subscribeTo(sc_state_msg)
     controller.Reset(0)
 
-    controller.UpdateState(int(1e9))  # dt = 1 s
+    dt_s = 60.0
+    t_s = 0.0
+    # +dt_s margin: the window's "full" clock starts at the FIRST tick
+    # (t=dt_s, not t=0 -- see StationKeepingController's own
+    # _historyStartT comment), so reaching smoothingWindowS of ELAPSED
+    # time needs one extra step beyond smoothingWindowS/dt_s steps.
+    while t_s <= controller.smoothingWindowS + dt_s:
+        t_s += dt_s
+        controller.UpdateState(int(t_s * 1e9))
 
     payload = controller.deltaVOutMsg.read()
     assert payload.storageLevel == controller._cumulativeDv
     assert payload.storageLevel > 0.0
     assert payload.storageCapacity == controller.dvBudgetMps
+
+
+def test_station_keeping_cold_start_does_not_spuriously_burn_on_one_low_sample():
+    """Real bug, found by reproducing a real Vizard screenshot of
+    `05_formation_flying_phasing.json` showing a co-located
+    PhasingKeepingController's along-track separation diverging without
+    bound instead of converging: `_altHistory` starts EMPTY every
+    `Reset()`, so at the very first tick `smoothAlt` is averaged over
+    exactly ONE sample -- the raw osculating altitude at whatever point
+    in the orbit the spacecraft happens to start. A spacecraft started
+    near perigee (a real, deliberate choice -- e.g. a classical-elements
+    orbit with `true_anomaly_deg=0`, as that template uses) reads well
+    below the orbit's true mean altitude from completely normal
+    Keplerian motion alone -- nothing secular (e.g. drag decay, the only
+    thing this controller is meant to respond to) is actually happening.
+    A single low reading must NOT be enough to start a reboost burn.
+    """
+    from Basilisk.architecture import messaging
+    from Basilisk.simulation import extForceTorque
+
+    from spacemissionstudio.engine.orbit_maintenance import StationKeepingController
+
+    controller = StationKeepingController(
+        name="sk", mu=3.986004418e14, nominal_alt_m=550e3, deadband_m=2e3, r_planet_m=6378137.0,
+        thrust_n=0.05, isp_s=1500.0, dry_mass_kg=400.0, propellant_kg=5.0,
+    )
+    controller.extForceEffector = extForceTorque.ExtForceTorque()
+    sc_state_msg = messaging.SCStatesMsg()
+    # Same "well below the deadband" osculating reading the old,
+    # removed version of test_station_keeping_publishes_delta_v_message_after_update
+    # used to trigger an immediate burn from -- this test is that
+    # removed assumption's direct replacement.
+    _write_sc_state(sc_state_msg, [6378137.0 + 540e3, 0.0, 0.0], [0.0, 7500.0, 0.0])
+    controller.scStateInMsg.subscribeTo(sc_state_msg)
+    controller.Reset(0)
+
+    controller.UpdateState(int(1e9))  # dt = 1 s -- exactly one sample in the window
+
+    assert controller.burnOn is False
+    assert controller.burnLog[-1] == 0
+    assert controller._cumulativeDv == 0.0
+    assert _flat(controller.extForceEffector.extForce_N) == [0.0, 0.0, 0.0]
+
+
+def test_station_keeping_cold_start_guard_only_gates_the_start_not_the_stop():
+    """The fix must not delay EXITING a burn once one has legitimately
+    started -- only starting a NEW one before the window is trustworthy.
+    Forces burnOn True directly (bypassing the start-side guard this
+    test isn't about) and confirms a single above-nominal sample still
+    turns it off immediately, exactly as before this fix.
+    """
+    from Basilisk.architecture import messaging
+    from Basilisk.simulation import extForceTorque
+
+    from spacemissionstudio.engine.orbit_maintenance import StationKeepingController
+
+    controller = StationKeepingController(
+        name="sk", mu=3.986004418e14, nominal_alt_m=550e3, deadband_m=2e3, r_planet_m=6378137.0,
+        thrust_n=0.05, isp_s=1500.0, dry_mass_kg=400.0, propellant_kg=5.0,
+    )
+    controller.extForceEffector = extForceTorque.ExtForceTorque()
+    sc_state_msg = messaging.SCStatesMsg()
+    _write_sc_state(sc_state_msg, [6378137.0 + 551e3, 0.0, 0.0], [0.0, 7500.0, 0.0])
+    controller.scStateInMsg.subscribeTo(sc_state_msg)
+    controller.Reset(0)
+    controller.burnOn = True  # simulate an already-in-progress burn
+
+    controller.UpdateState(int(1e9))
+
+    assert controller.burnOn is False
 
 
 def test_phasing_keeping_dv_budget_is_passed_through_from_constructor():
