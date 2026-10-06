@@ -137,6 +137,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QMessageBox,
     QPushButton,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -398,6 +399,18 @@ class ResultsWidget(QWidget):
         self.provenance_label = QLabel("")
         self.provenance_label.setStyleSheet("color: palette(mid); font-size: 90%;")
         self.provenance_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        # Real UI bug, caught from a screenshot: this label and web_view
+        # both default to QSizePolicy.Preferred vertically with 0
+        # stretch, which Qt's QVBoxLayout resolved by handing almost ALL
+        # of the layout's surplus height to this one-line label (a large
+        # blank area below its own text, pushing the actual plot down
+        # and off the bottom of the window) instead of to the plot that
+        # should obviously be the one expanding to fill the space.
+        # Fixed=vertical pins it to its own sizeHint no matter how much
+        # extra room the layout has -- paired with web_view's own
+        # stretch=1 below, which is what actually directs the surplus to
+        # it explicitly rather than relying on size-policy tie-breaking.
+        self.provenance_label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         layout.addWidget(self.provenance_label)
 
         # Design-philosophy audit finding (docs/ux_audit.md, "no active
@@ -417,10 +430,18 @@ class ResultsWidget(QWidget):
         self.warnings_label.setStyleSheet(f"color: {PALETTE['danger']}; font-size: 90%;")
         self.warnings_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.warnings_label.setVisible(False)
+        # Same fix as provenance_label just above, for the same reason --
+        # this is wrapped text whose natural height already varies with
+        # width and warning count; it must still never grow to consume
+        # leftover layout space beyond that natural height.
+        self.warnings_label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         layout.addWidget(self.warnings_label)
 
         self.web_view = QWebEngineView()
-        layout.addWidget(self.web_view)
+        # stretch=1: the one widget in this column that should actually
+        # claim all leftover vertical space -- see provenance_label's own
+        # comment above for the real bug this fixes.
+        layout.addWidget(self.web_view, stretch=1)
         self._redraw()  # shows the empty-state message immediately, not just after the first set_result() call
 
     def set_result(self, result: ResultSet | None, epoch_utc: Optional[str] = None) -> None:
