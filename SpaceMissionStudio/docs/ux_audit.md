@@ -154,15 +154,28 @@ No gap found here worth flagging.
 - Single theme only — no dark-mode toggle (`theme.py` defines one fixed
   QSS/QPalette, applied once at startup; no mode switch anywhere in
   `gui/`).
-- No deliberately colorblind-safe categorical palette: multi-series
-  plots (3-axis vectors, `wheel_0..wheel_N`, `thruster_0..thruster_N`)
-  rely on Plotly's default color cycle, not a chosen, verified-safe set.
-- Export is PNG-only, not vector (no SVG/PDF), so "publication-quality"
-  export is raster-at-whatever-resolution, not scalable.
 - No linked/multi-panel views (see §3) — a real limit on "high data
   density" for cross-subsystem analysis (e.g. watching attitude error
   and RW speed together currently means switching the one dropdown back
   and forth).
+
+**Correction (post-audit):** this section originally listed two more
+items as Missing that were not, in fact, missing by the time this was
+written — both now confirmed and resolved under Phase 3:
+- A deliberately chosen, fixed 8-hue categorical palette
+  (`gui/results_widget.py`'s `_SERIES_COLORS`) was ALREADY in place,
+  predating this audit (added in the matplotlib→Plotly migration,
+  2026-09-30, five days before this audit was written on 2026-10-05 —
+  confirmed via `git log`) — multi-series plots never relied on
+  Plotly's default color cycle in the first place. What genuinely WAS
+  missing was a one-time run of the dataviz skill's own validator
+  against it, closed by roadmap item M3: light mode (the only mode this
+  app has) passes every check against this module's real chart surface
+  (`_SURFACE = "#FFFFFF"`); see that comment's own citation for the
+  numbers.
+- PNG-only export is also resolved — roadmap item M2 added an SVG
+  export path alongside the existing PNG one
+  (`gui/results_widget.py`'s `save_svg_button`).
 
 ---
 

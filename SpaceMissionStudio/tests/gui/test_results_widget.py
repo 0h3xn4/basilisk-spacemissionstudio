@@ -384,6 +384,27 @@ def test_redraw_does_not_reenable_save_svg_button_while_a_poll_is_in_flight(widg
     assert not widget.save_svg_button.isEnabled()
 
 
+def test_series_colors_palette_is_8_distinct_valid_hex_colors():
+    """Regression guard for roadmap item M3 (docs/ux_roadmap.md):
+    `_SERIES_COLORS` is a specific, externally-validated-by-hand
+    8-hue palette (see that constant's own comment for the exact
+    `scripts/validate_palette.js` run and numbers this guards against
+    silently going stale) -- this test can't re-run that Node-based
+    validator itself (see the roadmap entry's own "no new dependency"
+    rationale), but it CAN catch the shape of edit that would break the
+    validated claim without anyone noticing: an accidental duplicate,
+    a truncated list, or a non-hex typo.
+    """
+    import re
+
+    from spacemissionstudio.gui.results_widget import _SERIES_COLORS
+
+    assert len(_SERIES_COLORS) == 8
+    assert len(set(_SERIES_COLORS)) == 8  # no accidental duplicate
+    for color in _SERIES_COLORS:
+        assert re.fullmatch(r"#[0-9a-fA-F]{6}", color), color
+
+
 def test_set_live_result_populates_combo_on_first_update(widget):
     widget.set_live_result(_sample_result_set(n=5))
     assert widget.series_combo.count() == 2

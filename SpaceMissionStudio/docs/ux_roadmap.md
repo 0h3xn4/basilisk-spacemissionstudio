@@ -149,22 +149,41 @@ replan that item's bucket/approach accordingly.
 - **Tests:** extend `tests/gui/test_results_widget.py`'s existing PNG
   -save tests with an SVG-format case.
 
-### M3. Colorblind-safe categorical palette for multi-series plots
-- **Rationale:** closes part of §4; currently relies on Plotly's
-  default color cycle for e.g. `wheel_0..wheel_N`, XYZ triples, which
-  isn't verified colorblind-safe.
-- **What:** per the `dataviz` skill, define a validated categorical
-  palette (run `scripts/validate_palette.js` from that skill) and apply
-  it as Plotly's `colorway` wherever `results_widget.py` builds a
-  figure with multiple series.
-- **Files:** `gui/results_widget.py` (figure construction), possibly a
-  new small `gui/plot_colors.py` constant module.
-- **Regression risk:** low — visual-only change; no data/behavior
-  change. Existing tests that check plot *data* (not color) are
-  unaffected.
-- **Tests:** a direct call to the palette validator as part of the test
-  suite (or a one-time check documented in a comment) plus a visual
-  smoke check (screenshot) per the dataviz skill's own process.
+### M3. Colorblind-safe categorical palette for multi-series plots — **DONE**
+- **Rationale:** closes part of §4.
+- **Correction while starting this item:** the premise ("currently
+  relies on Plotly's default color cycle... isn't verified
+  colorblind-safe") was already stale — `gui/results_widget.py`'s fixed
+  8-hue `_SERIES_COLORS` was added back in the matplotlib→Plotly
+  migration (2026-09-30), predating the audit that flagged it as
+  missing (2026-10-05); see `docs/ux_audit.md`'s own "Correction
+  (post-audit)" note under §4. What this item actually did: ran the
+  `dataviz` skill's `scripts/validate_palette.js` against that EXACT
+  palette and this app's real chart surface (`_SURFACE = "#FFFFFF"`)
+  for the first time — confirmed PASS on every check in light mode (the
+  only mode this app has; no dark theme exists to validate against,
+  per §4's "Missing" item, correctly left N/A rather than assumed) —
+  and corrected the palette's own comment, which had wrongly claimed an
+  unverified "passes in both light and dark mode" (dark in fact FAILS
+  the lightness-band check on 4 of 8 hues when actually run).
+- **Files:** `gui/results_widget.py` (comment only — the palette and
+  its application via `_SERIES_COLORS[i % len(...)]` needed no code
+  change), `docs/ux_audit.md`, `docs/ux_roadmap.md` (this entry).
+- **Regression risk:** none — doc/comment-only change; the actual
+  colors applied to every plot are unchanged.
+- **Tests:** deliberately NOT a `node`-dependent test-suite call to the
+  validator — this project has no other Node.js dependency anywhere in
+  its own test/build pipeline, and adding one for a single
+  color-contrast assertion isn't worth a new runtime dependency a real
+  install wouldn't otherwise need (ground rule: "no new dependencies
+  without justification"). Used the roadmap's own explicitly-offered
+  alternative instead: a one-time check, with its exact numbers
+  documented in `_SERIES_COLORS`'s own comment (reproducible by anyone
+  with Node installed, not just asserted); a plain-Python regression
+  test (`tests/gui/test_results_widget.py`) guards the shape that
+  matters going forward (8 distinct, valid hex colors) so a future
+  accidental edit to the list can't silently shrink or corrupt it
+  without the validator being re-run by hand.
 
 ### M4. Autosave / crash recovery for scenario edits
 - **Rationale:** closes §13's one real gap — today a crash mid-edit

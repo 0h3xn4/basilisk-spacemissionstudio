@@ -154,12 +154,31 @@ _RAD2DEG = 180.0 / math.pi
 # so every vector-column series below reuses this one label map.
 _XYZ_LABELS = {"x": "X", "y": "Y", "z": "Z"}
 
-# Categorical series colors -- the first three slots of a validated,
-# colorblind-safe 8-hue palette (Claude's dataviz skill,
-# references/palette.md: worst adjacent/all-pairs CVD Delta E clears the
-# >= 8 target in both light and dark mode). Three is also exactly this
-# project's own common case -- every (x, y, z) position/velocity/MRP
-# series has three columns.
+# Categorical series colors -- the first three slots of an 8-hue
+# palette (Claude's dataviz skill, references/palette.md). Three is
+# also exactly this project's own common case -- every (x, y, z)
+# position/velocity/MRP series has three columns.
+#
+# Design-philosophy roadmap item M3 (docs/ux_roadmap.md) re-validated
+# this exact 8-hue list with the skill's own `scripts/validate_palette.js`
+# against this module's real chart surface (_SURFACE = "#FFFFFF") rather
+# than trusting the "clears the CVD target" claim this comment used to
+# make unchecked -- a one-time, documented check (the roadmap's own
+# explicitly offered alternative to a Node-dependent test, which this
+# otherwise-pure-Python project has no other reason to depend on): light
+# mode (`--mode light --surface "#FFFFFF"`) PASSES every check (CVD
+# worst-adjacent Delta E 9.1 protan / 5.8 tritan >= the 6-8 floor,
+# worst-pair normal-vision Delta E 19.6); this app has no dark theme at
+# all to validate against (`gui/theme.py` -- confirmed, see
+# docs/ux_audit.md's own Principle 4 finding), so dark mode is correctly
+# N/A here, NOT silently assumed to also pass -- re-running this same
+# command with `--mode dark` in fact FAILS the lightness-band check on 4
+# of the 8 hues, which the previous version of this comment incorrectly
+# claimed passed. The one WARN both runs share (three hues sit under
+# 3:1 contrast against the surface) is satisfied by this module's own
+# existing "relief" -- a legend is always shown for >1 column
+# (`showlegend=len(series.columns) > 1` below), so color is never the
+# only way to tell two lines apart.
 _SERIES_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"]
 
 # Chart chrome, matching gui/theme.py's own light palette (_C dict) --
