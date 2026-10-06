@@ -185,22 +185,50 @@ replan that item's bucket/approach accordingly.
   accidental edit to the list can't silently shrink or corrupt it
   without the validator being re-run by hand.
 
-### M4. Autosave / crash recovery for scenario edits
+### M4. Autosave / crash recovery for scenario edits — **DONE**
 - **Rationale:** closes §13's one real gap — today a crash mid-edit
   loses unsaved work; only a clean close prompts to save.
-- **What:** a `QTimer`-driven periodic save of the in-memory `Scenario`
-  to a recovery file (e.g. next to the real target path, or in a
-  per-user cache dir) while dirty; on next launch, detect a stale
-  recovery file and offer to restore it (same pattern as most editors).
-- **Files:** `gui/main_window.py` (timer, dirty-state hook, startup
-  check), a small new helper (e.g. `gui/autosave.py`).
-- **Regression risk:** medium — must not interfere with the existing
-  dirty-state/unsaved-changes-on-close flow, and must clean up its own
-  recovery file on a normal save/close (stale recovery files prompting
-  forever would be worse than not having the feature).
-- **Tests:** new `tests/gui/test_autosave.py` — recovery file written on
-  a timer tick while dirty, cleared on save, offered-and-restorable on
-  next construction with a stale file present.
+- **What was built:** a new, Qt-free `gui/autosave.py` (`write_recovery_file`/
+  `clear_recovery_file`/`read_recovery_file`, a single fixed recovery
+  slot under `~/.spacemissionstudio/autosave/recovery.json`, matching
+  `logging_setup.py`'s own per-user directory convention) plus a
+  `QTimer` in `gui/main_window.py` that calls
+  `write_recovery_file(scenario, self._current_path)` every 30s
+  (`_AUTOSAVE_INTERVAL_MS`) while the editor is dirty AND the in-memory
+  scenario currently validates (an incomplete mid-edit is skipped that
+  tick, tried again next tick, same tolerance a real Save already
+  has). `_mark_clean()` — the one chokepoint every Save/New/Open/
+  discard already funnels through — calls `clear_recovery_file()`, so
+  a recovery file only ever exists while there's genuinely something
+  unsaved to recover. On the NEXT launch, `_check_autosave_recovery()`
+  (fired via `QTimer.singleShot(0, ...)`, same pattern as the existing
+  startup kernel-fetch prompt) offers to restore it; accepting loads it
+  into the editor and marks the window DIRTY (not clean — the
+  recovered content is exactly the unsaved state from before the
+  crash, so it still needs an explicit Save); declining clears the
+  recovery file immediately rather than prompting again next launch.
+- **Files:** `gui/autosave.py` (new), `gui/main_window.py` (timer,
+  `_on_autosave_tick`, `_check_autosave_recovery`, a new
+  `check_autosave_recovery` constructor flag mirroring the existing
+  `prompt_startup_fetch` one), `tests/test_autosave.py` (new),
+  `tests/gui/test_main_window.py`.
+- **Regression risk:** low in practice — every one of the ~90
+  pre-existing `MainWindow` tests passed completely unmodified (only
+  the one `window` fixture needed `check_autosave_recovery=False`
+  added alongside its existing `prompt_startup_fetch=False`, the same
+  opt-out convention already established); the autosave timer runs
+  unconditionally but no-ops whenever the editor isn't dirty.
+- **Tests:** `tests/test_autosave.py` (11 tests, Qt-free, isolated to a
+  `tmp_path` recovery location — round-trip, missing/corrupt/malformed
+  files, a write/clear failure being swallowed not raised) plus 8 new
+  `tests/gui/test_main_window.py` tests (tick writes while dirty/no-ops
+  while clean/skips silently on a transiently-invalid scenario; Save
+  and discard-via-New each clear the recovery file; the startup check
+  with no file present is a no-op; accepting restores into the editor
+  and marks it dirty with the original path preserved; declining clears
+  the file and leaves the editor untouched) — all isolated to a
+  `tmp_path`-backed recovery location via a new autouse fixture, never
+  touching a real home directory from the test suite.
 
 ### M5. Lightweight ground-station access timeline
 - **Rationale:** a scoped, cheap step toward §3's Gantt gap without
