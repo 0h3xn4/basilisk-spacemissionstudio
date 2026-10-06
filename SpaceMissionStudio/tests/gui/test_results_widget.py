@@ -42,6 +42,41 @@ def test_set_result_populates_series_combo_and_plots(widget):
     assert len(widget.figure.data) == 3  # x, y, z
 
 
+def test_set_result_with_no_provenance_leaves_label_blank(widget):
+    widget.set_result(_sample_result_set())
+    assert widget.provenance_label.text() == ""
+
+
+def test_set_result_with_provenance_shows_version_and_run_time(widget):
+    from spacemissionstudio.engine.results import RunProvenance
+
+    rs = _sample_result_set()
+    rs.provenance = RunProvenance(
+        spacemissionstudio_version="9.9.9", basilisk_version="2.12.0",
+        run_started_utc="2030-01-01T00:00:00+00:00", integrator="rkf78", dynamics_task_rate_s=10.0,
+    )
+    widget.set_result(rs)
+    label = widget.provenance_label.text()
+    assert "9.9.9" in label
+    assert "2.12.0" in label
+    assert "rkf78" in label
+    assert "2030-01-01T00:00:00+00:00" in label
+    assert "deterministic" in widget.provenance_label.toolTip()
+
+
+def test_set_result_none_clears_provenance_label(widget):
+    from spacemissionstudio.engine.results import RunProvenance
+
+    rs = _sample_result_set()
+    rs.provenance = RunProvenance(
+        spacemissionstudio_version="9.9.9", basilisk_version="2.12.0",
+        run_started_utc="2030-01-01T00:00:00+00:00", integrator="rkf78", dynamics_task_rate_s=10.0,
+    )
+    widget.set_result(rs)
+    widget.set_result(None)
+    assert widget.provenance_label.text() == ""
+
+
 def test_series_combo_is_searchable_by_substring(widget):
     """Real scenarios (e.g. the built-in 6-satellite Walker constellation
     template) produce 30-40+ series named after the dotted
@@ -253,6 +288,237 @@ def test_save_plot_as_png_poll_state_resets_after_completion_allowing_a_later_sa
 
     widget._on_save_plot_png()
     qtbot.waitUntil(lambda: second_path.exists(), timeout=10000)
+
+
+def test_save_plot_as_svg_writes_a_real_svg_file(widget, tmp_path, monkeypatch, qtbot):
+    """End-to-end mirror of test_save_plot_as_png_writes_a_real_png_file,
+    for the SVG path added alongside PNG (roadmap item M2) -- real
+    plotly.js rendering in the offscreen QWebEngineView, not a mocked JS
+    call. Confirms the SVG is written as plain decoded TEXT (Plotly's
+    own SVG data URL is percent-encoded, not base64 -- see
+    _on_plot_png_rendered's own docstring), not raw/garbled bytes.
+    """
+    from PySide6.QtWidgets import QFileDialog, QMessageBox
+
+    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=10000):
+        widget.set_result(_sample_result_set())
+    assert widget.save_svg_button.isEnabled()
+    out_path = tmp_path / "plot.svg"
+    monkeypatch.setattr(QFileDialog, "getSaveFileName",
+                         staticmethod(lambda *a, **k: (str(out_path), "SVG images (*.svg)")))
+    info_calls = []
+    monkeypatch.setattr(QMessageBox, "information", staticmethod(lambda *a, **k: info_calls.append(a)))
+
+    widget._on_save_plot_svg()
+    qtbot.waitUntil(lambda: out_path.exists(), timeout=10000)
+
+    svg_text = out_path.read_text(encoding="utf-8")
+    assert svg_text.startswith("<svg")
+    assert "</svg>" in svg_text
+    qtbot.waitUntil(lambda: len(info_calls) == 1, timeout=5000)
+
+
+def test_save_plot_as_svg_appends_extension_if_missing(widget, tmp_path, monkeypatch, qtbot):
+    from PySide6.QtWidgets import QFileDialog, QMessageBox
+
+    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=10000):
+        widget.set_result(_sample_result_set())
+    out_path_no_ext = tmp_path / "plot"
+    monkeypatch.setattr(QFileDialog, "getSaveFileName",
+                         staticmethod(lambda *a, **k: (str(out_path_no_ext), "SVG images (*.svg)")))
+    monkeypatch.setattr(QMessageBox, "information", staticmethod(lambda *a, **k: None))
+
+    widget._on_save_plot_svg()
+    expected_path = tmp_path / "plot.svg"
+    qtbot.waitUntil(lambda: expected_path.exists(), timeout=10000)
+    assert not out_path_no_ext.exists()
+
+
+def test_save_plot_as_svg_with_no_result_is_a_no_op(widget, monkeypatch):
+    from PySide6.QtWidgets import QFileDialog
+
+    assert not widget.save_svg_button.isEnabled()
+    calls = []
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", staticmethod(lambda *a, **k: calls.append(1) or ("", "")))
+    widget._on_save_plot_svg()  # self.figure is None
+    assert calls == []
+
+
+def test_save_png_and_save_svg_share_the_same_re_entrancy_guard(widget, qtbot, monkeypatch):
+    """Clicking "Save plot as SVG..." while a PNG save poll (or vice
+    versa) is already in flight must be a no-op too -- both buttons
+    drive the same self._png_poll_state/page-global JS result variable
+    (see _on_save_plot_png's own re-entrancy-guard comment), so a second
+    concurrent poll from EITHER button would orphan the first timer.
+    """
+    from PySide6.QtCore import QTimer
+    from PySide6.QtWidgets import QFileDialog
+
+    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=10000):
+        widget.set_result(_sample_result_set())
+
+    calls = []
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", staticmethod(lambda *a, **k: calls.append(1) or ("", "")))
+    widget._png_poll_state = {"path": "/dev/null", "fmt": "png", "timer": QTimer(widget), "attempts": 0}
+
+    widget._on_save_plot_svg()  # must return immediately, never even open the Save dialog
+
+    assert calls == []
+
+
+def test_redraw_does_not_reenable_save_svg_button_while_a_poll_is_in_flight(widget, qtbot):
+    """SVG counterpart of test_redraw_does_not_reenable_save_button_while_a_png_poll_is_in_flight --
+    save_svg_button must stay disabled across a live-update _redraw()
+    too, for the same reason.
+    """
+    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=10000):
+        widget.set_result(_sample_result_set())
+    assert widget.save_svg_button.isEnabled()
+
+    from PySide6.QtCore import QTimer
+    widget._png_poll_state = {"path": "/dev/null", "fmt": "svg", "timer": QTimer(widget), "attempts": 0}
+    widget.save_svg_button.setEnabled(False)
+
+    widget._redraw()  # simulates a live update landing mid-poll
+
+    assert not widget.save_svg_button.isEnabled()
+
+
+def test_series_colors_palette_is_8_distinct_valid_hex_colors():
+    """Regression guard for roadmap item M3 (docs/ux_roadmap.md):
+    `_SERIES_COLORS` is a specific, externally-validated-by-hand
+    8-hue palette (see that constant's own comment for the exact
+    `scripts/validate_palette.js` run and numbers this guards against
+    silently going stale) -- this test can't re-run that Node-based
+    validator itself (see the roadmap entry's own "no new dependency"
+    rationale), but it CAN catch the shape of edit that would break the
+    validated claim without anyone noticing: an accidental duplicate,
+    a truncated list, or a non-hex typo.
+    """
+    import re
+
+    from spacemissionstudio.gui.results_widget import _SERIES_COLORS
+
+    assert len(_SERIES_COLORS) == 8
+    assert len(set(_SERIES_COLORS)) == 8  # no accidental duplicate
+    for color in _SERIES_COLORS:
+        assert re.fullmatch(r"#[0-9a-fA-F]{6}", color), color
+
+
+def _access_result_set(n=20):
+    """A ResultSet with two ground-station/spacecraft access pairs --
+    one with real access windows, one with none at all (regression
+    guard: a pair that's never in view must still appear as its own
+    row, not silently vanish).
+    """
+    from spacemissionstudio.engine.results import ResultSet, TimeSeries
+
+    t = np.linspace(0, 3600, n)
+    has_access_a = np.zeros((n, 1))
+    has_access_a[5:10, 0] = 1.0
+    has_access_a[15:18, 0] = 1.0
+    has_access_b = np.zeros((n, 1))  # never has access
+
+    rs = ResultSet(scenario_name="demo")
+    rs.add(TimeSeries("station-a.access_to_sat-1.has_access", t, ("has_access",), has_access_a, units="-"))
+    rs.add(TimeSeries("station-b.access_to_sat-1.has_access", t, ("has_access",), has_access_b, units="-"))
+    return rs
+
+
+def test_view_combo_defaults_to_single_series(widget):
+    assert widget.view_combo.currentData() == "single"
+    assert widget.series_combo.isEnabled()
+
+
+def test_switching_to_access_timeline_disables_series_combo(widget):
+    widget.set_result(_access_result_set())
+    index = widget.view_combo.findData("access_timeline")
+    widget.view_combo.setCurrentIndex(index)
+    assert not widget.series_combo.isEnabled()
+
+    index = widget.view_combo.findData("single")
+    widget.view_combo.setCurrentIndex(index)
+    assert widget.series_combo.isEnabled()
+
+
+def test_access_timeline_plots_one_trace_per_access_window_plus_empty_pair(widget):
+    widget.set_result(_access_result_set())
+    widget.view_combo.setCurrentIndex(widget.view_combo.findData("access_timeline"))
+
+    assert widget.figure is not None
+    y_values = {trace.y[0] for trace in widget.figure.data}
+    assert y_values == {"station-a -> sat-1", "station-b -> sat-1"}
+    # station-a has two separate access windows -> two line traces;
+    # station-b has none -> one invisible placeholder trace.
+    station_a_traces = [t for t in widget.figure.data if t.y[0] == "station-a -> sat-1"]
+    station_b_traces = [t for t in widget.figure.data if t.y[0] == "station-b -> sat-1"]
+    assert len(station_a_traces) == 2
+    assert len(station_b_traces) == 1
+
+
+def test_access_timeline_with_no_access_series_shows_explanatory_empty_state(widget):
+    widget.set_result(_sample_result_set())  # position/velocity only, no access series
+    widget.view_combo.setCurrentIndex(widget.view_combo.findData("access_timeline"))
+
+    assert widget.figure is not None
+    assert len(widget.figure.data) == 0
+    assert "No ground-station access series" in widget.figure.layout.annotations[0].text
+
+
+def test_access_timeline_ignores_x_axis_combo_always_uses_elapsed_time(widget):
+    widget.set_result(_access_result_set())
+    widget.view_combo.setCurrentIndex(widget.view_combo.findData("access_timeline"))
+    widget.x_axis_combo.setCurrentIndex(widget.x_axis_combo.findData("epoch"))
+
+    assert widget.figure.layout.xaxis.title.text == "Elapsed time [hr]"
+
+
+def test_switching_back_to_single_series_restores_previous_plot(widget):
+    widget.set_result(_access_result_set())
+    widget.series_combo.setCurrentIndex(0)
+    single_series_name = widget.series_combo.currentText()
+    single_series_figure_data_len = len(widget.figure.data)
+
+    widget.view_combo.setCurrentIndex(widget.view_combo.findData("access_timeline"))
+    assert widget.figure.layout.title.text == "Ground Station Access Timeline"
+
+    widget.view_combo.setCurrentIndex(widget.view_combo.findData("single"))
+
+    assert widget.series_combo.currentText() == single_series_name
+    assert widget.series_combo.isEnabled()
+    assert len(widget.figure.data) == single_series_figure_data_len
+
+
+def test_access_timeline_renders_in_the_real_webview(widget, qtbot):
+    """End-to-end check that the access-timeline figure's generated HTML
+    actually loads in the real (offscreen) QWebEngineView without
+    error -- the unit-level trace-count assertions above don't catch a
+    figure that builds fine in Python but is malformed Plotly JSON
+    (e.g. a NaN/non-JSON-serializable value sneaking into a trace).
+    """
+    widget.set_result(_access_result_set())
+    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=10000) as blocker:
+        widget.view_combo.setCurrentIndex(widget.view_combo.findData("access_timeline"))
+    assert blocker.args == [True]
+
+
+def test_save_plot_default_name_is_access_timeline_in_that_view(widget, tmp_path, monkeypatch, qtbot):
+    from PySide6.QtWidgets import QFileDialog
+
+    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=10000):
+        widget.set_result(_access_result_set())
+    widget.view_combo.setCurrentIndex(widget.view_combo.findData("access_timeline"))
+
+    captured = {}
+
+    def _fake_get_save_file_name(*args, **kwargs):
+        captured["default_name"] = args[2] if len(args) > 2 else kwargs.get("dir", "")
+        return "", ""
+
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", staticmethod(_fake_get_save_file_name))
+    widget._on_save_plot_png()
+
+    assert captured["default_name"] == "access_timeline.png"
 
 
 def test_set_live_result_populates_combo_on_first_update(widget):

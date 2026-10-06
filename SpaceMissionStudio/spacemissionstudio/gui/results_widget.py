@@ -115,6 +115,7 @@ from __future__ import annotations
 import base64
 import math
 import os
+import urllib.parse
 
 # See module docstring's "Running as root" section -- MUST happen before
 # PySide6.QtWebEngineWidgets is imported below (env var read at that
@@ -143,6 +144,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..engine.results import ResultSet, TimeSeries
+from .theme import PALETTE
 
 _RAD2DEG = 180.0 / math.pi
 
@@ -152,12 +154,31 @@ _RAD2DEG = 180.0 / math.pi
 # so every vector-column series below reuses this one label map.
 _XYZ_LABELS = {"x": "X", "y": "Y", "z": "Z"}
 
-# Categorical series colors -- the first three slots of a validated,
-# colorblind-safe 8-hue palette (Claude's dataviz skill,
-# references/palette.md: worst adjacent/all-pairs CVD Delta E clears the
-# >= 8 target in both light and dark mode). Three is also exactly this
-# project's own common case -- every (x, y, z) position/velocity/MRP
-# series has three columns.
+# Categorical series colors -- the first three slots of an 8-hue
+# palette (Claude's dataviz skill, references/palette.md). Three is
+# also exactly this project's own common case -- every (x, y, z)
+# position/velocity/MRP series has three columns.
+#
+# Design-philosophy roadmap item M3 (docs/ux_roadmap.md) re-validated
+# this exact 8-hue list with the skill's own `scripts/validate_palette.js`
+# against this module's real chart surface (_SURFACE = "#FFFFFF") rather
+# than trusting the "clears the CVD target" claim this comment used to
+# make unchecked -- a one-time, documented check (the roadmap's own
+# explicitly offered alternative to a Node-dependent test, which this
+# otherwise-pure-Python project has no other reason to depend on): light
+# mode (`--mode light --surface "#FFFFFF"`) PASSES every check (CVD
+# worst-adjacent Delta E 9.1 protan / 5.8 tritan >= the 6-8 floor,
+# worst-pair normal-vision Delta E 19.6); this app has no dark theme at
+# all to validate against (`gui/theme.py` -- confirmed, see
+# docs/ux_audit.md's own Principle 4 finding), so dark mode is correctly
+# N/A here, NOT silently assumed to also pass -- re-running this same
+# command with `--mode dark` in fact FAILS the lightness-band check on 4
+# of the 8 hues, which the previous version of this comment incorrectly
+# claimed passed. The one WARN both runs share (three hues sit under
+# 3:1 contrast against the surface) is satisfied by this module's own
+# existing "relief" -- a legend is always shown for >1 column
+# (`showlegend=len(series.columns) > 1` below), so color is never the
+# only way to tell two lines apart.
 _SERIES_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"]
 
 # Chart chrome, matching gui/theme.py's own light palette (_C dict) --
@@ -352,14 +373,15 @@ def _controller_display(name: str) -> Optional[_SeriesDisplay]:
     return None
 
 
-def _access_pair_display(name: str) -> Optional[_SeriesDisplay]:
-    """``"{gs}.access_to_{sc}.<field>"`` series (``engine.service``'s
-    access-analysis loop, plus ``engine.link_budget.link_margin_series``)
-    -- ``gs``/``sc`` recovered directly from the name (split on
-    ``".access_to_"``, the literal separator both producers use) so the
-    title names the actual ground-station/spacecraft pair. Slant range
-    displays in km, elevation/azimuth in degrees -- same length/angle
-    display policy as everywhere else in this module.
+def _parse_access_pair(name: str) -> Optional[tuple]:
+    """Recovers ``(gs, sc, field)`` from a ``"{gs}.access_to_{sc}.<field>"``
+    series name (``engine.service``'s access-analysis loop, plus
+    ``engine.link_budget.link_margin_series``) -- the literal
+    ``".access_to_"`` separator both producers use -- or ``None`` if
+    ``name`` doesn't match that shape. Shared by :func:`_access_pair_display`
+    and :meth:`ResultsWidget._build_access_timeline_figure` (roadmap item
+    M5) so both agree on exactly which series are "an access pair series"
+    and how to recover the station/spacecraft names from one.
     """
     if ".access_to_" not in name:
         return None
@@ -367,6 +389,19 @@ def _access_pair_display(name: str) -> Optional[_SeriesDisplay]:
     gs, sep, sc = prefix.partition(".access_to_")
     if not sep:
         return None
+    return gs, sc, field
+
+
+def _access_pair_display(name: str) -> Optional[_SeriesDisplay]:
+    """``"{gs}.access_to_{sc}.<field>"`` series -- see
+    :func:`_parse_access_pair`. Slant range displays in km,
+    elevation/azimuth in degrees -- same length/angle display policy as
+    everywhere else in this module.
+    """
+    parsed = _parse_access_pair(name)
+    if parsed is None:
+        return None
+    gs, sc, field = parsed
     pair = f"{gs} -> {sc}"
     if field == "has_access":
         return _SeriesDisplay(f"Access Window: {pair}", "Has access", "-", 1.0,
@@ -477,6 +512,24 @@ class ResultsWidget(QWidget):
         layout = QVBoxLayout(self)
 
         top_row = QHBoxLayout()
+        # Design-philosophy roadmap item M5 (docs/ux_roadmap.md): a
+        # second, purely additive view mode alongside the existing
+        # single-series plot -- "most of the value of 'see access
+        # windows at a glance' comes from one more chart, not a new
+        # interaction model" (the roadmap's own scoping). Switching to
+        # "Ground station access timeline" disables series_combo (it
+        # has no effect in that view) and redraws; switching back
+        # restores the single-series view exactly as it was.
+        top_row.addWidget(QLabel("View:"))
+        self.view_combo = QComboBox()
+        self.view_combo.addItem("Single series", "single")
+        self.view_combo.addItem("Ground station access timeline", "access_timeline")
+        self.view_combo.setToolTip(
+            "\"Ground station access timeline\" shows every {station}.access_to_{spacecraft}.has_access "
+            "series in this result as one combined Gantt-style chart, instead of picking one series below."
+        )
+        self.view_combo.currentIndexChanged.connect(self._on_view_changed)
+        top_row.addWidget(self.view_combo)
         top_row.addWidget(QLabel("Series:"))
         self.series_combo = QComboBox()
         # Editable + a substring-matching QCompleter -- a real scenario
@@ -545,7 +598,47 @@ class ResultsWidget(QWidget):
         self.save_png_button.clicked.connect(self._on_save_plot_png)
         self.save_png_button.setEnabled(False)
         top_row.addWidget(self.save_png_button)
+        # Design-philosophy roadmap item M2 (docs/ux_roadmap.md): a vector
+        # export alongside the existing raster one, for a plot a user wants
+        # to drop into a paper/report at arbitrary scale without it going
+        # blurry. Shares _on_save_plot_png's whole dialog/kickoff/poll
+        # machinery via its ``fmt`` parameter -- see that method's own
+        # docstring -- rather than duplicating it.
+        self.save_svg_button = QPushButton("Save plot as SVG...")
+        self.save_svg_button.setToolTip("Save the currently displayed plot as a scalable vector (SVG) image")
+        self.save_svg_button.clicked.connect(self._on_save_plot_svg)
+        self.save_svg_button.setEnabled(False)
+        top_row.addWidget(self.save_svg_button)
         layout.addLayout(top_row)
+
+        # Design-philosophy audit finding (docs/ux_audit.md, "no run
+        # provenance captured with results"): one line, always visible
+        # once a result exists, naming exactly what produced it --
+        # ResultSet.provenance is None for a hand-built/synthetic result
+        # (e.g. a test), so this stays blank rather than guessing.
+        self.provenance_label = QLabel("")
+        self.provenance_label.setStyleSheet("color: palette(mid); font-size: 90%;")
+        self.provenance_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        layout.addWidget(self.provenance_label)
+
+        # Design-philosophy audit finding (docs/ux_audit.md, "no active
+        # conservation/drift diagnostic") -- see
+        # engine.results.conservation_drift_warnings's own docstring.
+        # Hidden (no empty banner taking up space) whenever
+        # ResultSet.warnings is empty, which is the common case: most
+        # scenarios have SOME perturbation/thrust configured, so the
+        # check never even runs for them (see
+        # engine.service._is_two_body_only). Reuses PALETTE["danger"] --
+        # this app's one existing "needs attention" color (feedback.py's
+        # own error-toast color) -- rather than inventing a second
+        # semantic color never used elsewhere; the wording itself (not
+        # just the color) makes clear this is informational, not fatal.
+        self.warnings_label = QLabel("")
+        self.warnings_label.setWordWrap(True)
+        self.warnings_label.setStyleSheet(f"color: {PALETTE['danger']}; font-size: 90%;")
+        self.warnings_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.warnings_label.setVisible(False)
+        layout.addWidget(self.warnings_label)
 
         self.web_view = QWebEngineView()
         layout.addWidget(self.web_view)
@@ -561,7 +654,31 @@ class ResultsWidget(QWidget):
                 self.series_combo.addItem(name)
         self.series_combo.blockSignals(False)
         self.export_button.setEnabled(result is not None and bool(result.series))
+        self._update_provenance_label()
+        self._update_warnings_label()
         self._redraw()
+
+    def _update_warnings_label(self) -> None:
+        warnings = self._result.warnings if self._result is not None else []
+        if not warnings:
+            self.warnings_label.setVisible(False)
+            self.warnings_label.setText("")
+            return
+        self.warnings_label.setText("\n".join(f"⚠ {w}" for w in warnings))
+        self.warnings_label.setVisible(True)
+
+    def _update_provenance_label(self) -> None:
+        provenance = self._result.provenance if self._result is not None else None
+        if provenance is None:
+            self.provenance_label.setText("")
+            self.provenance_label.setToolTip("")
+            return
+        self.provenance_label.setText(
+            f"SpaceMissionStudio {provenance.spacemissionstudio_version} · "
+            f"Basilisk {provenance.basilisk_version} · {provenance.integrator} @ "
+            f"{provenance.dynamics_task_rate_s:g} s · run started {provenance.run_started_utc}"
+        )
+        self.provenance_label.setToolTip(provenance.rng_seed_note)
 
     def set_live_result(self, result: ResultSet, epoch_utc: Optional[str] = None) -> None:
         """Updates the plot with one chunk's worth of a still-running
@@ -586,6 +703,13 @@ class ResultsWidget(QWidget):
         is_first_update = self._result is None or set(self._result.series) != set(result.series)
         self._result = result
         self._epoch_utc = epoch_utc  # same every chunk of one run, but cheap enough not to bother guarding
+        # Unlike provenance (fixed once at run start), warnings can only
+        # become non-empty partway through a long live run (more samples
+        # -> more opportunity for drift to exceed tolerance) -- updated
+        # on every call, not just is_first_update, and never throttled
+        # like the webview redraw below (a QLabel update is cheap, no
+        # page reload).
+        self._update_warnings_label()
         if is_first_update:
             self.series_combo.blockSignals(True)
             self.series_combo.clear()
@@ -593,6 +717,7 @@ class ResultsWidget(QWidget):
                 self.series_combo.addItem(name)
             self.series_combo.blockSignals(False)
             self.export_button.setEnabled(bool(result.series))
+            self._update_provenance_label()
             self._redraw()
             self._live_redraw_elapsed.start()
             return
@@ -687,21 +812,141 @@ class ResultsWidget(QWidget):
         )
         return fig
 
+    def _on_view_changed(self) -> None:
+        """``view_combo``'s own ``currentIndexChanged`` handler -- see
+        that combo's construction comment (roadmap item M5).
+        ``series_combo`` (and its completer) have no effect in the
+        access-timeline view, so they're disabled rather than merely
+        ignored -- a disabled, grayed-out control is a clearer signal
+        that it doesn't currently apply than a control that still looks
+        interactive but silently does nothing.
+        """
+        is_single_series = self.view_combo.currentData() == "single"
+        self.series_combo.setEnabled(is_single_series)
+        self._redraw()
+
     def _update_figure(self) -> None:
         """Rebuilds :attr:`figure` from the current :attr:`_result`/selected
-        series -- cheap (no HTML string building, no ``QWebEngineView``
-        page reload), so it's always kept fresh even on a chunk
+        series (or, in the access-timeline view, from every access-pair
+        series at once -- see :meth:`_build_access_timeline_figure`) --
+        cheap (no HTML string building, no ``QWebEngineView`` page
+        reload), so it's always kept fresh even on a chunk
         :meth:`set_live_result` otherwise throttles (see that method's own
         comment): other code (the PNG-save button's enabled state,
         tests) reads :attr:`figure` directly and must never see stale
         data just because the webview push itself was skipped.
         """
         self.figure = None
-        if self._result is not None and self.series_combo.count() > 0:
+        if self._result is None:
+            return
+        if self.view_combo.currentData() == "access_timeline":
+            self.figure = self._build_access_timeline_figure()
+            return
+        if self.series_combo.count() > 0:
             name = self.series_combo.currentText()
             series = self._result.series.get(name)
             if series is not None:
                 self.figure = self._build_figure(name, series)
+
+    def _build_access_timeline_figure(self) -> Optional[go.Figure]:
+        """Roadmap item M5: one combined Gantt-style chart showing every
+        ``{station}.access_to_{spacecraft}.has_access`` series in
+        :attr:`_result` at once -- "most of the value of 'see access
+        windows at a glance' comes from one more chart, not a new
+        interaction model" (the roadmap's own scoping decision; a
+        click-to-jump interaction linking a clicked bar to the main
+        plot's x-axis range was explicitly left as unimplemented future
+        scope -- this app has no JS<->Python click bridge
+        (``QWebChannel``) anywhere yet, and inventing one for this alone
+        would be a far bigger lift than the chart itself).
+
+        Returns ``None`` (an explanatory empty-state figure, same
+        pattern as :func:`_empty_state_html` for the no-result case) if
+        :attr:`_result` has no access-pair series at all -- e.g. a
+        scenario with no ``ground_stations`` configured.
+
+        Deliberately uses ELAPSED TIME ONLY, ignoring ``x_axis_combo``
+        -- a horizontal bar's ``base``/width on Plotly's date axis needs
+        real ``timedelta``-typed values, not the plain float seconds
+        ``TimeSeries.time_s`` already is, and this view's whole value is
+        "see every pass at a glance," which elapsed time already serves
+        perfectly well; the main single-series view is still there for
+        anyone who specifically wants epoch/UTC timestamps.
+        """
+        pairs: list = []
+        for name, series in self._result.series.items():
+            parsed = _parse_access_pair(name)
+            if parsed is None or parsed[2] != "has_access":
+                continue
+            gs, sc, _field = parsed
+            pairs.append((f"{gs} -> {sc}", series))
+        pairs.sort(key=lambda item: item[0])
+
+        fig = go.Figure()
+        if not pairs:
+            fig.update_layout(
+                annotations=[dict(
+                    text="No ground-station access series in this result (no ground stations configured?)",
+                    showarrow=False, font=dict(color=_EMPTY_STATE_TEXT, size=14),
+                    xref="paper", yref="paper", x=0.5, y=0.5,
+                )],
+                plot_bgcolor=_SURFACE, paper_bgcolor=_SURFACE,
+                xaxis=dict(visible=False), yaxis=dict(visible=False),
+            )
+            return fig
+
+        for row_index, (pair_label, series) in enumerate(pairs):
+            t_hours = series.time_s / 3600.0
+            has_access = series.data[:, series.columns.index("has_access")] != 0
+            color = _SERIES_COLORS[row_index % len(_SERIES_COLORS)]
+            # Each contiguous True run in has_access becomes one thick
+            # horizontal line segment -- two-point go.Scatter lines
+            # (rather than go.Bar's orientation="h"/base/width) because
+            # a plain Scatter line needs no base/width unit-matching
+            # with the x-axis, numeric or datetime alike, and renders
+            # identically either way.
+            run_start = None
+            legend_shown = False
+            for i in range(len(has_access) + 1):
+                active = i < len(has_access) and has_access[i]
+                if active and run_start is None:
+                    run_start = i
+                elif not active and run_start is not None:
+                    fig.add_trace(go.Scatter(
+                        x=[t_hours[run_start], t_hours[i - 1]], y=[pair_label, pair_label],
+                        mode="lines", line=dict(color=color, width=16),
+                        name=pair_label, legendgroup=pair_label, showlegend=not legend_shown,
+                        hovertemplate=f"{pair_label}<br>%{{x:.3f}} hr<extra></extra>",
+                    ))
+                    legend_shown = True
+                    run_start = None
+            if not legend_shown:
+                # No access window at all for this pair -- still give it
+                # a row (an invisible trace) so it appears in the legend
+                # and on the y-axis, same as every other pair, rather
+                # than silently vanishing from the chart.
+                fig.add_trace(go.Scatter(
+                    x=[t_hours[0]], y=[pair_label], mode="markers",
+                    marker=dict(size=0, color=color), name=pair_label, legendgroup=pair_label,
+                    hoverinfo="skip",
+                ))
+
+        axis_common = dict(
+            gridcolor=_GRID_COLOR, zerolinecolor=_GRID_COLOR, linecolor=_GRID_COLOR,
+            tickfont=dict(color=_INK_MUTED), title_font=dict(color=_INK_MUTED),
+        )
+        fig.update_layout(
+            title=dict(text="Ground Station Access Timeline", font=dict(size=16, color=_INK_PRIMARY,
+                                                                          family=_FONT_FAMILY)),
+            xaxis=dict(axis_common, title_text="Elapsed time [hr]", exponentformat="none",
+                       separatethousands=True),
+            yaxis=dict(axis_common, title_text=None, categoryorder="category descending"),
+            font=dict(family=_FONT_FAMILY, color=_INK_PRIMARY),
+            plot_bgcolor=_SURFACE, paper_bgcolor=_SURFACE,
+            showlegend=False,  # the y-axis category labels already name every pair -- a legend would be redundant
+            margin=dict(l=160, r=30, t=60, b=50),
+        )
+        return fig
 
     def _push_figure_to_webview(self) -> None:
         """Pushes :attr:`figure` (already current -- see
@@ -729,6 +974,7 @@ class ResultsWidget(QWidget):
         # actually finishes.
         if self._png_poll_state is None:
             self.save_png_button.setEnabled(self.figure is not None)
+            self.save_svg_button.setEnabled(self.figure is not None)
 
     def _redraw(self) -> None:
         self._update_figure()
@@ -763,12 +1009,30 @@ class ResultsWidget(QWidget):
             return
         QMessageBox.information(self, "Export complete", f"Wrote {len(paths)} CSV file(s) to {out_dir}")
 
-    def _on_save_plot_png(self) -> None:
+    def _on_save_plot_svg(self) -> None:
+        """Thin wrapper around :meth:`_on_save_plot_png` -- see that
+        method's own docstring for the whole dialog/kickoff/poll
+        mechanism, which is format-agnostic and shared as-is. Named/kept
+        separate (rather than exposing ``fmt`` on the button's own
+        ``clicked`` connection) purely so ``save_svg_button``'s signal
+        handler has the same zero-argument shape every other button's
+        does, and so a test can call it by name symmetrically with
+        ``_on_save_plot_png()``.
+        """
+        self._on_save_plot_png(fmt="svg")
+
+    def _on_save_plot_png(self, fmt: str = "png") -> None:
         """Saves the CURRENTLY DISPLAYED plot (only -- see
-        ``_on_export`` for every series at once) as a PNG, to a
-        user-chosen location via a native "Save As" dialog -- real user
-        request ("would be great to also have a button to save the plots
-        as png images in a desired location").
+        ``_on_export`` for every series at once) to a user-chosen
+        location via a native "Save As" dialog, as either a PNG
+        (``fmt="png"``, the default -- every existing call site/test
+        calls this with no arguments and must keep behaving exactly as
+        before) or an SVG (``fmt="svg"``, via :meth:`_on_save_plot_svg`).
+        Real user request for the PNG case ("would be great to also have
+        a button to save the plots as png images in a desired
+        location"); SVG added alongside it (roadmap item M2) for a plot
+        a user wants to drop into a paper/report at arbitrary scale
+        without it going blurry.
 
         Plotly's own modebar already has a built-in camera/download-as
         -png icon (``config={"displaylogo": False}`` above leaves it in;
@@ -777,15 +1041,17 @@ class ResultsWidget(QWidget):
         machinery, which this app never wires up
         (``QWebEngineProfile.downloadRequested``) -- confirmed directly
         that clicking it does nothing observable here, not assumed. This
-        button instead renders the chart to a PNG CLIENT-SIDE, via the
-        SAME ``plotly.js`` already loaded on the page (``Plotly.toImage()``),
+        button instead renders the chart CLIENT-SIDE, via the SAME
+        ``plotly.js`` already loaded on the page (``Plotly.toImage()``),
         rather than pulling in a server-side renderer (the ``kaleido``
         package) this project doesn't otherwise depend on -- consistent
         with this module's own "no unnecessary dependency" choice for
-        ``plotly.js`` itself. ``scale: 2`` asks for a higher-than-screen
-        -resolution render (sharper on a high-DPI display/print) at the
-        chart's own current on-screen size, rather than a hardcoded
-        width/height that might not match what's actually visible.
+        ``plotly.js`` itself. ``scale: 2`` (meaningful for the PNG raster
+        case; harmless/ignored by Plotly for SVG) asks for a
+        higher-than-screen-resolution render (sharper on a high-DPI
+        display/print) at the chart's own current on-screen size, rather
+        than a hardcoded width/height that might not match what's
+        actually visible.
 
         ``Plotly.toImage()`` is asynchronous (it returns a ``Promise``).
         ``QWebEnginePage.runJavaScript()`` does NOT await a top-level
@@ -806,26 +1072,32 @@ class ResultsWidget(QWidget):
             # Re-entrancy guard, same convention as
             # gui.kernel_status_widget.KernelStatusWidget.refresh()'s own:
             # a live-updating run calls _redraw() repeatedly (see its own
-            # comment on why it must NOT blindly re-enable save_png_button
-            # while a poll is in flight), but belt-and-suspenders here too
-            # -- a second _on_save_plot_png() call while one poll is
-            # already running would overwrite self._png_poll_state AND
-            # the page-global JS result variable both polls share,
-            # orphaning the first poll_timer (nothing would ever stop it,
-            # since state["timer"] would now point at the SECOND timer)
-            # -- it would keep firing forever, re-triggering
+            # comment on why it must NOT blindly re-enable the save
+            # buttons while a poll is in flight), but belt-and-suspenders
+            # here too -- a second _on_save_plot_png() call (PNG or SVG,
+            # either button) while one poll is already running would
+            # overwrite self._png_poll_state AND the page-global JS
+            # result variable both polls share, orphaning the first
+            # poll_timer (nothing would ever stop it, since
+            # state["timer"] would now point at the SECOND timer) -- it
+            # would keep firing forever, re-triggering
             # _on_plot_png_rendered() (a duplicate file write + a
-            # duplicate "Plot saved" dialog, repeating every poll
-            # interval) long after the user thinks they're done.
+            # duplicate "saved" dialog, repeating every poll interval)
+            # long after the user thinks they're done.
             return
-        default_name = f"{self.series_combo.currentText()}.png"
-        path, _ = QFileDialog.getSaveFileName(self, "Save plot as PNG", default_name, "PNG images (*.png)")
+        is_access_timeline = self.view_combo.currentData() == "access_timeline"
+        default_name = f"{'access_timeline' if is_access_timeline else self.series_combo.currentText()}.{fmt}"
+        file_filter = "SVG images (*.svg)" if fmt == "svg" else "PNG images (*.png)"
+        path, _ = QFileDialog.getSaveFileName(self, f"Save plot as {fmt.upper()}", default_name, file_filter)
         if not path:
             return
-        if not path.lower().endswith(".png"):
-            path += ".png"
+        if not path.lower().endswith(f".{fmt}"):
+            path += f".{fmt}"
 
-        self.save_png_button.setEnabled(False)  # guards against a second click racing this one's own poll
+        # Guards against a second click (either button) racing this
+        # one's own poll -- see the re-entrancy-guard comment above.
+        self.save_png_button.setEnabled(False)
+        self.save_svg_button.setEnabled(False)
         # tryRender's retry loop guards a real (if narrow) race: this
         # button's own enabled state is set synchronously inside
         # _redraw(), right after kicking off setHtml() -- but setHtml()
@@ -850,7 +1122,7 @@ class ResultsWidget(QWidget):
                 }}
                 return;
             }}
-            Plotly.toImage(el, {{format: 'png', scale: 2}})
+            Plotly.toImage(el, {{format: {fmt!r}, scale: 2}})
                 .then(function(url) {{ window.{_PNG_RESULT_JS_VAR} = url; }})
                 .catch(function(err) {{
                     window.{_PNG_RESULT_JS_VAR} =
@@ -861,7 +1133,7 @@ class ResultsWidget(QWidget):
         self.web_view.page().runJavaScript(kickoff_script)
 
         poll_timer = QTimer(self)
-        self._png_poll_state = {"path": path, "timer": poll_timer, "attempts": 0}
+        self._png_poll_state = {"path": path, "fmt": fmt, "timer": poll_timer, "attempts": 0}
         poll_timer.timeout.connect(self._poll_plot_png)
         poll_timer.start(_SAVE_PNG_POLL_INTERVAL_MS)
 
@@ -875,20 +1147,48 @@ class ResultsWidget(QWidget):
                     state["timer"].stop()
                     self._png_poll_state = None  # see _on_save_plot_png's own re-entrancy-guard comment
                     self.save_png_button.setEnabled(self.figure is not None)
+                    self.save_svg_button.setEnabled(self.figure is not None)
                     QMessageBox.critical(self, "Save failed", "Timed out waiting for the plot to render.")
                 return
             state["timer"].stop()
             self._png_poll_state = None  # see _on_save_plot_png's own re-entrancy-guard comment
             self.save_png_button.setEnabled(self.figure is not None)
-            self._on_plot_png_rendered(value, state["path"])
+            self.save_svg_button.setEnabled(self.figure is not None)
+            self._on_plot_png_rendered(value, state["path"], state["fmt"])
 
         self.web_view.page().runJavaScript(f"window.{_PNG_RESULT_JS_VAR}", on_poll_result)
 
-    def _on_plot_png_rendered(self, data_url: object, path: str) -> None:
-        prefix = "data:image/png;base64,"
+    def _on_plot_png_rendered(self, data_url: object, path: str, fmt: str = "png") -> None:
+        """Decodes ``data_url`` (``Plotly.toImage()``'s resolved value --
+        see :meth:`_on_save_plot_png`'s own docstring for why this
+        arrives via polling rather than an awaited ``Promise``) and
+        writes it to ``path``. PNG and SVG use genuinely different
+        encodings on the JS side -- confirmed directly against the
+        installed ``plotly.min.js`` bundle's own ``encodeSVG``, not
+        assumed -- so this is NOT a single shared prefix-strip: PNG is
+        base64 (``data:image/png;base64,...``), SVG is a
+        percent-encoded TEXT data URL (``data:image/svg+xml,...``,
+        ``encodeURIComponent``-escaped, no base64 anywhere), decoded with
+        ``urllib.parse.unquote`` and written as UTF-8 text, never
+        ``base64.b64decode``.
+        """
         if isinstance(data_url, str) and data_url.startswith(_SAVE_PNG_ERROR_PREFIX):
             QMessageBox.critical(self, "Save failed", data_url[len(_SAVE_PNG_ERROR_PREFIX):])
             return
+        if fmt == "svg":
+            prefix = "data:image/svg+xml,"
+            if not isinstance(data_url, str) or not data_url.startswith(prefix):
+                QMessageBox.critical(self, "Save failed", "Could not render the plot to an SVG image.")
+                return
+            try:
+                svg_text = urllib.parse.unquote(data_url[len(prefix):])
+                Path(path).write_text(svg_text, encoding="utf-8")
+            except OSError as exc:
+                QMessageBox.critical(self, "Save failed", str(exc))
+                return
+            QMessageBox.information(self, "Plot saved", f"Saved plot to {path}")
+            return
+        prefix = "data:image/png;base64,"
         if not isinstance(data_url, str) or not data_url.startswith(prefix):
             QMessageBox.critical(self, "Save failed", "Could not render the plot to a PNG image.")
             return

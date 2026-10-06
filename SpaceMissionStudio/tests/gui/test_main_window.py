@@ -14,6 +14,22 @@ pytestmark = pytest.mark.requires_gui
 _BASILISK_AVAILABLE = importlib.util.find_spec("Basilisk") is not None
 
 
+@pytest.fixture(autouse=True)
+def _isolated_autosave(tmp_path, monkeypatch):
+    """Every test in this file gets an isolated autosave recovery
+    location, same as tests/test_autosave.py's own fixture -- this
+    file's own ``window`` fixture constructs a real ``MainWindow``,
+    whose autosave timer/startup check (gui.autosave, design
+    -philosophy roadmap item M4) must never read or write a real
+    user's actual home directory from an automated test run.
+    """
+    from spacemissionstudio.gui import autosave
+
+    recovery_dir = tmp_path / "autosave"
+    monkeypatch.setattr(autosave, "_AUTOSAVE_DIR", recovery_dir)
+    monkeypatch.setattr(autosave, "_RECOVERY_FILE", recovery_dir / "recovery.json")
+
+
 @pytest.fixture
 def window(qtbot, monkeypatch):
     from PySide6.QtWidgets import QMessageBox
@@ -31,7 +47,7 @@ def window(qtbot, monkeypatch):
     monkeypatch.setattr(QMessageBox, "question",
                          staticmethod(lambda *a, **k: QMessageBox.StandardButton.Discard))
 
-    w = MainWindow(prompt_startup_fetch=False)
+    w = MainWindow(prompt_startup_fetch=False, check_autosave_recovery=False)
     qtbot.addWidget(w)
     return w
 
@@ -1605,3 +1621,134 @@ def test_about_dialog_shows_version_and_basilisk_status(window, monkeypatch):
     shown_text = calls[0][2]
     assert spacemissionstudio.__version__ in shown_text
     assert "Basilisk" in shown_text
+
+
+# -- autosave / crash recovery (design-philosophy roadmap item M4) ----------
+
+def test_autosave_tick_does_nothing_when_not_dirty(window):
+    from spacemissionstudio.gui import autosave
+
+    assert not window._dirty
+    window._on_autosave_tick()
+    assert autosave.read_recovery_file() is None
+
+
+def test_autosave_tick_writes_recovery_file_while_dirty(window):
+    from spacemissionstudio.gui import autosave
+
+    _add_valid_spacecraft(window)
+    assert window._dirty
+
+    window._on_autosave_tick()
+
+    info = autosave.read_recovery_file()
+    assert info is not None
+    assert info.scenario.spacecraft[0].name == "sat-1"
+    assert info.original_path is None  # never saved yet in this test
+
+
+def test_autosave_tick_skips_silently_when_scenario_currently_invalid(window):
+    """Mid-edit, the in-memory scenario can be transiently invalid (e.g.
+    a spacecraft with an empty name) -- the autosave tick must skip
+    that tick quietly rather than popping an error dialog on a timer
+    the user never directly triggered.
+    """
+    from spacemissionstudio.schema.scenario import OrbitIC, SpacecraftConfig
+    from spacemissionstudio.gui import autosave
+
+    window.scenario_editor.spacecraft_list.from_list([
+        SpacecraftConfig(name="", orbit=OrbitIC(type="cartesian", position_km=[7000, 0, 0],
+                                                 velocity_km_s=[0, 7.5, 0]))
+    ])
+    window.scenario_editor.changed.emit()
+    assert window._dirty
+
+    window._on_autosave_tick()  # must not raise
+
+    assert autosave.read_recovery_file() is None
+
+
+def test_saving_clears_the_recovery_file(window, tmp_path, monkeypatch):
+    from PySide6.QtWidgets import QFileDialog
+
+    from spacemissionstudio.gui import autosave
+
+    _add_valid_spacecraft(window)
+    window._on_autosave_tick()
+    assert autosave.read_recovery_file() is not None
+
+    save_path = tmp_path / "scenario.json"
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", staticmethod(lambda *a, **k: (str(save_path), "")))
+    window.on_save_as()
+
+    assert autosave.read_recovery_file() is None
+
+
+def test_discarding_unsaved_changes_clears_the_recovery_file(window, monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+
+    from spacemissionstudio.gui import autosave
+
+    _add_valid_spacecraft(window)
+    window._on_autosave_tick()
+    assert autosave.read_recovery_file() is not None
+
+    monkeypatch.setattr(QMessageBox, "question",
+                         staticmethod(lambda *a, **k: QMessageBox.StandardButton.Discard))
+    window.on_new()
+
+    assert autosave.read_recovery_file() is None
+
+
+def test_check_autosave_recovery_with_no_recovery_file_does_nothing(window):
+    window._check_autosave_recovery()  # must not raise, nothing to restore
+    assert window._current_path is None
+    assert not window._dirty
+
+
+def test_check_autosave_recovery_user_accepts_restores_and_marks_dirty(window, monkeypatch):
+    from pathlib import Path
+
+    from PySide6.QtWidgets import QMessageBox
+
+    from spacemissionstudio.gui import autosave
+    from spacemissionstudio.schema.scenario import OrbitIC, Scenario, SpacecraftConfig
+
+    scenario = Scenario(name="recovered", epoch_utc="2030-01-01T00:00:00Z")
+    scenario.spacecraft = [SpacecraftConfig(
+        name="recovered-sat", orbit=OrbitIC(type="cartesian", position_km=[7000, 0, 0], velocity_km_s=[0, 7.5, 0])
+    )]
+    original_path = Path("/does/not/matter/mission.json")
+    autosave.write_recovery_file(scenario, original_path)
+
+    monkeypatch.setattr(QMessageBox, "question",
+                         staticmethod(lambda *a, **k: QMessageBox.StandardButton.Open))
+
+    window._check_autosave_recovery()
+
+    assert window.scenario_editor.spacecraft_list.to_list()[0].name == "recovered-sat"
+    assert window._current_path == original_path
+    assert window._dirty  # recovered content is still unsaved -- NOT the same as a clean open
+    assert window.windowTitle().endswith("*")
+
+
+def test_check_autosave_recovery_user_declines_clears_file_and_leaves_editor_untouched(window, monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+
+    from spacemissionstudio.gui import autosave
+    from spacemissionstudio.schema.scenario import OrbitIC, Scenario, SpacecraftConfig
+
+    scenario = Scenario(name="recovered", epoch_utc="2030-01-01T00:00:00Z")
+    scenario.spacecraft = [SpacecraftConfig(
+        name="recovered-sat", orbit=OrbitIC(type="cartesian", position_km=[7000, 0, 0], velocity_km_s=[0, 7.5, 0])
+    )]
+    autosave.write_recovery_file(scenario, None)
+
+    monkeypatch.setattr(QMessageBox, "question",
+                         staticmethod(lambda *a, **k: QMessageBox.StandardButton.Discard))
+
+    window._check_autosave_recovery()
+
+    assert window.scenario_editor.spacecraft_list.to_list() == []
+    assert not window._dirty
+    assert autosave.read_recovery_file() is None

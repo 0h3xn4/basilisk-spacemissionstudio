@@ -125,9 +125,15 @@ def cmd_run(args: argparse.Namespace) -> int:
         return 3
 
     paths = result.export_csv(args.out_dir)
-    print(f"Wrote {len(paths)} CSV file(s) to {args.out_dir}:")
+    print(f"Wrote {len(paths)} result file(s) to {args.out_dir}:")
     for name, path in sorted(paths.items()):
         print(f"  {name}: {path}")
+
+    # Informational only -- never affects the exit code (see
+    # ResultSet.warnings's own docstring: a non-empty list here is a
+    # numerical-health diagnostic, not a validation failure).
+    for warning in result.warnings:
+        print(f"WARNING: {warning}", file=sys.stderr)
 
     if command_summary is not None:
         print(f"Mission sequence: executed {command_summary.commands_executed} command(s), "

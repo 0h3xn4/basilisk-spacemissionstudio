@@ -54,6 +54,7 @@ from PySide6.QtWidgets import (
 
 from ..logging_setup import get_log_file_path
 from ..schema.scenario import Scenario, ScenarioValidationError, load_scenario
+from . import autosave
 from .feedback import show_toast
 from .kernel_status_widget import KernelStatusWidget
 from .load_scenario_widget import LoadScenarioWidget
@@ -74,6 +75,15 @@ from .vizard_launcher import (
 
 _FILE_FILTER = "SpaceMissionStudio scenario (*.json)"
 
+# [ms] Design-philosophy roadmap item M4 (docs/ux_roadmap.md) -- how
+# often _on_autosave_tick() writes a crash-recovery copy of the
+# scenario currently being edited, while it's dirty. Not tuned to any
+# specific benchmark: frequent enough that a crash loses at most half a
+# minute of edits, infrequent enough that the per-tick
+# to_scenario()+validate()+JSON-write cost (cheap, but not free) never
+# has a chance to matter.
+_AUTOSAVE_INTERVAL_MS = 30_000
+
 _logger = logging.getLogger(__name__)
 
 
@@ -93,7 +103,7 @@ def _with_log_file_hint(message: str) -> str:
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, prompt_startup_fetch: bool = True):
+    def __init__(self, prompt_startup_fetch: bool = True, check_autosave_recovery: bool = True):
         super().__init__()
         # Wider default than before: the scenario form's own natural
         # content width (~576px, e.g. the "Full attitude (sensors,
@@ -200,8 +210,37 @@ class MainWindow(QMainWindow):
         self.statusBar().addPermanentWidget(self._busy_label)
         self.statusBar().addPermanentWidget(self._busy_progress)
 
+        # Design-philosophy roadmap item M4 (docs/ux_roadmap.md):
+        # autosave/crash-recovery for scenario edits -- see
+        # gui.autosave's own module docstring. The timer runs
+        # unconditionally (not just when check_autosave_recovery is
+        # True -- that flag only controls the STARTUP offer to restore
+        # a previous crash's leftovers, which is unrelated to whether
+        # THIS session's own edits should be protected going forward);
+        # _on_autosave_tick() itself no-ops whenever there's nothing
+        # dirty to save, which is the common case.
+        self._autosave_timer = QTimer(self)
+        self._autosave_timer.setInterval(_AUTOSAVE_INTERVAL_MS)
+        self._autosave_timer.timeout.connect(self._on_autosave_tick)
+        self._autosave_timer.start()
+
         self.statusBar().showMessage("Ready.")
         self._update_window_title()
+
+        if check_autosave_recovery:
+            # Fired via singleShot(0, ...) for the same reason
+            # prompt_startup_fetch below is -- the window must already be
+            # rendered before a blocking modal dialog appears on top of
+            # it. check_autosave_recovery=False is how tests (and
+            # anything else constructing MainWindow headlessly) opt out,
+            # the same convention prompt_startup_fetch already
+            # established -- see tests/gui/test_main_window.py's own
+            # `window` fixture. Checked before the kernel-fetch prompt
+            # below so a recovered scenario (which may need different
+            # kernels than whatever reset_to_default() left in place) is
+            # in the editor first, though the two don't otherwise
+            # interact.
+            QTimer.singleShot(0, self._check_autosave_recovery)
 
         if prompt_startup_fetch:
             # Fired via singleShot(0, ...), not called directly here, so
@@ -447,6 +486,67 @@ class MainWindow(QMainWindow):
     def _mark_clean(self) -> None:
         self._dirty = False
         self._update_window_title()
+        # Every path that reaches a clean state -- a real Save, New,
+        # Open, or an explicit discard via _confirm_discard_unsaved --
+        # funnels through here, so this is the one place that needs to
+        # clear a pending autosave recovery file: see gui.autosave's own
+        # module docstring for why a stale one left behind would be
+        # worse than not having this feature at all.
+        autosave.clear_recovery_file()
+
+    def _on_autosave_tick(self) -> None:
+        """Runs every ``_AUTOSAVE_INTERVAL_MS`` -- see that constant's
+        own comment. No-ops unless the editor is actually dirty (the
+        common case between edits), and SILENTLY skips a tick where the
+        in-memory scenario doesn't currently validate (e.g. mid-edit
+        with a required field momentarily blank) rather than surfacing
+        an error dialog on a timer the user didn't directly trigger --
+        the next tick simply tries again once the edit settles, same
+        tolerance a real Save already has via
+        ``ScenarioEditorWidget.to_scenario()`` itself.
+        """
+        if not self._dirty:
+            return
+        try:
+            scenario = self.scenario_editor.to_scenario()
+        except ScenarioValidationError:
+            return
+        autosave.write_recovery_file(scenario, self._current_path)
+
+    def _check_autosave_recovery(self) -> None:
+        """Startup offer to restore a previous session's crash-recovery
+        file -- see ``gui.autosave``'s own module docstring. Declining
+        is treated the same as an explicit discard (the recovery copy
+        is cleared immediately, not left to prompt again next launch);
+        accepting loads it into the editor and marks the window DIRTY,
+        not clean -- the recovered content is exactly the UNSAVED state
+        from before the crash, so it still needs an explicit Save (to
+        ``original_path``, or Save As if there wasn't one yet) before
+        it's actually safe on disk again.
+        """
+        info = autosave.read_recovery_file()
+        if info is None:
+            return
+        label = str(info.original_path) if info.original_path is not None else "a new, never-yet-saved scenario"
+        response = QMessageBox.question(
+            self, "Restore unsaved changes?",
+            f"SpaceMissionStudio did not close cleanly last time. Unsaved changes to {label} were "
+            f"autosaved at {info.saved_at_utc} (UTC). Restore them?",
+            QMessageBox.StandardButton.Open | QMessageBox.StandardButton.Discard,
+            QMessageBox.StandardButton.Discard,
+        )
+        if response != QMessageBox.StandardButton.Open:
+            autosave.clear_recovery_file()
+            return
+        self.scenario_editor.from_scenario(info.scenario)
+        self._current_path = info.original_path
+        self.results_widget.set_result(None)
+        self.mission_dashboard_widget.set_result(None)
+        self.mission_output_widget.clear()
+        self._mark_dirty()
+        self.statusBar().showMessage("Restored autosaved changes.")
+        show_toast(self, "Restored autosaved changes")
+        self.left_tabs.setCurrentWidget(self.scenario_editor)
 
     def _confirm_discard_unsaved(self) -> bool:
         """Returns True if it's OK to proceed (no unsaved changes, or the
