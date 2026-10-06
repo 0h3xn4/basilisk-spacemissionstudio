@@ -399,35 +399,36 @@ def build_05_formation_flying_phasing() -> Scenario:
     return Scenario(
         name="05 - Formation flying (phasing control)",
         description=(
-            "Two spacecraft in near-identical orbits, 'follower-1' actively holding a fixed in-track "
-            "separation AHEAD OF chief 'chief-1' (target_separation_km is always a positive, 'B leads "
-            "A' distance -- see PhasingKeepingController's own docstring) using phasing_keeping -- a "
-            "closed-loop controller that measures the along-track separation and fires small "
-            "along-track burns to correct drift, on top of its OWN station_keeping (phasing_keeping "
-            "always needs station_keeping configured on the same spacecraft -- see "
-            "PhasingKeepingConfig's own docstring for why: phasing needs altitude held steady first, "
-            "or a semi-major-axis mismatch would make along-track drift and true phasing error "
-            "indistinguishable).\n\n"
-            "What to look at: after running, compare 'follower-1.position_N' and 'chief-1.position_N' "
-            "-- the along-track (velocity-direction) separation should settle near "
-            "target_separation_km by the end of the run, a basic model of formation-flying/"
-            "rendezvous-proximity-operations control (e.g. trailing satellite formations, or a "
-            "servicer holding station near a target). follower-1 actually starts ~60 km BEHIND "
-            "chief-1 (true_anomaly_deg=-0.5 below), so getting to the +50 km-AHEAD target means "
-            "closing that whole gap -- phasing_keeping's own correction_window_days=21 (below) "
-            "spreads that catch-up deliberately over 21 days, not instantly, so EXPECT the live Vizard "
-            "separation gauges to show the two spacecraft passing close by each other (confirmed: as "
-            "near as ~1 km, purely in-track -- radial/cross-track stay under 0.3 km throughout, so "
-            "this is a controlled same-track catch-up, not a collision course across orbit planes) "
-            "around the correction's midpoint (day ~10-11) before it settles and holds at "
-            "target_separation_km by around day 20 -- this is the deliberate, fuel-efficient shortest "
-            "path from 'behind' to 'ahead', not a malfunction, even though it looks alarming the first "
-            "time you watch it happen. 'spacemissionstudio run' also prints a phasing delta-V "
-            "breakdown in its station-keeping summary (see README, 'Running the CLI').\n\n"
+            "Two spacecraft in near-identical, Sun-synchronous orbits: 'follower-1' holds a FIXED "
+            "in-track separation 50 km AHEAD of chief 'chief-1' (target_separation_km is always a "
+            "positive, 'B leads A' distance -- see PhasingKeepingController's own docstring) using "
+            "phasing_keeping -- a closed-loop controller that measures the along-track separation and "
+            "fires small along-track burns to correct DRIFT away from that target, not to transition "
+            "between two different relative states. Both spacecraft also run their OWN independent "
+            "station_keeping to hold altitude (phasing_keeping always needs station_keeping configured "
+            "on the SAME spacecraft it runs on -- see PhasingKeepingConfig's own docstring for why: "
+            "phasing needs altitude held steady first, or a semi-major-axis mismatch would make "
+            "along-track drift and true phasing error indistinguishable; chief-1 needs its own "
+            "separately, simply to not decay under drag like any other LEO spacecraft).\n\n"
+            "What to look at: follower-1 starts EXACTLY at the 50 km target (see the orbit= comment "
+            "below for the exact math) -- this is formation-KEEPING, not a rendezvous/phasing-transfer "
+            "maneuver, so the default run should show the separation holding close to 50 km throughout, "
+            "not swinging between 'behind' and 'ahead'. Confirmed on a real Basilisk run (degree-2 J2 "
+            "gravity): over the full 24-day run, the separation drifts only within about +/-3.5 km of "
+            "target (comfortably inside phasing_keeping's own 10% tolerance band) from real, small "
+            "perturbations (J2, differential drag from follower-1's extra propellant mass) -- small "
+            "enough that NO correction burn is needed at all in this particular run, which is itself "
+            "the point: a well-designed formation mostly just holds, with phasing_keeping as the "
+            "safety net for when drift eventually exceeds the tolerance band (try a longer duration, "
+            "a tighter tolerance_fraction, or a deliberately larger starting mismatch -- see 'Try "
+            "changing' below -- to see an actual correction cycle fire). 'spacemissionstudio run' "
+            "prints a phasing delta-V breakdown in its station-keeping summary (see README, 'Running "
+            "the CLI').\n\n"
             "Try changing: target_separation_km (a schedule -- see PhasingKeepingConfig; a single "
             "-element list holds one separation for the whole run, more elements step through a "
-            "schedule), or chief-1's own orbit to start with a larger initial mismatch and watch "
-            "follower-1 correct it.\n\n"
+            "schedule), phasing_keeping.tolerance_fraction (tighter triggers a correction sooner), or "
+            "follower-1's own starting mean_anomaly_deg to begin with a deliberate mismatch and watch "
+            "phasing_keeping correct it back onto target.\n\n"
             "Updated to include 10th-degree spherical-harmonics gravity, Sun/Moon third-body gravity, "
             "atmospheric drag, and solar radiation pressure on both spacecraft (identically, so any "
             "chief/follower difference in behavior is real physics, not asymmetric configuration) -- "
@@ -437,32 +438,24 @@ def build_05_formation_flying_phasing() -> Scenario:
             "network calls at runtime, so a real-historical-data CONSERVATIVE margin isn't available "
             "out of the box here anymore -- see template 04's own description for how to restore it "
             "via a self-supplied local CelesTrak CSV).\n\n"
-            "Audited against a real Basilisk build with real (degree >= 2) spherical-harmonics Earth "
-            "gravity active on exactly these elements, after a real user's Vizard screenshot kept "
-            "showing the along-track separation pinned at the Vizard gauge ceiling even after an "
-            "earlier, unrelated cold-start fix had landed (see "
-            "engine.orbit_maintenance.StationKeepingController's own docstring for that one). Two "
-            "real, independent bugs were found and fixed: (1) PhasingKeepingController's phase error "
-            "was computed from each spacecraft's osculating mean anomaly, which is numerically "
-            "singular as eccentricity -> 0 -- real J2 short-period oscillation of the osculating "
-            "eccentricity vector was, by itself, enough to carry this orbit's e through "
-            "numerically-zero every orbit, producing spurious phase errors of up to several thousand "
-            "km that the controller then (faithfully) acted on as real; fixed with a numerically "
-            "robust argument-of-latitude computation (see that class's own docstring). (2) this "
-            "template's own station_keeping deadband_km was too tight (2 km) relative to this orbit's "
-            "real, natural (non-decaying) J2 + eccentricity altitude variation (~5-10 km) -- the "
-            "controller doing exactly what it was configured to do, triggering on legitimate orbital "
-            "mechanics rather than real secular decay (confirmed firing continuously for ~7 real "
-            "hours on one real run); widened to 15 km (see station_keeping below). A real user's "
-            "FOLLOW-UP screenshot, taken with both fixes above already applied, then showed the "
-            "separation at t=7 days reading only ~20 km (not yet 50) and asked whether the follower "
-            "was 'drifting toward the chief' -- re-run directly (same real J2 gravity, full 25 days): "
-            "NOT a third bug, just this template's own duration_days (originally 7.0) being shorter "
-            "than its own correction_window_days (21.0), so the ORIGINAL duration never let a run "
-            "reach the point where the maneuver actually finishes -- see duration_days's own comment "
-            "below (now 24.0) and the close-approach note earlier in this description. The REMAINING "
+            "Audit history (most recent first): a real user pointed out that this template's own "
+            "design didn't actually match 'maintain a fixed distance with a margin of error' -- "
+            "follower-1 used to start ~60 km BEHIND chief-1 while targeting 50 km AHEAD, which made "
+            "the default run demonstrate a one-time ~110 km realignment (passing close by the chief "
+            "on the way) rather than steady-state formation-keeping, and chief-1 had no station_keeping "
+            "of its own at all, contradicting engine.formation.py's own stated 'chief holds station, "
+            "follower holds formation' design for this exact two-spacecraft shape. Both fixed (see the "
+            "orbit=/station_keeping= comments below) -- engine.formation.generate_phasing_follower() "
+            "(the 'Generate phasing formation...' GUI generator) already placed a NEW follower exactly "
+            "on its target separation; this template's hand-authored JSON simply hadn't been updated "
+            "to match that same, already-correct design. Earlier in the same investigation: two real "
+            "bugs in PhasingKeepingController/StationKeepingController themselves (a numerically "
+            "singular phase-error metric at low eccentricity, fixed with a robust argument-of-latitude "
+            "computation -- see that class's own docstring; and a station_keeping deadband too tight "
+            "for this orbit's natural J2/eccentricity altitude swing, widened to 15 km) plus a "
+            "duration_days that was shorter than its own correction_window_days. The REMAINING "
             "untested piece is the real Sun/Moon third-body perturbation specifically (this sandbox "
-            "has no route to the NAIF SPICE kernel host needed to include it in the audit's own "
+            "has no route to the NAIF SPICE kernel host needed to include it in these audits' own "
             "verification runs, which used degree-2 Earth-only gravity) -- please report back if "
             "behavior still looks off with that included."
         ),
@@ -477,32 +470,20 @@ def build_05_formation_flying_phasing() -> Scenario:
         # "moon" added alongside "sun" for full-perturbation realism (see
         # this function's own description update above).
         gravity=GravityConfig(central_body="earth", central_body_degree=10, third_body_perturbers=["sun", "moon"]),
-        # duration_days=24.0, not 7.0 -- a second real audit finding, found
-        # from a real user's Vizard screenshot showing the follower
-        # "drifting toward the chief" down to ~20 km at t=7 days: NOT a
-        # bug (confirmed directly, re-running this exact configuration
-        # with real J2 dynamics end to end, that this is exactly the
-        # expected, on-schedule state -- the follower starts ~60 km BEHIND
-        # the chief (true_anomaly_deg=-0.5 below), and phasing_keeping's
-        # own correction_window_days=21 below deliberately spreads the
-        # catch-up maneuver over 21 days, not 7; the shortest, most
-        # fuel-efficient path from "60 km behind" to "50 km ahead"
-        # necessarily passes close by the chief partway through -- 0.9 km
-        # minimum separation, confirmed, entirely in-track (R/N both stay
-        # under 0.3 km throughout), not a collision course across orbit
-        # planes). The real bug: this template's own duration_days=7.0 was
-        # shorter than its own correction_window_days=21.0, so running the
-        # DEFAULT template never let a user see the maneuver actually
-        # finish -- only the alarming-looking close-approach partway
-        # through, directly contradicting this template's own description
-        # ("the along-track separation should stay near
-        # target_separation_km"), which the original 7-day duration never
-        # actually demonstrated. 24 days gives the full 21-day correction
-        # window a few days of margin to settle and HOLD at the 50 km
-        # target before the run ends -- confirmed directly: re-run to 25
-        # days, separation reaches ~49 km by day 20 and holds there
-        # (48-49 km, state back to IDLE, zero further station-keeping
-        # burns) for the remainder.
+        # duration_days=24.0 -- long enough to show the formation genuinely
+        # HOLDING, not just an instant snapshot. With follower-1 now
+        # starting exactly on its 50 km target (see that spacecraft's own
+        # orbit= comment), confirmed directly against a real Basilisk run
+        # (degree-2 J2 gravity): the separation drifts only within about
+        # +/-3.5 km of target over the full 24 days (comfortably inside
+        # phasing_keeping's own 10% tolerance band), with neither
+        # spacecraft's station_keeping needing to fire even once -- 24 days
+        # is long enough to make that "it just holds" result convincing
+        # (not a lucky one-tick snapshot) while staying a practical runtime.
+        # Earlier revisions of this comment explained a 21-day
+        # correction_window_days margin for a large catch-up maneuver this
+        # template no longer performs by default (see this function's own
+        # description for that history).
         sim_settings=SimSettings(duration_days=24.0, dynamics_task_rate_s=30.0, integrator="rkf78"),
         space_weather=_conservative_drag_margin(),
         spacecraft=[
@@ -555,13 +536,73 @@ def build_05_formation_flying_phasing() -> Scenario:
                 dry_mass_kg=400.0,
                 enable_drag=True, drag_coeff=2.2, drag_area_m2=1.0,
                 enable_srp=True, srp_coeff=1.3, srp_area_m2=1.0,
+                # chief-1 needs its OWN station_keeping too -- a real
+                # design bug, found from direct user feedback: a "chief"
+                # that holds no altitude at all isn't a chief, it's just an
+                # uncontrolled object the follower happens to be phased
+                # against -- and it directly contradicts
+                # engine.formation.py's own stated design for this exact
+                # two-spacecraft shape ("the two-satellite 'chief holds
+                # station, follower holds formation' case
+                # 05_formation_flying_phasing.json demonstrates by hand" --
+                # see that module's own docstring, written when this
+                # template was first built but never actually implemented
+                # here). Same hardware as follower-1's own station_keeping
+                # below -- a realistic "sister satellite" pair, not a
+                # special case.
+                station_keeping=StationKeepingConfig(
+                    target_altitude_km=550.0, deadband_km=15.0, thrust_n=0.05, isp_s=1500.0, propellant_kg=5.0,
+                ),
             ),
             SpacecraftConfig(
                 name="follower-1",
+                # anomaly_type="mean", mean_anomaly_deg=0.413509 (not
+                # true_anomaly_deg=-0.5) -- a real design-intent bug, found
+                # from direct user feedback: the ORIGINAL -0.5 deg offset put
+                # follower-1 trailing chief-1 by ~60 km while
+                # phasing_keeping's target_separation_km=50.0 (below) is
+                # defined as a LEADING separation (see
+                # PhasingKeepingController's own docstring: always a
+                # positive, "B leads A" distance) -- so the default run
+                # didn't demonstrate "hold a fixed formation distance with a
+                # small margin of error" at all; it demonstrated a one-time,
+                # 110 km realignment maneuver that passes close by the chief
+                # on the way (see duration_days's own comment below for that
+                # whole investigation). phasing_keeping is a FORMATION
+                # -KEEPING controller, not a rendezvous/phasing-transfer
+                # planner -- its correct default demo is steady-state
+                # maintenance, not a transition between two different
+                # relative states.
+                #
+                # Fixed by placing follower-1's own initial mean anomaly
+                # EXACTLY at the target separation from chief-1's (chief is
+                # at true_anomaly_deg=0.0 above, which for ANY eccentricity
+                # is exactly mean anomaly 0.0 too -- true and mean anomaly
+                # are identically 0 at periapsis, no approximation here):
+                # along_track_rad = target_separation_km * 1000 / chief_sma_m
+                #                 = 50000 / 6928000 = 0.0072171 rad
+                #                 = 0.413509 deg
+                # -- the exact same arc-length relation both
+                # engine.orbit_maintenance.SeparationSchedule and
+                # engine.formation.generate_phasing_follower() already use
+                # (the latter is this exact fix's own precedent: the
+                # "Generate phasing formation..." GUI generator has ALWAYS
+                # placed a new follower exactly at its target separation --
+                # "Achieved to that exact value ... confirmed against a real
+                # Basilisk run" per that function's own docstring -- this
+                # template's hand-authored JSON was simply never updated to
+                # match that same, already-correct design). Starting exactly
+                # on target means the run now shows what phasing_keeping
+                # actually does in normal operation: small, periodic
+                # corrections holding the separation within
+                # tolerance_fraction of target as real perturbations
+                # (differential drag from follower-1's extra propellant
+                # mass, J2, Sun/Moon) nudge it off -- never a large
+                # transition, never passing the chief.
                 orbit=OrbitIC(type="classical_elements", semi_major_axis_km=6928.0, eccentricity=0.001,
                                inclination_deg=sun_synchronous_inclination_deg(6928.0, 0.001),
                                raan_deg=raan_for_ltan_deg("2030-01-01T00:00:00"),
-                               arg_periapsis_deg=0.0, true_anomaly_deg=-0.5),
+                               arg_periapsis_deg=0.0, anomaly_type="mean", mean_anomaly_deg=0.413509),
                 dry_mass_kg=400.0,
                 enable_drag=True, drag_coeff=2.2, drag_area_m2=1.0,
                 enable_srp=True, srp_coeff=1.3, srp_area_m2=1.0,
