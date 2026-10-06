@@ -166,7 +166,7 @@ from Basilisk.utilities.supportDataTools.dataFetcher import DataFile, get_path
 from .. import __version__ as _SPACEMISSIONSTUDIO_VERSION
 from ..schema.scenario import OrbitIC, Scenario
 from . import fsw, kernels, link_budget, orbit_maintenance, time_system, vizard
-from .results import ResultSet, RunProvenance, TimeSeries
+from .results import ResultSet, RunProvenance, TimeSeries, conservation_drift_warnings
 from .vizard import VizardRequest
 
 # Maps schema.SimSettings.integrator -> the svIntegrator* class it selects.
@@ -278,6 +278,44 @@ class SimulationCancelled(Exception):
     def __init__(self, partial_result: ResultSet):
         super().__init__("Simulation cancelled by the user")
         self.partial_result = partial_result
+
+
+def _is_two_body_only(scenario: Scenario, sc_config) -> bool:
+    """``True`` only when NOTHING in this scenario/spacecraft can
+    legitimately change this spacecraft's own orbital energy/angular
+    momentum -- the precondition :func:`engine.results.conservation_drift_warnings`
+    needs to be meaningful (see that function's own docstring: a drift
+    check is only informative when a drift would be a BUG, not real
+    perturbation/thrust physics).
+
+    Deliberately conservative/over-exclusive: every item below is a real
+    translational-force or impulsive-delta-V source this app can build,
+    so any one of them makes a genuine, non-conserved energy/momentum
+    change EXPECTED, not a numerical-health signal -- a false "no
+    warning" here is harmless (the check is simply skipped), while a
+    false warning on a legitimately-perturbed orbit would train users to
+    ignore real ones. ``mission_sequence`` is checked scenario-wide
+    (not just for this spacecraft) because ``maneuver``/``lambert_transfer``
+    commands apply a deliberate, instantaneous delta-V directly to the
+    state -- exactly the kind of real, legitimate "jump" this drift
+    check cannot distinguish from a numerical error, so the simplest safe
+    choice is to skip the check entirely whenever ANY mission-sequence
+    command could possibly run, rather than trying to prove none of them
+    target this specific spacecraft.
+    """
+    gravity = scenario.gravity
+    if gravity.central_body_degree != 0 or gravity.third_body_perturbers:
+        return False
+    if scenario.mission_sequence:
+        return False
+    if (sc_config.enable_drag or sc_config.enable_srp or sc_config.station_keeping is not None
+            or sc_config.constant_thrust is not None or sc_config.phasing_keeping is not None
+            or sc_config.comms_pointing is not None or sc_config.fuel_tank is not None
+            or sc_config.momentum_dumping is not None):
+        return False
+    if any(actuator.kind == "thruster" for actuator in sc_config.actuators):
+        return False
+    return True
 
 
 def _orbit_ic_to_rv(mu: float, orbit: OrbitIC):
@@ -1660,10 +1698,22 @@ class SimulationService:
                 integrator=self.scenario.sim_settings.integrator,
                 dynamics_task_rate_s=self.scenario.sim_settings.dynamics_task_rate_s,
             )
+        spacecraft_by_name = {sc_config.name: sc_config for sc_config in self.scenario.spacecraft}
         for name, handle in self._handles.items():
             t_s = handle.recorder.times() * macros.NANO2SEC
             result.add(TimeSeries(f"{name}.position_N", t_s, ("x", "y", "z"), handle.recorder.r_BN_N, units="m"))
             result.add(TimeSeries(f"{name}.velocity_N", t_s, ("x", "y", "z"), handle.recorder.v_BN_N, units="m/s"))
+
+            # Conservation/drift diagnostic -- see _is_two_body_only's own
+            # docstring for the (deliberately conservative) gate, and
+            # conservation_drift_warnings's for the math/tolerances.
+            # self.mu is already Earth/the central body's real GM, set
+            # during build()'s gravity setup.
+            sc_config = spacecraft_by_name.get(name)
+            if sc_config is not None and self.mu is not None and _is_two_body_only(self.scenario, sc_config):
+                result.warnings.extend(conservation_drift_warnings(
+                    name, self.mu, np.asarray(handle.recorder.r_BN_N), np.asarray(handle.recorder.v_BN_N),
+                ))
 
             # Osculating Keplerian elements -- see _osculating_elements()'s
             # docstring for the near-circular/near-equatorial caveat. One

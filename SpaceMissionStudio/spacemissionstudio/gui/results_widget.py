@@ -143,6 +143,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..engine.results import ResultSet, TimeSeries
+from .theme import PALETTE
 
 _RAD2DEG = 180.0 / math.pi
 
@@ -557,6 +558,25 @@ class ResultsWidget(QWidget):
         self.provenance_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         layout.addWidget(self.provenance_label)
 
+        # Design-philosophy audit finding (docs/ux_audit.md, "no active
+        # conservation/drift diagnostic") -- see
+        # engine.results.conservation_drift_warnings's own docstring.
+        # Hidden (no empty banner taking up space) whenever
+        # ResultSet.warnings is empty, which is the common case: most
+        # scenarios have SOME perturbation/thrust configured, so the
+        # check never even runs for them (see
+        # engine.service._is_two_body_only). Reuses PALETTE["danger"] --
+        # this app's one existing "needs attention" color (feedback.py's
+        # own error-toast color) -- rather than inventing a second
+        # semantic color never used elsewhere; the wording itself (not
+        # just the color) makes clear this is informational, not fatal.
+        self.warnings_label = QLabel("")
+        self.warnings_label.setWordWrap(True)
+        self.warnings_label.setStyleSheet(f"color: {PALETTE['danger']}; font-size: 90%;")
+        self.warnings_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.warnings_label.setVisible(False)
+        layout.addWidget(self.warnings_label)
+
         self.web_view = QWebEngineView()
         layout.addWidget(self.web_view)
         self._redraw()  # shows the empty-state message immediately, not just after the first set_result() call
@@ -572,7 +592,17 @@ class ResultsWidget(QWidget):
         self.series_combo.blockSignals(False)
         self.export_button.setEnabled(result is not None and bool(result.series))
         self._update_provenance_label()
+        self._update_warnings_label()
         self._redraw()
+
+    def _update_warnings_label(self) -> None:
+        warnings = self._result.warnings if self._result is not None else []
+        if not warnings:
+            self.warnings_label.setVisible(False)
+            self.warnings_label.setText("")
+            return
+        self.warnings_label.setText("\n".join(f"⚠ {w}" for w in warnings))
+        self.warnings_label.setVisible(True)
 
     def _update_provenance_label(self) -> None:
         provenance = self._result.provenance if self._result is not None else None
@@ -610,6 +640,13 @@ class ResultsWidget(QWidget):
         is_first_update = self._result is None or set(self._result.series) != set(result.series)
         self._result = result
         self._epoch_utc = epoch_utc  # same every chunk of one run, but cheap enough not to bother guarding
+        # Unlike provenance (fixed once at run start), warnings can only
+        # become non-empty partway through a long live run (more samples
+        # -> more opportunity for drift to exceed tolerance) -- updated
+        # on every call, not just is_first_update, and never throttled
+        # like the webview redraw below (a QLabel update is cheap, no
+        # page reload).
+        self._update_warnings_label()
         if is_first_update:
             self.series_combo.blockSignals(True)
             self.series_combo.clear()

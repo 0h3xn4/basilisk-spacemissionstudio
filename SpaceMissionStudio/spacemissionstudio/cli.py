@@ -129,6 +129,12 @@ def cmd_run(args: argparse.Namespace) -> int:
     for name, path in sorted(paths.items()):
         print(f"  {name}: {path}")
 
+    # Informational only -- never affects the exit code (see
+    # ResultSet.warnings's own docstring: a non-empty list here is a
+    # numerical-health diagnostic, not a validation failure).
+    for warning in result.warnings:
+        print(f"WARNING: {warning}", file=sys.stderr)
+
     if command_summary is not None:
         print(f"Mission sequence: executed {command_summary.commands_executed} command(s), "
               f"{len(command_summary.reports)} report(s).")

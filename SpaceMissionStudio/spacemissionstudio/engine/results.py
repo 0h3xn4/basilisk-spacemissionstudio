@@ -143,6 +143,72 @@ class TimeSeries:
         return path
 
 
+# Design-philosophy audit finding (docs/ux_audit.md, "no active
+# conservation/drift diagnostic"): the only numerical-health signal this
+# app had was translating a hard Basilisk integrator crash (NaN/inf) into
+# a clear error -- a FINITE but wrong result (e.g. a too-coarse timestep
+# drifting silently, not crashing) shipped with no flag at all. These
+# generous, deliberately coarse tolerances exist to catch a genuine
+# blowup/instability (orders of magnitude), not to grade an integrator's
+# own fine-grained truncation error -- see
+# engine.service.SimulationService._extract_results()'s own gate for
+# exactly when this is even called (only a verified-two-body-only
+# spacecraft/scenario; every perturbation/thrust source is excluded
+# there specifically because it would make a real, non-conserved energy
+# change look like a false positive here).
+_DEFAULT_CONSERVATION_TOLERANCE = 0.01  # [-] 1% -- see module comment above
+
+
+def conservation_drift_warnings(name: str, mu: float, r_m: np.ndarray, v_m: np.ndarray,
+                                 energy_tol: float = _DEFAULT_CONSERVATION_TOLERANCE,
+                                 momentum_tol: float = _DEFAULT_CONSERVATION_TOLERANCE) -> List[str]:
+    """Checks specific orbital energy (``v^2/2 - mu/r``) and orbital
+    angular momentum magnitude (``|r x v|``) for drift away from their
+    own first-sample value, over the recorded ``r_m``/``v_m`` time
+    history -- both are EXACTLY conserved for true two-body (point-mass,
+    unperturbed, unthrusted) motion, so a drift beyond ``energy_tol``/
+    ``momentum_tol`` (a fraction of each quantity's own initial
+    magnitude) on a scenario that IS two-body-only almost always means a
+    numerical-integration problem, not real physics.
+
+    Pure NumPy -- no Basilisk import, callable directly with synthetic
+    arrays in a test. Returns an empty list when everything is within
+    tolerance (including when there are fewer than 2 samples -- nothing
+    to compare drift against yet). Never raises: this is a diagnostic,
+    not a validation failure -- see :attr:`ResultSet.warnings`'s own
+    docstring for why a caller should never treat a non-empty result as
+    fatal.
+    """
+    warnings: List[str] = []
+    if r_m.shape[0] < 2:
+        return warnings
+    r_mag = np.linalg.norm(r_m, axis=1)
+    v_mag = np.linalg.norm(v_m, axis=1)
+    specific_energy = 0.5 * v_mag ** 2 - mu / r_mag
+    h_mag = np.linalg.norm(np.cross(r_m, v_m), axis=1)
+
+    energy_scale = mu / max(r_mag[0], 1.0)  # [J/kg] the 1 m floor only matters for a degenerate r_mag[0] == 0
+    energy_drift = float(np.max(np.abs(specific_energy - specific_energy[0]))) / energy_scale
+    if energy_drift > energy_tol:
+        warnings.append(
+            f"{name}: specific orbital energy drifted {energy_drift:.1%} from its initial value over "
+            f"this run (tolerance {energy_tol:.0%}) -- this spacecraft's gravity/perturbation config is "
+            "two-body-only, so energy should stay constant; a drift this large usually means a "
+            "numerical-integration problem (try a finer sim_settings.dynamics_task_rate_s or a "
+            "higher-order integrator), not real physics."
+        )
+
+    momentum_scale = max(float(h_mag[0]), 1e-12)
+    momentum_drift = float(np.max(np.abs(h_mag - h_mag[0]))) / momentum_scale
+    if momentum_drift > momentum_tol:
+        warnings.append(
+            f"{name}: orbital angular momentum magnitude drifted {momentum_drift:.1%} from its initial "
+            f"value over this run (tolerance {momentum_tol:.0%}) -- same two-body-only reasoning as the "
+            "energy check above."
+        )
+    return warnings
+
+
 @dataclass
 class ResultSet:
     """Every :class:`TimeSeries` produced by one simulation run, keyed by
@@ -158,6 +224,14 @@ class ResultSet:
     # set this) -- every ResultSet built by hand in a test, or by
     # mission_engine's own propagate-free paths, is unaffected.
     provenance: Optional[RunProvenance] = None
+    # Informational only -- NEVER raised as an exception, never blocks a
+    # run (see conservation_drift_warnings's own docstring for exactly
+    # when/why this can be non-empty). Populated by
+    # engine.service.SimulationService._extract_results() for whichever
+    # spacecraft its own two-body-only gate applies to; empty for every
+    # other spacecraft/scenario shape, and always empty for a hand-built
+    # ResultSet (e.g. in a test).
+    warnings: List[str] = field(default_factory=list)
 
     def add(self, series: TimeSeries) -> None:
         if series.name in self.series:
