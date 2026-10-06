@@ -230,23 +230,62 @@ replan that item's bucket/approach accordingly.
   `tmp_path`-backed recovery location via a new autouse fixture, never
   touching a real home directory from the test suite.
 
-### M5. Lightweight ground-station access timeline
+### M5. Lightweight ground-station access timeline — **DONE**
 - **Rationale:** a scoped, cheap step toward §3's Gantt gap without
   building a general-purpose linked-timeline framework (that's
   Strategic, below) — most of the value of "see access windows at a
   glance" comes from one more chart, not a new interaction model.
-- **What:** a new, small results view that renders
-  `{gs}.access_to_{sc}.has_access` as a horizontal bar/step plot per
-  ground-station/spacecraft pair (still Plotly, still inside the
-  existing results panel — a "view" choice alongside the current
-  per-series dropdown, not a new widget framework). Clicking a bar could
-  set the x-axis range on the main plot (a small, scoped version of
-  "click-to-jump," not full view-linking).
-- **Files:** `gui/results_widget.py` (new view mode).
-- **Regression risk:** low-medium — purely additive view; must not
-  change the existing single-series view's behavior.
-- **Tests:** extend `tests/gui/test_results_widget.py` with the new view
-  mode against a synthetic `ResultSet` containing access series.
+- **What was built:** a new "View:" combo (`Single series` / `Ground
+  station access timeline`) next to the existing series dropdown in
+  `gui/results_widget.py`. The timeline view combines EVERY
+  `{gs}.access_to_{sc}.has_access` series in the result into one
+  Gantt-style chart: each station/spacecraft pair gets its own
+  categorical y-axis row, and each contiguous access window becomes a
+  thick horizontal line segment (`go.Scatter`, two points, `width=16`)
+  rather than `go.Bar(orientation="h")` — a plain two-point line needs
+  no base/width unit-matching against the x-axis, numeric or datetime
+  alike, where a bar's would. A pair with NO access window at all still
+  gets an (invisible) placeholder trace so it still shows up as its own
+  row rather than silently vanishing. A result with no access-pair
+  series at all (e.g. no `ground_stations` configured) shows an
+  explanatory empty-state annotation instead of a blank chart.
+  Deliberately ALWAYS elapsed time on the x-axis, ignoring
+  `x_axis_combo` — explained in `_build_access_timeline_figure`'s own
+  docstring. Switching views disables/enables `series_combo` (it has no
+  effect in the timeline view) and the PNG/SVG save buttons' default
+  filename becomes `access_timeline.png`/`.svg` instead of the
+  (irrelevant) current series name. `_parse_access_pair()` was factored
+  out of the existing `_access_pair_display()` so both agree on exactly
+  which series count as "an access-pair series."
+- **Explicitly NOT built (scoped out, matching the roadmap's own
+  "could" hedge):** the optional click-a-bar-to-jump-the-main-plot
+  interaction. This app has no JS<->Python click bridge
+  (`QWebChannel`) anywhere yet — the existing PNG/SVG export flow only
+  ever reads a page-global JS variable back via polling, it never
+  reacts to a click — and building one for this single interaction
+  would be a far bigger lift than the timeline chart itself. The
+  roadmap's own rationale ("most of the value... comes from one more
+  chart, not a new interaction model") already named this as the
+  cheaper, sufficient scope.
+- **Files:** `gui/results_widget.py` only (new view mode + the
+  `_parse_access_pair` refactor) — no engine/schema changes needed,
+  since `{gs}.access_to_{sc}.has_access` series already existed.
+- **Regression risk:** low — confirmed by all 47 pre-existing
+  `tests/gui/test_results_widget.py` tests passing completely
+  unmodified; the new view is reached only by explicitly selecting it
+  from the new combo (default stays "Single series").
+- **Tests:** 8 new tests in `tests/gui/test_results_widget.py` — the
+  view combo defaults to "Single series"; switching disables/
+  re-enables `series_combo` correctly; the combined chart has the
+  right number of traces per pair (including the always-shown
+  no-access placeholder row); the no-access-series-at-all case shows
+  the empty-state annotation; the x-axis stays elapsed time even when
+  `x_axis_combo` is set to Epoch; switching back to "Single series"
+  restores the previous series/plot exactly; the PNG save dialog's
+  default filename becomes `access_timeline.png` in that view; and a
+  real end-to-end check that the generated HTML actually loads in the
+  offscreen `QWebEngineView` without error (not just that the
+  `go.Figure` object builds correctly in Python).
 
 ---
 

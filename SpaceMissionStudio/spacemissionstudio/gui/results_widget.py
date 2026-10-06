@@ -373,14 +373,15 @@ def _controller_display(name: str) -> Optional[_SeriesDisplay]:
     return None
 
 
-def _access_pair_display(name: str) -> Optional[_SeriesDisplay]:
-    """``"{gs}.access_to_{sc}.<field>"`` series (``engine.service``'s
-    access-analysis loop, plus ``engine.link_budget.link_margin_series``)
-    -- ``gs``/``sc`` recovered directly from the name (split on
-    ``".access_to_"``, the literal separator both producers use) so the
-    title names the actual ground-station/spacecraft pair. Slant range
-    displays in km, elevation/azimuth in degrees -- same length/angle
-    display policy as everywhere else in this module.
+def _parse_access_pair(name: str) -> Optional[tuple]:
+    """Recovers ``(gs, sc, field)`` from a ``"{gs}.access_to_{sc}.<field>"``
+    series name (``engine.service``'s access-analysis loop, plus
+    ``engine.link_budget.link_margin_series``) -- the literal
+    ``".access_to_"`` separator both producers use -- or ``None`` if
+    ``name`` doesn't match that shape. Shared by :func:`_access_pair_display`
+    and :meth:`ResultsWidget._build_access_timeline_figure` (roadmap item
+    M5) so both agree on exactly which series are "an access pair series"
+    and how to recover the station/spacecraft names from one.
     """
     if ".access_to_" not in name:
         return None
@@ -388,6 +389,19 @@ def _access_pair_display(name: str) -> Optional[_SeriesDisplay]:
     gs, sep, sc = prefix.partition(".access_to_")
     if not sep:
         return None
+    return gs, sc, field
+
+
+def _access_pair_display(name: str) -> Optional[_SeriesDisplay]:
+    """``"{gs}.access_to_{sc}.<field>"`` series -- see
+    :func:`_parse_access_pair`. Slant range displays in km,
+    elevation/azimuth in degrees -- same length/angle display policy as
+    everywhere else in this module.
+    """
+    parsed = _parse_access_pair(name)
+    if parsed is None:
+        return None
+    gs, sc, field = parsed
     pair = f"{gs} -> {sc}"
     if field == "has_access":
         return _SeriesDisplay(f"Access Window: {pair}", "Has access", "-", 1.0,
@@ -498,6 +512,24 @@ class ResultsWidget(QWidget):
         layout = QVBoxLayout(self)
 
         top_row = QHBoxLayout()
+        # Design-philosophy roadmap item M5 (docs/ux_roadmap.md): a
+        # second, purely additive view mode alongside the existing
+        # single-series plot -- "most of the value of 'see access
+        # windows at a glance' comes from one more chart, not a new
+        # interaction model" (the roadmap's own scoping). Switching to
+        # "Ground station access timeline" disables series_combo (it
+        # has no effect in that view) and redraws; switching back
+        # restores the single-series view exactly as it was.
+        top_row.addWidget(QLabel("View:"))
+        self.view_combo = QComboBox()
+        self.view_combo.addItem("Single series", "single")
+        self.view_combo.addItem("Ground station access timeline", "access_timeline")
+        self.view_combo.setToolTip(
+            "\"Ground station access timeline\" shows every {station}.access_to_{spacecraft}.has_access "
+            "series in this result as one combined Gantt-style chart, instead of picking one series below."
+        )
+        self.view_combo.currentIndexChanged.connect(self._on_view_changed)
+        top_row.addWidget(self.view_combo)
         top_row.addWidget(QLabel("Series:"))
         self.series_combo = QComboBox()
         # Editable + a substring-matching QCompleter -- a real scenario
@@ -780,21 +812,141 @@ class ResultsWidget(QWidget):
         )
         return fig
 
+    def _on_view_changed(self) -> None:
+        """``view_combo``'s own ``currentIndexChanged`` handler -- see
+        that combo's construction comment (roadmap item M5).
+        ``series_combo`` (and its completer) have no effect in the
+        access-timeline view, so they're disabled rather than merely
+        ignored -- a disabled, grayed-out control is a clearer signal
+        that it doesn't currently apply than a control that still looks
+        interactive but silently does nothing.
+        """
+        is_single_series = self.view_combo.currentData() == "single"
+        self.series_combo.setEnabled(is_single_series)
+        self._redraw()
+
     def _update_figure(self) -> None:
         """Rebuilds :attr:`figure` from the current :attr:`_result`/selected
-        series -- cheap (no HTML string building, no ``QWebEngineView``
-        page reload), so it's always kept fresh even on a chunk
+        series (or, in the access-timeline view, from every access-pair
+        series at once -- see :meth:`_build_access_timeline_figure`) --
+        cheap (no HTML string building, no ``QWebEngineView`` page
+        reload), so it's always kept fresh even on a chunk
         :meth:`set_live_result` otherwise throttles (see that method's own
         comment): other code (the PNG-save button's enabled state,
         tests) reads :attr:`figure` directly and must never see stale
         data just because the webview push itself was skipped.
         """
         self.figure = None
-        if self._result is not None and self.series_combo.count() > 0:
+        if self._result is None:
+            return
+        if self.view_combo.currentData() == "access_timeline":
+            self.figure = self._build_access_timeline_figure()
+            return
+        if self.series_combo.count() > 0:
             name = self.series_combo.currentText()
             series = self._result.series.get(name)
             if series is not None:
                 self.figure = self._build_figure(name, series)
+
+    def _build_access_timeline_figure(self) -> Optional[go.Figure]:
+        """Roadmap item M5: one combined Gantt-style chart showing every
+        ``{station}.access_to_{spacecraft}.has_access`` series in
+        :attr:`_result` at once -- "most of the value of 'see access
+        windows at a glance' comes from one more chart, not a new
+        interaction model" (the roadmap's own scoping decision; a
+        click-to-jump interaction linking a clicked bar to the main
+        plot's x-axis range was explicitly left as unimplemented future
+        scope -- this app has no JS<->Python click bridge
+        (``QWebChannel``) anywhere yet, and inventing one for this alone
+        would be a far bigger lift than the chart itself).
+
+        Returns ``None`` (an explanatory empty-state figure, same
+        pattern as :func:`_empty_state_html` for the no-result case) if
+        :attr:`_result` has no access-pair series at all -- e.g. a
+        scenario with no ``ground_stations`` configured.
+
+        Deliberately uses ELAPSED TIME ONLY, ignoring ``x_axis_combo``
+        -- a horizontal bar's ``base``/width on Plotly's date axis needs
+        real ``timedelta``-typed values, not the plain float seconds
+        ``TimeSeries.time_s`` already is, and this view's whole value is
+        "see every pass at a glance," which elapsed time already serves
+        perfectly well; the main single-series view is still there for
+        anyone who specifically wants epoch/UTC timestamps.
+        """
+        pairs: list = []
+        for name, series in self._result.series.items():
+            parsed = _parse_access_pair(name)
+            if parsed is None or parsed[2] != "has_access":
+                continue
+            gs, sc, _field = parsed
+            pairs.append((f"{gs} -> {sc}", series))
+        pairs.sort(key=lambda item: item[0])
+
+        fig = go.Figure()
+        if not pairs:
+            fig.update_layout(
+                annotations=[dict(
+                    text="No ground-station access series in this result (no ground stations configured?)",
+                    showarrow=False, font=dict(color=_EMPTY_STATE_TEXT, size=14),
+                    xref="paper", yref="paper", x=0.5, y=0.5,
+                )],
+                plot_bgcolor=_SURFACE, paper_bgcolor=_SURFACE,
+                xaxis=dict(visible=False), yaxis=dict(visible=False),
+            )
+            return fig
+
+        for row_index, (pair_label, series) in enumerate(pairs):
+            t_hours = series.time_s / 3600.0
+            has_access = series.data[:, series.columns.index("has_access")] != 0
+            color = _SERIES_COLORS[row_index % len(_SERIES_COLORS)]
+            # Each contiguous True run in has_access becomes one thick
+            # horizontal line segment -- two-point go.Scatter lines
+            # (rather than go.Bar's orientation="h"/base/width) because
+            # a plain Scatter line needs no base/width unit-matching
+            # with the x-axis, numeric or datetime alike, and renders
+            # identically either way.
+            run_start = None
+            legend_shown = False
+            for i in range(len(has_access) + 1):
+                active = i < len(has_access) and has_access[i]
+                if active and run_start is None:
+                    run_start = i
+                elif not active and run_start is not None:
+                    fig.add_trace(go.Scatter(
+                        x=[t_hours[run_start], t_hours[i - 1]], y=[pair_label, pair_label],
+                        mode="lines", line=dict(color=color, width=16),
+                        name=pair_label, legendgroup=pair_label, showlegend=not legend_shown,
+                        hovertemplate=f"{pair_label}<br>%{{x:.3f}} hr<extra></extra>",
+                    ))
+                    legend_shown = True
+                    run_start = None
+            if not legend_shown:
+                # No access window at all for this pair -- still give it
+                # a row (an invisible trace) so it appears in the legend
+                # and on the y-axis, same as every other pair, rather
+                # than silently vanishing from the chart.
+                fig.add_trace(go.Scatter(
+                    x=[t_hours[0]], y=[pair_label], mode="markers",
+                    marker=dict(size=0, color=color), name=pair_label, legendgroup=pair_label,
+                    hoverinfo="skip",
+                ))
+
+        axis_common = dict(
+            gridcolor=_GRID_COLOR, zerolinecolor=_GRID_COLOR, linecolor=_GRID_COLOR,
+            tickfont=dict(color=_INK_MUTED), title_font=dict(color=_INK_MUTED),
+        )
+        fig.update_layout(
+            title=dict(text="Ground Station Access Timeline", font=dict(size=16, color=_INK_PRIMARY,
+                                                                          family=_FONT_FAMILY)),
+            xaxis=dict(axis_common, title_text="Elapsed time [hr]", exponentformat="none",
+                       separatethousands=True),
+            yaxis=dict(axis_common, title_text=None, categoryorder="category descending"),
+            font=dict(family=_FONT_FAMILY, color=_INK_PRIMARY),
+            plot_bgcolor=_SURFACE, paper_bgcolor=_SURFACE,
+            showlegend=False,  # the y-axis category labels already name every pair -- a legend would be redundant
+            margin=dict(l=160, r=30, t=60, b=50),
+        )
+        return fig
 
     def _push_figure_to_webview(self) -> None:
         """Pushes :attr:`figure` (already current -- see
@@ -933,7 +1085,8 @@ class ResultsWidget(QWidget):
             # duplicate "saved" dialog, repeating every poll interval)
             # long after the user thinks they're done.
             return
-        default_name = f"{self.series_combo.currentText()}.{fmt}"
+        is_access_timeline = self.view_combo.currentData() == "access_timeline"
+        default_name = f"{'access_timeline' if is_access_timeline else self.series_combo.currentText()}.{fmt}"
         file_filter = "SVG images (*.svg)" if fmt == "svg" else "PNG images (*.png)"
         path, _ = QFileDialog.getSaveFileName(self, f"Save plot as {fmt.upper()}", default_name, file_filter)
         if not path:

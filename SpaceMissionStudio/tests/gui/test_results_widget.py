@@ -405,6 +405,122 @@ def test_series_colors_palette_is_8_distinct_valid_hex_colors():
         assert re.fullmatch(r"#[0-9a-fA-F]{6}", color), color
 
 
+def _access_result_set(n=20):
+    """A ResultSet with two ground-station/spacecraft access pairs --
+    one with real access windows, one with none at all (regression
+    guard: a pair that's never in view must still appear as its own
+    row, not silently vanish).
+    """
+    from spacemissionstudio.engine.results import ResultSet, TimeSeries
+
+    t = np.linspace(0, 3600, n)
+    has_access_a = np.zeros((n, 1))
+    has_access_a[5:10, 0] = 1.0
+    has_access_a[15:18, 0] = 1.0
+    has_access_b = np.zeros((n, 1))  # never has access
+
+    rs = ResultSet(scenario_name="demo")
+    rs.add(TimeSeries("station-a.access_to_sat-1.has_access", t, ("has_access",), has_access_a, units="-"))
+    rs.add(TimeSeries("station-b.access_to_sat-1.has_access", t, ("has_access",), has_access_b, units="-"))
+    return rs
+
+
+def test_view_combo_defaults_to_single_series(widget):
+    assert widget.view_combo.currentData() == "single"
+    assert widget.series_combo.isEnabled()
+
+
+def test_switching_to_access_timeline_disables_series_combo(widget):
+    widget.set_result(_access_result_set())
+    index = widget.view_combo.findData("access_timeline")
+    widget.view_combo.setCurrentIndex(index)
+    assert not widget.series_combo.isEnabled()
+
+    index = widget.view_combo.findData("single")
+    widget.view_combo.setCurrentIndex(index)
+    assert widget.series_combo.isEnabled()
+
+
+def test_access_timeline_plots_one_trace_per_access_window_plus_empty_pair(widget):
+    widget.set_result(_access_result_set())
+    widget.view_combo.setCurrentIndex(widget.view_combo.findData("access_timeline"))
+
+    assert widget.figure is not None
+    y_values = {trace.y[0] for trace in widget.figure.data}
+    assert y_values == {"station-a -> sat-1", "station-b -> sat-1"}
+    # station-a has two separate access windows -> two line traces;
+    # station-b has none -> one invisible placeholder trace.
+    station_a_traces = [t for t in widget.figure.data if t.y[0] == "station-a -> sat-1"]
+    station_b_traces = [t for t in widget.figure.data if t.y[0] == "station-b -> sat-1"]
+    assert len(station_a_traces) == 2
+    assert len(station_b_traces) == 1
+
+
+def test_access_timeline_with_no_access_series_shows_explanatory_empty_state(widget):
+    widget.set_result(_sample_result_set())  # position/velocity only, no access series
+    widget.view_combo.setCurrentIndex(widget.view_combo.findData("access_timeline"))
+
+    assert widget.figure is not None
+    assert len(widget.figure.data) == 0
+    assert "No ground-station access series" in widget.figure.layout.annotations[0].text
+
+
+def test_access_timeline_ignores_x_axis_combo_always_uses_elapsed_time(widget):
+    widget.set_result(_access_result_set())
+    widget.view_combo.setCurrentIndex(widget.view_combo.findData("access_timeline"))
+    widget.x_axis_combo.setCurrentIndex(widget.x_axis_combo.findData("epoch"))
+
+    assert widget.figure.layout.xaxis.title.text == "Elapsed time [hr]"
+
+
+def test_switching_back_to_single_series_restores_previous_plot(widget):
+    widget.set_result(_access_result_set())
+    widget.series_combo.setCurrentIndex(0)
+    single_series_name = widget.series_combo.currentText()
+    single_series_figure_data_len = len(widget.figure.data)
+
+    widget.view_combo.setCurrentIndex(widget.view_combo.findData("access_timeline"))
+    assert widget.figure.layout.title.text == "Ground Station Access Timeline"
+
+    widget.view_combo.setCurrentIndex(widget.view_combo.findData("single"))
+
+    assert widget.series_combo.currentText() == single_series_name
+    assert widget.series_combo.isEnabled()
+    assert len(widget.figure.data) == single_series_figure_data_len
+
+
+def test_access_timeline_renders_in_the_real_webview(widget, qtbot):
+    """End-to-end check that the access-timeline figure's generated HTML
+    actually loads in the real (offscreen) QWebEngineView without
+    error -- the unit-level trace-count assertions above don't catch a
+    figure that builds fine in Python but is malformed Plotly JSON
+    (e.g. a NaN/non-JSON-serializable value sneaking into a trace).
+    """
+    widget.set_result(_access_result_set())
+    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=10000) as blocker:
+        widget.view_combo.setCurrentIndex(widget.view_combo.findData("access_timeline"))
+    assert blocker.args == [True]
+
+
+def test_save_plot_default_name_is_access_timeline_in_that_view(widget, tmp_path, monkeypatch, qtbot):
+    from PySide6.QtWidgets import QFileDialog
+
+    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=10000):
+        widget.set_result(_access_result_set())
+    widget.view_combo.setCurrentIndex(widget.view_combo.findData("access_timeline"))
+
+    captured = {}
+
+    def _fake_get_save_file_name(*args, **kwargs):
+        captured["default_name"] = args[2] if len(args) > 2 else kwargs.get("dir", "")
+        return "", ""
+
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", staticmethod(_fake_get_save_file_name))
+    widget._on_save_plot_png()
+
+    assert captured["default_name"] == "access_timeline.png"
+
+
 def test_set_live_result_populates_combo_on_first_update(widget):
     widget.set_live_result(_sample_result_set(n=5))
     assert widget.series_combo.count() == 2
