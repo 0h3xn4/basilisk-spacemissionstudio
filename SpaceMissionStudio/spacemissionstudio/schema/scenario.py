@@ -814,6 +814,38 @@ class SpacecraftConfig:
                   f"{self.name}: dry_mass_kg must be in (0, 1e6] -- if your intended value is outside "
                   "this range, check for a units mixup (e.g. g instead of kg)")
         _require(len(self.inertia_kg_m2) == 9, f"{self.name}: inertia_kg_m2 must have 9 elements (3x3, row-major)")
+        # Real bug, found against a real (newer) Basilisk build: Basilisk's
+        # own HubEffector::validateConfiguration() -- added after this
+        # project's verified 2.12.0 baseline, see
+        # src/architecture/utilities/avsEigenSupport.cpp's
+        # eigenIsValidInertiaMatrix() -- now rejects an inertia tensor
+        # whose principal moments violate the triangle inequality (no
+        # rigid body's principal moment may exceed the sum of the other
+        # two), previously only caught deep inside InitializeSimulation()
+        # with a cryptic C++ message ("IHubPntBc_B is not a valid inertia
+        # tensor") rather than at scenario-validation time. Confirmed
+        # directly: tests/test_gravity_gradient.py shipped exactly this
+        # mistake (diag(5, 10, 20): 5+10 < 20), undetected against 2.12.0.
+        # Scoped to the diagonal case -- every inertia_kg_m2 across this
+        # project's own bundled templates/scenarios is diagonal (confirmed
+        # by sweeping all of them), and a diagonal matrix's diagonal
+        # entries ARE its principal moments directly, with no eigenvalue
+        # decomposition needed (this module deliberately has no numpy
+        # dependency -- see its own "standalone, no Basilisk needed"
+        # design). A fully general (off-diagonal-populated) tensor still
+        # reaches Basilisk's own runtime check unvalidated here, just
+        # without this earlier, clearer message.
+        inertia_diag = (self.inertia_kg_m2[0], self.inertia_kg_m2[4], self.inertia_kg_m2[8])
+        inertia_off_diag = (self.inertia_kg_m2[1], self.inertia_kg_m2[2], self.inertia_kg_m2[3],
+                             self.inertia_kg_m2[5], self.inertia_kg_m2[6], self.inertia_kg_m2[7])
+        if all(v == 0.0 for v in inertia_off_diag):
+            ix, iy, iz = inertia_diag
+            _require(ix > 0.0 and iy > 0.0 and iz > 0.0,
+                      f"{self.name}: inertia_kg_m2's diagonal entries (principal moments) must be positive")
+            _require(ix + iy >= iz and iy + iz >= ix and ix + iz >= iy,
+                      f"{self.name}: inertia_kg_m2's diagonal entries ({ix:g}, {iy:g}, {iz:g}) violate the "
+                      "triangle inequality -- no rigid body's principal moment of inertia can exceed the "
+                      "sum of the other two; check for a units/axis mixup")
         _require(len(self.sigma_bn_init) == 3, f"{self.name}: sigma_bn_init must have 3 elements")
         _require(len(self.omega_bn_b_init_rad_s) == 3, f"{self.name}: omega_bn_b_init_rad_s must have 3 elements")
         # drag_coeff/drag_area_m2/srp_coeff/srp_area_m2 feed straight into

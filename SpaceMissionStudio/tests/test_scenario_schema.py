@@ -1148,6 +1148,55 @@ def test_spacecraft_rejects_implausibly_large_dry_mass():
         sc.validate()
 
 
+def test_spacecraft_rejects_diagonal_inertia_violating_the_triangle_inequality():
+    """Real bug found against a real (newer) Basilisk build: a diagonal
+    inertia tensor whose largest principal moment exceeds the sum of
+    the other two is unphysical for any rigid body -- a newer Basilisk
+    now rejects it deep inside InitializeSimulation() with a cryptic
+    message ("IHubPntBc_B is not a valid inertia tensor"); this schema
+    -level check catches the exact same mistake
+    (tests/test_gravity_gradient.py shipped it, undetected against the
+    2.12.0 baseline this project was built against) earlier, with a
+    message that actually names the problem.
+    """
+    sc = _minimal_scenario()
+    sc.spacecraft[0].inertia_kg_m2 = [5.0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 20.0]  # 5 + 10 < 20
+    with pytest.raises(ScenarioValidationError, match="triangle inequality"):
+        sc.validate()
+
+
+def test_spacecraft_rejects_diagonal_inertia_with_a_non_positive_entry():
+    sc = _minimal_scenario()
+    sc.spacecraft[0].inertia_kg_m2 = [10.0, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 10.0]
+    with pytest.raises(ScenarioValidationError, match="positive"):
+        sc.validate()
+
+
+def test_spacecraft_accepts_a_valid_elongated_diagonal_inertia():
+    """Companion to the rejection tests above -- confirms the new check
+    doesn't reject a legitimately asymmetric (non-spherical) inertia
+    tensor that DOES satisfy the triangle inequality, the exact kind of
+    value a gravity-gradient or attitude-dynamics scenario legitimately
+    needs.
+    """
+    sc = _minimal_scenario()
+    sc.spacecraft[0].inertia_kg_m2 = [5.0, 0.0, 0.0, 0.0, 8.0, 0.0, 0.0, 0.0, 10.0]  # 5 + 8 >= 10
+    sc.validate()  # must not raise
+
+
+def test_spacecraft_skips_the_triangle_check_for_a_non_diagonal_inertia_tensor():
+    """Deliberately scoped: a fully general (off-diagonal-populated)
+    inertia tensor isn't checked here at all (see the validator's own
+    comment on why) -- confirms a non-diagonal tensor isn't rejected by
+    this specific check even when its DIAGONAL entries alone would
+    violate the triangle inequality (they aren't its true principal
+    moments once off-diagonal terms are present).
+    """
+    sc = _minimal_scenario()
+    sc.spacecraft[0].inertia_kg_m2 = [5.0, 1.0, 0.0, 1.0, 10.0, 0.0, 0.0, 0.0, 20.0]
+    sc.validate()  # must not raise -- off-diagonal entries present, so skipped
+
+
 def test_spacecraft_rejects_implausibly_large_drag_area():
     sc = _minimal_scenario()
     sc.spacecraft[0].drag_area_m2 = 1.0e8

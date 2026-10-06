@@ -5,6 +5,30 @@ import pytest
 pytestmark = pytest.mark.requires_gui
 
 
+@pytest.fixture(autouse=True)
+def _no_real_cached_fetch(monkeypatch):
+    """Real bug, found on a real (non-sandbox) dev machine: the dialog's
+    own __init__ calls ``engine.spaceweather.cached_fetch_path()``
+    directly (see that module's own prefill logic) to decide whether to
+    pre-fill ``local_file_edit`` -- un-isolated, this reads the ACTUAL
+    on-disk cache (``~/.cache/SpaceMissionStudio/spaceweather/...``),
+    which is empty in an ephemeral sandbox (where this test suite always
+    happened to pass) but genuinely populated on a real, persistent dev
+    machine that has actually run the startup-fetch flow before --
+    silently breaking every test built on the plain ``dialog`` fixture
+    (e.g. ``test_defaults_round_trip``, which assumes a pristine
+    ``SpaceWeatherConfig()`` with ``local_file_path=None``). Defaults
+    every test in this file to "no cache" so results don't depend on
+    what some other, unrelated command happened to leave on disk; the
+    three tests that specifically exercise the prefill behavior already
+    apply their own ``monkeypatch.setattr(sw, "cached_fetch_path", ...)``
+    override, which simply takes precedence over this one.
+    """
+    from spacemissionstudio.engine import spaceweather as sw
+
+    monkeypatch.setattr(sw, "cached_fetch_path", lambda *a, **k: None)
+
+
 def _dialog(gravity=None, sim_settings=None, space_weather=None):
     from spacemissionstudio.gui.propagation_setup_dialog import PropagationSetupDialog
     from spacemissionstudio.schema.scenario import GravityConfig, SimSettings, SpaceWeatherConfig
