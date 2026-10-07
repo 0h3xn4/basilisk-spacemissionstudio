@@ -233,10 +233,13 @@ dynamics step or a higher-order integrator.
 The plot is interactive: hover to see exact values, and use your
 scroll wheel/drag to zoom and pan.
 
-**Mission Output** (the tab next to Results) is a text log of what
-actually happened during a Mission Sequence run -- useful once you're
-using the Mission Sequence feature from Section 6, otherwise you can
-ignore it.
+**Mission Output** (the tab next to Results) shows what each `report`
+command in a Mission Sequence run (Section 6) recorded: one row per
+quantity and one column per report, in the same units as the plots.
+With exactly two reports (e.g. "Before burn" / "After burn") a
+**Change** column shows the difference. Type in **Filter** to narrow it
+to a report or a quantity; **Export CSV...** always writes every report
+in SI units. Without a Mission Sequence you can ignore this tab.
 
 **Kernel Status** shows whether the SPICE data files Basilisk needs
 (planetary positions, leap seconds, etc.) are downloaded and current --

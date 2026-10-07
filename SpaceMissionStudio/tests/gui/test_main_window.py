@@ -899,7 +899,7 @@ def test_run_finished_with_command_summary_shows_mission_output_tab(window):
     window._on_run_finished(ResultSet(scenario_name="test", series={}), summary)
 
     assert window.right_tabs.currentWidget() is window.mission_output_widget
-    assert "1 command(s) executed" in window.mission_output_widget.text_edit.toPlainText()
+    assert "1 command run" in window.mission_output_widget.summary_label.text()
 
 
 def test_run_finished_without_command_summary_shows_results_tab(window):
@@ -1609,7 +1609,7 @@ def test_run_cancelled_with_command_summary_shows_mission_output_tab(window):
     window._on_run_cancelled(ResultSet(scenario_name="test", series={}), summary)
 
     assert window.right_tabs.currentWidget() is window.mission_output_widget
-    assert "1 command(s) executed" in window.mission_output_widget.text_edit.toPlainText()
+    assert "1 command run" in window.mission_output_widget.summary_label.text()
 
 
 def test_end_to_end_cancel_signal_updates_window_without_crashing(window, qtbot, monkeypatch):

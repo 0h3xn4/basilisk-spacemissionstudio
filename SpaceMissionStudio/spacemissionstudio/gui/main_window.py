@@ -1179,7 +1179,7 @@ class MainWindow(QMainWindow):
             self.results_widget.set_live_result(result, self._last_run_epoch_utc)
             self.mission_dashboard_widget.set_live_result(result, self._last_run_scenario)
             if command_summary is not None:
-                self.mission_output_widget.set_command_summary(command_summary)
+                self.mission_output_widget.set_command_summary(command_summary, result)
                 self.right_tabs.setCurrentWidget(self.mission_output_widget)
             else:
                 self.right_tabs.setCurrentWidget(self.results_widget)
@@ -1211,7 +1211,7 @@ class MainWindow(QMainWindow):
             self.results_widget.set_live_result(partial_result, self._last_run_epoch_utc)
             self.mission_dashboard_widget.set_live_result(partial_result, self._last_run_scenario)
             if command_summary is not None:
-                self.mission_output_widget.set_command_summary(command_summary)
+                self.mission_output_widget.set_command_summary(command_summary, partial_result)
                 self.right_tabs.setCurrentWidget(self.mission_output_widget)
             else:
                 self.right_tabs.setCurrentWidget(self.results_widget)

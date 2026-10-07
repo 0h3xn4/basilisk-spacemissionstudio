@@ -459,7 +459,7 @@ SpaceMissionStudio/
       template_wizard.py             -- "Customize: <template name>..." guided wizard spec registry + dialog
       scenario_editor.py             -- the full scenario form + live validation
       mission_sequence_editor.py     -- Phase 6: mission_sequence tree editor (Command Add/Edit/Remove/nesting)
-      mission_output_widget.py       -- Phase 6: "Mission Output" debug-console tab (CommandSummary/ReportEntry display) + CSV export
+      mission_output_widget.py       -- Phase 6: "Mission Output" tab (report values as a quantity x report table) + CSV export
       propagation_setup_dialog.py    -- Phase 5: gravity/perturbations + integrator + space weather, one dedicated window
       spacecraft_editor.py           -- spacecraft list + add/edit/remove dialog (tabbed: orbit, sensors/actuators, FSW, power/propulsion/link budget)
       sensor_actuator_editor.py      -- Phase 2: generic sensor/actuator list + add/edit/remove dialog, with a "select from catalog" picker (engine/device_catalog.py) alongside the fully custom editor
@@ -606,7 +606,7 @@ python3 -m pip install -e ".[dev,gui]"
 python3 -m pytest tests/ -v
 ```
 
-The suite has 1826 tests. Without Basilisk on `PYTHONPATH`, 1591 of
+The suite has 1830 tests. Without Basilisk on `PYTHONPATH`, 1595 of
 them run and pass (schema, space weather, results, link budget,
 constellation generation, CLI, and the full PySide6 GUI, run headless),
 and the 235 that need a real Basilisk build (marked `requires_basilisk`,

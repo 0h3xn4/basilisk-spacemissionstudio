@@ -7139,3 +7139,28 @@ The user asked for the Results tab to be checked for the same clutter. It was re
 * warnings stay at or under 120 characters.
 
 Tests that read the combo text as a code name now use `current_series_name()` and `findData()`.
+
+## Mission Output tab: a table instead of a text dump
+
+The user asked for the Mission Output tab to be checked for the same clutter. It was rendered with template 08's two reports ("Before burn" / "After burn"). Each report snapshots all 14 of sat-1's series, because the report commands list no series. The tab was a monospace text dump:
+* **Raw values.** Each line read like `sat-1.orbit_elements_mean.arg_periapsis = [2.4334567000000003]`: a code name, raw SI units with no unit shown (radians, metres), float noise, and list brackets around single numbers.
+* **Wrapping.** Long lines wrapped mid-value in a narrow pane.
+* **Raw times.** Times showed as "t = 8640.000 s".
+* **No comparison.** The two reports were stacked as separate blocks, so the before/after comparison template 08 exists to teach meant scrolling between them.
+* **Filter didn't narrow.** Filtering "inclination" kept every line of every report that mentioned it anywhere: all 28 lines.
+
+**Changes.**
+* **Table.** The tab is now one row per quantity and one column per report. Each column header carries the report's label and its mission time ("Before burn / 2.4 h").
+* **Change column.** With exactly two reports, a Change column shows the difference. It is rounded to the precision of the values, so a change too small to show reads "0", and angle changes go the short way round.
+* **Names and units.** Quantities use the Results tab's plot names and display units, e.g. "Semi-Major Axis [km]" and "Inclination [deg]". Vector components get their own rows, and numbers are right-aligned without float noise. `set_command_summary()` takes the run's ResultSet for each series' units and components, and MainWindow passes it for finished and cancelled runs.
+* **Groups.** Osculating and mean elements sit under "Osculating elements" / "Mean elements (first-order J2)" header rows, so row labels stay short. With several spacecraft, rows and groups are prefixed with the spacecraft name.
+* **Filter.** Matching a report label shows only that report's column; otherwise only matching rows stay (by name, code name or value). A muted status line reads e.g. "5 commands run · 2 of 18 rows match".
+* **Toolbar.** "Export CSV..." sits next to the filter. Its behaviour is unchanged: every report, SI units.
+
+**Docs.** USER_MANUAL Section 7 describes the table, the Change column and the filter.
+
+**Tests.** The widget's tests now read the table (`table_text()`) rather than the old text box. New tests cover:
+* units, groups and the Change column on template-08-shaped data;
+* the short-way-round angle change;
+* filtering to a report's column, and to matching rows;
+* two-spacecraft prefixes.
