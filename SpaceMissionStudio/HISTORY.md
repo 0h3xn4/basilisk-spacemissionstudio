@@ -6913,3 +6913,22 @@ The user's screenshot of the Customize dialog (template 05): "I can't really dis
 * **Fix.** The rule is now scoped to the holder alone (`QWidget#wizardRow { … }`), so the spin boxes get the app's normal bordered style back. A scan of every other `setStyleSheet` call in the GUI found no other unscoped container rule.
 * **Alignment.** While checking, the labels sat above their values in rows with help text, because the form places labels at the top of a row. Labels are now as tall as their box, with the text centred, and the box is pinned to the top of the row, so each label lines up with its value.
 * **Test.** A new test renders the template-05 dialog and checks that each value field draws a visible edge, distinct from its interior. It fails with the old stylesheet and passes with the fix.
+
+## Missing-border check across every dialog
+
+After the Customize-dialog fix, the user asked for the other dialogs to be checked for the same missing borders.
+
+**How it was checked.** By rendering each dialog, not by reading the code, with a new permanent test, `tests/gui/test_input_borders.py`:
+* **Coverage.** It covers 47 dialogs and editors in total:
+  * the spacecraft editor, loaded with templates 07, 13, 19 and the template 05 follower;
+  * the sensor/actuator dialog, for every kind with a catalog device selected;
+  * the mission-sequence command dialog, for every command kind;
+  * the Customize dialog, for all 20 templates;
+  * the propagation setup, ground station, Monte Carlo dispersion, phasing formation, Walker constellation and Vizard dialogs;
+  * the main window, with template 19 loaded.
+* **Method.** Each one is shown with the app's theme, every optional group and "Advanced" disclosure is switched on, and every tab is visited. Each visible spin box, text field, drop-down and text area must render a left edge that differs from its interior.
+* **Guard against an empty check.** The test also fails if a dialog has no inputs to check. The Spacecraft Template dialog (a preset list) and the startup fetch dialog (checkboxes) have no input boxes, so they are not listed.
+
+**Result.** Every dialog already draws its input borders correctly; the Customize dialog was the only one affected, and it was fixed in the previous commit.
+
+**Proof that the test works.** With the old unscoped rule put back in the Customize dialog, all 20 Customize cases fail.

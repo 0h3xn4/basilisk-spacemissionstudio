@@ -606,7 +606,7 @@ python3 -m pip install -e ".[dev,gui]"
 python3 -m pytest tests/ -v
 ```
 
-The suite has 1665 tests. Without Basilisk on `PYTHONPATH`, 1433 of
+The suite has 1712 tests. Without Basilisk on `PYTHONPATH`, 1480 of
 them run and pass (schema, space weather, results, link budget,
 constellation generation, CLI, and the full PySide6 GUI, run headless),
 and the 232 that need a real Basilisk build (marked `requires_basilisk`,
