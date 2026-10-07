@@ -17,6 +17,8 @@ risk exceeding that scenario's own budget must fall back further rather
 than risk being cut off mid-word.
 """
 
+import pytest
+
 from spacemissionstudio.engine.vizard import _rtn_panel_label, _usable_label_width_px
 
 
@@ -77,3 +79,17 @@ def test_bare_axis_letter_always_fits_even_on_the_narrowest_realistic_panel():
     # character) must always be a safe last resort.
     for axis in ("R", "T", "N"):
         assert _rtn_panel_label(axis, "a-very-long-chief-spacecraft-name", "x") == axis
+
+
+def test_slant_range_geometry():
+    """Distance from a surface station to an orbit at a given elevation:
+    straight up it is the altitude; on the horizon it is the tangent."""
+    import math
+
+    from spacemissionstudio.engine.vizard import _slant_range_m
+
+    planet, orbit = 6378.0e3, 6928.0e3  # [m]
+    assert _slant_range_m(planet, orbit, math.radians(90.0)) == pytest.approx(orbit - planet)
+    assert _slant_range_m(planet, orbit, 0.0) == pytest.approx(math.sqrt(orbit ** 2 - planet ** 2))
+    assert _slant_range_m(planet, None, 0.1) is None
+    assert _slant_range_m(planet, planet - 1.0, 0.1) is None

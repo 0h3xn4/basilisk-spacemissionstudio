@@ -238,3 +238,42 @@ def test_trail_and_ground_tracks_are_off_unless_asked_for(trail, ground_tracks):
     assert viz.settings.trueTrajectoryLinesOn == on[trail]
     assert viz.settings.showTruePathGroundTrackLines == on[ground_tracks]
     assert viz.settings.showOsculatingGroundTrackLines == -1
+
+
+def test_ground_station_cone_reaches_the_highest_orbit():
+    """Without a range, Vizard drew each station's cone 0.4 planet radii
+    tall, so a ~160 deg cone's rim reached ~2.3 radii out: a disc wider
+    than Earth around every station (Vizard's FullLocationMethods.cs).
+    The cone now gets the slant range to the highest spacecraft's orbit
+    at the station's minimum elevation, so it is drawn as a dome reaching
+    exactly the orbit."""
+    import math
+    import tempfile
+
+    from Basilisk.simulation import groundLocation, spacecraft
+    from Basilisk.utilities import SimulationBaseClass, macros
+
+    from spacemissionstudio.engine.vizard import VizardRequest, _slant_range_m, enable_vizard
+
+    scSim = SimulationBaseClass.SimBaseClass()
+    scSim.CreateNewProcess("dynProc").addTask(scSim.CreateNewTask("dynTask", macros.sec2nano(1.0)))
+    sats = []
+    for name, radius in (("low", 6878.0e3), ("high", 6928.0e3)):  # [m]
+        sc_object = spacecraft.Spacecraft()
+        sc_object.ModelTag = name
+        sc_object.hub.r_CN_NInit = [[radius], [0.0], [0.0]]
+        scSim.AddModelToTask("dynTask", sc_object)
+        sats.append(sc_object)
+    gl = groundLocation.GroundLocation()
+    gl.ModelTag = "gs-1"
+    gl.planetRadius = 6378136.6  # [m]
+    gl.minimumElevation = math.radians(10.0)
+    gl.specifyLocation(math.radians(52.5), math.radians(13.4), 34.0)
+    scSim.AddModelToTask("dynTask", gl)
+    viz = enable_vizard(scSim, "dynTask", sats,
+                        VizardRequest(save_file=str(Path(tempfile.mkdtemp()) / "cone.viz.bin")),
+                        ground_stations={"gs-1": gl})[0]
+
+    expected = _slant_range_m(6378136.6, 6928.0e3, math.radians(10.0))
+    assert viz.locations[0].range == pytest.approx(expected)
+    assert 1.5e6 < expected < 2.2e6  # [m] a LEO station's reach, not planet-sized

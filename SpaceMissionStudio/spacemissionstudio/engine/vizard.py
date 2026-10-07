@@ -599,6 +599,34 @@ class VizardRequest:
     show_ground_tracks: bool = False
 
 
+def _highest_initial_orbit_radius_m(sc_objects) -> Optional[float]:
+    """Largest starting distance from the central body among
+    ``sc_objects`` [m], or None when none is known."""
+    from Basilisk.utilities import simHelpers
+
+    radii = []
+    for sc_object in sc_objects:
+        try:
+            r = simHelpers.EigenVector3d2list(sc_object.hub.r_CN_NInit)
+        except Exception:  # noqa: BLE001 -- a missing/odd initial state just means "unknown"
+            continue
+        radius = math.sqrt(sum(float(c) ** 2 for c in r))
+        if radius > 0.0:
+            radii.append(radius)
+    return max(radii) if radii else None
+
+
+def _slant_range_m(planet_radius_m: float, orbit_radius_m: Optional[float], min_elevation_rad: float):
+    """Distance from a station on the surface to a point at
+    ``orbit_radius_m`` seen at ``min_elevation_rad`` above the horizon [m]
+    (None -- Vizard's default -- when the orbit radius is unknown or not
+    above the surface)."""
+    if orbit_radius_m is None or orbit_radius_m <= planet_radius_m:
+        return None
+    sin_e, cos_e = math.sin(min_elevation_rad), math.cos(min_elevation_rad)
+    return -planet_radius_m * sin_e + math.sqrt(orbit_radius_m ** 2 - (planet_radius_m * cos_e) ** 2)
+
+
 def enable_vizard(scSim, task_name: str, sc_objects: List, request: VizardRequest,
                    rw_effectors_by_spacecraft: Optional[List] = None,
                    thr_effectors_by_spacecraft: Optional[List] = None,
@@ -1005,11 +1033,18 @@ def enable_vizard(scSim, task_name: str, sc_objects: List, request: VizardReques
     viz.settings.showSpacecraftLabels = 1
     viz.settings.showCelestialBodyLabels = 1
 
+    highest_orbit_radius_m = _highest_initial_orbit_radius_m(sc_objects)
     for gs_name, gs in (ground_stations or {}).items():
         # Edge-to-edge cone angle for the access region above gs.minimumElevation
         # (elevation measured from the local horizon): a zenith-centered cone of
         # half-angle (pi/2 - minimumElevation) has full angle pi - 2*minimumElevation.
         field_of_view = math.pi - 2.0 * gs.minimumElevation
+        # Without a range, Vizard draws this cone 0.4 planet radii tall
+        # (FullLocationMethods.cs), so a ~160 deg cone's rim reached ~2.3
+        # planet radii out: a disc wider than Earth around every station.
+        # With the slant range to the highest orbit, it draws a dome that
+        # reaches exactly the spacecraft it can see.
+        cone_range_m = _slant_range_m(gs.planetRadius, highest_orbit_radius_m, gs.minimumElevation)
         # gs.r_LP_P_Init is Basilisk's own Eigen::Vector3d, which SWIG
         # exposes to Python as a NESTED [[x], [y], [z]] list (confirmed
         # directly against a real build, not assumed), never a flat
@@ -1032,7 +1067,7 @@ def enable_vizard(scSim, task_name: str, sc_objects: List, request: VizardReques
         vizSupport.addLocation(
             viz, stationName=gs_name, parentBodyName=central_body_name,
             r_GP_P=simHelpers.EigenVector3d2list(gs.r_LP_P_Init), fieldOfView=field_of_view,
-            color="cyan", label=gs_name,
+            color="cyan", label=gs_name, range=cone_range_m,
         )
 
     # showGenericStoragePanel/showGenericSensorLabels default to "use Vizard's

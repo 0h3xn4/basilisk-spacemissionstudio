@@ -7038,3 +7038,25 @@ The user asked for the other plots to be checked for the same issue.
 **One improvement found.** The access timeline drew each pass as its own trace: 2,865 traces for six pairs over a month, which Plotly is slow to draw and which grows with run length. Each pair is now one trace, with its passes as separate segments split by gaps.
 * For the same data that is 6 traces and a 0.26 MB page (it was 1.03 MB), and the chart looks the same, with one row per pair and separate bars per pass.
 * The existing timeline test now checks one trace per pair, with one segment per access window.
+
+## Every Vizard view checked for the same clutter
+
+The user asked for the other Vizard views to be checked. Vizard itself can't be run in this container, so the check was done against the Vizard source (`0h3xn4/vizard`, `VizardGUISettings.cs`, `UserGUISettings.cs`, `FullLocationMethods.cs`). It covered everything `engine.vizard.enable_vizard()` sends, plus each setting it leaves at Vizard's default.
+
+**Correction to the previous entry.** In Vizard, ground tracks are off by default, while the flown-path trail is on (`TruePathLineMode = 1`), and we also turned it on. So the solid cyan band was most likely the trail, not ground tracks. The previous change already covers it: the trail is now sent as off (-1), which Vizard honours (`TruePathLinesVisible = TrueTrajectoryLinesOn > 0`).
+
+**Found and fixed: ground-station cones.**
+* **Cause.** Each station got a ~160 deg coverage cone with no range. Without a range, Vizard draws the cone 0.4 planet radii tall at 20% opacity, so its rim reaches ~2.3 planet radii out: a faint disc wider than Earth around every station.
+* **Fix.** The cone now gets the slant range from the station to the highest spacecraft's starting orbit, at the station's minimum elevation. Vizard then draws a dome that reaches exactly the orbit, about 1,800 km for a 550 km LEO at 10 deg.
+* **When the orbit is unknown.** If no orbit radius is available, the cone is left at Vizard's default.
+
+**Checked and left alone.**
+* **Off unless set:** ground tracks, spacecraft and planet axes, and the Hill/velocity frames.
+* **Comm lines:** station-to-spacecraft lines appear only while in contact.
+* **Labels:** explicitly on.
+* **Info panels:** one window per spacecraft, with one row per value.
+* **Each spacecraft's orbit ring:** on.
+
+**Tests.**
+* The slant-range geometry is checked at zenith, at the horizon, and with no orbit or one below the surface.
+* A Basilisk test builds a real ground station with two spacecraft and checks that the cone Vizard receives has the slant range to the higher orbit, a LEO-sized value rather than a planet-sized one.
