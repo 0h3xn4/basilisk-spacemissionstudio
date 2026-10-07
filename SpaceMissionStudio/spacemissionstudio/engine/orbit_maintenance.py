@@ -169,8 +169,8 @@ _MAX_NON_CONVERGENT_CYCLES = 2
 # one-orbit boxcar of the osculating difference), so this is far above
 # measurement noise, yet a fraction of the ~5 km mismatch a lone reboost
 # causes. Smaller mismatches are left to the ordinary phase-error cycles.
-# A floor only: PhasingKeepingController._trim_tolerance_m raises it to
-# 1.5 thruster ticks' worth of semi-major-axis change for strong thrusters.
+# (Burns hit their delta-V exactly -- partial-tick thrust, see UpdateState
+# -- so a trim cannot overshoot back out of this tolerance.)
 _RELATIVE_SMA_TRIM_TOLERANCE_M = 25.0
 
 
@@ -894,16 +894,10 @@ class PhasingKeepingController(sysModel.SysModel):
         if self.extForceEffectorB is not None:
             self.extForceEffectorB.extForce_N = [0.0, 0.0, 0.0]
 
-    def _trim_tolerance_m(self, dt_s: float) -> float:
-        """Relative-SMA mismatch [m] worth a corrective burn. Never below
-        what ONE tick of full thrust changes the semi-major axis by: burns
-        are whole ticks, so a smaller tolerance than that quantum would
-        overshoot every trim back out of tolerance and ping-pong forever
-        (e.g. a 0.5 N thruster moves ``a`` ~260 m per 30 s tick)."""
-        mass = self.dryMass + self._propellant_tracker().propellant  # [kg]
-        vCirc = np.sqrt(self.mu / self.aNom)  # [m/s]
-        perTickDeltaA = 2.0 * self.aNom ** 2 * vCirc / self.mu * (self.thrustN / mass) * dt_s  # [m]
-        return max(_RELATIVE_SMA_TRIM_TOLERANCE_M, 1.5 * perTickDeltaA)
+    def _burn_complete(self) -> bool:
+        # Relative slack: partial-tick thrust (see UpdateState) lands the
+        # accumulated delta-V on the target itself, give or take rounding.
+        return self._accumDv >= self._targetDv * (1.0 - 1e-9)
 
     def _start_burn(self, deltaA_needed_m: float) -> None:
         """Arms a tangential burn that changes this follower's semi-major
@@ -1203,7 +1197,7 @@ class PhasingKeepingController(sysModel.SysModel):
                 self._start_burn(deltaA - (relA if relASettled else 0.0))
                 self._trimOnly = False
                 self.state = self.BURN_OUT
-            elif relASettled and abs(relA) > self._trim_tolerance_m(dt):
+            elif relASettled and abs(relA) > _RELATIVE_SMA_TRIM_TOLERANCE_M:
                 # Not a phasing correction: something else (e.g. a reboost
                 # only one spacecraft made) left the two orbits at different
                 # semi-major axes, which would otherwise drift the formation
@@ -1216,7 +1210,7 @@ class PhasingKeepingController(sysModel.SysModel):
 
         elif self.state == self.BURN_OUT:
             thrustMag = self.thrustN if inSun else 0.0
-            if self._accumDv >= self._targetDv:
+            if self._burn_complete():
                 self._accumDv = 0.0
                 self.state = self.DRIFT
                 thrustMag = 0.0
@@ -1237,7 +1231,7 @@ class PhasingKeepingController(sysModel.SysModel):
                 self._trimOnly = False
                 self.state = self.BURN_RESTORE
             elif relASettled and abs(relA - self._plannedDeltaA) > max(
-                    self._trim_tolerance_m(dt), 0.5 * abs(self._plannedDeltaA)):
+                    _RELATIVE_SMA_TRIM_TOLERANCE_M, 0.5 * abs(self._plannedDeltaA)):
                 # Disturbed mid-drift (e.g. a station-keeping burn): steer back
                 # to the planned offset, keeping this cycle's target/clock.
                 self._start_burn(self._plannedDeltaA - relA)
@@ -1245,13 +1239,13 @@ class PhasingKeepingController(sysModel.SysModel):
 
         elif self.state == self.BURN_RESTORE:
             thrustMag = self.thrustN if inSun else 0.0
-            if self._accumDv >= self._targetDv and self._trimOnly:
+            if self._burn_complete() and self._trimOnly:
                 # A disturbance trim, not the end of a phasing cycle -- the
                 # divergence guard below judges phasing cycles only.
                 self.state = self.IDLE
                 self._trimOnly = False
                 thrustMag = 0.0
-            elif self._accumDv >= self._targetDv:
+            elif self._burn_complete():
                 self.state = self.IDLE
                 thrustMag = 0.0
                 # Real numerical confirmation (not just reasoned about, see
@@ -1308,6 +1302,18 @@ class PhasingKeepingController(sysModel.SysModel):
             self.scObjectB.scMassOutMsg.read().massSC if self.scObjectB is not None
             else (self.dryMass + tracker.propellant)
         )
+
+        if thrustMag > 0.0 and self.state in (self.BURN_OUT, self.BURN_RESTORE):
+            # Partial-tick thrust: never command more than the delta-V this
+            # burn still needs over one task interval. Real limitation this
+            # removes: whole 30 s ticks of the formation template's 0.05 N
+            # thruster move the semi-major axis ~26 m each, while a typical
+            # correction needs ~2 m -- every correction overshot ~10x,
+            # wasting propellant and sawing the separation between the
+            # bottom of its tolerance band and the target. (dt == 0, the very
+            # first tick, has no interval to scale by: wait one tick.)
+            remainingDv = max(self._targetDv - self._accumDv, 0.0)  # [m/s]
+            thrustMag = min(thrustMag, remainingDv * trueTotalMass / dt) if dt > 0.0 else 0.0  # [N]
 
         if thrustMag > 0.0:
             accel = thrustMag / trueTotalMass  # [m/s^2]

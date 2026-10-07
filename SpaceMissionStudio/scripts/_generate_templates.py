@@ -344,11 +344,12 @@ def build_05_formation_flying_phasing() -> Scenario:
             "below for the exact math) -- this is formation-KEEPING, not a rendezvous/phasing-transfer "
             "maneuver, so the separation starts right on target and the interesting behavior is the "
             "LONG-TERM drift/correction cycle over the full 90-day run, not an instant snapshot. "
-            "Confirmed on a real Basilisk run (degree-2 J2 gravity): real, small perturbations (J2, "
-            "differential drag from follower-1's extra propellant mass) make the separation drift "
-            "naturally between roughly 45-50 km; it crosses phasing_keeping's 10% tolerance band twice "
-            "over the run (around day 35 and again around day 70), firing a real along-track "
-            "correction burn each time and accumulating about 0.015 m/s of delta-V by day 90 -- this "
+            "Confirmed on a real Basilisk run (degree-10 Earth gravity, without the Sun/Moon/drag "
+            "this template also enables): small real perturbations make the separation drift slowly "
+            "away from 50 km; it reaches phasing_keeping's 10% tolerance band (45 km) around day 28, "
+            "which fires ONE small along-track correction that drifts it back toward 50 km over the "
+            "next ~2 weeks, and keeps it within ~45-52 km for the whole run, for only ~0.003 m/s of "
+            "phasing delta-V in total -- this "
             "IS the point of phasing_keeping: a formation mostly drifts on its own and the controller "
             "only steps in once drift exceeds the tolerance band, rather than fighting every tiny "
             "perturbation continuously. A shorter run (try duration_days=24.0) stays inside the "
@@ -378,7 +379,8 @@ def build_05_formation_flying_phasing() -> Scenario:
             "~545 km mean altitude, and the phasing controller's open-loop restore burns could never "
             "undo a mismatch they hadn't made. Fixed: follower station-keeping now mirrors the chief, "
             "and phasing burns are sized from the MEASURED relative semi-major axis (exported as "
-            "follower-1.phasing_keeping.relative_semi_major_axis). Before that, a real user "
+            "follower-1.phasing_keeping.relative_semi_major_axis), and are no longer rounded up to "
+            "whole 30 s thruster ticks (each correction used to overshoot ~10x). Before that, a real user "
             "pointed out that a short run here isn't "
             "interesting -- phasing_keeping's whole point is the long-term drift/correction cycle and "
             "its accumulated delta-V, neither of which a 24-day run (the previous duration_days) ever "
@@ -427,11 +429,12 @@ def build_05_formation_flying_phasing() -> Scenario:
         # along-track drift/correction cycle and its accumulated delta-V, and
         # a 24-day run (an earlier revision of this template) never drifts
         # far enough to trigger even one correction -- confirmed directly
-        # against a real Basilisk run (degree-2 J2 gravity): over 90 days the
-        # separation drifts naturally between roughly 45-50 km, crosses
-        # phasing_keeping's 10% tolerance band TWICE (around day 35 and again
-        # around day 70), and each crossing fires a real correction burn,
-        # accumulating about 0.015 m/s of delta-V by day 90 -- exactly the
+        # against a real Basilisk run (degree-10 Earth gravity, no Sun/Moon/
+        # drag): over 90 days the separation drifts to phasing_keeping's 10%
+        # tolerance band around day 28, which fires one real correction that
+        # brings it back, keeping it within ~45-52 km for ~0.003 m/s of
+        # phasing delta-V (re-verified after the partial-tick-thrust and
+        # formation-relative station-keeping fixes) -- exactly the
         # "drift, then correct" behavior this controller exists to show, not
         # visible at 24 days.
         #

@@ -48,7 +48,7 @@ _RAAN_DEG = 259.03
 _DT_S = 30.0  # [s]
 
 
-def _run_formation(days, target_km, placed_km, follower_deadband_km, chief_deadband_km):
+def _run_formation(days, target_km, placed_km, follower_deadband_km, chief_deadband_km, thrust_n=0.05):
     from Basilisk.simulation import spacecraft
     from Basilisk.utilities import SimulationBaseClass, macros, orbitalMotion, simIncludeGravBody
     from Basilisk.utilities.supportDataTools.dataFetcher import DataFile, get_path
@@ -83,7 +83,7 @@ def _run_formation(days, target_km, placed_km, follower_deadband_km, chief_deadb
     follower = make("follower-1", np.degrees(placed_km * 1e3 / _SMA_M))
 
     def station_keeping(tag, sc, deadband_km):
-        config = StationKeepingConfig(target_altitude_km=550.0, deadband_km=deadband_km, thrust_n=0.05,
+        config = StationKeepingConfig(target_altitude_km=550.0, deadband_km=deadband_km, thrust_n=thrust_n,
                                       isp_s=1500.0, propellant_kg=5.0)
         return build_station_keeping(scSim, task, tag, sc, earth.mu, earth.radEquator, 100.0, config,
                                      eclipse_out_msg=None)
@@ -130,6 +130,10 @@ def test_follower_does_not_reboost_alone_and_closes_toward_its_target():
     assert 50.0 < end_km < 100.0  # [km] closing on the target, not drifting away
     assert end_km > start_km + 1.0  # [km]
     assert not run.phasing.suspendedDueToNonConvergence
+    # Partial-tick thrust: the correction burn lands on its planned relative
+    # semi-major axis (-16.7 m here) instead of overshooting by a whole
+    # thruster tick (~26 m), as every correction did before.
+    assert abs(run.phasing.lastRelativeSmaM - run.phasing._plannedDeltaA) < 3.0  # [m]
     # The new relative-SMA telemetry lines up with every other per-tick log.
     assert len(run.phasing.relativeSmaLog) == len(run.phasing.tLog)
 
@@ -184,25 +188,15 @@ def test_zero_crossing_ignores_the_plus_minus_180_wrap(error_deg, drift_sign, ex
     assert _crossed_zero(np.radians(error_deg), drift_sign) is expected
 
 
-@pytest.mark.parametrize("thrust_n, expected_floor_m", [(0.05, 25.0), (0.5, 380.0)])
-def test_trim_tolerance_never_drops_below_one_thruster_tick(thrust_n, expected_floor_m):
-    """Burns are whole 30 s ticks, so a trim tolerance smaller than one
-    tick's semi-major-axis change would overshoot every trim straight back
-    out of tolerance and ping-pong forever with a strong thruster.
+@pytest.mark.parametrize("thrust_n", [0.05, 0.5])  # [N]
+def test_a_correction_burn_delivers_exactly_its_planned_delta_v(thrust_n):
+    """A tenfold stronger thruster must not change how much delta-V a
+    correction uses: each burn is capped to the delta-V it still needs
+    within a task interval, never a whole tick at full thrust.
     """
-    from spacemissionstudio.engine.constellation import SeparationSchedule
-    from spacemissionstudio.engine.orbit_maintenance import PhasingKeepingController
-
-    mu = 3.986004418e14  # [m^3/s^2]
-    controller = PhasingKeepingController(
-        "follower", mu=mu, nominal_a_m=_SMA_M,
-        separation_schedule=SeparationSchedule([50.0], 90.0, _SMA_M),
-        tolerance_fraction=0.1, restore_tolerance_fraction=0.02, correction_window_days=21.0,
-        max_drift_days=90.0, max_delta_a_m=3000.0, thrust_n=thrust_n, isp_s=1500.0, dry_mass_kg=100.0,
-    )
-    controller.propellant = 5.0  # [kg]
-    v_circ = np.sqrt(mu / _SMA_M)  # [m/s]
-    one_tick_m = 2.0 * _SMA_M ** 2 * v_circ / mu * (thrust_n / 105.0) * _DT_S  # [m]
-    tolerance = controller._trim_tolerance_m(_DT_S)
-    assert tolerance >= 1.5 * one_tick_m
-    assert tolerance >= expected_floor_m
+    run = _run_formation(days=0.2, target_km=100.0, placed_km=50.0, follower_deadband_km=15.0,
+                         chief_deadband_km=15.0, thrust_n=thrust_n)
+    used_dv = run.phasing._cumulativeDv  # [m/s]
+    planned_dv = abs(run.phasing._plannedDeltaA) / _SMA_M * np.sqrt(3.986004418e14 / _SMA_M) / 2.0  # [m/s]
+    assert planned_dv > 0.0
+    assert used_dv == pytest.approx(planned_dv, rel=0.05)

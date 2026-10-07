@@ -6672,4 +6672,17 @@ New `tests/test_formation_keeping_regression.py` covers:
 
 All orbit-maintenance/formation tests pass under Basilisk.
 
-**Known limitation, not changed here.** One 30 s tick of the 0.05 N thruster moves the semi-major axis by ~26 m, while a typical correction needs only ~2 m. So each correction overshoots and the separation saws between ~45 and 50 km (inside the 10% band). Partial-tick thrust would make corrections far more precise and cheaper.
+**Follow-up: partial-tick thrust** (requested by the user after the fix above). One 30 s tick of the template's 0.05 N thruster moves the semi-major axis ~26 m, while a typical correction needs ~2 m. So every phasing correction overshot about tenfold: the separation sawed against the bottom of its tolerance band and propellant was wasted.
+* Each burn tick's thrust is now capped to exactly the Δv the burn still needs (`remaining_dv * mass / dt`). The very first tick (dt = 0) waits one tick instead of firing uncounted thrust.
+* With burns exact, the tick-quantum trim tolerance from the fix above is no longer needed: a plain 25 m.
+
+**Verified over 90 days** (same harness):
+
+| configuration | phasing Δv before → after | separation after |
+|---|---|---|
+| stock template 05 | 0.114 → 0.0027 m/s | 45.4–52.2 km, one correction (day 28) |
+| the user's configuration | 0.057 → 0.018 m/s | closes over the designed ~21-day correction window, holds 94.8–98.7 km |
+| the user's configuration with a 0.5 N thruster | identical to 0.05 N | — |
+| mirrored chief reboost | 0.086 → 0.0023 m/s | 45.0–49.5 km |
+
+A single correction now lands on its planned relative SMA (−16.7 m planned, −16.1 m measured). New tests cover burn accuracy and thrust-independence. Template 05's description now quotes these re-verified numbers in place of the old degree-2 ones (two corrections, ~0.015 m/s).
