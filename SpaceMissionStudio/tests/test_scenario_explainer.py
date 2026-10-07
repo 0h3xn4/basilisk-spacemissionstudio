@@ -231,7 +231,10 @@ def test_badges_use_plain_names_and_reserve_status_colours():
     for path in sorted((Path(__file__).resolve().parent.parent / "spacemissionstudio" / "scenarios"
                         / "templates").glob("*.json")):
         for section in explain(load_scenario(path)).sections:
-            every_badge += section.badges
+            if section.title == "Check before running":  # a real state: the one place warning colour belongs
+                assert {badge.kind for badge in section.badges} == {"warning"}
+            else:
+                every_badge += section.badges
             for note in section.notes:
                 assert "_" not in note, note  # no code names in notes either
     assert {badge.kind for badge in every_badge} <= {"accent", "neutral"}
@@ -239,7 +242,8 @@ def test_badges_use_plain_names_and_reserve_status_colours():
     assert not labels & {"inertial3D", "hillPoint", "velocityPoint", "sunSafePoint", "locationPointing"}
     assert "Sun pointing" in labels
     stations = next(s for s in explain(_template_scenario("19")).sections if s.title == "Ground stations")
-    assert [b.label for b in stations.badges] == ["berlin-gs"] and stations.notes == []
+    assert [b.label for b in stations.badges] == ["berlin-gs"]
+    assert stations.notes == ["berlin-gs: 2 passes, first at 10 min (peak 61 deg)"]
 
 
 def test_sso_inclination_without_oblateness_is_not_called_sun_synchronous():
@@ -251,3 +255,25 @@ def test_sso_inclination_without_oblateness_is_not_called_sun_synchronous():
     assert orbit_tile.value.startswith("Classical")
     env_section = next((s for s in explanation.sections if s.title == "Environment"), None)
     assert env_section is None or not any(b.label == "Sun-synchronous" for b in env_section.badges)
+
+
+def test_checks_section_comes_first_and_flags_a_late_first_pass():
+    """Template 19 used to start at midnight UTC: its first Berlin pass came
+    8.2 h into a 12 h run, so users saw "never" any contact. The Explain tab
+    now says so before the run."""
+    scenario = _template_scenario("19")
+    scenario.epoch_utc = "2030-01-01T00:00:00"
+    scenario.sim_settings.duration_days = 0.5
+    sections = explain(scenario).sections
+    assert sections[0].title == "Check before running"
+    assert sections[0].notes == ["berlin-gs: the first pass only comes at 8.2 h of a 12.0 h run"]
+    assert all(s.title != "Check before running" for s in explain(_template_scenario("19")).sections)
+
+
+def test_duration_tile_uses_a_readable_unit():
+    """Template 19's 2 h 15 min run showed as "0.09375 d"."""
+    from spacemissionstudio.engine.scenario_explainer import _duration_label
+
+    assert [_duration_label(d) for d in (0.01, 0.09375, 0.5, 14.0)] == ["14.4 min", "2.25 h", "12 h", "14 d"]
+    tile = next(t for t in explain(_template_scenario("19")).stat_tiles if t.label == "Duration")
+    assert tile.value == "2.25 h"

@@ -7257,3 +7257,45 @@ This follows up the 03 finding in the entry above. The user chose to recast the 
 **Tests.** A new offline check (`test_comms_template_has_ground_station_passes_early_in_its_run`) propagates the template's orbit against Berlin's rotation and requires at least two passes, the first within 5-20 min and above 45 deg. Against the old template it fails with the first pass at 490 min.
 
 **Not yet confirmed in Basilisk** in this sandbox (no SPICE kernels). The model differences (degree-10 gravity, Sun/Moon, exact SPICE frames) shift pass times by well under a minute over two hours.
+
+## Explain tab: pre-run checks and ground-station pass prediction
+
+This follows today's template fixes. Each of them (19's missing contact, 07/20's sun sensor on the wrong face, 03's deadband that never trips) was visible from the scenario's own settings before running, but nothing in the app said so. The user agreed to add that check for any scenario, not just the templates.
+
+**New `engine/scenario_checks.py`** (Basilisk-free, never raises, a few ms per call since the Explain tab refreshes on every edit):
+
+* **`predict_passes(scenario)`.** Ground-station passes for every station/spacecraft pair, from each spacecraft's initial orbit:
+  * the orbit is Keplerian, with J2 secular drift of RAAN, perigee and mean anomaly only when the gravity model includes J2;
+  * stations sit on a spherical Earth at `R + altitude`, as Basilisk's `groundLocation` places them;
+  * Earth rotates per SPICE's IAU_EARTH model (pck00010; prime meridian at `90 + W` from the inertial x axis);
+  * classical and Cartesian orbits are supported; TLE orbits and non-Earth central bodies return `None` rather than a guess;
+  * maneuvers, drag and higher-order gravity are ignored.
+
+  For template 19 it matches the independent RK4 check from the template fix to within a minute.
+* **`pass_summary(scenario)`.** One line per station, e.g. "berlin-gs: 2 passes, first at 10 min (peak 61 deg)". Shown under the Explain tab's Ground stations badges.
+* **`scenario_warnings(scenario)`.** Short warnings, shown first in a "Check before running" section with a warning badge:
+  * a station with no pass in the run (with when the first one comes, or "not in the 2 days after"), or whose first pass comes after half the run;
+  * a Sun-pointing spacecraft (`sunSafePoint`, or `comms_pointing`'s Sun axis) with no sun sensor within 60 deg of that axis;
+  * station-keeping with drag off, whose deadband may never trip.
+
+  Mission-sequence runs skip the pass check, because their length comes from their commands.
+
+**On the bundled templates.** Only 03 is flagged, as its recast lesson intends. The previous versions of 19, 07 and 20 (from git) are each flagged with the problem fixed earlier today.
+
+**Seeing the warnings.** The main window's tab title becomes "Explain (1 to check)" while there are warnings, so they are seen even without opening the tab before pressing Run.
+
+**Duration tile.** It now reads in a readable unit: "2.25 h" instead of "0.09375 d", minutes under an hour, days from 2 d up.
+
+**Docs.** USER_MANUAL Section 7 describes the pass list and the checks.
+
+**Tests.** `tests/test_scenario_checks.py` (9) covers:
+* pass timing against the independent propagation;
+* Cartesian orbits matching classical ones;
+* unsupported cases;
+* late, missing and impossible passes;
+* mission sequences skipping the pass check;
+* each warning;
+* every template checked in under 0.5 s with only 03 flagged;
+* never raising on a half-edited scenario.
+
+Further tests cover the Checks section's position and wording, the duration label, and the tab title.

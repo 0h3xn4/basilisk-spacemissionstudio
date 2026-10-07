@@ -514,9 +514,13 @@ class MainWindow(QMainWindow):
         try:
             scenario = self.scenario_editor.to_scenario()
         except ScenarioValidationError:
-            self.scenario_explainer_widget.set_scenario(None)
-            return
+            scenario = None
         self.scenario_explainer_widget.set_scenario(scenario)
+        # The tab says when there's something to check, so it's seen even
+        # by someone who never opens it before pressing Run.
+        count = self.scenario_explainer_widget.warning_count
+        self.right_tabs.setTabText(self.right_tabs.indexOf(self.scenario_explainer_widget),
+                                   f"Explain ({count} to check)" if count else "Explain")
 
     def _mark_clean(self) -> None:
         self._dirty = False

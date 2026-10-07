@@ -262,6 +262,20 @@ from the scenario's actual current fields every time, so it's never out
 of date -- useful for checking that a bespoke scenario you built from
 scratch actually ended up configured the way you intended.
 
+Explain also checks the scenario before you run it:
+
+* **Ground stations** lists each station's predicted passes in this run,
+  e.g. "berlin-gs: 2 passes, first at 10 min (peak 61 deg)". The
+  prediction uses each spacecraft's starting orbit (with Earth's J2 drift
+  when the gravity model includes it), so maneuvers and drag aren't
+  included.
+* **Check before running** appears at the top when something can't work
+  as configured, and the tab's title then reads "Explain (1 to check)":
+  a station that is never in view during the run, or whose first pass
+  comes late; a Sun-pointing spacecraft with no sun sensor on its
+  Sun-facing side; or station-keeping with drag off, whose deadband may
+  never trip. These are warnings only; the run still works.
+
 ## 8. Saving your work
 
 **File > Save** (or **Save As...** for a new file/location) writes your

@@ -117,6 +117,7 @@ class ScenarioExplainerWidget(QWidget):
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
+        self.warning_count = 0  # pre-run warnings currently shown (see engine.scenario_checks)
         outer_layout = QVBoxLayout(self)
         outer_layout.setContentsMargins(0, 0, 0, 0)
 
@@ -184,6 +185,7 @@ class ScenarioExplainerWidget(QWidget):
         return super().eventFilter(watched, event)
 
     def set_scenario(self, scenario: Optional[Scenario]) -> None:
+        self.warning_count = 0  # pre-run warnings shown (see engine.scenario_checks)
         if scenario is None:
             self._placeholder_label.setVisible(True)
             self._headline_label.setVisible(False)
@@ -201,6 +203,7 @@ class ScenarioExplainerWidget(QWidget):
         self._render(explanation)
 
     def _render(self, explanation: ScenarioExplanation) -> None:
+        self.warning_count = sum(len(s.notes) for s in explanation.sections if s.title == "Check before running")
         self._headline_label.setText(explanation.headline)
 
         _clear_layout(self._tiles_row)

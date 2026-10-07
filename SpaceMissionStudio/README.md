@@ -175,7 +175,7 @@ environment issue.
   `engine/spaceweather.py`, `engine/results.py`, `engine/link_budget.py`,
   `engine/constellation.py`, `engine/spacecraft_templates.py`,
   `engine/propellant_bookkeeping.py`, `engine/time_system.py`,
-  `engine/orbit_design.py`, `engine/scenario_explainer.py`, `cli.py`, and
+  `engine/orbit_design.py`, `engine/scenario_explainer.py`, `engine/scenario_checks.py`, `cli.py`, and
   the entire `spacemissionstudio/gui/` package) has no Basilisk import
   and is fully exercised either way -- `pytest tests/` runs and passes
   1305 tests without Basilisk installed (see "Running the tests" below).
@@ -445,6 +445,7 @@ SpaceMissionStudio/
       mission_engine.py              -- Phase 6: MissionEngine -- walks mission_sequence against a SimulationService (needs Basilisk)
       orbit_design.py                -- Sun-synchronous orbit design helpers (sun_synchronous_inclination_deg/raan_for_ltan_deg) -- Basilisk-free
       scenario_explainer.py          -- explain(scenario) -> a structured, always-current "recipe" summary (stat tiles/badges/table) -- Basilisk-free
+      scenario_checks.py             -- pre-run checks: ground-station pass prediction from the initial orbits, and warnings for setups that can't work as configured -- Basilisk-free
     gui/
       app.py                         -- QApplication entry point
       theme.py                       -- Phase 5: app-wide QSS stylesheet + palette
@@ -536,6 +537,7 @@ SpaceMissionStudio/
     test_time_system.py              -- UTC -> SPICE epoch string (locale-independent), no Basilisk needed
     test_orbit_design.py             -- Sun-synchronous inclination / RAAN-for-LTAN helpers, no Basilisk needed
     test_scenario_explainer.py       -- explain(): structure, short strings, never raises on any template
+    test_scenario_checks.py          -- pass prediction (vs. an independent propagation) and pre-run warnings, no Basilisk needed
     test_autosave.py                 -- crash-recovery autosave (Qt-free half)
     test_conservation_check.py       -- when the two-body energy/momentum drift check applies
     test_orbit_maintenance_j2_regression.py -- phasing/station-keeping regressions under real J2 gravity, requires_basilisk
@@ -606,7 +608,7 @@ python3 -m pip install -e ".[dev,gui]"
 python3 -m pytest tests/ -v
 ```
 
-The suite has 1859 tests. Without Basilisk on `PYTHONPATH`, 1624 of
+The suite has 1871 tests. Without Basilisk on `PYTHONPATH`, 1636 of
 them run and pass (schema, space weather, results, link budget,
 constellation generation, CLI, and the full PySide6 GUI, run headless),
 and the 235 that need a real Basilisk build (marked `requires_basilisk`,

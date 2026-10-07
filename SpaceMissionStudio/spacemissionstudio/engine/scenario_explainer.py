@@ -57,6 +57,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List
 
 from .orbit_design import sun_synchronous_inclination_deg
+from .scenario_checks import pass_summary, scenario_warnings
 
 _EARTH_REQUATOR_KM = 6378.1366  # [km] -- same reference value as engine.orbit_design's own
 
@@ -279,9 +280,27 @@ def _power_comms_section(scenario) -> ExplanationSection | None:
 def _ground_stations_section(scenario) -> ExplanationSection | None:
     if not scenario.ground_stations:
         return None
+    try:
+        passes = pass_summary(scenario)  # predicted from the initial orbits -- see engine.scenario_checks
+    except Exception:  # noqa: BLE001 -- explain() must never raise
+        passes = []
     return ExplanationSection(
         title="Ground stations",
         badges=[Badge(gs.name, "neutral") for gs in scenario.ground_stations],
+        notes=passes,
+    )
+
+
+def _checks_section(scenario) -> ExplanationSection | None:
+    """Setups that can't do what they're configured for -- shown first, so
+    they are seen before a long run (see engine.scenario_checks)."""
+    warnings = scenario_warnings(scenario)
+    if not warnings:
+        return None
+    return ExplanationSection(
+        title="Check before running",
+        badges=[Badge(f"{len(warnings)} to check", "warning")],
+        notes=warnings,
     )
 
 
@@ -311,6 +330,16 @@ def _monte_carlo_section(scenario) -> ExplanationSection | None:
     )
 
 
+def _duration_label(days: float) -> str:
+    """"2.25 h" rather than "0.09375 d" for short runs; minutes under an
+    hour, days from 2 d up."""
+    if days < 1.0 / 24.0:
+        return f"{round(days * 1440.0, 1):g} min"
+    if days < 2.0:
+        return f"{round(days * 24.0, 2):g} h"
+    return f"{round(days, 2):g} d"
+
+
 def explain(scenario) -> ScenarioExplanation:
     """Never raises -- called on every keystroke in the GUI, often
     against a mid-edit/invalid scenario.
@@ -326,7 +355,7 @@ def _explain(scenario) -> ScenarioExplanation:
 
     stat_tiles = [
         StatTile("Spacecraft", str(len(spacecraft))),
-        StatTile("Duration", f"{scenario.sim_settings.duration_days:g} d"),
+        StatTile("Duration", _duration_label(scenario.sim_settings.duration_days)),
         StatTile("Gravity", _gravity_summary(scenario.gravity)),
     ]
     if len(spacecraft) == 1:
@@ -335,6 +364,7 @@ def _explain(scenario) -> ScenarioExplanation:
         stat_tiles.append(StatTile("Mode", "Orbit only"))
 
     sections = [s for s in (
+        _checks_section(scenario),
         _formation_section(scenario),
         _attitude_section(scenario),
         _environment_section(scenario),

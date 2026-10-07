@@ -1827,3 +1827,16 @@ def test_join_finished_worker_waits_out_a_thread_that_already_signalled(qtbot):
     _join_finished_worker(worker)
     assert not worker.isRunning()
     _join_finished_worker(None)  # no previous worker: a no-op
+
+
+def test_explain_tab_title_counts_pre_run_warnings(window, qapp):
+    """Pre-run checks (engine.scenario_checks) only help if they're seen:
+    the Explain tab's own title says when there's something to check."""
+    from pathlib import Path
+
+    templates = Path(__file__).resolve().parents[2] / "spacemissionstudio" / "scenarios" / "templates"
+    tab_index = window.right_tabs.indexOf(window.scenario_explainer_widget)
+    assert window.open_path(next(templates.glob("03_*.json")))
+    assert window.right_tabs.tabText(tab_index) == "Explain (1 to check)"
+    assert window.open_path(next(templates.glob("19_*.json")))
+    assert window.right_tabs.tabText(tab_index) == "Explain"
