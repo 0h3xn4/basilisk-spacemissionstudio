@@ -220,7 +220,7 @@ class PhasingFormationDialog(QDialog):
         self.reconfiguration_interval_days = _double_spin(0.0, 1.0e5, 2, 1.0, 90.0)
         self.tolerance_fraction = _double_spin(1e-6, 10.0, 4, 0.01, 0.10)
         self.restore_tolerance_fraction = _double_spin(1e-6, 10.0, 4, 0.01, 0.02)
-        self.correction_window_days = _double_spin(1e-3, 1.0e4, 2, 1.0, 21.0)
+        self.correction_window_days = _double_spin(1e-3, 1.0e4, 2, 1.0, 3.0)
         self.max_drift_days = _double_spin(1e-3, 1.0e4, 2, 1.0, 90.0)
         self.max_delta_sma_km = _double_spin(1e-6, 1.0e4, 3, 0.5, 3.0)
         phasing_form.addRow("Reconfiguration interval [day]", self.reconfiguration_interval_days)

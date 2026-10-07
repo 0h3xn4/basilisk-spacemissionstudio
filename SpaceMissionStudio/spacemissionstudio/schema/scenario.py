@@ -594,7 +594,10 @@ class PhasingKeepingConfig:
     reconfiguration_interval_days: float = 90.0  # [day] only matters if target_separation_km has >1 entry
     tolerance_fraction: float = 0.10  # [-] trigger threshold, as a fraction of the current target separation
     restore_tolerance_fraction: float = 0.02  # [-] "close enough, stop drifting" threshold, same units
-    correction_window_days: float = 21.0  # [day] target time to null a fresh phasing error
+    # 3 days: a 50 km repositioning at ~550 km LEO costs ~0.13 m/s; the
+    # delta-V of a correction scales roughly as 1 / window (21 days, the
+    # old default, took three weeks to close any error).
+    correction_window_days: float = 3.0  # [day] target time to null a fresh phasing error
     max_drift_days: float = 90.0  # [day] safety cap on the drift coast phase
     max_delta_semi_major_axis_km: float = 3.0  # [km] safety clamp on the drift-orbit SMA offset
 

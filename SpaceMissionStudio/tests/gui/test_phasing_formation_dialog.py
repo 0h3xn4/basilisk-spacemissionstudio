@@ -176,3 +176,15 @@ def test_thruster_realism_settings_reach_the_request(qtbot):
     request = dialog.to_request()
     assert request.min_on_time_s == 120.0  # [s]
     assert request.eccentricity_neutral_burns is True
+
+
+def test_dialog_defaults_match_the_generator_request_defaults(qtbot):
+    import dataclasses
+
+    from spacemissionstudio.engine.formation import PhasingFormationRequest
+    from spacemissionstudio.gui.phasing_formation_dialog import PhasingFormationDialog
+
+    dialog = PhasingFormationDialog(["chief-1"], central_body="earth")
+    qtbot.addWidget(dialog)
+    defaults = {f.name: f.default for f in dataclasses.fields(PhasingFormationRequest)}
+    assert dialog.correction_window_days.value() == defaults["correction_window_days"]

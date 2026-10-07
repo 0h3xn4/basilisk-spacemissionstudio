@@ -492,3 +492,28 @@ def test_generate_phasing_formation_passes_every_request_field_through(tmp_path,
     field_to_dest = {"chief_name": "chief"}
     for field in dataclasses.fields(formation.PhasingFormationRequest):
         assert field_to_dest.get(field.name, field.name) in parser_dests, field.name
+
+
+def test_phasing_defaults_agree_between_schema_generator_and_cli():
+    """One default per setting: the schema's PhasingKeepingConfig, the
+    phasing-formation generator's request, and the CLI must not drift
+    apart (the correction window used to be 21 days in all of them, and
+    was shortened to 3 days in response to a real user's "the phasing is
+    very slow")."""
+    import dataclasses
+
+    from spacemissionstudio.engine import formation
+    from spacemissionstudio.schema.scenario import PhasingKeepingConfig
+
+    request_defaults = {f.name: f.default for f in dataclasses.fields(formation.PhasingFormationRequest)
+                        if f.default is not dataclasses.MISSING}
+    schema_defaults = {f.name: f.default for f in dataclasses.fields(PhasingKeepingConfig)
+                       if f.default is not dataclasses.MISSING}
+    for name in request_defaults.keys() & schema_defaults.keys():
+        assert request_defaults[name] == schema_defaults[name], name
+
+    subparsers = next(action for action in cli.build_parser()._actions if action.dest == "command")
+    cli_defaults = {action.dest: action.default for action in subparsers.choices["generate-phasing-formation"]._actions}
+    for name in request_defaults.keys() & schema_defaults.keys():
+        assert cli_defaults[name] == request_defaults[name], name
+    assert schema_defaults["correction_window_days"] == 3.0  # [day]

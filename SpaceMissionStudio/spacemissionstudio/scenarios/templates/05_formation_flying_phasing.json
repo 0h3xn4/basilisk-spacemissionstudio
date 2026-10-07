@@ -71,7 +71,9 @@
         "thrust_n": 0.05,
         "isp_s": 1500.0,
         "propellant_kg": 5.0,
-        "eclipse_sunlit_threshold": 0.99
+        "eclipse_sunlit_threshold": 0.99,
+        "min_on_time_s": 0.0,
+        "eccentricity_neutral_burns": false
       },
       "phasing_keeping": null,
       "constant_thrust": null,
@@ -155,7 +157,9 @@
         "thrust_n": 0.05,
         "isp_s": 1500.0,
         "propellant_kg": 5.0,
-        "eclipse_sunlit_threshold": 0.99
+        "eclipse_sunlit_threshold": 0.99,
+        "min_on_time_s": 0.0,
+        "eccentricity_neutral_burns": false
       },
       "phasing_keeping": {
         "chief_spacecraft": "chief-1",
@@ -165,7 +169,7 @@
         "reconfiguration_interval_days": 90.0,
         "tolerance_fraction": 0.1,
         "restore_tolerance_fraction": 0.02,
-        "correction_window_days": 21.0,
+        "correction_window_days": 3.0,
         "max_drift_days": 90.0,
         "max_delta_semi_major_axis_km": 3.0
       },

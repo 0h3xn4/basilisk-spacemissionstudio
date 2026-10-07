@@ -875,11 +875,12 @@ class SpacecraftEditorDialog(QDialog):
         )
         pk_form.addRow("Restore tolerance [-] (fraction of target)", self.pk_restore_tolerance_fraction)
         self.pk_correction_window_days = _spin(0.1, 1.0e4, decimals=2, step=1.0,
-                                                value=pk0.correction_window_days if pk0 else 21.0)
+                                                value=pk0.correction_window_days if pk0 else 3.0)
         self.pk_correction_window_days.setToolTip(
             "Target time to null a freshly-triggered phasing error -- sets how aggressive the "
             "temporary drift-orbit altitude offset needs to be (a shorter window needs a "
-            "bigger, faster offset)."
+            "bigger, faster offset). Delta-V scales roughly as 1 / window: at ~550 km, closing "
+            "50 km takes ~0.13 m/s in 3 days, ~0.38 m/s in 1 day."
         )
         pk_form.addRow("Correction window [days]", self.pk_correction_window_days)
         self.pk_max_drift_days = _spin(0.1, 1.0e4, decimals=2, step=1.0,

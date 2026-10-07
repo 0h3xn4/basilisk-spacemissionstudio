@@ -71,7 +71,9 @@
         "thrust_n": 0.5,
         "isp_s": 1600.0,
         "propellant_kg": 50.0,
-        "eclipse_sunlit_threshold": 0.99
+        "eclipse_sunlit_threshold": 0.99,
+        "min_on_time_s": 0.0,
+        "eccentricity_neutral_burns": false
       },
       "phasing_keeping": null,
       "constant_thrust": null,

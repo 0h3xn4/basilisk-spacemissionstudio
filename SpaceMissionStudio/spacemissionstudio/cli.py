@@ -511,7 +511,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_phasing.add_argument("--reconfiguration-interval-days", type=float, default=90.0)
     p_phasing.add_argument("--tolerance-fraction", type=float, default=0.10)
     p_phasing.add_argument("--restore-tolerance-fraction", type=float, default=0.02)
-    p_phasing.add_argument("--correction-window-days", type=float, default=21.0)
+    p_phasing.add_argument("--correction-window-days", type=float, default=3.0)
     p_phasing.add_argument("--max-drift-days", type=float, default=90.0)
     p_phasing.add_argument("--max-delta-semi-major-axis-km", type=float, default=3.0)
     p_phasing.add_argument("--station-keeping-target-altitude-km", type=float, default=None,

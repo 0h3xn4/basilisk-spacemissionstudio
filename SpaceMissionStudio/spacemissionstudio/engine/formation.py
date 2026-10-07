@@ -142,7 +142,7 @@ class PhasingFormationRequest:
     reconfiguration_interval_days: float = 90.0  # [day]
     tolerance_fraction: float = 0.10  # [-]
     restore_tolerance_fraction: float = 0.02  # [-]
-    correction_window_days: float = 21.0  # [day]
+    correction_window_days: float = 3.0  # [day] see PhasingKeepingConfig
     max_drift_days: float = 90.0  # [day]
     max_delta_semi_major_axis_km: float = 3.0  # [km]
     # station_keeping is REQUIRED alongside phasing_keeping (shared
