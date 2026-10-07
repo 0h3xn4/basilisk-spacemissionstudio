@@ -140,3 +140,65 @@ def test_mean_elements_round_trip_back_to_osculating():
     assert recovered.a == pytest.approx(osc["a"][0], abs=10.0)
     assert recovered.e == pytest.approx(osc["e"][0], abs=1e-5)
     assert recovered.i == pytest.approx(osc["i"][0], abs=1e-5)
+
+
+def _service_stub():
+    """A SimulationService with just the state _orbit_elements needs."""
+    from spacemissionstudio.engine.service import SimulationService
+
+    service = SimulationService.__new__(SimulationService)
+    service.mu = _MU_EARTH
+    service.mean_elements_req, service.mean_elements_j2 = 6378137.0, 1.0826e-3  # [m], [-]
+    service._element_cache = {}
+    return service
+
+
+def _inclined_orbit_rv(n):
+    """n samples along a real inclined LEO orbit (non-degenerate elements)."""
+    from Basilisk.utilities import orbitalMotion
+
+    oe = orbitalMotion.ClassicElements()
+    oe.a, oe.e, oe.i, oe.Omega, oe.omega = 6928e3, 0.001, np.radians(97.6), np.radians(30.0), 0.0  # [m], [-], [rad]
+    r, v = [], []
+    for f in np.linspace(0.0, 2.0 * np.pi, n):
+        oe.f = f
+        r_k, v_k = orbitalMotion.elem2rv(_MU_EARTH, oe)
+        r.append(r_k)
+        v.append(v_k)
+    return np.array(r), np.array(v)
+
+
+def test_live_extraction_computes_each_sample_once_and_matches_a_full_pass(monkeypatch):
+    """Real performance bug from a real user's 30-day run log: run_live
+    extracts results 60 times, and each extraction recomputed every
+    sample's elements, so later progress steps took ~22 s each against
+    ~3 s at the start. Now each call only computes the new samples, with
+    results identical to one full pass."""
+    from spacemissionstudio.engine import service as service_module
+
+    r, v = _inclined_orbit_rv(30)
+    full_oe = service_module._osculating_elements(_MU_EARTH, r, v)
+    full_mean = service_module._mean_elements(full_oe, 6378137.0, 1.0826e-3)
+
+    computed = []
+    original = service_module._osculating_elements
+    monkeypatch.setattr(service_module, "_osculating_elements",
+                        lambda mu, r_, v_, **kw: computed.append(len(r_)) or original(mu, r_, v_, **kw))
+    service = _service_stub()
+    for end in (10, 10, 25, 30):  # growing histories, one call repeated with no new samples
+        oe, mean_oe = service._orbit_elements("sat", r[:end], v[:end])
+    assert computed == [10, 15, 5]  # every sample exactly once
+    for key in full_oe:
+        np.testing.assert_array_equal(oe[key], full_oe[key])
+        np.testing.assert_array_equal(mean_oe[key], full_mean[key])
+
+
+def test_incremental_nan_error_reports_the_recorded_sample_index():
+    from spacemissionstudio.engine.service import SimulationServiceError
+
+    r, v = _inclined_orbit_rv(8)
+    r[6] = [np.nan, 0.0, 0.0]
+    service = _service_stub()
+    service._orbit_elements("sat", r[:4], v[:4])
+    with pytest.raises(SimulationServiceError, match="sample 6 of 8"):
+        service._orbit_elements("sat", r, v)

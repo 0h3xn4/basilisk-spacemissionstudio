@@ -368,7 +368,8 @@ def _orbit_ic_to_rv(mu: float, orbit: OrbitIC):
     raise SimulationServiceError(f"unknown orbit IC type {orbit.type!r}")  # unreachable if orbit.validate() passed
 
 
-def _osculating_elements(mu: float, r_bn_n: np.ndarray, v_bn_n: np.ndarray) -> Dict[str, np.ndarray]:
+def _osculating_elements(mu: float, r_bn_n: np.ndarray, v_bn_n: np.ndarray,
+                         first_sample_index: int = 0) -> Dict[str, np.ndarray]:
     """Osculating classical orbital elements (a [m], e [-], i/raan/argp/
     true_anomaly [rad]) at every recorded (r, v) sample, via
     ``orbitalMotion.rv2elem`` -- the exact inverse of ``_orbit_ic_to_rv``'s
@@ -398,6 +399,10 @@ def _osculating_elements(mu: float, r_bn_n: np.ndarray, v_bn_n: np.ndarray) -> D
     which is what a spacecraft whose translational state actually
     diverged used to surface as (an upstream Basilisk bug, not fixed
     here, but worked around so it never gets reached).
+
+    ``first_sample_index`` is the recorded index of ``r_bn_n[0]``, for the
+    error message when only new samples are passed (see
+    ``SimulationService._orbit_elements``).
     """
     n = r_bn_n.shape[0]
     a = np.empty(n)
@@ -410,7 +415,7 @@ def _osculating_elements(mu: float, r_bn_n: np.ndarray, v_bn_n: np.ndarray) -> D
         if not (np.all(np.isfinite(r_bn_n[k])) and np.all(np.isfinite(v_bn_n[k]))):
             raise SimulationServiceError(
                 f"the simulated position/velocity became non-physical (NaN/inf) at recorded sample "
-                f"{k} of {n} -- the propagated dynamics went numerically unstable partway through this "
+                f"{first_sample_index + k} of {first_sample_index + n} -- the propagated dynamics went numerically unstable partway through this "
                 f"run. Common causes: attitude control gains too aggressive for the spacecraft's "
                 f"inertia/initial body rates, an actuator commanding excessive torque/thrust, or "
                 f"sim_settings.dynamics_task_rate_s too coarse for how fast the dynamics involved "
@@ -543,6 +548,9 @@ class SimulationService:
         self.mean_elements_req: Optional[float] = None
         self.mean_elements_j2: Optional[float] = None
         self._handles: Dict[str, _SpacecraftHandle] = {}
+        # Per-spacecraft (sample count, osculating elements, mean elements)
+        # already computed -- see _orbit_elements.
+        self._element_cache: Dict[str, tuple] = {}
         # thrMomentumManagement modules (one per spacecraft with
         # momentum_dumping configured) that build() must re-Reset() after
         # priming one real dynamics tick -- see build()'s own comment and
@@ -1685,6 +1693,36 @@ class SimulationService:
 
         return self._extract_results()
 
+    def _orbit_elements(self, name: str, r_bn_n: np.ndarray, v_bn_n: np.ndarray):
+        """Osculating (and, when enabled, mean) elements for every recorded
+        sample, computed only for samples not already computed by an
+        earlier call. Real performance bug, found in a real user's 30-day
+        run log: :meth:`run_live` extracts results 60 times per run, and
+        recomputing every sample's elements each time (a Python loop of
+        ``rv2elem``/``clMeanOscMap`` calls, ~13 s per spacecraft for 30
+        days) made the run's cost grow with the square of its duration --
+        the last progress steps took ~22 s each against ~3 s at the start.
+        Both mappings are pointwise, so extending is exact.
+        """
+        count, oe, mean_oe = self._element_cache.get(name, (0, None, None))
+        n = r_bn_n.shape[0]
+        if n < count:  # fewer samples than before (a recorder was reset): start over
+            count, oe, mean_oe = 0, None, None
+        if n > count:
+            new_oe = _osculating_elements(self.mu, r_bn_n[count:], v_bn_n[count:], first_sample_index=count)
+            new_mean = (_mean_elements(new_oe, self.mean_elements_req, self.mean_elements_j2)
+                        if self.mean_elements_req is not None else None)
+            oe = new_oe if oe is None else {key: np.concatenate([oe[key], new_oe[key]]) for key in oe}
+            if new_mean is not None:
+                mean_oe = new_mean if mean_oe is None else {
+                    key: np.concatenate([mean_oe[key], new_mean[key]]) for key in mean_oe}
+            self._element_cache[name] = (n, oe, mean_oe)
+        if oe is None:  # no samples yet
+            oe = _osculating_elements(self.mu, r_bn_n, v_bn_n)
+            mean_oe = (_mean_elements(oe, self.mean_elements_req, self.mean_elements_j2)
+                       if self.mean_elements_req is not None else None)
+        return oe, mean_oe
+
     def _extract_results(self) -> ResultSet:
         """Reads every recorder currently attached in ``self._handles``
         into a fresh :class:`~spacemissionstudio.engine.results.ResultSet` --
@@ -1721,7 +1759,8 @@ class SimulationService:
             # TimeSeries per element (not one combined series), matching
             # this method's own convention for mixed-unit quantities below
             # (e.g. station_keeping's separate .burn_on/.delta_v series).
-            oe = _osculating_elements(self.mu, handle.recorder.r_BN_N, handle.recorder.v_BN_N)
+            oe, mean_oe = self._orbit_elements(name, np.asarray(handle.recorder.r_BN_N),
+                                               np.asarray(handle.recorder.v_BN_N))
             result.add(TimeSeries(f"{name}.orbit_elements.semi_major_axis", t_s, ("a",), oe["a"], units="m"))
             result.add(TimeSeries(f"{name}.orbit_elements.eccentricity", t_s, ("e",), oe["e"], units="-"))
             result.add(TimeSeries(f"{name}.orbit_elements.inclination", t_s, ("i",), oe["i"], units="rad"))
@@ -1736,8 +1775,7 @@ class SimulationService:
             # assignment above for when it's actually computed. Per-user
             # request: "plots of averaged orbital elements, not only the
             # 'true' ones".
-            if self.mean_elements_req is not None:
-                mean_oe = _mean_elements(oe, self.mean_elements_req, self.mean_elements_j2)
+            if mean_oe is not None:
                 result.add(TimeSeries(f"{name}.orbit_elements_mean.semi_major_axis", t_s, ("a",),
                                        mean_oe["a"], units="m"))
                 result.add(TimeSeries(f"{name}.orbit_elements_mean.eccentricity", t_s, ("e",),
