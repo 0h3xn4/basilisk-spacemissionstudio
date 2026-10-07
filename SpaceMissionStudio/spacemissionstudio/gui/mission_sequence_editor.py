@@ -49,6 +49,7 @@ leave a parent's stored (and otherwise-unused) ``children`` list stale.
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -58,6 +59,8 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
@@ -77,6 +80,7 @@ from ..schema.command import (
     Command,
 )
 from .feedback import show_toast
+from .theme import PALETTE
 from .widgets import PreciseDoubleSpinBox
 
 # Mirrors engine.mission_engine._ASSIGNMENT_CONTROLLERS/_ASSIGNMENT_ATTRIBUTES
@@ -106,9 +110,10 @@ def _spin_component(value: float = 0.0) -> QDoubleSpinBox:
 
 class _CommandEditorDialog(QDialog):
     def __init__(self, command: Command | None = None, parent: QWidget | None = None,
-                 spacecraft_names: list[str] | None = None):
+                 spacecraft_names: list[str] | None = None, series_names: list[str] | None = None):
         super().__init__(parent)
         self._spacecraft_names = spacecraft_names or []
+        self._series_names = series_names or []
         self.setWindowTitle("Edit command" if command is not None else "New command")
 
         layout = QVBoxLayout(self)
@@ -396,18 +401,74 @@ class _CommandEditorDialog(QDialog):
         self.stack.addWidget(page)
 
     def _build_report_page(self, params: dict) -> None:
+        """A checkable list of the series this scenario produces (real user
+        feedback: typing series names from memory, where one typo fails
+        the run). Nothing ticked means "snapshot every series"."""
         page = QWidget()
         layout = QVBoxLayout(page)
-        hint = QLabel(
-            "Series names to snapshot (one per line), e.g. 'sat-1.position_N' -- leave empty to snapshot "
-            "every series produced by the run so far."
-        )
-        hint.setWordWrap(True)
-        layout.addWidget(hint)
-        self.report_series_edit = QPlainTextEdit("\n".join(params.get("series", [])))
-        self.report_series_edit.setTabChangesFocus(True)
-        layout.addWidget(self.report_series_edit)
+        layout.setContentsMargins(0, 0, 0, 0)
+        self.report_summary_label = QLabel()
+        layout.addWidget(self.report_summary_label)
+        filter_row = QHBoxLayout()
+        self.report_filter_edit = QLineEdit()
+        self.report_filter_edit.setPlaceholderText("Filter, e.g. sat-1 or battery")
+        self.report_filter_edit.setClearButtonEnabled(True)
+        self.report_filter_edit.textChanged.connect(self._on_report_filter_changed)
+        filter_row.addWidget(self.report_filter_edit, 1)
+        self.report_clear_button = QPushButton("Clear selection")
+        self.report_clear_button.setAutoDefault(False)
+        self.report_clear_button.clicked.connect(self._on_report_clear)
+        filter_row.addWidget(self.report_clear_button)
+        layout.addLayout(filter_row)
+        self.report_series_list = QListWidget()
+        self.report_series_list.setMinimumHeight(220)  # [px]
+        selected = [str(name) for name in params.get("series", [])]
+        known = set(self._series_names)
+        for name in self._series_names:
+            self._add_report_item(name, name in selected)
+        for name in selected:
+            if name not in known:
+                # Kept (so open + OK changes nothing) but flagged: the run
+                # would fail on it.
+                self._add_report_item(name, True, missing=True)
+        if not self._series_names:
+            self.report_series_list.setToolTip("Add spacecraft to the scenario to list their series here.")
+        self.report_series_list.itemChanged.connect(lambda _item: self._update_report_summary())
+        layout.addWidget(self.report_series_list, 1)
+        self._update_report_summary()
         self.stack.addWidget(page)
+
+    def _add_report_item(self, name: str, checked: bool, missing: bool = False) -> None:
+        item = QListWidgetItem(f"{name}  (not produced by this scenario)" if missing else name)
+        item.setData(Qt.ItemDataRole.UserRole, name)
+        item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+        item.setCheckState(Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked)
+        if missing:
+            item.setForeground(QColor(PALETTE["danger"]))
+            item.setToolTip("This scenario does not produce this series, so the run would stop here. "
+                            "Untick it, or rename the spacecraft/device it refers to.")
+        self.report_series_list.addItem(item)
+
+    def report_selected_series(self) -> list[str]:
+        return [self.report_series_list.item(i).data(Qt.ItemDataRole.UserRole)
+                for i in range(self.report_series_list.count())
+                if self.report_series_list.item(i).checkState() == Qt.CheckState.Checked]
+
+    def _update_report_summary(self) -> None:
+        count = len(self.report_selected_series())
+        self.report_summary_label.setText(
+            "Nothing ticked: every series is snapshotted." if count == 0
+            else f"{count} series ticked." if count > 1 else "1 series ticked.")
+
+    def _on_report_filter_changed(self, text: str) -> None:
+        needle = text.strip().lower()
+        for i in range(self.report_series_list.count()):
+            item = self.report_series_list.item(i)
+            item.setHidden(bool(needle) and needle not in item.text().lower())
+
+    def _on_report_clear(self) -> None:
+        for i in range(self.report_series_list.count()):
+            self.report_series_list.item(i).setCheckState(Qt.CheckState.Unchecked)
 
     def _build_conditional_page(self, params: dict) -> None:
         """Shared by ``if``/``while`` -- both take just a ``condition``
@@ -484,8 +545,7 @@ class _CommandEditorDialog(QDialog):
             ))
             return {"target": target, "value": self.assignment_value_spin.value()}
         if kind == "report":
-            series = [line.strip() for line in self.report_series_edit.toPlainText().splitlines() if line.strip()]
-            return {"series": series}
+            return {"series": self.report_selected_series()}
         if kind in ("if", "while"):
             return {"condition": self.condition_edit.text().strip()}
         if kind == "script_block":
@@ -538,6 +598,7 @@ class MissionSequenceEditorWidget(QWidget):
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
         self._spacecraft_names_provider = None
+        self._series_names_provider = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -591,6 +652,16 @@ class MissionSequenceEditorWidget(QWidget):
     def _spacecraft_names(self) -> list[str]:
         return sorted(self._spacecraft_names_provider()) if self._spacecraft_names_provider else []
 
+    def set_series_names_provider(self, provider) -> None:
+        """``provider`` is a zero-argument callable returning the series
+        names the current scenario will produce (see
+        ``engine.series_names.expected_series_names``), for the Report
+        command's pick-list."""
+        self._series_names_provider = provider
+
+    def _series_names(self) -> list[str]:
+        return list(self._series_names_provider()) if self._series_names_provider else []
+
     def _update_button_states(self) -> None:
         item = self.tree.currentItem()
         has_selection = item is not None
@@ -614,7 +685,8 @@ class MissionSequenceEditorWidget(QWidget):
         return item
 
     def _on_add(self) -> None:
-        dialog = _CommandEditorDialog(parent=self, spacecraft_names=self._spacecraft_names())
+        dialog = _CommandEditorDialog(parent=self, spacecraft_names=self._spacecraft_names(),
+                                      series_names=self._series_names())
         if dialog.exec() == QDialog.DialogCode.Accepted:
             command = dialog.to_dataclass()
             item = self._new_item(command)
@@ -630,7 +702,8 @@ class MissionSequenceEditorWidget(QWidget):
         parent_command = parent_item.data(0, Qt.ItemDataRole.UserRole)
         if parent_command.kind not in ("if", "while"):
             return
-        dialog = _CommandEditorDialog(parent=self, spacecraft_names=self._spacecraft_names())
+        dialog = _CommandEditorDialog(parent=self, spacecraft_names=self._spacecraft_names(),
+                                      series_names=self._series_names())
         if dialog.exec() == QDialog.DialogCode.Accepted:
             command = dialog.to_dataclass()
             item = self._new_item(command)
@@ -645,7 +718,8 @@ class MissionSequenceEditorWidget(QWidget):
         if item is None:
             return
         command = item.data(0, Qt.ItemDataRole.UserRole)
-        dialog = _CommandEditorDialog(command=command, parent=self, spacecraft_names=self._spacecraft_names())
+        dialog = _CommandEditorDialog(command=command, parent=self, spacecraft_names=self._spacecraft_names(),
+                                      series_names=self._series_names())
         if dialog.exec() == QDialog.DialogCode.Accepted:
             new_command = dialog.to_dataclass()
             item.setData(0, Qt.ItemDataRole.UserRole, new_command)

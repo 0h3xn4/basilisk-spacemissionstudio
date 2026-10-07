@@ -44,6 +44,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ..engine.series_names import expected_series_names
 from ..schema.scenario import (
     GravityConfig,
     Scenario,
@@ -278,6 +279,7 @@ class ScenarioEditorWidget(QWidget):
         self.mission_sequence_editor.set_spacecraft_names_provider(
             lambda: [sc.name for sc in self.spacecraft_list.to_list()]
         )
+        self.mission_sequence_editor.set_series_names_provider(self._expected_series_names)
         self.mission_sequence_editor.changed.connect(self.changed)
         layout.addWidget(self.mission_sequence_editor)
         return group
@@ -297,7 +299,13 @@ class ScenarioEditorWidget(QWidget):
         on anything invalid -- callers (Save, Run, the live-validation
         label) all go through this one method.
         """
-        scenario = Scenario(
+        scenario = self._draft_scenario()
+        scenario.validate()
+        return scenario
+
+    def _draft_scenario(self) -> Scenario:
+        """The scenario as currently edited, NOT validated."""
+        return Scenario(
             name=self.name_edit.text().strip(),
             epoch_utc=self.epoch_edit.text().strip(),
             simulation_mode=self.simulation_mode_combo.currentData(),
@@ -310,8 +318,12 @@ class ScenarioEditorWidget(QWidget):
             monte_carlo=self.monte_carlo_group.to_dataclass(),
             mission_sequence=self.mission_sequence_editor.to_command_list(),
         )
-        scenario.validate()
-        return scenario
+
+    def _expected_series_names(self) -> list[str]:
+        try:
+            return expected_series_names(self._draft_scenario())
+        except Exception:  # noqa: BLE001 -- a half-edited form must never break the command dialog
+            return []
 
     def from_scenario(self, scenario: Scenario) -> None:
         self.name_edit.setText(scenario.name)

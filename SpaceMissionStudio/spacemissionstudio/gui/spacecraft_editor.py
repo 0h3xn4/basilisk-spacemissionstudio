@@ -91,11 +91,12 @@ from ..schema.scenario import (
     SUPPORTED_THRUST_FRAMES,
 )
 from .feedback import clear_invalid, mark_invalid, show_toast
+from .number_list import NumberListEditor
 from .orbit_ic_widget import OrbitIcWidget
 from .param_form import ParamForm
 from .sensor_actuator_editor import SensorActuatorListWidget
 from .theme import PALETTE
-from .widgets import PreciseDoubleSpinBox, exact_number_text
+from .widgets import PreciseDoubleSpinBox
 
 _FSW_MODE_NONE_LABEL = "(none -- no attitude control)"
 
@@ -867,25 +868,24 @@ class SpacecraftEditorDialog(QDialog):
             self.pk_chief_combo.setEnabled(False)
         pk_form.addRow("Chief spacecraft", self.pk_chief_combo)
 
-        self.pk_target_separation_edit = QLineEdit(
-            ", ".join(exact_number_text(d) for d in pk0.target_separation_km) if pk0 else "100"
+        # One row per stage instead of a comma-separated list.
+        self.pk_target_separations = NumberListEditor(
+            unit="km", minimum=0.0, maximum=1.0e6, decimals=1, growable=True, row_label="Stage",
+            default_value=100.0,  # [km]
         )
-        self.pk_target_separation_edit.setPlaceholderText("e.g. 1000, 500, 100 (comma-separated, km)")
-        self.pk_target_separation_edit.setToolTip(
-            "One or more along-track distances [km] to hold ahead of the chief. A single "
-            "number holds that spacing for the whole run. Multiple, comma-separated numbers "
-            "step through in order every 'Reconfiguration interval' below (e.g. "
-            "'1000, 500, 100' tightens the formation in stages, holding at 100 km once the "
-            "list is exhausted) -- useful for simulating a constellation that closes up over time."
+        self.pk_target_separations.set_values(list(pk0.target_separation_km) if pk0 else [100.0])
+        self.pk_target_separations.setToolTip(
+            "Along-track distance to hold ahead of the chief. With several stages, the target "
+            "moves to the next one every 'Reconfiguration interval' and holds the last one."
         )
-        pk_form.addRow("Target separation(s) [km]", self.pk_target_separation_edit)
+        pk_form.addRow("Target separation", self.pk_target_separations)
         self.pk_reconfiguration_interval_days = _spin(
             0.0, 1.0e5, decimals=2, step=1.0, value=pk0.reconfiguration_interval_days if pk0 else 90.0)
         self.pk_reconfiguration_interval_days.setToolTip(
             "How often the target separation advances to the next entry in the list above. "
             "Ignored (no effect) when only one separation is given."
         )
-        pk_form.addRow("Reconfiguration interval [days] (only if >1 separation above)",
+        pk_form.addRow("Reconfiguration interval [days] (with 2+ stages)",
                         self.pk_reconfiguration_interval_days)
         self.pk_tolerance_fraction = _spin(0.001, 1.0, decimals=4, step=0.01,
                                             value=pk0.tolerance_fraction if pk0 else 0.10)
@@ -1001,10 +1001,9 @@ class SpacecraftEditorDialog(QDialog):
         # requires "reaction_wheel" AND "magnetic_torque_rod" actuators
         # instead of "thruster" (see MagneticMomentumManagementConfig's
         # docstring for why the two strategies are mutually exclusive).
-        # wheel_speed_biases_rad_s is a comma-separated list (one entry per
-        # reaction_wheel actuator) rather than a fixed set of spin boxes,
-        # matching this dialog's own pk_target_separation_edit precedent
-        # for a variable-length numeric list.
+        # wheel_speed_biases_rad_s is one labelled box per reaction_wheel
+        # actuator (gui.number_list.NumberListEditor), rebuilt whenever the
+        # actuator list changes.
         mmm0 = config.magnetic_momentum_management if config else None
         self.magnetic_momentum_management_group = QGroupBox(
             "Magnetic momentum management (RW desaturation via torque rods)"
@@ -1021,20 +1020,21 @@ class SpacecraftEditorDialog(QDialog):
         )
         self.magnetic_momentum_management_group.setChecked(mmm0 is not None)
         mmm_form = QFormLayout(self.magnetic_momentum_management_group)
-        self.mmm_wheel_speed_biases_edit = QLineEdit(
-            # exact_number_text, not "{v:g}": that kept only 6 significant
-            # digits, so a plain open-then-OK rewrote 83.7758040957278 as 83.7758
-            ", ".join(exact_number_text(v) for v in mmm0.wheel_speed_biases_rad_s) if mmm0 else "0"
+        # One labelled box per reaction wheel (real user feedback: the old
+        # comma-separated list had to match the wheels' order by position,
+        # with nothing on screen showing which number was which wheel).
+        self.mmm_wheel_speed_biases = NumberListEditor(
+            unit="rad/s", minimum=-1.0e4, maximum=1.0e4, decimals=1,
+            empty_text="Add reaction wheels on the Sensors/actuators tab first.",
         )
-        self.mmm_wheel_speed_biases_edit.setPlaceholderText(
-            "e.g. 83.8, 62.8 (comma-separated, rad/s, one per reaction_wheel actuator)"
+        self.mmm_wheel_speed_biases.setToolTip(
+            "The speed this controller pulls each reaction wheel toward. One row per "
+            "'reaction_wheel' actuator on the Sensors/actuators tab."
         )
-        self.mmm_wheel_speed_biases_edit.setToolTip(
-            "The target speed this controller continuously pulls each reaction wheel toward -- "
-            "exactly ONE entry per 'reaction_wheel' actuator on the Sensors/actuators tab, in "
-            "the SAME order they're listed there (matched by position, not by name)."
-        )
-        mmm_form.addRow("Wheel speed biases [rad/s]", self.mmm_wheel_speed_biases_edit)
+        self._mmm_initial_biases = list(mmm0.wheel_speed_biases_rad_s) if mmm0 else []
+        self._refresh_wheel_bias_rows()
+        self.actuator_list.changed.connect(self._refresh_wheel_bias_rows)
+        mmm_form.addRow("Wheel speed biases", self.mmm_wheel_speed_biases)
         self.mmm_c_gain = _spin(1.0e-9, 1.0e6, decimals=6, step=0.001, value=mmm0.c_gain if mmm0 else 0.003)
         self.mmm_c_gain.setToolTip(
             "Control gain mapping each wheel's speed error (from its bias above) to a desired "
@@ -1568,19 +1568,23 @@ class SpacecraftEditorDialog(QDialog):
     def _magnetic_momentum_management_to_dataclass(self) -> MagneticMomentumManagementConfig | None:
         if not self.magnetic_momentum_management_group.isChecked():
             return None
-        raw = self.mmm_wheel_speed_biases_edit.text().strip()
-        try:
-            wheel_speed_biases_rad_s = [float(part.strip()) for part in raw.split(",") if part.strip()]
-        except ValueError as exc:
-            raise ScenarioValidationError(
-                f"Wheel speed biases must be comma-separated numbers (e.g. '83.8, 62.8'): {exc}"
-            ) from exc
+        wheel_speed_biases_rad_s = self.mmm_wheel_speed_biases.values()
         if not wheel_speed_biases_rad_s:
-            raise ScenarioValidationError("Wheel speed biases needs at least one number")
+            raise ScenarioValidationError(
+                "Magnetic momentum management needs at least one reaction wheel -- add one on the "
+                "Sensors/actuators tab"
+            )
         return MagneticMomentumManagementConfig(
             wheel_speed_biases_rad_s=wheel_speed_biases_rad_s,
             c_gain=self.mmm_c_gain.value(),
         )
+
+    def _refresh_wheel_bias_rows(self) -> None:
+        """One bias row per reaction wheel, in actuator-list order (the
+        order the engine matches biases by); values follow position."""
+        wheels = [a.name for a in self.actuator_list.to_list() if a.kind == "reaction_wheel"]
+        current = self.mmm_wheel_speed_biases.values() or self._mmm_initial_biases
+        self.mmm_wheel_speed_biases.set_rows(wheels, current)
 
     def _fuel_tank_to_dataclass(self) -> FuelTankConfig | None:
         if not self.fuel_tank_group.isChecked():
@@ -1600,15 +1604,7 @@ class SpacecraftEditorDialog(QDialog):
                 "phasing_keeping is enabled but no chief spacecraft is selectable -- add another "
                 "spacecraft to this scenario first, or uncheck 'Phasing keeping'"
             )
-        raw = self.pk_target_separation_edit.text().strip()
-        try:
-            target_separation_km = [float(part.strip()) for part in raw.split(",") if part.strip()]
-        except ValueError as exc:
-            raise ScenarioValidationError(
-                f"Target separation(s) must be comma-separated numbers (e.g. '1000, 500, 100'): {exc}"
-            ) from exc
-        if not target_separation_km:
-            raise ScenarioValidationError("Target separation(s) needs at least one number")
+        target_separation_km = self.pk_target_separations.values()
         return PhasingKeepingConfig(
             chief_spacecraft=chief,
             target_separation_km=target_separation_km,

@@ -6863,3 +6863,34 @@ The user sent four screenshots:
 * mode switching that keeps edits.
 
 The tests that assumed JSON boxes now use the form. The catalog test applies and validates all 39 entries through the dialog.
+
+## Typed lists replaced: wheel biases, separation stages, report series
+
+A follow-up check of every other editor found no more bullets-over-JSON boxes. It did find three fields where you had to know a hidden structure to type them; the user asked for all three to be fixed.
+
+**Wheel speed biases** (magnetic momentum management):
+* **Before.** A comma-separated list matched to the reaction wheels by position, with nothing showing which number belonged to which wheel.
+* **Now.** One labelled `rad/s` box per wheel, named after the wheel, in the actuator-list order the engine uses.
+* **Kept in step.** Adding or removing a wheel on the Sensors/actuators tab adds or removes its row (new wheels start at 0).
+* **No wheels.** The group says so, and OK explains that a reaction wheel is needed.
+* **Shared widget.** This uses the new `gui/number_list.NumberListEditor`.
+
+**Target separation** (phasing keeping):
+* **Before.** A comma-separated km list.
+* **Now.** Numbered stages ("Stage 1", "Stage 2", …), each a km box with Remove, plus "Add stage"; the last stage can't be removed. It uses the same widget.
+
+**Report command series** (mission sequence):
+* **Before.** Typed one per line from memory, where a single typo stopped the run.
+* **Now.** A checkable list of the series this scenario will produce, with a filter and "Clear selection". Nothing ticked still means "every series".
+* **Unknown names.** A saved name the scenario doesn't produce is kept, so open + OK changes nothing, but it is shown in red with "(not produced by this scenario)".
+* **Where the list comes from.** A new Basilisk-free `engine/series_names.expected_series_names()` mirrors the engine's own rules for which series exist.
+  * **Checked against a real run.** For template 05 it matches the user's own exported results exactly (40 series).
+  * **Basilisk check.** A new `requires_basilisk` test compares it with a shortened real run of every template. It could not run here, because the SPICE kernels aren't cached in this container.
+* **Half-edited scenarios.** The scenario editor feeds the list from an unvalidated draft, so it works mid-edit.
+
+**Tests.**
+* Per-wheel rows follow the actuator list, including the no-wheel case.
+* Separation stages add and remove, and never go below one.
+* The report list ticks, filters and clears, and keeps and flags an unknown series.
+* The series prediction is checked for templates 05, 07 and 19, plus the real-run comparison above.
+* The tests that typed comma lists now use the new widgets.
