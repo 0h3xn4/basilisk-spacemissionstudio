@@ -35,14 +35,17 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QDoubleSpinBox,
     QFormLayout,
+    QHBoxLayout,
     QLabel,
     QLineEdit,
     QMessageBox,
+    QPushButton,
     QSpinBox,
     QVBoxLayout,
 )
 
-from ..engine.constellation import WALKER_PATTERNS, WalkerConstellationRequest
+from ..engine.constellation import CENTRAL_BODY_EQUATORIAL_RADIUS_KM, WALKER_PATTERNS, WalkerConstellationRequest
+from ..engine.orbit_design import sun_synchronous_inclination_deg
 from ..schema.scenario import ScenarioValidationError
 from .widgets import PreciseDoubleSpinBox
 
@@ -126,7 +129,15 @@ class WalkerConstellationDialog(QDialog):
         form.addRow("Number of planes (P)", self.num_planes)
         form.addRow("Phasing factor (F)", self.phasing_factor)
         form.addRow("Altitude [km]", self.altitude_km)
-        form.addRow("Inclination [deg]", self.inclination_deg)
+        inclination_row = QHBoxLayout()
+        inclination_row.addWidget(self.inclination_deg, 1)
+        self.sun_sync_button = QPushButton("Sun-synchronous")
+        self.sun_sync_button.setToolTip("Set the inclination that makes this altitude/eccentricity "
+                                        "Sun-synchronous (Earth only, J2).")
+        self.sun_sync_button.clicked.connect(self._on_sun_synchronous)
+        self.sun_sync_button.setEnabled(central_body == "earth")
+        inclination_row.addWidget(self.sun_sync_button)
+        form.addRow("Inclination [deg]", inclination_row)
         form.addRow("Eccentricity [-]", self.eccentricity)
         form.addRow("Argument of periapsis [deg]", self.arg_periapsis_deg)
         form.addRow("Pattern", self.pattern_combo)
@@ -158,6 +169,14 @@ class WalkerConstellationDialog(QDialog):
             QMessageBox.critical(self, "Invalid constellation request", str(exc))
             return
         self.accept()
+
+    def _on_sun_synchronous(self) -> None:
+        semi_major_axis_km = CENTRAL_BODY_EQUATORIAL_RADIUS_KM["earth"] + self.altitude_km.value()
+        try:
+            self.inclination_deg.setValue(
+                sun_synchronous_inclination_deg(semi_major_axis_km, self.eccentricity.value()))
+        except ValueError as exc:  # too high an orbit to be Sun-synchronous
+            QMessageBox.warning(self, "No Sun-synchronous inclination", str(exc))
 
     def to_request(self) -> WalkerConstellationRequest:
         request = WalkerConstellationRequest(

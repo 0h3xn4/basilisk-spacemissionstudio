@@ -49,8 +49,9 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from ..engine.constellation import CENTRAL_BODY_EQUATORIAL_RADIUS_KM
 from ..engine.formation import PhasingFormationRequest
-from ..schema.scenario import ScenarioValidationError
+from ..schema.scenario import ScenarioValidationError, SpacecraftConfig, StationKeepingConfig
 from .widgets import PreciseDoubleSpinBox
 
 
@@ -79,17 +80,19 @@ class PhasingFormationDialog(QDialog):
     combo), same reasoning as that dialog's own central-body display.
     """
 
-    def __init__(self, spacecraft_names: list[str], central_body: str = "earth", parent=None):
+    def __init__(self, spacecraft_names: list[str], central_body: str = "earth", parent=None,
+                 spacecraft: list[SpacecraftConfig] | None = None):
         super().__init__(parent)
         self.setWindowTitle("Generate phasing formation")
         self._central_body = central_body
+        # The scenario's spacecraft (optional), so the chief's own
+        # station-keeping can be shown and set here too.
+        self._spacecraft = {config.name: config for config in (spacecraft or [])}
 
         layout = QVBoxLayout(self)
         description_label = QLabel(
-            "Generates a new follower spacecraft that holds a target along-track separation from an "
-            "existing chief spacecraft (schema.scenario.PhasingKeepingConfig), from a Radial/Transverse/"
-            "Normal (Hill-frame) offset at epoch -- see the Radial/Cross-track fields' own tooltips for an "
-            "important limitation. Added to (not replacing) this scenario's spacecraft list."
+            "Adds a follower spacecraft that holds a set along-track distance ahead of the chief. "
+            "Hover any field for details."
         )
         # Real bug, from a real user screenshot: without word-wrap, Qt
         # sizes this QLabel (and so the whole dialog) to fit this entire
@@ -106,9 +109,35 @@ class PhasingFormationDialog(QDialog):
         # to which controller.
         spacecraft_group, spacecraft_form = _form_group("Spacecraft")
         offset_group, offset_form = _form_group("Initial offset at epoch (Hill frame)")
-        propulsion_group, propulsion_form = _form_group("Propulsion")
-        station_group, station_form = _form_group("Station-keeping (altitude hold)")
-        phasing_group, phasing_form = _form_group("Phasing-keeping (separation hold)")
+        propulsion_group, propulsion_form = _form_group("Follower propulsion")
+        station_group, station_form = _form_group("Follower station-keeping (mirrors the chief)")
+        phasing_group, phasing_form = _form_group("Follower phasing (separation hold)")
+        # The chief's own parameters (real user feedback: the generator
+        # couldn't set anything on the chief). The follower's
+        # station-keeping mirrors the chief's reboosts, so the chief's
+        # station-keeping is part of the formation's design.
+        self.chief_group, chief_form = _form_group("Chief station-keeping (altitude hold)")
+        self.chief_group.setCheckable(True)
+        self.chief_group.setToolTip(
+            "The chief's own altitude hold. The follower mirrors the chief's reboosts, so the pair "
+            "stay matched. Unchecked: the chief has no station-keeping, and both decay together."
+        )
+        self.chief_target_altitude_km = _double_spin(0.001, 1.0e6, 3, 10.0, 550.0)
+        self.chief_deadband_km = _double_spin(1e-6, 1.0e5, 3, 0.5, 15.0)
+        self.chief_thrust_n = _double_spin(1e-6, 1000.0, 6, 0.01, 0.05)
+        self.chief_isp_s = _double_spin(1.0, 1.0e5, 1, 10.0, 1500.0)
+        self.chief_propellant_kg = _double_spin(0.0, 1.0e6, 3, 1.0, 5.0)
+        self.chief_min_on_time_s = _double_spin(0.0, 86400.0, 1, 10.0, 0.0)
+        self.chief_eclipse_sunlit_threshold = _double_spin(0.001, 1.0, 4, 0.01, 0.99)
+        self.chief_eccentricity_neutral_check = QCheckBox("Eccentricity-neutral burns")
+        chief_form.addRow("Target altitude [km]", self.chief_target_altitude_km)
+        chief_form.addRow("Deadband [km]", self.chief_deadband_km)
+        chief_form.addRow("Thruster thrust [N]", self.chief_thrust_n)
+        chief_form.addRow("Thruster Isp [s]", self.chief_isp_s)
+        chief_form.addRow("Propellant [kg]", self.chief_propellant_kg)
+        chief_form.addRow("Minimum on-time [s]", self.chief_min_on_time_s)
+        chief_form.addRow("Eclipse sunlit threshold [-]", self.chief_eclipse_sunlit_threshold)
+        chief_form.addRow(self.chief_eccentricity_neutral_check)
 
         spacecraft_form.addRow("Central body", QLabel(central_body))
 
@@ -235,13 +264,18 @@ class PhasingFormationDialog(QDialog):
         right_column = QVBoxLayout()
         for group in (spacecraft_group, offset_group, propulsion_group):
             left_column.addWidget(group)
-        for group in (station_group, phasing_group):
+        for group in (self.chief_group, station_group, phasing_group):
             right_column.addWidget(group)
         left_column.addStretch(1)
         right_column.addStretch(1)
         columns.addLayout(left_column, 1)
         columns.addLayout(right_column, 1)
         layout.addLayout(columns)
+
+        self.chief_combo.currentIndexChanged.connect(self._load_chief_station_keeping)
+        self._load_chief_station_keeping()
+        if not self._spacecraft:
+            self.chief_group.setVisible(False)  # no spacecraft details given: nothing to show or set
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self._on_accept)
@@ -256,9 +290,53 @@ class PhasingFormationDialog(QDialog):
         # 497x601 sizeHint.
         self.resize(self.sizeHint())
 
+    def _load_chief_station_keeping(self) -> None:
+        """Prefill the chief section from the selected chief's own
+        station-keeping (checked), or sensible defaults (unchecked) --
+        its target altitude from the chief's orbit."""
+        chief = self._spacecraft.get(self.chief_combo.currentData())
+        if chief is None:
+            return
+        config = chief.station_keeping
+        self.chief_group.setChecked(config is not None)
+        if config is None:
+            orbit = chief.orbit
+            radius_km = CENTRAL_BODY_EQUATORIAL_RADIUS_KM.get(self._central_body)
+            altitude = (orbit.semi_major_axis_km - radius_km  # [km]
+                        if radius_km and orbit.type == "classical_elements" and orbit.semi_major_axis_km
+                        else 550.0)  # [km]
+            config = StationKeepingConfig(target_altitude_km=max(altitude, 1.0), deadband_km=15.0,  # [km]
+                                          thrust_n=0.05, isp_s=1500.0, propellant_kg=5.0)  # [N], [s], [kg]
+        self.chief_target_altitude_km.setValue(config.target_altitude_km)
+        self.chief_deadband_km.setValue(config.deadband_km)
+        self.chief_thrust_n.setValue(config.thrust_n)
+        self.chief_isp_s.setValue(config.isp_s)
+        self.chief_propellant_kg.setValue(config.propellant_kg)
+        self.chief_min_on_time_s.setValue(config.min_on_time_s)
+        self.chief_eclipse_sunlit_threshold.setValue(config.eclipse_sunlit_threshold)
+        self.chief_eccentricity_neutral_check.setChecked(config.eccentricity_neutral_burns)
+
+    def chief_station_keeping(self) -> StationKeepingConfig | None:
+        """The chief's station-keeping as set here (None = none). Only
+        meaningful when the dialog was given the scenario's spacecraft."""
+        if not self.chief_group.isChecked():
+            return None
+        return StationKeepingConfig(
+            target_altitude_km=self.chief_target_altitude_km.value(),
+            deadband_km=self.chief_deadband_km.value(),
+            thrust_n=self.chief_thrust_n.value(),
+            isp_s=self.chief_isp_s.value(),
+            propellant_kg=self.chief_propellant_kg.value(),
+            eclipse_sunlit_threshold=self.chief_eclipse_sunlit_threshold.value(),
+            min_on_time_s=self.chief_min_on_time_s.value(),
+            eccentricity_neutral_burns=self.chief_eccentricity_neutral_check.isChecked(),
+        )
+
     def _on_accept(self) -> None:
         try:
             self.to_request()
+            if self._spacecraft and self.chief_station_keeping() is not None:
+                self.chief_station_keeping().validate(self.chief_combo.currentData() or "chief")
         except ScenarioValidationError as exc:
             QMessageBox.critical(self, "Invalid phasing formation request", str(exc))
             return

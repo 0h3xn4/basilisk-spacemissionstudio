@@ -188,3 +188,33 @@ def test_dialog_defaults_match_the_generator_request_defaults(qtbot):
     qtbot.addWidget(dialog)
     defaults = {f.name: f.default for f in dataclasses.fields(PhasingFormationRequest)}
     assert dialog.correction_window_days.value() == defaults["correction_window_days"]
+
+
+def test_chief_station_keeping_is_shown_and_set_from_the_dialog(qtbot):
+    """Real user feedback: the generator couldn't set anything on the
+    chief. Its station-keeping is prefilled from the selected chief, and
+    whatever the user sets (or unchecks) is returned for the chief."""
+    from spacemissionstudio.gui.phasing_formation_dialog import PhasingFormationDialog
+    from spacemissionstudio.schema.scenario import OrbitIC, SpacecraftConfig, StationKeepingConfig
+
+    orbit = OrbitIC(type="classical_elements", semi_major_axis_km=6928.0, eccentricity=0.001,
+                    inclination_deg=97.6, raan_deg=0.0, arg_periapsis_deg=0.0, true_anomaly_deg=0.0)
+    chief = SpacecraftConfig(name="chief-1", orbit=orbit,
+                             station_keeping=StationKeepingConfig(target_altitude_km=545.0, deadband_km=7.0, thrust_n=0.05,
+                                                                  isp_s=1500.0, propellant_kg=5.0))
+    bare = SpacecraftConfig(name="bare-1", orbit=orbit)
+    dialog = PhasingFormationDialog(["chief-1", "bare-1"], parent=None, spacecraft=[chief, bare])
+    qtbot.addWidget(dialog)
+
+    assert dialog.chief_group.isChecked()
+    assert dialog.chief_deadband_km.value() == 7.0  # [km]
+    dialog.chief_deadband_km.setValue(3.0)  # [km]
+    dialog.chief_eccentricity_neutral_check.setChecked(True)
+    result = dialog.chief_station_keeping()
+    assert result.deadband_km == 3.0 and result.target_altitude_km == 545.0
+    assert result.eccentricity_neutral_burns is True
+
+    dialog.chief_combo.setCurrentIndex(1)  # a chief with no station-keeping yet
+    assert not dialog.chief_group.isChecked()
+    assert dialog.chief_target_altitude_km.value() == pytest.approx(6928.0 - 6378.1366)  # [km] from its orbit
+    assert dialog.chief_station_keeping() is None

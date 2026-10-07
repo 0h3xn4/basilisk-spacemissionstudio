@@ -1840,7 +1840,8 @@ class SpacecraftListWidget(QWidget):
         from .phasing_formation_dialog import PhasingFormationDialog
 
         central_body = self._central_body_provider() if self._central_body_provider else "earth"
-        dialog = PhasingFormationDialog([c.name for c in self._configs], central_body=central_body, parent=self)
+        dialog = PhasingFormationDialog([c.name for c in self._configs], central_body=central_body, parent=self,
+                                        spacecraft=self._configs)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
 
@@ -1875,6 +1876,7 @@ class SpacecraftListWidget(QWidget):
             QMessageBox.critical(self, "Cannot generate phasing formation", str(exc))
             return
 
+        chief.station_keeping = dialog.chief_station_keeping()  # the chief section of the dialog
         self._configs.append(follower)
         self._refresh_list()
         self.list_widget.setCurrentRow(len(self._configs) - 1)
