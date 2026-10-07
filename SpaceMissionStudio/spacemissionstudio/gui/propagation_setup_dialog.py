@@ -438,6 +438,23 @@ class PropagationSetupDialog(QDialog):
         )
         form.addRow("Worst-case percentile", self.activity_percentile_spin)
 
+        # cache_dir: internal-infra override, not a mission-design knob --
+        # see SpaceWeatherConfig.cache_dir's own comment. Blank (the
+        # common case) keeps the None default, which lets
+        # engine.spaceweather pick its own cache directory. Rarely
+        # needed; included here only so a value already set on a
+        # hand-edited scenario round-trips instead of being silently
+        # dropped on save (same reasoning as every other optional field
+        # in this dialog).
+        self.cache_dir_edit = QLineEdit(space_weather.cache_dir or "")
+        self.cache_dir_edit.setPlaceholderText("(default: engine.spaceweather's own cache directory)")
+        self.cache_dir_edit.setToolTip(
+            "Overrides where engine.spaceweather caches fetched space-weather data on disk. "
+            "Rarely needed -- leave blank unless you specifically need a non-default cache "
+            "location (e.g. a read-only home directory)."
+        )
+        form.addRow("Cache directory (advanced, rarely needed)", self.cache_dir_edit)
+
         self._on_atmosphere_model_changed(self.atmosphere_model_combo.currentIndex())
         self._on_space_weather_source_changed(self.space_weather_source_combo.currentText())
         self._on_activity_level_changed(self.activity_level_combo.currentIndex())
@@ -498,6 +515,7 @@ class PropagationSetupDialog(QDialog):
         return SpaceWeatherConfig(
             source=self.space_weather_source_combo.currentText(),
             local_file_path=self.local_file_edit.text().strip() or None,
+            cache_dir=self.cache_dir_edit.text().strip() or None,
             atmosphere_model=self._selected_atmosphere_model(),
             activity_level=self._selected_activity_level(),
             activity_percentile=self.activity_percentile_spin.value(),

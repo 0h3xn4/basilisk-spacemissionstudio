@@ -35,6 +35,7 @@ Generate -- see ``spacecraft_editor.py``'s ``_on_generate_phasing_formation``.
 from __future__ import annotations
 
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -152,6 +153,39 @@ class PhasingFormationDialog(QDialog):
         form.addRow("Propellant available [kg]", self.propellant_kg)
         form.addRow("Station-keeping deadband [km]", self.deadband_km)
 
+        # station_keeping_target_altitude_km: None (the checkbox below
+        # CHECKED, the default) derives this from the chief's own current
+        # altitude at generation time -- the common case, per
+        # PhasingFormationRequest's own docstring ("just the same altitude
+        # the chief is already at"). Unchecking it reveals a spin box for
+        # an explicit value instead.
+        self.derive_altitude_check = QCheckBox("Derive from chief's own altitude")
+        self.derive_altitude_check.setChecked(True)
+        self.derive_altitude_check.setToolTip(
+            "Checked (the common case): the new follower's station-keeping target altitude is read "
+            "from the chief spacecraft's own current altitude when Generate is clicked, rather than "
+            "asking for a value that would usually just repeat it. Uncheck to set an explicit target "
+            "altitude instead."
+        )
+        self.derive_altitude_check.toggled.connect(lambda checked: self.station_keeping_target_altitude_km
+                                                     .setEnabled(not checked))
+        form.addRow("Station-keeping target altitude", self.derive_altitude_check)
+        self.station_keeping_target_altitude_km = _double_spin(0.001, 1.0e6, 3, 10.0, 500.0)
+        self.station_keeping_target_altitude_km.setEnabled(False)
+        self.station_keeping_target_altitude_km.setToolTip(
+            "Explicit station-keeping target altitude for the new follower -- only used while the "
+            "checkbox above is OFF."
+        )
+        form.addRow("Target altitude [km] (if not derived above)", self.station_keeping_target_altitude_km)
+        self.eclipse_sunlit_threshold = _double_spin(0.001, 1.0, 4, 0.01, 0.99)
+        self.eclipse_sunlit_threshold.setToolTip(
+            "The real simulated shadow (eclipse) factor must be at or above this before a reboost "
+            "burn is allowed to fire -- a stand-in for a solar-electric bus that can't run its "
+            "thruster off battery alone during eclipse. 1.0 = must be in full sunlight; lower values "
+            "tolerate partial shadow (e.g. penumbra)."
+        )
+        form.addRow("Eclipse sunlit threshold [-]", self.eclipse_sunlit_threshold)
+
         self.reconfiguration_interval_days = _double_spin(0.0, 1.0e5, 2, 1.0, 90.0)
         self.tolerance_fraction = _double_spin(1e-6, 10.0, 4, 0.01, 0.10)
         self.restore_tolerance_fraction = _double_spin(1e-6, 10.0, 4, 0.01, 0.02)
@@ -204,10 +238,14 @@ class PhasingFormationDialog(QDialog):
             correction_window_days=self.correction_window_days.value(),
             max_drift_days=self.max_drift_days.value(),
             max_delta_semi_major_axis_km=self.max_delta_sma_km.value(),
+            station_keeping_target_altitude_km=(
+                None if self.derive_altitude_check.isChecked() else self.station_keeping_target_altitude_km.value()
+            ),
             station_keeping_deadband_km=self.deadband_km.value(),
             thrust_n=self.thrust_n.value(),
             isp_s=self.isp_s.value(),
             propellant_kg=self.propellant_kg.value(),
+            eclipse_sunlit_threshold=self.eclipse_sunlit_threshold.value(),
         )
         request.validate()  # raises ScenarioValidationError with a specific message on anything bad
         return request

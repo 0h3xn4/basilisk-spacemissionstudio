@@ -48,6 +48,41 @@ def test_defaults_produce_a_valid_request(qtbot):
     assert dialog.selected_chief_name() == "chief-1"
     assert dialog.selected_template_name() == "chief-1"
     assert request.along_track_km != 0.0
+    assert request.station_keeping_target_altitude_km is None  # "derive" checkbox defaults checked
+    assert request.eclipse_sunlit_threshold == 0.99
+
+
+def test_station_keeping_target_altitude_defaults_to_disabled_spin_box(qtbot):
+    from spacemissionstudio.gui.phasing_formation_dialog import PhasingFormationDialog
+
+    dialog = PhasingFormationDialog(["chief-1"])
+    qtbot.addWidget(dialog)
+    assert dialog.derive_altitude_check.isChecked()
+    assert not dialog.station_keeping_target_altitude_km.isEnabled()
+
+
+def test_unchecking_derive_altitude_enables_spin_box_and_is_used(qtbot):
+    from spacemissionstudio.gui.phasing_formation_dialog import PhasingFormationDialog
+
+    dialog = PhasingFormationDialog(["chief-1"])
+    qtbot.addWidget(dialog)
+    dialog.derive_altitude_check.setChecked(False)
+    assert dialog.station_keeping_target_altitude_km.isEnabled()
+    dialog.station_keeping_target_altitude_km.setValue(650.0)
+
+    request = dialog.to_request()
+    assert request.station_keeping_target_altitude_km == 650.0
+
+
+def test_editing_eclipse_sunlit_threshold_updates_request(qtbot):
+    from spacemissionstudio.gui.phasing_formation_dialog import PhasingFormationDialog
+
+    dialog = PhasingFormationDialog(["chief-1"])
+    qtbot.addWidget(dialog)
+    dialog.eclipse_sunlit_threshold.setValue(0.9)
+
+    request = dialog.to_request()
+    assert request.eclipse_sunlit_threshold == 0.9
 
 
 def test_central_body_is_not_independently_selectable(qtbot):

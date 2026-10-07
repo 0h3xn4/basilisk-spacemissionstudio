@@ -112,6 +112,24 @@ def test_defaults_round_trip(dialog):
     assert got_sw == SpaceWeatherConfig()
 
 
+def test_cache_dir_round_trips(qtbot):
+    """Regression test for a real gap found by audit: cache_dir had no
+    editor at all, so a hand-edited scenario that already set it would
+    silently lose it on save through this dialog.
+    """
+    from spacemissionstudio.schema.scenario import SpaceWeatherConfig
+
+    d = _dialog(space_weather=SpaceWeatherConfig(cache_dir="/tmp/custom-sw-cache"))
+    qtbot.addWidget(d)
+    assert d.cache_dir_edit.text() == "/tmp/custom-sw-cache"
+    assert d.to_space_weather().cache_dir == "/tmp/custom-sw-cache"
+
+
+def test_cache_dir_blank_stays_none(dialog):
+    assert dialog.cache_dir_edit.text() == ""
+    assert dialog.to_space_weather().cache_dir is None
+
+
 def test_central_body_removed_from_third_body_choices(dialog):
     dialog.central_body_combo.setCurrentText("sun")
     choices = [dialog.third_body_list.item(i).text() for i in range(dialog.third_body_list.count())]
