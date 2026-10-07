@@ -18,8 +18,10 @@
 
 """Turns a :class:`schema.scenario.Scenario` into a short, STRUCTURED
 "recipe" summary (:func:`explain` -> :class:`ScenarioExplanation`) the
-GUI renders as stat tiles / colored badges / a per-spacecraft table --
-never as prose. Basilisk-free, independently-testable (same precedent as
+GUI renders as stat tiles / colored badges / a per-spacecraft table /
+a formation-geometry diagram (:class:`FormationDiagram`, drawn by
+``gui.formation_diagram_widget.FormationDiagramWidget``) -- never as
+prose. Basilisk-free, independently-testable (same precedent as
 :mod:`engine.constellation`'s own docstring describes about itself).
 
 This is the "what is this scenario actually doing, at a glance" layer a
@@ -93,11 +95,34 @@ class ExplanationSection:
 
 
 @dataclass
+class FormationDiagram:
+    """Everything a along-track phasing-keeping diagram needs to depict
+    the real control mechanism -- a target separation held within a
+    hysteresis band, not just the two names involved. Deliberately holds
+    only ``PhasingKeepingConfig`` fields that are already fixed at
+    scenario-design time (no live telemetry -- that's
+    ``mission_dashboard_widget``'s job, which needs an actual run):
+    ``target_separation_km`` is the FIRST entry of a schedule (the
+    initial/current target); ``tolerance_fraction`` is the outer "trigger
+    a correction" band, ``restore_tolerance_fraction`` the inner,
+    tighter "stop correcting, settled" band -- together they're the
+    actual deadband/hysteresis control law, not just one number.
+    """
+
+    chief_name: str
+    follower_name: str
+    target_separation_km: float
+    tolerance_fraction: float
+    restore_tolerance_fraction: float
+
+
+@dataclass
 class ScenarioExplanation:
     headline: str
     stat_tiles: List[StatTile] = field(default_factory=list)
     sections: List[ExplanationSection] = field(default_factory=list)
     spacecraft_table: List[SpacecraftFactRow] = field(default_factory=list)  # empty if < 2 spacecraft
+    formation_diagrams: List[FormationDiagram] = field(default_factory=list)  # one per phasing_keeping spacecraft
 
 
 def _is_sun_synchronous(orbit) -> bool:
@@ -238,6 +263,22 @@ def _ground_stations_section(scenario) -> ExplanationSection | None:
     )
 
 
+def _formation_diagrams(scenario) -> List[FormationDiagram]:
+    diagrams = []
+    for sc in scenario.spacecraft:
+        pk = sc.phasing_keeping
+        if pk is None or not pk.target_separation_km:
+            continue
+        diagrams.append(FormationDiagram(
+            chief_name=pk.chief_spacecraft,
+            follower_name=sc.name,
+            target_separation_km=pk.target_separation_km[0],
+            tolerance_fraction=pk.tolerance_fraction,
+            restore_tolerance_fraction=pk.restore_tolerance_fraction,
+        ))
+    return diagrams
+
+
 def _monte_carlo_section(scenario) -> ExplanationSection | None:
     mc = scenario.monte_carlo
     if not mc.enabled:
@@ -298,4 +339,5 @@ def _explain(scenario) -> ScenarioExplanation:
         stat_tiles=stat_tiles,
         sections=sections,
         spacecraft_table=spacecraft_table,
+        formation_diagrams=_formation_diagrams(scenario),
     )

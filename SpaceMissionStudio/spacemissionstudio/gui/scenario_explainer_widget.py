@@ -51,7 +51,10 @@ from PySide6.QtWidgets import (
 from ..engine.scenario_explainer import ScenarioExplanation, explain
 from ..schema.scenario import Scenario
 from .badges import ACCENT, DANGER, MUTED, SUCCESS, WARNING, badge_style
+from .formation_diagram_widget import FormationDiagramWidget
 from .theme import PALETTE
+
+_FORMATION_SECTION_TITLE = "Formation / orbit maintenance"
 
 _BADGE_KIND_COLORS = {
     "neutral": MUTED,
@@ -198,6 +201,17 @@ class ScenarioExplainerWidget(QWidget):
                 note_label.setWordWrap(True)
                 note_label.setStyleSheet(f"color: {PALETTE['text_muted']};")
                 section_layout.addWidget(note_label)
+
+            # The formation-geometry diagram(s) belong right alongside the
+            # section whose badges they illustrate -- "Station-keeping"/
+            # "Phasing-keeping" badges name the mechanism, the diagram
+            # depicts it (per the dataviz skill's own "depict the
+            # mechanism, not its name" guidance, and direct user feedback
+            # that an earlier badges-only design still lacked "depth of
+            # information").
+            if section.title == _FORMATION_SECTION_TITLE:
+                for diagram in explanation.formation_diagrams:
+                    section_layout.addWidget(FormationDiagramWidget(diagram))
 
             self._sections_layout.addWidget(section_widget)
 

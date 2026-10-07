@@ -74,6 +74,44 @@ def test_rich_scenario_renders_tiles_badges_and_table(qtbot):
     assert widget._table.rowCount() == 2
 
 
+def test_rich_scenario_renders_a_formation_diagram(qtbot):
+    from spacemissionstudio.gui.formation_diagram_widget import FormationDiagramWidget
+    from spacemissionstudio.gui.scenario_explainer_widget import ScenarioExplainerWidget
+
+    widget = ScenarioExplainerWidget()
+    qtbot.addWidget(widget)
+    widget.set_scenario(_rich_scenario())
+
+    diagrams = widget.findChildren(FormationDiagramWidget)
+    assert len(diagrams) == 1
+    assert diagrams[0].height() > 0  # it was actually given a diagram, not left empty
+
+
+def test_trivial_scenario_has_no_formation_diagram(qtbot):
+    from spacemissionstudio.gui.formation_diagram_widget import FormationDiagramWidget
+    from spacemissionstudio.gui.scenario_explainer_widget import ScenarioExplainerWidget
+
+    widget = ScenarioExplainerWidget()
+    qtbot.addWidget(widget)
+    widget.set_scenario(_trivial_scenario())
+
+    assert widget.findChildren(FormationDiagramWidget) == []
+
+
+def test_switching_from_rich_to_trivial_removes_the_formation_diagram(qtbot):
+    from spacemissionstudio.gui.formation_diagram_widget import FormationDiagramWidget
+    from spacemissionstudio.gui.scenario_explainer_widget import ScenarioExplainerWidget
+
+    widget = ScenarioExplainerWidget()
+    qtbot.addWidget(widget)
+    widget.set_scenario(_rich_scenario())
+    assert len(widget.findChildren(FormationDiagramWidget)) == 1
+
+    widget.set_scenario(_trivial_scenario())
+    qtbot.wait(10)  # deleteLater() is deferred to the next event loop pass, not immediate
+    assert widget.findChildren(FormationDiagramWidget) == []
+
+
 def test_trivial_scenario_renders_no_table_and_fewer_badges_than_rich(qtbot):
     from spacemissionstudio.gui.scenario_explainer_widget import ScenarioExplainerWidget
 

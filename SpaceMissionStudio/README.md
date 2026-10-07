@@ -471,6 +471,7 @@ SpaceMissionStudio/
       results_widget.py              -- Plotly results plot (QWebEngineView) + CSV export + save-plot-as-PNG
       mission_dashboard_widget.py    -- "Mission Dashboard" tab: live operating-state/attitude/power/RF-link telemetry for a comms_pointing spacecraft
       scenario_explainer_widget.py   -- "Explain" tab: renders engine/scenario_explainer.py's output as stat tiles/badges/a per-spacecraft table, live-updated from ScenarioEditorWidget.changed
+      formation_diagram_widget.py    -- QPainter-drawn along-track formation-geometry diagram (target separation + trigger/restore tolerance bands) for the Explain tab
       run_worker.py                  -- SimulationService/Monte Carlo on a background QThread
     scenarios/
       two_body_validation.json       -- the Phase 0 validation scenario

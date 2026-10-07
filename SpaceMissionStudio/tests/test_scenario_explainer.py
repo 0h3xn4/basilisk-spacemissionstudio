@@ -116,6 +116,37 @@ def test_template_05_shaped_chief_follower_pair_produces_spacecraft_table():
     assert "Phasing-keeping" in badge_labels
     assert formation_section.notes == []  # both spacecraft DO have station_keeping -- no warning note
 
+    assert len(explanation.formation_diagrams) == 1
+    diagram = explanation.formation_diagrams[0]
+    assert diagram.chief_name == "chief-1"
+    assert diagram.follower_name == "follower-1"
+    assert diagram.target_separation_km == 50.0
+    assert diagram.tolerance_fraction == 0.10
+    assert diagram.restore_tolerance_fraction == 0.02
+
+
+def test_formation_diagram_uses_the_first_entry_of_a_multi_step_schedule():
+    chief = SpacecraftConfig(name="chief-1", orbit=OrbitIC(
+        type="classical_elements", semi_major_axis_km=6928.0, eccentricity=0.001,
+        inclination_deg=97.59, raan_deg=0.0, arg_periapsis_deg=0.0, true_anomaly_deg=0.0))
+    follower = SpacecraftConfig(
+        name="follower-1",
+        orbit=OrbitIC(type="classical_elements", semi_major_axis_km=6928.0, eccentricity=0.001,
+                       inclination_deg=97.59, raan_deg=0.0, arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
+        phasing_keeping=PhasingKeepingConfig(chief_spacecraft="chief-1", target_separation_km=[1000.0, 500.0, 100.0]),
+    )
+    scenario = Scenario(name="constellation", epoch_utc="2030-01-01T00:00:00", spacecraft=[chief, follower])
+
+    explanation = explain(scenario)
+    assert len(explanation.formation_diagrams) == 1
+    assert explanation.formation_diagrams[0].target_separation_km == 1000.0  # the FIRST (current) step
+
+
+def test_no_formation_diagram_without_phasing_keeping():
+    scenario = _single_spacecraft_scenario()
+    explanation = explain(scenario)
+    assert explanation.formation_diagrams == []
+
 
 def test_phasing_keeping_without_station_keeping_surfaces_a_note():
     chief = SpacecraftConfig(name="chief-1", orbit=OrbitIC(
