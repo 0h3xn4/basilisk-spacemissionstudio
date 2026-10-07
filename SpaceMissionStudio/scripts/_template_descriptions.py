@@ -284,8 +284,11 @@ Note:
 leo-comms-1 points its solar panel at the Sun, and slews its antenna to the Berlin ground station whenever \
 the station is in view, then back. Power and the radio link follow what actually happens.
 
-What to look at, across one pass:
-- berlin-gs.access_to_leo-comms-1.has_access: the pass itself.
+The run starts at 08:30 UTC, just before Berlin passes under the orbit: a high pass (about 60 deg) \
+around 10-18 min in, and a low one (about 15 deg) one orbit later, around 107-112 min in.
+
+What to look at, across each pass:
+- berlin-gs.access_to_leo-comms-1.has_access: the passes themselves.
 - leo-comms-1.comms_pointing.active_mode: 1 during the pass.
 - leo-comms-1.comms_pointing.pointing_error_deg: large at the switch, then settling.
 - leo-comms-1.battery_charge: dips while transmitting.
@@ -295,7 +298,7 @@ elevation, empty outside passes.
 Try changing:
 - The station's minimum elevation.
 - Antenna beamwidth: narrower makes pointing error matter more.
-- Comms power, or the duration (more passes, larger results).
+- Comms power, or the duration (Berlin's next passes come about 13 h later, around 23:00 local time).
 
 Limitations:
 - The link budget uses a simplified antenna pattern, not Basilisk's antenna and link-budget modules.""",

@@ -1237,10 +1237,11 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
                 intro='Longer runs show more passes but record more data.',
                 fields=[
                     WizardField(
-                        "Duration", "Total simulated time.",
-                        lambda s: s.sim_settings.duration_days,
-                        lambda s, v: setattr(s.sim_settings, "duration_days", v),
-                        0.1, 14.0, decimals=2, step=0.1, suffix=" days",
+                        "Duration", "Total simulated time. Berlin's next passes come about 13 h after the first two.",
+                        lambda s: s.sim_settings.duration_days * 24.0,
+                        lambda s, v: setattr(s.sim_settings, "duration_days", v / 24.0),
+                        0.5, 336.0, decimals=2, step=0.25, suffix=" h",
+                        hint="Next Berlin passes come about 13 h later",
                     ),
                 ],
             ),

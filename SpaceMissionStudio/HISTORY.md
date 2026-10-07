@@ -7236,3 +7236,24 @@ This follows up the 03 finding in the entry above. The user chose to recast the 
 * **Template 18.** Its comparison line now reads "compare 03, where at GEO the thruster never fires".
 * **Customize wizard.** The 03 intro is now "The altitude-hold thruster. At GEO it only fires with a deadband below about 1 km."
 * **Catalog README.** The 03 and 18 rows now state the contrast, noting that it comes from the offline model and is not yet confirmed in a Basilisk run.
+
+## Template 19: ground-station contact at the start of the run
+
+**Problem.** Real user report on template 19 (Sun pointing plus a Berlin downlink): "there's never ground station contact between the satellite and the ground station".
+
+**Cause.** The orbit was fine; the start time was wrong for it. A Sun-synchronous orbit crosses a given latitude only at two fixed local solar times. For this 10:30-LTAN orbit, Berlin (52.5 N) passes under it around 09:50 and 23:10 local time. The template started at midnight UTC (00:50 in Berlin), so the first pass came about 8.2 h into its 12 h run. With a 0.1 s attitude step, that is most of a long run with nothing to see. The generator's own comment had assumed the opposite ("covers every longitude ... within about one nodal period regardless of the exact RAAN"), which ignores the Sun-synchronous local-time constraint.
+
+**Fix.**
+* **Start time.** The epoch is now 2030-01-01T08:30:00 UTC (09:23 in Berlin). The RAAN is recomputed for the same 10:30 LTAN, and the starting true anomaly stays 0. This choice came from a search over epoch (10 min steps) and starting anomaly, using a J2 secular orbit and SPICE's IAU_EARTH rotation (pck00010), for a sunlit, high first pass shortly after the attitude settles plus a second pass one orbit later.
+* **Passes.** An independent RK4 J2 propagation of the regenerated file gives:
+  * a 61 deg sunlit pass at 10.3-18.2 min;
+  * a 16 deg sunlit pass at 106.8-111.7 min (the "worse at low elevation" case the description already promised);
+  * an eclipse in between (23-58 min);
+  * Berlin's next passes about 13.2 h later.
+* **Duration.** The run is now 2 h 15 min instead of 12 h, about 5x faster.
+* **Customize wizard.** Its duration field is now in hours, with a hint that the next passes come about 13 h later. It used to be in days with a 0.1-day minimum, which would have clamped the new run.
+* **Docs.** The description and catalog README say when the passes come.
+
+**Tests.** A new offline check (`test_comms_template_has_ground_station_passes_early_in_its_run`) propagates the template's orbit against Berlin's rotation and requires at least two passes, the first within 5-20 min and above 45 deg. Against the old template it fails with the first pass at 490 min.
+
+**Not yet confirmed in Basilisk** in this sandbox (no SPICE kernels). The model differences (degree-10 gravity, Sun/Moon, exact SPICE frames) shift pass times by well under a minute over two hours.

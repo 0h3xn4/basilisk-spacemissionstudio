@@ -256,3 +256,51 @@ def test_template_descriptions_match_the_run_length():
     period_days = 2 * math.pi * math.sqrt(a_m ** 3 / 3.986004415e14) / 86400.0  # [day]
     if scenario.sim_settings.duration_days < period_days:
         assert "whole orbit" not in scenario.description
+
+
+def _ground_station_passes_min(scenario, station, step_s=20.0):
+    """[(AOS, LOS, peak elevation)] in minutes/deg over the run, from a
+    circular J2-secular orbit and the IAU_EARTH rotation SPICE uses
+    (pck00010). Coarse but independent of Basilisk -- enough to catch a
+    template whose passes fall outside its own run."""
+    import math
+    from datetime import datetime
+
+    import numpy as np
+
+    mu, r_e, j2 = 3.986004415e14, 6378.1363e3, 1.0826e-3  # [m^3/s^2], [m], [-]
+    orbit = scenario.spacecraft[0].orbit
+    a = orbit.semi_major_axis_km * 1e3  # [m]
+    inc, raan0 = math.radians(orbit.inclination_deg), math.radians(orbit.raan_deg)
+    u0 = math.radians(orbit.arg_periapsis_deg + (orbit.true_anomaly_deg or 0.0))
+    n = math.sqrt(mu / a ** 3)  # [rad/s]
+    g = 1.5 * j2 * (r_e / a) ** 2
+    t = np.arange(0.0, scenario.sim_settings.duration_days * 86400.0 + step_s, step_s)  # [s]
+    raan = raan0 - g * n * math.cos(inc) * t
+    u = u0 + n * (1 + g * (4 - 5 * math.sin(inc) ** 2) / 2 + g * (1 - 1.5 * math.sin(inc) ** 2)) * t
+    r = a * np.stack([np.cos(raan) * np.cos(u) - np.sin(raan) * np.sin(u) * math.cos(inc),
+                      np.sin(raan) * np.cos(u) + np.cos(raan) * np.sin(u) * math.cos(inc),
+                      np.sin(u) * math.sin(inc)], 1)
+    epoch = datetime.fromisoformat(scenario.epoch_utc)
+    jd0 = 2451544.5 + (epoch - datetime(2000, 1, 1)).total_seconds() / 86400.0 + 69.2 / 86400.0  # [day] TDB
+    w = np.radians(90.0 + 190.147 + 360.9856235 * (jd0 + t / 86400.0 - 2451545.0))  # IAU_EARTH, from the x axis
+    lat, lon = math.radians(station.latitude_deg), math.radians(station.longitude_deg)
+    up = np.stack([math.cos(lat) * np.cos(w + lon), math.cos(lat) * np.sin(w + lon), np.full_like(w, math.sin(lat))], 1)
+    d = r - r_e * up
+    el = np.degrees(np.arcsin(np.sum(d * up, 1) / np.linalg.norm(d, axis=1)))
+    visible = np.concatenate([[False], el >= station.min_elevation_deg, [False]])
+    edges = np.flatnonzero(np.diff(visible.astype(int)))
+    return [(t[s] / 60.0, t[e - 1] / 60.0, float(el[s:e].max())) for s, e in zip(edges[0::2], edges[1::2])]
+
+
+def test_comms_template_has_ground_station_passes_early_in_its_run():
+    """Real user report: template 19 showed "never ground station contact".
+    A Sun-synchronous orbit crosses Berlin's latitude only at two fixed local
+    times; with a midnight-UTC epoch the first pass came ~8 h into the run.
+    The run must now open with a high pass and hold a second one."""
+    scenario = load_scenario(_TEMPLATES_DIR / "19_sun_pointing_comms_link.json")
+    passes = _ground_station_passes_min(scenario, scenario.ground_stations[0])
+    assert len(passes) >= 2, passes
+    first_aos, _first_los, first_peak = passes[0]
+    assert 5.0 <= first_aos <= 20.0, passes  # [min] after the initial attitude settles, well before the end
+    assert first_peak >= 45.0, passes  # [deg] a high pass, so a healthy link margin shows

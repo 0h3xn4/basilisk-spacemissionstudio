@@ -1023,6 +1023,11 @@ def build_18_leo_station_keeping() -> Scenario:
     )
 
 
+# 08:30 UTC: Berlin is near this orbit's ~09:50-local crossing, so the
+# first pass comes ~10 min in (see build_19's comment).
+_COMMS_EPOCH_UTC = "2030-01-01T08:30:00"
+
+
 def build_19_sun_pointing_comms_link() -> Scenario:
     # Verification note (see this function's own user-facing description
     # below for the short version): this sandbox has no Basilisk build, so
@@ -1037,32 +1042,34 @@ def build_19_sun_pointing_comms_link() -> Scenario:
     # independently re-confirmed here: that this same combo stays stable
     # through MUCH LARGER-angle slews (Sun-pointing <-> ground-station
     # -pointing can be up to a ~180-degree reorientation, not '06's small
-    # initial offset) over a much longer, 12-hour run. MRP feedback's own
+    # initial offset) over a much longer run. MRP feedback's own
     # commanded-torque term is naturally bounded regardless of angle size
     # (sigma_BR's magnitude never exceeds 1, with the shadow-set switch
     # keeping it there), which is why this risk is believed low -- but
     # please report back if a real run shows otherwise.
     #
-    # Ground-station pass geometry: sun_synchronous_inclination_deg(6928.0)
-    # (see that function's own derivation/verification comment) is
-    # near-polar and covers every longitude under the station's latitude
-    # band within about one nodal period regardless of the exact RAAN
-    # chosen, so this doesn't depend on fine-tuning raan_deg/true_anomaly_deg
-    # against a specific station longitude the way, say, a GEO
-    # station-keeping template would -- but the exact NUMBER and duration of
-    # passes over half a day couldn't be independently re-confirmed against
-    # a real Basilisk run here either. If a run shows zero access windows,
-    # the most likely fix is sim_settings.duration_days (try 1.0 instead of
-    # 0.5) rather than the orbit geometry itself.
+    # Ground-station pass geometry. A Sun-synchronous orbit crosses a given
+    # latitude only at two fixed LOCAL times: for this 10:30-LTAN orbit,
+    # Berlin (52.5 N) passes under it around 09:50 and 23:10 local solar
+    # time. The old midnight-UTC epoch (00:50 in Berlin) therefore put the
+    # first pass ~8.2 h into a 12 h run -- real user report: "there's never
+    # ground station contact". The epoch is now 08:30 UTC (09:23 in
+    # Berlin), so with true_anomaly_deg=0 the first pass starts ~10 min in
+    # (sunlit, ~61 deg peak elevation) and a second, low one (~16 deg)
+    # follows one orbit later, ~107 min in. Found by searching epoch and
+    # starting anomaly with a J2 orbit model and the IAU_EARTH rotation
+    # SPICE uses (pck00010), then checked with an RK4 J2 propagation; not
+    # yet confirmed in a Basilisk run in this sandbox (no SPICE kernels).
+    # tests/test_scenario_templates.py re-checks the geometry offline.
     return Scenario(
         name="19 - Sun-pointing spacecraft with automatic ground-station comms link",
         description=(
             DESCRIPTIONS["19"]
         ),
-        epoch_utc="2030-01-01T00:00:00",
+        epoch_utc=_COMMS_EPOCH_UTC,
         simulation_mode="full_attitude",
         gravity=GravityConfig(central_body="earth", central_body_degree=10, third_body_perturbers=["sun", "moon"]),
-        sim_settings=SimSettings(duration_days=0.5, dynamics_task_rate_s=0.1, integrator="rkf78"),
+        sim_settings=SimSettings(duration_days=135.0 / 1440.0, dynamics_task_rate_s=0.1, integrator="rkf78"),
         ground_stations=[
             _berlin_ground_station(rx_antenna_gain_dbi=35.0, system_noise_temp_k=150.0),
         ],
@@ -1071,7 +1078,7 @@ def build_19_sun_pointing_comms_link() -> Scenario:
                 name="leo-comms-1",
                 orbit=OrbitIC(type="classical_elements", semi_major_axis_km=6928.0, eccentricity=0.0,
                                inclination_deg=sun_synchronous_inclination_deg(6928.0),
-                               raan_deg=raan_for_ltan_deg("2030-01-01T00:00:00"),
+                               raan_deg=raan_for_ltan_deg(_COMMS_EPOCH_UTC),
                                arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
                 dry_mass_kg=60.0,
                 inertia_kg_m2=list(_INERTIA_MEDIUM),
