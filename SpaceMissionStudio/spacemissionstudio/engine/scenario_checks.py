@@ -192,7 +192,7 @@ def format_elapsed(seconds: float) -> str:
 
 def pass_summary(scenario) -> List[str]:
     """One short line per station, e.g. "berlin-gs: 2 passes, first at
-    10 min (peak 61 deg)". Empty when passes can't be predicted."""
+    10 min for 8 min (peak 61 deg)". Empty when passes can't be predicted."""
     passes = predict_passes(scenario)
     if passes is None:
         return []
@@ -206,8 +206,8 @@ def pass_summary(scenario) -> List[str]:
         counted = f"{len(mine)} pass{'es' if len(mine) != 1 else ''}"
         if run_s > _MAX_HORIZON_S:
             counted += " in the first week"
-        lines.append(f"{gs.name}: {counted}, first at {format_elapsed(first.start_s)} "
-                     f"(peak {first.peak_elevation_deg:.0f} deg)")
+        lines.append(f"{gs.name}: {counted}, first at {format_elapsed(first.start_s)} for "
+                     f"{format_elapsed(first.end_s - first.start_s)} (peak {first.peak_elevation_deg:.0f} deg)")
     return lines
 
 

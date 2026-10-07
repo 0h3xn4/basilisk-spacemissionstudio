@@ -60,6 +60,14 @@ def test_propagate_event_missing_spacecraft_is_rejected():
     assert any("spacecraft" in e for e in errors)
 
 
+def test_propagate_pass_event_needs_a_ground_station():
+    command = Command(kind="propagate", params={"stop_condition": "event", "event_kind": "pass_start",
+                                                "spacecraft": "sat-1"})
+    assert any("propagate.ground_station must name the station" in e for e in command.validate("c"))
+    command.params["ground_station"] = "berlin-gs"
+    assert command.validate("c") == []
+
+
 def test_propagate_event_bad_kind_is_rejected():
     errors = Command(kind="propagate",
                       params={"stop_condition": "event", "event_kind": "sunrise", "spacecraft": "sat-1"}).validate("p")

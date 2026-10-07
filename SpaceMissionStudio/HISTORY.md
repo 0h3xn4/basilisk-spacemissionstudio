@@ -7430,3 +7430,19 @@ Each carries a star tracker, an IMU and a sun sensor, and starts in Sun-safe poi
 * A new Basilisk test flies each Sun-safe preset.
 
 Full suite with Basilisk: 1927 pass, 11 skip; without it, 1688 pass and 250 skip.
+
+## Propagate until the next ground-station pass; pass lengths in the Explain tab
+
+**Explain tab.** Each station's line now gives the first pass's length too: "berlin-gs: 2 passes, first at 10 min for 8 min (peak 61 deg)".
+
+**New stop condition.** A propagate can now stop at a pass. Its event list gains two kinds, both naming a ground station:
+* `pass_start`: stop when the next pass begins (the station's `groundLocation` access turns on).
+* `pass_end`: stop when the current or next pass ends.
+
+A `pass_start` issued during a pass waits for the next one: the first sample only seeds the detector.
+
+Mission Sequence editor: a "Ground station" picker appears for the two pass events, filled from the scenario's stations; a station that no longer exists stays visible rather than being swapped silently. Station references in commands are now found (blocking a delete), renamed with the station, and checked by validation.
+
+**Confirmed in Basilisk** on template 19's orbit, with a pass_start, pass_end, pass_start, pass_start sequence. The stops land at 10.5, 18.2 and 106.9 min, matching the real pass times, and the last stop skips the pass already under way.
+
+**Also:** fixed the two old lint errors in `tests/test_formation.py` (imports after `pytestmark`). `ruff check .` is now clean.

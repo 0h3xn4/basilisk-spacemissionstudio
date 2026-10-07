@@ -81,7 +81,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 
-from ..schema.command import Command
+from ..schema.command import PASS_EVENT_KINDS, Command
 from ..schema.scenario import Scenario
 from .orbit_maintenance import _rtn_basis, _vnb_basis
 from .results import CommandSummary, ReportEntry, ResultSet
@@ -366,7 +366,10 @@ class MissionEngine:
 
     def _run_propagate_event(self, command: Command, summary: CommandSummary, path: str) -> None:
         """``propagate.stop_condition == "event"``: runs until the named
-        spacecraft crosses periapsis or apoapsis, detected as a sign
+        spacecraft starts or ends a pass over ``ground_station``
+        (``pass_start``/``pass_end``: its ``groundLocation`` access turning
+        on or off, checked every dynamics step), or crosses periapsis or
+        apoapsis, detected as a sign
         change in radial velocity (``dot(r, v) / |r|``) -- exactly zero at
         periapsis/apoapsis for any Keplerian (or near-Keplerian) orbit,
         going negative-to-positive at periapsis (distance stops
@@ -394,7 +397,26 @@ class MissionEngine:
         # name -- see SimulationBaseClass.py -- rather than replacing the
         # existing event) never accidentally reuses a previous invocation's
         # already-fired, now-permanently-inactive event.
-        detector_state: Dict[str, Optional[float]] = {"prev_radial_velocity": None}
+        detector_state: Dict[str, Optional[float]] = {"prev_radial_velocity": None, "prev_access": None}
+        access_msg = None
+        if event_kind in PASS_EVENT_KINDS:
+            station = command.params["ground_station"]
+            access_msg = self.service._access_out_msgs.get((station, handle.sc_object.ModelTag))
+            if access_msg is None:
+                raise MissionEngineError(
+                    f"{path}: propagate stop_condition='event' names unknown ground station {station!r}"
+                )
+
+        def pass_condition(_parent_sim, access_msg=access_msg, event_kind=event_kind,
+                           detector_state=detector_state) -> bool:
+            # A pass already under way when the propagate starts doesn't
+            # count as its start: the first sample only seeds the state.
+            access = bool(access_msg.read().hasAccess)
+            previous = detector_state["prev_access"]
+            detector_state["prev_access"] = access
+            if previous is None:
+                return False
+            return access and not previous if event_kind == "pass_start" else previous and not access
 
         def condition(_parent_sim, handle=handle, event_kind=event_kind, detector_state=detector_state) -> bool:
             payload = handle.sc_object.scStateOutMsg.read()
@@ -415,7 +437,7 @@ class MissionEngine:
             event_name,
             macros.sec2nano(self.scenario.sim_settings.dynamics_task_rate_s),
             True,
-            conditionFunction=condition,
+            conditionFunction=pass_condition if access_msg is not None else condition,
             terminal=True,
         )
 
@@ -486,8 +508,9 @@ class MissionEngine:
         # only when its conditionFunction actually returns True) is the
         # real signal.
         if self.service.scSim.eventMap[event_name].occurCounter == 0:
+            over = f" over {command.params['ground_station']!r}" if access_msg is not None else ""
             raise MissionEngineError(
-                f"{path}: propagate stop_condition='event' ({event_kind}) for spacecraft {spacecraft_name!r} "
+                f"{path}: propagate stop_condition='event' ({event_kind}{over}) for spacecraft {spacecraft_name!r} "
                 f"did not occur within the {cap_days:.1f}-day safety cap"
             )
         # Unlike duration/epoch, there is no "requested" target here -- the

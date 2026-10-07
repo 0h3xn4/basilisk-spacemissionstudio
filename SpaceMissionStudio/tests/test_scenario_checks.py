@@ -46,7 +46,7 @@ def test_template_19_passes_match_an_independent_propagation():
         assert got.start_s / 60 == pytest.approx(start_min, abs=1.0)  # [min]
         assert got.end_s / 60 == pytest.approx(end_min, abs=1.0)  # [min]
         assert got.peak_elevation_deg == pytest.approx(peak_deg, abs=2.0)  # [deg]
-    assert pass_summary(_template("19")) == ["berlin-gs: 2 passes, first at 10 min (peak 61 deg)"]
+    assert pass_summary(_template("19")) == ["berlin-gs: 2 passes, first at 10 min for 8 min (peak 61 deg)"]
 
 
 def test_a_cartesian_orbit_predicts_the_same_passes():

@@ -99,7 +99,11 @@ SUPPORTED_STOP_CONDITIONS = ("duration", "epoch", "event")
 # rather than a hand-rolled polling loop -- that's engine.mission_engine's
 # job, not this module's; this module only needs to capture enough
 # information for that engine code to do so later.
-SUPPORTED_EVENT_KINDS = ("periapsis", "apoapsis")
+SUPPORTED_EVENT_KINDS = ("periapsis", "apoapsis", "pass_start", "pass_end")
+# The event kinds that also need propagate.ground_station: the start or end
+# of the next pass over that station (its groundLocation access turning on,
+# or off). "pass_start" during a pass waits for the NEXT pass.
+PASS_EVENT_KINDS = ("pass_start", "pass_end")
 
 # maneuver.frame -- "inertial" applies delta_v_m_s directly in the N frame
 # (matching Basilisk's own examples/scenarioOrbitManeuver.py exactly);
@@ -205,6 +209,11 @@ class Command:
             _collect(errors, path, isinstance(spacecraft, str) and bool(spacecraft),
                       "propagate.spacecraft must name the spacecraft this event is evaluated against when "
                       "stop_condition is 'event'")
+            if event_kind in PASS_EVENT_KINDS:
+                ground_station = self.params.get("ground_station")
+                _collect(errors, path, isinstance(ground_station, str) and bool(ground_station),
+                          f"propagate.ground_station must name the station whose pass ends this propagate "
+                          f"when event_kind is {event_kind!r}")
 
     def _validate_maneuver(self, path: str, errors: List[str]) -> None:
         spacecraft = self.params.get("spacecraft")

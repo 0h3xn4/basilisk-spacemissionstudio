@@ -8,10 +8,10 @@ so this whole file is requires_basilisk, unlike tests/test_constellation.py
 import numpy as np
 import pytest
 
-pytestmark = pytest.mark.requires_basilisk
-
 from spacemissionstudio.engine.formation import PhasingFormationRequest, generate_phasing_follower
 from spacemissionstudio.schema.scenario import OrbitIC, PowerConfig, ScenarioValidationError, SpacecraftConfig
+
+pytestmark = pytest.mark.requires_basilisk
 
 
 def _chief(**overrides):

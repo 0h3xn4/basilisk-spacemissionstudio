@@ -1,5 +1,6 @@
 from .command import (
     SUPPORTED_COMMAND_KINDS,
+    PASS_EVENT_KINDS,
     SUPPORTED_EVENT_KINDS,
     SUPPORTED_MANEUVER_FRAMES,
     SUPPORTED_STOP_CONDITIONS,
@@ -86,6 +87,7 @@ __all__ = [
     "Command",
     "SUPPORTED_COMMAND_KINDS",
     "SUPPORTED_STOP_CONDITIONS",
+    "PASS_EVENT_KINDS",
     "SUPPORTED_EVENT_KINDS",
     "SUPPORTED_MANEUVER_FRAMES",
     # Reference integrity (schema.references)

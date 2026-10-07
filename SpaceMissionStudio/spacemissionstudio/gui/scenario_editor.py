@@ -279,6 +279,9 @@ class ScenarioEditorWidget(QWidget):
         self.mission_sequence_editor.set_spacecraft_names_provider(
             lambda: [sc.name for sc in self.spacecraft_list.to_list()]
         )
+        self.mission_sequence_editor.set_ground_station_names_provider(
+            lambda: [gs.name for gs in self.ground_station_list.to_list()]
+        )
         self.mission_sequence_editor.set_series_names_provider(self._expected_series_names)
         self.mission_sequence_editor.changed.connect(self.changed)
         layout.addWidget(self.mission_sequence_editor)

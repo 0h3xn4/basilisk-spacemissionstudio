@@ -201,7 +201,12 @@ out for a brand-new scenario:
   signal link margin, etc.).
 * **Mission sequence** -- an optional, ordered list of commands (coast
   for a while, do a burn, take a snapshot, ...) for missions more
-  complex than "just propagate forward for N days".
+  complex than "just propagate forward for N days". A propagate can stop
+  after a duration, at an epoch, or at an event: periapsis, apoapsis, or
+  the start or end of the next pass over a ground station
+  (`pass_start`/`pass_end`). A `pass_start` issued during a pass waits
+  for the next one. The Explain tab lists each station's first pass and
+  how long it lasts.
 * **Monte Carlo** -- see Section 10.
 
 A **validation message** at the very bottom of this tab updates live as

@@ -665,3 +665,37 @@ def test_no_should_cancel_runs_to_completion_as_before():
     ])
     _, summary = MissionEngine(scenario).run()
     assert summary.commands_executed == 1
+
+
+def test_propagate_stops_at_ground_station_pass_start_and_end():
+    """Template 19's Berlin passes (10.5-18.2 and 106.9-111.7 min in a real
+    run). A pass_start issued during a pass waits for the next one."""
+    import glob
+    import os
+
+    from spacemissionstudio.engine.mission_engine import MissionEngine
+    from spacemissionstudio.schema import load_scenario
+
+    templates = os.path.join(os.path.dirname(__file__), "..", "spacemissionstudio", "scenarios", "templates")
+    scenario = load_scenario(glob.glob(os.path.join(templates, "19_*.json"))[0])
+
+    def stop(kind, label):
+        return [Command(kind="propagate", params={"stop_condition": "event", "event_kind": kind,
+                                                  "spacecraft": "leo-comms-1", "ground_station": "berlin-gs"}),
+                Command(kind="report", label=label, params={"series": []})]
+
+    scenario.mission_sequence = (stop("pass_start", "start 1") + stop("pass_end", "end 1")
+                                 + stop("pass_start", "start 2") + stop("pass_start", "start 3"))
+    scenario.sim_settings.duration_days = 0.5  # [day] sets the event search cap only
+    # Pass times depend only on the orbit: orbit-only at a 10 s step keeps
+    # this test fast (the template's attitude runs at 0.1 s).
+    scenario.simulation_mode = "orbit_only"
+    scenario.sim_settings.dynamics_task_rate_s = 10.0  # [s]
+    for spacecraft in scenario.spacecraft:
+        spacecraft.comms_pointing = spacecraft.power = spacecraft.rf_link = None
+    _result, summary = MissionEngine(scenario).run()
+    minutes = [entry.t_s / 60.0 for entry in summary.reports]  # [min]
+    assert minutes[0] == pytest.approx(10.5, abs=0.5)  # [min]
+    assert minutes[1] == pytest.approx(18.2, abs=0.5)  # [min]
+    assert minutes[2] == pytest.approx(106.9, abs=0.5)  # [min]
+    assert minutes[3] > minutes[2] + 60.0  # not the pass already under way

@@ -72,6 +72,7 @@ from PySide6.QtWidgets import (
 
 from ..schema.command import (
     SUPPORTED_COMMAND_KINDS,
+    PASS_EVENT_KINDS,
     SUPPORTED_EVENT_KINDS,
     SUPPORTED_MANEUVER_FRAMES,
     SUPPORTED_STOP_CONDITIONS,
@@ -108,9 +109,11 @@ def _spin_component(value: float = 0.0) -> QDoubleSpinBox:
 
 class _CommandEditorDialog(QDialog):
     def __init__(self, command: Command | None = None, parent: QWidget | None = None,
-                 spacecraft_names: list[str] | None = None, series_names: list[str] | None = None):
+                 spacecraft_names: list[str] | None = None, series_names: list[str] | None = None,
+                 ground_station_names: list[str] | None = None):
         super().__init__(parent)
         self._spacecraft_names = spacecraft_names or []
+        self._ground_station_names = ground_station_names or []
         self._series_names = series_names or []
         self.setWindowTitle("Edit command" if command is not None else "New command")
 
@@ -186,8 +189,8 @@ class _CommandEditorDialog(QDialog):
             "When this propagate step stops and moves on to the next command:\n"
             "duration: after a fixed number of days (below).\n"
             "epoch: at a specific calendar date/time (below).\n"
-            "event: as soon as a chosen spacecraft event happens (e.g. apoapsis, periapsis) -- "
-            "below."
+            "event: as soon as a chosen spacecraft event happens (periapsis, apoapsis, or the start or "
+            "end of the next pass over a ground station) -- below."
         )
         self.stop_condition_combo.addItems(list(SUPPORTED_STOP_CONDITIONS))
         index = self.stop_condition_combo.findText(params.get("stop_condition", "duration"))
@@ -222,7 +225,9 @@ class _CommandEditorDialog(QDialog):
         self.event_kind_combo = ComboBox()
         self.event_kind_combo.setToolTip(
             "periapsis: stop at the next closest approach to the central body.\n"
-            "apoapsis: stop at the next farthest point from the central body."
+            "apoapsis: stop at the next farthest point from the central body.\n"
+            "pass_start: stop when the next pass over the ground station below begins.\n"
+            "pass_end: stop when the current (or next) pass over that station ends."
         )
         self.event_kind_combo.addItems(list(SUPPORTED_EVENT_KINDS))
         event_index = self.event_kind_combo.findText(params.get("event_kind", SUPPORTED_EVENT_KINDS[0]))
@@ -235,6 +240,21 @@ class _CommandEditorDialog(QDialog):
         if sc_index >= 0:
             self.propagate_event_spacecraft_combo.setCurrentIndex(sc_index)
         event_form.addRow("Spacecraft", self.propagate_event_spacecraft_combo)
+        self.propagate_event_station_combo = ComboBox()
+        self.propagate_event_station_combo.setToolTip("The ground station whose pass ends this propagate.")
+        station = params.get("ground_station", "")
+        self.propagate_event_station_combo.addItems(self._ground_station_names)
+        if station and station not in self._ground_station_names:
+            # Keep a station this scenario no longer has visible rather than
+            # silently swapping it for another one; validation flags it.
+            self.propagate_event_station_combo.addItem(station)
+        station_index = self.propagate_event_station_combo.findText(station)
+        if station_index >= 0:
+            self.propagate_event_station_combo.setCurrentIndex(station_index)
+        event_form.addRow("Ground station", self.propagate_event_station_combo)
+        self.propagate_event_station_label = event_form.labelForField(self.propagate_event_station_combo)
+        self.event_kind_combo.currentTextChanged.connect(self._update_event_station_visibility)
+        self._update_event_station_visibility(self.event_kind_combo.currentText())
         self.propagate_stop_stack.addWidget(event_page)
 
         self.stop_condition_combo.currentTextChanged.connect(
@@ -245,6 +265,11 @@ class _CommandEditorDialog(QDialog):
         )
 
         self.stack.addWidget(page)
+
+    def _update_event_station_visibility(self, event_kind: str) -> None:
+        visible = event_kind in PASS_EVENT_KINDS
+        self.propagate_event_station_combo.setVisible(visible)
+        self.propagate_event_station_label.setVisible(visible)
 
     def _build_maneuver_page(self, params: dict) -> None:
         page = QWidget()
@@ -514,6 +539,8 @@ class _CommandEditorDialog(QDialog):
             else:  # "event"
                 params["event_kind"] = self.event_kind_combo.currentText()
                 params["spacecraft"] = self.propagate_event_spacecraft_combo.currentText()
+                if params["event_kind"] in PASS_EVENT_KINDS:
+                    params["ground_station"] = self.propagate_event_station_combo.currentText()
             return params
         if kind == "maneuver":
             return {
@@ -594,6 +621,7 @@ class MissionSequenceEditorWidget(QWidget):
         super().__init__(parent)
         self._spacecraft_names_provider = None
         self._series_names_provider = None
+        self._ground_station_names_provider = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -647,6 +675,15 @@ class MissionSequenceEditorWidget(QWidget):
     def _spacecraft_names(self) -> list[str]:
         return sorted(self._spacecraft_names_provider()) if self._spacecraft_names_provider else []
 
+    def set_ground_station_names_provider(self, provider) -> None:
+        """Same zero-argument-callable convention as
+        :meth:`set_spacecraft_names_provider`, for the propagate command's
+        pass-event station picker."""
+        self._ground_station_names_provider = provider
+
+    def _ground_station_names(self) -> list[str]:
+        return sorted(self._ground_station_names_provider()) if self._ground_station_names_provider else []
+
     def set_series_names_provider(self, provider) -> None:
         """``provider`` is a zero-argument callable returning the series
         names the current scenario will produce (see
@@ -681,7 +718,8 @@ class MissionSequenceEditorWidget(QWidget):
 
     def _on_add(self) -> None:
         dialog = _CommandEditorDialog(parent=self, spacecraft_names=self._spacecraft_names(),
-                                      series_names=self._series_names())
+                                      series_names=self._series_names(),
+                                      ground_station_names=self._ground_station_names())
         if dialog.exec() == QDialog.DialogCode.Accepted:
             command = dialog.to_dataclass()
             item = self._new_item(command)
@@ -698,7 +736,8 @@ class MissionSequenceEditorWidget(QWidget):
         if parent_command.kind not in ("if", "while"):
             return
         dialog = _CommandEditorDialog(parent=self, spacecraft_names=self._spacecraft_names(),
-                                      series_names=self._series_names())
+                                      series_names=self._series_names(),
+                                      ground_station_names=self._ground_station_names())
         if dialog.exec() == QDialog.DialogCode.Accepted:
             command = dialog.to_dataclass()
             item = self._new_item(command)
@@ -714,7 +753,8 @@ class MissionSequenceEditorWidget(QWidget):
             return
         command = item.data(0, Qt.ItemDataRole.UserRole)
         dialog = _CommandEditorDialog(command=command, parent=self, spacecraft_names=self._spacecraft_names(),
-                                      series_names=self._series_names())
+                                      series_names=self._series_names(),
+                                      ground_station_names=self._ground_station_names())
         if dialog.exec() == QDialog.DialogCode.Accepted:
             new_command = dialog.to_dataclass()
             item.setData(0, Qt.ItemDataRole.UserRole, new_command)

@@ -5,10 +5,11 @@ import pytest
 pytestmark = pytest.mark.requires_gui
 
 
-def _dialog(command=None, spacecraft_names=None, series_names=None):
+def _dialog(command=None, spacecraft_names=None, series_names=None, ground_station_names=None):
     from spacemissionstudio.gui.mission_sequence_editor import _CommandEditorDialog
 
-    return _CommandEditorDialog(command=command, spacecraft_names=spacecraft_names, series_names=series_names)
+    return _CommandEditorDialog(command=command, spacecraft_names=spacecraft_names, series_names=series_names,
+                                ground_station_names=ground_station_names)
 
 
 def _tick(dialog, *names):
@@ -44,6 +45,44 @@ def test_propagate_event_round_trips(qtbot):
 
     command = dialog.to_dataclass()
     assert command.params == {"stop_condition": "event", "event_kind": "apoapsis", "spacecraft": "sat-2"}
+
+
+def test_propagate_pass_event_picks_a_station_only_when_needed(qtbot):
+    dialog = _dialog(spacecraft_names=["sat-1"], ground_station_names=["berlin-gs", "kiruna-gs"])
+    qtbot.addWidget(dialog)
+    dialog.show()
+    dialog.stop_condition_combo.setCurrentIndex(dialog.stop_condition_combo.findText("event"))
+    assert not dialog.propagate_event_station_combo.isVisible()  # periapsis needs no station
+    dialog.event_kind_combo.setCurrentIndex(dialog.event_kind_combo.findText("pass_start"))
+    assert dialog.propagate_event_station_combo.isVisible()
+    dialog.propagate_event_station_combo.setCurrentIndex(dialog.propagate_event_station_combo.findText("kiruna-gs"))
+
+    command = dialog.to_dataclass()
+    assert command.params == {"stop_condition": "event", "event_kind": "pass_start", "spacecraft": "sat-1",
+                              "ground_station": "kiruna-gs"}
+    reopened = _dialog(command=command, spacecraft_names=["sat-1"], ground_station_names=["berlin-gs", "kiruna-gs"])
+    qtbot.addWidget(reopened)
+    assert reopened.to_dataclass().params == command.params
+
+
+def test_editor_offers_the_scenarios_ground_stations(qtbot, monkeypatch):
+    from spacemissionstudio.gui import mission_sequence_editor as module
+
+    captured = {}
+
+    class _Probe:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+        def exec(self):
+            return 0
+
+    editor = module.MissionSequenceEditorWidget()
+    qtbot.addWidget(editor)
+    editor.set_ground_station_names_provider(lambda: ["kiruna-gs", "berlin-gs"])
+    monkeypatch.setattr(module, "_CommandEditorDialog", _Probe)
+    editor._on_add()
+    assert captured["ground_station_names"] == ["berlin-gs", "kiruna-gs"]
 
 
 def test_propagate_epoch_rejects_bad_iso8601(qtbot):

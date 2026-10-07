@@ -243,7 +243,7 @@ def test_badges_use_plain_names_and_reserve_status_colours():
     assert "Sun pointing" in labels
     stations = next(s for s in explain(_template_scenario("19")).sections if s.title == "Ground stations")
     assert [b.label for b in stations.badges] == ["berlin-gs"]
-    assert stations.notes == ["berlin-gs: 2 passes, first at 10 min (peak 61 deg)"]
+    assert stations.notes == ["berlin-gs: 2 passes, first at 10 min for 8 min (peak 61 deg)"]
 
 
 def test_sso_inclination_without_oblateness_is_not_called_sun_synchronous():
