@@ -25,19 +25,26 @@ clicking OK, with zero edits, rewrote its data. Found by round-tripping
 every bundled template through every editor dialog: e.g. template 13's
 0.00667 kg*m^2 CubeSat inertia came back as 0.007 (a 5% change), and a
 2-hour duration of 0.08333 days came back as 0.0833.
+
+A second, smaller version of the same bug: values used to be kept to 10
+decimal places, which still rounded a magnetometer's 1.18e-9 T noise to
+1.2e-9 T (found applying a catalog preset). Values are now kept exactly
+and displayed as their shortest exact text.
 """
 
 from __future__ import annotations
 
 import math
+from decimal import Decimal
 
 from PySide6.QtGui import QValidator
 from PySide6.QtWidgets import QDoubleSpinBox, QWidget
 
-# Internal storage precision -- far finer than any field here needs, but
-# still well inside a double's ~15-16 significant digits for the value
-# ranges these editors use.
-_STORAGE_DECIMALS = 10
+# Qt rounds every value to decimals() as it is set. 40 decimal places
+# keep a double's full 17 significant digits for magnitudes down to
+# ~1e-23 -- far smaller than any physical value these editors hold
+# (nanotesla-level noise is ~1e-9).
+_STORAGE_DECIMALS = 40
 
 # Text that is a valid PREFIX of a number while the user is still typing.
 _PARTIAL_NUMBERS = {"", "-", "+", ".", "-.", "+."}
@@ -67,7 +74,9 @@ class PreciseDoubleSpinBox(QDoubleSpinBox):
         return self._display_decimals
 
     def textFromValue(self, value: float) -> str:  # noqa: N802 -- Qt override
-        text = f"{value:.{_STORAGE_DECIMALS}f}"
+        # The shortest text that parses back to exactly this value, written
+        # without an exponent (repr's "1.18e-09" -> "0.00000000118").
+        text = format(Decimal(repr(float(value))), "f")
         whole, _, fraction = text.partition(".")
         fraction = fraction.rstrip("0").ljust(self._display_decimals, "0")
         return f"{whole}.{fraction}" if fraction else whole

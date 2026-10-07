@@ -125,3 +125,34 @@ def test_display_name_includes_manufacturer_product_and_country():
         assert entry.manufacturer in entry.display_name
         assert entry.product_name in entry.display_name
         assert entry.country in entry.display_name
+
+
+def test_every_entry_states_its_heritage_and_procurement_status():
+    """Supplier-database entries (and the original ones, updated from it)
+    carry the database's flight heritage and procurement status, so the
+    catalog picker shows them next to the export-control note."""
+    from spacemissionstudio.engine.device_catalog import CATALOG
+
+    for entry in CATALOG:
+        assert entry.heritage.strip(), entry.display_name
+        assert entry.procurement_status.strip(), entry.display_name
+
+
+def test_no_supplier_database_entry_is_development_or_flagged_export_risk():
+    """The inclusion rule: no 'Development - monitor' product, and no product
+    the database flags 'Check / export risk' -- except the one pre-existing
+    entry kept for existing scenarios, which says so in its note."""
+    from spacemissionstudio.engine.device_catalog import CATALOG
+
+    for entry in CATALOG:
+        assert not entry.procurement_status.startswith("Development"), entry.display_name
+        if entry.procurement_status.startswith("Check"):
+            assert entry.product_name == "RSI 04-33-60A", entry.display_name
+            assert "export risk" in entry.itar_free_note
+
+
+def test_display_names_are_unique():
+    from spacemissionstudio.engine.device_catalog import CATALOG
+
+    names = [entry.display_name for entry in CATALOG]
+    assert len(names) == len(set(names))

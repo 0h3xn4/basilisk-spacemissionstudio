@@ -34,6 +34,22 @@ def test_precise_spin_box_keeps_full_precision_beyond_its_display_decimals(qtbot
     assert box.cleanText() == "0.0066666667"  # shows every stored digit, never a rounded 0.007
 
 
+@pytest.mark.parametrize("value", [1.18e-9, 8.0e-7, 1.0e-12, 0.1, 6.366e-4, 123456.789, -2.5e-10])
+def test_precise_spin_box_stores_and_shows_values_exactly(qtbot, value):
+    """Real bug: values were kept to 10 decimal places, so applying the
+    MM200 magnetometer preset turned its 1.18e-9 T noise into 1.2e-9 T."""
+    from spacemissionstudio.gui.widgets import PreciseDoubleSpinBox
+
+    box = PreciseDoubleSpinBox()
+    qtbot.addWidget(box)
+    box.setRange(-1.0e6, 1.0e6)
+    box.setDecimals(2)
+    box.setValue(value)
+    assert box.value() == value
+    assert float(box.cleanText()) == value  # what is shown is exactly what is saved
+    assert "e" not in box.cleanText().lower()
+
+
 def test_precise_spin_box_pads_to_its_minimum_display_decimals(qtbot):
     from spacemissionstudio.gui.widgets import PreciseDoubleSpinBox
 

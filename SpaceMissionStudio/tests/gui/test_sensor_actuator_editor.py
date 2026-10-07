@@ -513,3 +513,45 @@ def test_catalog_combo_resets_to_custom_placeholder_when_kind_changes(qtbot):
 
     assert dialog.catalog_combo.currentIndex() == 0
     assert not dialog.catalog_info_label.text()
+
+
+@pytest.mark.parametrize("entry_index", range(len(__import__(
+    "spacemissionstudio.engine.device_catalog", fromlist=["CATALOG"]).CATALOG)))
+def test_every_catalog_entry_applies_and_validates(qtbot, entry_index):
+    """Every catalog device -- including the ones added from the user's
+    supplier database -- applies through the real editor dialog and
+    yields a configuration that validates, with its heritage and
+    procurement status shown in the preview."""
+    from spacemissionstudio.engine.device_catalog import CATALOG, catalog_entries_for_kind
+    from spacemissionstudio.gui.sensor_actuator_editor import _ItemEditorDialog
+    from spacemissionstudio.schema.scenario import (
+        SUPPORTED_ACTUATOR_KINDS, SUPPORTED_SENSOR_KINDS, ActuatorConfig, MagneticMomentumManagementConfig,
+        OrbitIC, SensorConfig, SpacecraftConfig,
+    )
+
+    entry = CATALOG[entry_index]
+    is_sensor = entry.kind in SUPPORTED_SENSOR_KINDS
+    dialog = _ItemEditorDialog(SensorConfig if is_sensor else ActuatorConfig,
+                               SUPPORTED_SENSOR_KINDS if is_sensor else SUPPORTED_ACTUATOR_KINDS)
+    qtbot.addWidget(dialog)
+    dialog.kind_combo.setCurrentIndex(dialog.kind_combo.findText(entry.kind))
+    dialog.catalog_combo.setCurrentIndex(catalog_entries_for_kind(entry.kind).index(entry) + 1)
+    info = dialog.catalog_info_label.text()
+    assert entry.heritage in info and entry.procurement_status in info
+
+    dialog._on_apply_catalog_entry()
+    dialog.name_edit.setText("device-1")
+    config = dialog.to_dataclass()
+    for key, value in entry.params.items():
+        assert config.params[key] == value, key
+    orbit = OrbitIC(type="classical_elements", semi_major_axis_km=6928.0, eccentricity=0.001,
+                    inclination_deg=97.6, raan_deg=0.0, arg_periapsis_deg=0.0, true_anomaly_deg=0.0)
+    devices = {"sensors": [config]} if is_sensor else {"actuators": [config]}
+    if entry.kind == "magnetic_torque_rod":
+        # Torque rods are only simulated for momentum management, which also
+        # needs a reaction wheel.
+        wheel = ActuatorConfig(name="rw-1", kind="reaction_wheel",
+                               params={"gsHat_B": [0.0, 0.0, 1.0], "rw_type": "Honeywell_HR16"})
+        devices = {"actuators": [config, wheel],
+                   "magnetic_momentum_management": MagneticMomentumManagementConfig(wheel_speed_biases_rad_s=[0.0])}
+    SpacecraftConfig(name="sat-1", orbit=orbit, **devices).validate()

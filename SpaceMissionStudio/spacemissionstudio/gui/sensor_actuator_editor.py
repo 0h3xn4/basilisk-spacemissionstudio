@@ -591,7 +591,10 @@ class _ItemEditorDialog(QDialog):
         self.catalog_info_label.setVisible(True)
         self.apply_catalog_button.setEnabled(True)
         self.catalog_info_label.setText(
-            f"{entry.description}\n\nSource: {entry.source_url}\n\nExport control: {entry.itar_free_note}"
+            f"{entry.description}"
+            + (f"\n\nHeritage: {entry.heritage}" if entry.heritage else "")
+            + (f"\nProcurement status: {entry.procurement_status}" if entry.procurement_status else "")
+            + f"\n\nSource: {entry.source_url}\n\nExport control: {entry.itar_free_note}"
             + (f"\n\n{entry.notes}" if entry.notes else "")
         )
 

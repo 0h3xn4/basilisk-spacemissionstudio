@@ -6755,3 +6755,42 @@ Verified with Basilisk (eclipse harness, the user's configuration, 30 days):
 No overshoot, cycling or suspension in any case. The default is now **3 days** in the schema, the phasing-formation generator and its dialog, the spacecraft editor and the CLI, and a new test keeps them in agreement. The editor's tooltip states the Δv trade-off.
 
 Over 90 days, stock template 05 still fires its one drift correction (day ~28 in the degree-10 no-eclipse harness, ~35 with eclipses). That correction now finishes in ~2.4 days instead of ~2 weeks, with the separation held at 45–52 km, for 0.014 m/s instead of 0.003 m/s. The chief-reboost case is unchanged (one trim, 0.014 m/s, burns 276/275). The template's description now quotes these numbers. Old scenario files that set the window explicitly keep their value; only files that omit it pick up the new default.
+
+## Device catalog from the user's supplier database (+31 devices), and an editor precision bug
+
+The user supplied a supplier database: a market survey of 609 products for 100–500 kg LEO/SSO satellites, dated 07 Oct 2026, with ITAR status, heritage, sources and an audit column. They asked for every applicable sensor and actuator to be considered. 165 rows are ADCS, GNSS or propulsion products.
+
+**Inclusion rule** (the database's own criteria, applied mechanically). A product is added to `engine/device_catalog.py` only if all five hold:
+1. It maps to a kind the app simulates (star tracker, IMU, sun sensor, magnetometer, reaction wheel, magnetorquer, thruster).
+2. It has flight heritage; "Development – monitor" rows are excluded.
+3. The database doesn't flag it "Check / export risk".
+4. The database gives the numbers its kind needs.
+5. The database doesn't call it too small or oversized for 100–500 kg.
+
+That gives 31 new entries:
+* 8 star trackers;
+* 1 IMU;
+* 3 sun sensors;
+* 2 magnetometers;
+* 2 reaction wheels;
+* 3 magnetorquers;
+* 12 thrusters.
+
+Every entry cites the database's own source link, and every datasheet-to-parameter conversion is stated in the entry's notes. The conversions follow the existing entries:
+* noise is converted to 1-sigma, using the worse axis or range end;
+* angular random walk is converted to per-tick noise for a 1 s tick;
+* sun-sensor angle × sin 45° gives the cosine-law noise;
+* wheel inertia is momentum / top speed, with 6,000 RPM assumed where the speed isn't published.
+
+Two new fields, `heritage` and `procurement_status`, are shown in the editor's catalog preview. The seven original entries were updated from the database:
+* **Teldix RSI 04-33-60A:** the database flags it "Check / export risk" (US parent); it is kept for existing scenarios, with the flag in its note.
+* **SS200 and MTQ800:** the database's audit found no ITAR-free statement on the vendor pages the old notes relied on.
+
+**Not added**, with reasons:
+* **No matching simulation model:** CMGs, Earth/horizon sensors, GNSS receivers and integrated ADCS units.
+* **Missing numbers:** for example Sodern Auriga, Exail Astrix NS and Astrofein wheels, which have no torque or accuracy figures in the database.
+* **Flagged "Check / export risk":** for example Honeywell, LITEF and Safran PPS.
+* **Development status:** for example ASPINA and SITAEL HT100.
+* **Sizing called out by the database:** for example SteamJet, ThrustMe NPT30 and CubeSat-class wheels.
+
+**Real bug found while verifying.** Applying each preset through the real editor (a new test does this for all 38 entries, then validates the resulting spacecraft) showed that the existing MM200 magnetometer's 1.18e-9 T noise came back as 1.2e-9 T. `gui/widgets.PreciseDoubleSpinBox`, used in 18 places, kept values to 10 decimal places, so anything finer was silently rounded on open + OK. It now keeps values exactly (40-decimal internal storage, shortest-exact display text), with a parametrized round-trip test.
