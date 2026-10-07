@@ -658,6 +658,34 @@ CATALOG: list[DeviceCatalogEntry] = [
         heritage="TRL 9: four MicroWheel 1000 on PROBA-2 (2009).",
         procurement_status="Candidate - ITAR status unknown",
     ),
+    # From the manufacturer's datasheet the user supplied ("VRW-D-6
+    # Reaction Wheel", A4, 25 Apr 2024).
+    DeviceCatalogEntry(
+        kind="reaction_wheel",
+        manufacturer="VECTRONIC Aerospace",
+        product_name="VRW-D-6",
+        country="Germany",
+        source_url="https://www.vectronic-aerospace.com",
+        itar_free_note=(
+            "Designed and built in Berlin, Germany. The datasheet makes no ITAR statement -- "
+            "verify the export classification with the manufacturer for your own procurement."
+        ),
+        description=(
+            "6.0 N*m*s reaction wheel for small and medium satellites: +/-6,000 RPM, +/-50 mN*m "
+            "(90 mN*m variant), 3.0 kg, 200 x 200 x 67 mm, RS422/RS485 and CAN, 45,000+ h design life."
+        ),
+        params={"gsHat_B": [0.0, 0.0, 1.0], "rw_type": "custom", "Omega_max": 6000.0, "u_max": 0.050,
+                "Js": 9.56e-3},
+        notes=(
+            "All three values are the datasheet's own: Omega_max = 6,000 RPM, u_max = the 50 mN*m "
+            "standard torque (set 0.090 N*m for the high-torque variant), Js = the published rotor "
+            "inertia 9.56e-3 kg*m^2 (9.56e-3 x 628.3 rad/s = 6.0 N*m*s, matching the stated momentum). "
+            "Power: <1.4 W idle, <14 W at full speed, <110 W at full speed and 50 mN*m. "
+            "Source level: primary (vendor datasheet)."
+        ),
+        heritage="VRW series: over 100 years of combined in-orbit operation (manufacturer).",
+        procurement_status="RFI - confirm ITAR in writing",
+    ),
 
     # Magnetorquers.
     DeviceCatalogEntry(

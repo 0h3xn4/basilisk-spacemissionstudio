@@ -44,7 +44,6 @@ corrected.
 
 from __future__ import annotations
 
-import json
 from typing import NamedTuple
 
 from PySide6.QtCore import Signal
@@ -93,7 +92,9 @@ from ..schema.scenario import (
 )
 from .feedback import clear_invalid, mark_invalid, show_toast
 from .orbit_ic_widget import OrbitIcWidget
+from .param_form import ParamForm
 from .sensor_actuator_editor import SensorActuatorListWidget
+from .theme import PALETTE
 from .widgets import PreciseDoubleSpinBox, exact_number_text
 
 _FSW_MODE_NONE_LABEL = "(none -- no attitude control)"
@@ -109,54 +110,72 @@ class _FswParamSpec(NamedTuple):
     # enforces exactly one), so "Reset to template" must not fill both at
     # once -- see _fsw_template_params.
     fill_on_reset: bool = True
+    normalizable: bool = True  # False for a 3-vector that is not a direction
+    label: str = ""  # short form-row label (gui.param_form.ParamForm)
 
 
-# Same rationale/pattern as gui.sensor_actuator_editor._KIND_PARAM_SPECS
-# (see that module's docstring) -- drives a per-mode hint label, a "Reset
-# to template" button, and immediate required-key validation here, instead
-# of a blank JSON box with only a one-line static example. Keep in sync
-# with engine.fsw.build_guidance()'s actual fsw_params.get()/[...] usage.
+# One spec per fsw_params key -- drives the Attitude control tab's form
+# (gui.param_form.ParamForm), "Reset to template" and the required-key
+# check. Keep in sync with engine.fsw.build_guidance()'s actual
+# fsw_params.get()/[...] usage.
 _FSW_MODE_PARAM_SPECS: dict[str, list[_FswParamSpec]] = {
     "inertial3D": [
-        _FswParamSpec("sigma_R0N", False, [0.0, 0.0, 0.0], "target inertial attitude, MRP [-]"),
+        _FswParamSpec("sigma_R0N", False, [0.0, 0.0, 0.0], "target inertial attitude, MRP [-]",
+                      normalizable=False, label="Target attitude (MRP)"),
     ],
     "hillPoint": [],
     "velocityPoint": [],
     "sunSafePoint": [
-        _FswParamSpec("sHatBdyCmd", False, [0.0, 0.0, 1.0], "body-frame sun-pointing axis, unit vector [-]"),
-        _FswParamSpec("min_unit_mag", False, 0.1, "minimum sun-sensor signal magnitude to trust [-]"),
-        _FswParamSpec("sun_axis_spin_rate_rad_s", False, 0.0, "commanded spin rate about sHatBdyCmd [rad/s]"),
+        _FswParamSpec("sHatBdyCmd", False, [0.0, 0.0, 1.0], "body-frame sun-pointing axis, unit vector [-]",
+                      label="Axis to point at the Sun"),
+        _FswParamSpec("min_unit_mag", False, 0.1, "minimum sun-sensor signal magnitude to trust [-]",
+                      label="Min. sun-sensor signal"),
+        _FswParamSpec("sun_axis_spin_rate_rad_s", False, 0.0, "commanded spin rate about sHatBdyCmd [rad/s]",
+                      label="Spin rate about the Sun axis"),
         _FswParamSpec("use_css_estimation", False, False,
-                       "true: estimate sun heading from this spacecraft's own 'coarse_sun_sensor' "
-                       "sensors (cssWlsEst) instead of simpleNav's noise-free truth -- requires at "
-                       "least one coarse_sun_sensor sensor"),
+                      "true: estimate sun heading from this spacecraft's own 'coarse_sun_sensor' "
+                      "sensors (cssWlsEst) instead of simpleNav's noise-free truth -- requires at "
+                      "least one coarse_sun_sensor sensor", label="Estimate Sun heading from CSS"),
     ],
     "locationPointing": [
-        # Exactly one of these two is required (Scenario.validate() enforces
-        # the xor with a specific error message); target_body's
-        # fill_on_reset=False keeps "Reset to template" from filling both at
-        # once -- see _FswParamSpec.fill_on_reset and
-        # _fsw_missing_required_keys's own locationPointing special case.
-        _FswParamSpec("target_ground_station", True, "<ground station name>",
-                       "name of a GroundStationConfig already in this scenario -- exactly one of this or "
-                       "target_body is required"),
-        _FswParamSpec("target_body", False, "<central body or third-body name, e.g. 'moon'>",
-                       "name of a SPICE-tracked body (gravity.central_body or a gravity"
-                       ".third_body_perturbers entry) to point at directly -- exactly one of this or "
-                       "target_ground_station is required", fill_on_reset=False),
-        _FswParamSpec("pHat_B", False, [0.0, 0.0, 1.0], "body-frame pointing axis, unit vector [-]"),
+        # Exactly one of these two (Scenario.validate() enforces the xor).
+        # Both are optional rows in the form, and ticking one unticks the
+        # other; target_body's fill_on_reset=False keeps "Reset to
+        # template" from filling both.
+        _FswParamSpec("target_ground_station", False, "<ground station name>",
+                      "name of a GroundStationConfig already in this scenario -- exactly one of this or "
+                      "target_body is required", label="Point at ground station"),
+        _FswParamSpec("target_body", False, "moon",
+                      "name of a SPICE-tracked body (gravity.central_body or a gravity"
+                      ".third_body_perturbers entry) to point at directly -- exactly one of this or "
+                      "target_ground_station is required", fill_on_reset=False, label="Point at celestial body"),
+        _FswParamSpec("pHat_B", False, [0.0, 0.0, 1.0], "body-frame pointing axis, unit vector [-]",
+                      label="Pointing axis"),
     ],
 }
+
+# One line per mode, shown under the mode combo.
+_FSW_MODE_SUMMARIES: dict = {
+    None: "No attitude control: the spacecraft coasts under the torques that are switched on.",
+    "inertial3D": "Holds one fixed attitude relative to the stars.",
+    "hillPoint": "Keeps the body aligned with the orbit (Hill) frame: radial, along-track, orbit normal.",
+    "velocityPoint": "Keeps the body aligned with the velocity direction.",
+    "sunSafePoint": "Points a body axis at the Sun.",
+    "locationPointing": "Points a body axis at a ground station or a celestial body.",
+}
+
+_TARGET_BODY_CHOICES = ["moon", "sun", "earth", "mars", "venus", "jupiter"]
 
 # Mirrors engine.fsw.DEFAULT_MRP_GAINS -- not imported directly since
 # engine.fsw pulls in Basilisk, which this GUI module must not require
 # just to be opened (see e.g. tests/gui/'s requires_gui-only, no
 # requires_basilisk, marker on every test that imports this module).
 _CONTROL_PARAM_SPECS: list[_FswParamSpec] = [
-    _FswParamSpec("K", False, 3.5, "MRP feedback proportional (attitude) gain"),
-    _FswParamSpec("P", False, 30.0, "MRP feedback derivative (rate) gain"),
-    _FswParamSpec("Ki", False, -1.0, "integral gain (negative disables integral feedback)"),
-    _FswParamSpec("integral_limit", False, 0.0, "integral windup limit"),
+    _FswParamSpec("K", False, 3.5, "MRP feedback proportional (attitude) gain", label="Attitude gain K"),
+    _FswParamSpec("P", False, 30.0, "MRP feedback derivative (rate) gain", label="Rate gain P"),
+    _FswParamSpec("Ki", False, -1.0, "integral gain (negative disables integral feedback)",
+                  label="Integral gain Ki"),
+    _FswParamSpec("integral_limit", False, 0.0, "integral windup limit", label="Integral limit"),
 ]
 
 
@@ -169,27 +188,16 @@ def _fsw_template_params(fsw_mode: "str | None") -> dict:
 def _fsw_missing_required_keys(fsw_mode: "str | None", params: dict) -> list[str]:
     if fsw_mode is None:
         return []
-    if fsw_mode == "locationPointing" and ("target_ground_station" in params or "target_body" in params):
+    if fsw_mode == "locationPointing":
         # Exactly one of these two satisfies locationPointing's own
         # requirement (Scenario.validate() enforces the xor itself, with a
-        # specific error message, if neither or both end up present).
-        return []
+        # specific error message, if both end up present).
+        return [] if ("target_ground_station" in params or "target_body" in params) else ["target_ground_station"]
     return [spec.key for spec in _FSW_MODE_PARAM_SPECS.get(fsw_mode, []) if spec.required and spec.key not in params]
 
 
 def _fsw_hint_text(fsw_mode: "str | None") -> str:
-    if fsw_mode is None:
-        return "No attitude control -- FSW params/control gains below are unused."
-    specs = _FSW_MODE_PARAM_SPECS.get(fsw_mode, [])
-    if not specs:
-        return f"{fsw_mode!r} needs no FSW params."
-    lines = [f"• {spec.key} ({'required' if spec.required else 'optional'}): {spec.help_text}"
-             for spec in specs]
-    return "\n".join(lines)
-
-
-def _control_params_hint_text() -> str:
-    return "\n".join(f"• {spec.key} (optional): {spec.help_text}" for spec in _CONTROL_PARAM_SPECS)
+    return _FSW_MODE_SUMMARIES.get(fsw_mode, "")
 
 
 def _spin(minimum: float, maximum: float, decimals: int = 4, step: float = 1.0, value: float = 0.0) -> QDoubleSpinBox:
@@ -444,34 +452,41 @@ class SpacecraftEditorDialog(QDialog):
 
         self.fsw_hint_label = QLabel(_fsw_hint_text(self.fsw_mode_combo.currentData()))
         self.fsw_hint_label.setWordWrap(True)
-        self.fsw_hint_label.setStyleSheet("color: palette(mid);")
-        fsw_layout.addWidget(self.fsw_hint_label)
+        self.fsw_hint_label.setStyleSheet(f"color: {PALETTE['text_muted']};")
+        fsw_form.addRow("", self.fsw_hint_label)
 
-        fsw_params_row = QHBoxLayout()
-        fsw_params_row.addWidget(QLabel("FSW params (JSON object)"))
-        fsw_params_row.addStretch(1)
+        # Guidance parameters for the selected mode: one labelled row each
+        # (real user feedback: the old bullet list over a raw JSON box was
+        # "bad UI/UX").
+        self.fsw_params_group = QGroupBox("Pointing parameters")
+        fsw_params_layout = QVBoxLayout(self.fsw_params_group)
+        fsw_params_header = QHBoxLayout()
+        fsw_params_legend = QLabel("Unticked parameters use the default. Hover a name for details.")
+        fsw_params_legend.setStyleSheet(f"color: {PALETTE['text_muted']};")
+        fsw_params_header.addWidget(fsw_params_legend, 1)
         self.fsw_reset_template_button = QPushButton("Reset to template")
-        self.fsw_reset_template_button.setToolTip(
-            "Fill the FSW params box below with a working example for the selected FSW mode -- "
-            "overwrites whatever is currently typed there."
-        )
+        self.fsw_reset_template_button.setToolTip("Put this mode's parameters back to a working example.")
         self.fsw_reset_template_button.clicked.connect(self._on_fsw_reset_template)
-        fsw_params_row.addWidget(self.fsw_reset_template_button)
-        fsw_layout.addLayout(fsw_params_row)
+        fsw_params_header.addWidget(self.fsw_reset_template_button)
+        fsw_params_layout.addLayout(fsw_params_header)
+        self.fsw_param_form = ParamForm()
+        fsw_params_layout.addWidget(self.fsw_param_form)
+        fsw_layout.addWidget(self.fsw_params_group)
+        self._current_fsw_mode = self.fsw_mode_combo.currentData()
+        self._fsw_mode_params: dict = {}
+        initial_fsw_params = (dict(config.fsw_params) if config
+                              else self._fsw_default_params(self._current_fsw_mode))
+        self._build_fsw_form(self._current_fsw_mode, initial_fsw_params)
 
-        initial_fsw_params = config.fsw_params if config else _fsw_template_params(self.fsw_mode_combo.currentData())
-        self.fsw_params_edit = QPlainTextEdit(json.dumps(initial_fsw_params, indent=2))
-        self.fsw_params_edit.setMaximumHeight(140)
-        fsw_layout.addWidget(self.fsw_params_edit)
-
-        fsw_layout.addWidget(QLabel("Control gains (JSON object)"))
-        control_hint_label = QLabel(_control_params_hint_text())
-        control_hint_label.setWordWrap(True)
-        control_hint_label.setStyleSheet("color: palette(mid);")
-        fsw_layout.addWidget(control_hint_label)
-        self.control_params_edit = QPlainTextEdit(json.dumps(config.control_params if config else {}, indent=2))
-        self.control_params_edit.setMaximumHeight(140)
-        fsw_layout.addWidget(self.control_params_edit)
+        self.control_group = QGroupBox("Control gains (MRP feedback)")
+        control_layout = QVBoxLayout(self.control_group)
+        control_legend = QLabel("Unticked gains use the defaults (K 3.5, P 30, integral off).")
+        control_legend.setStyleSheet(f"color: {PALETTE['text_muted']};")
+        control_layout.addWidget(control_legend)
+        self.control_param_form = ParamForm()
+        self.control_param_form.set_specs(_CONTROL_PARAM_SPECS, dict(config.control_params) if config else {})
+        control_layout.addWidget(self.control_param_form)
+        fsw_layout.addWidget(self.control_group)
         fsw_layout.addStretch(1)
 
         # comms_pointing (Phase 6 audit fix): previously had NO editor
@@ -488,7 +503,7 @@ class SpacecraftEditorDialog(QDialog):
         # not-cross-checked-here convention as every other group on this
         # dialog, e.g. momentum_dumping's actuator-kind requirement).
         cp0 = config.comms_pointing if config else None
-        self.comms_pointing_group = QGroupBox("Comms pointing (automatic Sun/ground-station attitude switching)")
+        self.comms_pointing_group = QGroupBox("Comms pointing: Sun-pointing, ground station when in view")
         self.comms_pointing_group.setCheckable(True)
         self.comms_pointing_group.setToolTip(
             "Checking this ON makes this spacecraft automatically switch its attitude between "
@@ -499,7 +514,17 @@ class SpacecraftEditorDialog(QDialog):
             "budget tab) must also be configured."
         )
         self.comms_pointing_group.setChecked(cp0 is not None)
-        cp_form = QFormLayout(self.comms_pointing_group)
+        # Collapsed to its title while unticked, so an unused group doesn't
+        # fill the tab with disabled rows.
+        cp_outer = QVBoxLayout(self.comms_pointing_group)
+        self._cp_body = QWidget()
+        self._cp_body.setObjectName("cpBody")
+        self._cp_body.setStyleSheet("QWidget#cpBody { background: transparent; }")
+        cp_outer.addWidget(self._cp_body)
+        cp_form = QFormLayout(self._cp_body)
+        cp_form.setContentsMargins(0, 0, 0, 0)
+        self.comms_pointing_group.toggled.connect(self._cp_body.setVisible)
+        self._cp_body.setVisible(cp0 is not None)
 
         self.cp_ground_station_combo = QComboBox()
         self.cp_ground_station_combo.setToolTip(
@@ -530,7 +555,7 @@ class SpacecraftEditorDialog(QDialog):
                     userData=cp0.target_ground_station,
                 )
                 self.cp_ground_station_combo.setCurrentIndex(self.cp_ground_station_combo.count() - 1)
-        cp_form.addRow("Target ground station", self.cp_ground_station_combo)
+        cp_form.addRow("Ground station", self.cp_ground_station_combo)
 
         cp_boresight0 = cp0.antenna_boresight_b if cp0 else [0.0, 0.0, 1.0]
         self.cp_boresight_x = _spin(-1.0, 1.0, decimals=4, step=0.1, value=cp_boresight0[0])
@@ -542,7 +567,9 @@ class SpacecraftEditorDialog(QDialog):
         )
         for box in (self.cp_boresight_x, self.cp_boresight_y, self.cp_boresight_z):
             box.setToolTip(_cp_boresight_tip)
-        cp_form.addRow("Antenna boresight [-] (body frame, 3 components)",
+        for axis, box in zip("xyz", (self.cp_boresight_x, self.cp_boresight_y, self.cp_boresight_z)):
+            box.setPrefix(f"{axis}  ")
+        cp_form.addRow("Antenna boresight",
                         _hbox(self.cp_boresight_x, self.cp_boresight_y, self.cp_boresight_z))
 
         # sun_pointing_axis_b is Optional with a real semantic default
@@ -550,7 +577,7 @@ class SpacecraftEditorDialog(QDialog):
         # power budget configured) -- same "tri-state: a checkbox gates
         # whether the typed value is even used" idiom as viz_model_group's
         # own isChecked() gating _viz_model_to_dataclass_path() below.
-        self.cp_sun_axis_default_check = QCheckBox("Use default (power panel normal, or [0, 0, 1])")
+        self.cp_sun_axis_default_check = QCheckBox("Sun axis: use the solar-panel normal")
         self.cp_sun_axis_default_check.setChecked(cp0 is None or cp0.sun_pointing_axis_b is None)
         self.cp_sun_axis_default_check.toggled.connect(self._on_cp_sun_axis_default_toggled)
         cp_form.addRow(self.cp_sun_axis_default_check)
@@ -565,7 +592,9 @@ class SpacecraftEditorDialog(QDialog):
         )
         for box in (self.cp_sun_axis_x, self.cp_sun_axis_y, self.cp_sun_axis_z):
             box.setToolTip(_cp_sun_axis_tip)
-        cp_form.addRow("Sun-pointing axis override [-] (body frame, 3 components)",
+        for axis, box in zip("xyz", (self.cp_sun_axis_x, self.cp_sun_axis_y, self.cp_sun_axis_z)):
+            box.setPrefix(f"{axis}  ")
+        cp_form.addRow("Axis to point at the Sun",
                         _hbox(self.cp_sun_axis_x, self.cp_sun_axis_y, self.cp_sun_axis_z))
         self._on_cp_sun_axis_default_toggled(self.cp_sun_axis_default_check.isChecked())
 
@@ -577,12 +606,13 @@ class SpacecraftEditorDialog(QDialog):
             "for a downlink transmitter's own power draw. Leave at 0 to model only the attitude "
             "-switching behavior with no extra power draw."
         )
-        cp_form.addRow("Comms power [W]", self.cp_comms_power_w)
+        self.cp_comms_power_w.setSuffix(" W")
+        cp_form.addRow("Extra power while pointing", self.cp_comms_power_w)
         # Directly under the FSW mode row, not after the two JSON editors:
         # comms_pointing is the ALTERNATIVE to an FSW mode, and at the
         # bottom of the tab it sat below the fold even when it was the
         # spacecraft's actual, active attitude control (e.g. template 19).
-        fsw_layout.insertWidget(fsw_layout.indexOf(self.fsw_hint_label) + 1, self.comms_pointing_group)
+        fsw_layout.insertWidget(fsw_layout.indexOf(self.fsw_params_group), self.comms_pointing_group)
         self.comms_pointing_group.toggled.connect(self._refresh_fsw_hint)
         self._refresh_fsw_hint()
 
@@ -1332,40 +1362,76 @@ class SpacecraftEditorDialog(QDialog):
             return
         self.accept()
 
+    @property
+    def fsw_params_edit(self) -> QPlainTextEdit:
+        """The Pointing parameters' collapsed "Advanced" JSON box."""
+        return self.fsw_param_form.params_edit
+
+    @property
+    def control_params_edit(self) -> QPlainTextEdit:
+        """The Control gains' collapsed "Advanced" JSON box."""
+        return self.control_param_form.params_edit
+
+    def _fsw_default_params(self, fsw_mode) -> dict:
+        params = _fsw_template_params(fsw_mode)
+        if "target_ground_station" in params and self._ground_station_names:
+            params["target_ground_station"] = self._ground_station_names[0]
+        return params
+
+    def _build_fsw_form(self, fsw_mode, params: dict) -> None:
+        specs = _FSW_MODE_PARAM_SPECS.get(fsw_mode, []) if fsw_mode is not None else []
+        stations = list(self._ground_station_names)
+        options = {
+            "target_ground_station": (stations, not stations),
+            "target_body": (_TARGET_BODY_CHOICES, True),
+        }
+        empty = "This mode has no parameters." if fsw_mode is not None else "No attitude control selected."
+        self.fsw_param_form.set_specs(specs, params, options=options, empty_text=empty)
+        station_box = self.fsw_param_form.include_box("target_ground_station")
+        body_box = self.fsw_param_form.include_box("target_body")
+        if station_box is not None and body_box is not None:
+            # Exactly one target: ticking one unticks the other.
+            station_box.toggled.connect(lambda on: on and body_box.setChecked(False))
+            body_box.toggled.connect(lambda on: on and station_box.setChecked(False))
+
     def _on_fsw_mode_changed(self, _index: int) -> None:
+        mode = self.fsw_mode_combo.currentData()
+        try:
+            self._fsw_mode_params[self._current_fsw_mode] = self.fsw_param_form.params()
+        except ValueError:
+            pass  # unparseable advanced JSON: just don't snapshot it
+        self._current_fsw_mode = mode
+        self._build_fsw_form(mode, self._fsw_mode_params.get(mode, self._fsw_default_params(mode)))
         self._refresh_fsw_hint()
 
     def _refresh_fsw_hint(self, *_args) -> None:
         # Comms pointing runs its own guidance AND feeds 'Control gains'
         # into its mrpFeedback loop (engine.service) -- the plain "(none)"
-        # hint ("...control gains below are unused") was flatly wrong for
-        # a comms_pointing spacecraft such as template 19's.
-        if self.comms_pointing_group.isChecked() and self.fsw_mode_combo.currentData() is None:
-            self.fsw_hint_label.setText(
-                "Attitude is controlled by 'Comms pointing' below -- leave FSW mode at (none). "
-                "FSW params are unused; Control gains ARE used by its feedback loop."
-            )
+        # hint ("...coasts...") was flatly wrong for a comms_pointing
+        # spacecraft such as template 19's.
+        mode = self.fsw_mode_combo.currentData()
+        comms = self.comms_pointing_group.isChecked() and mode is None
+        self.fsw_params_group.setVisible(mode is not None)
+        if comms:
+            self.fsw_hint_label.setText("Attitude is controlled by Comms pointing below; the control gains "
+                                        "still apply.")
             return
-        self.fsw_hint_label.setText(_fsw_hint_text(self.fsw_mode_combo.currentData()))
+        self.fsw_hint_label.setText(_fsw_hint_text(mode))
 
     def _on_fsw_reset_template(self) -> None:
-        self.fsw_params_edit.setPlainText(
-            json.dumps(_fsw_template_params(self.fsw_mode_combo.currentData()), indent=2)
-        )
+        mode = self.fsw_mode_combo.currentData()
+        self._build_fsw_form(mode, self._fsw_default_params(mode))
 
     def _on_cp_sun_axis_default_toggled(self, checked: bool) -> None:
         for box in (self.cp_sun_axis_x, self.cp_sun_axis_y, self.cp_sun_axis_z):
             box.setEnabled(not checked)
 
-    def _parse_json_object(self, edit: QPlainTextEdit, field_label: str) -> dict:
-        text = edit.toPlainText().strip() or "{}"
+    @staticmethod
+    def _form_params(form: ParamForm, field_label: str) -> dict:
         try:
-            value = json.loads(text)
-        except json.JSONDecodeError as exc:
-            raise ValueError(f"{field_label} is not valid JSON: {exc}") from exc
-        if not isinstance(value, dict):
-            raise ValueError(f"{field_label} must be a JSON object")
-        return value
+            return form.params()
+        except ValueError as exc:
+            raise ValueError(f"{field_label}: {exc}") from exc
 
     def to_dataclass(self) -> SpacecraftConfig:
         name = self.name_edit.text().strip()
@@ -1380,10 +1446,13 @@ class SpacecraftEditorDialog(QDialog):
             fsw_mode, fsw_params, sensors, actuators, power, comms_pointing = None, {}, [], [], None, None
         else:
             fsw_mode = self.fsw_mode_combo.currentData()
-            fsw_params = self._parse_json_object(self.fsw_params_edit, "FSW params")
+            fsw_params = self._form_params(self.fsw_param_form, "Pointing parameters")
             missing = _fsw_missing_required_keys(fsw_mode, fsw_params)
             if missing:
                 raise ValueError(
+                    f"FSW mode {fsw_mode!r} is missing required params key(s): {', '.join(missing)} -- "
+                    "tick 'Point at ground station' or 'Point at celestial body'"
+                    if fsw_mode == "locationPointing" else
                     f"FSW mode {fsw_mode!r} is missing required params key(s): {', '.join(missing)} -- "
                     "use 'Reset to template' for a working example"
                 )
@@ -1406,7 +1475,7 @@ class SpacecraftEditorDialog(QDialog):
             actuators=actuators,
             fsw_mode=fsw_mode,
             fsw_params=fsw_params,
-            control_params=self._parse_json_object(self.control_params_edit, "Control gains"),
+            control_params=self._form_params(self.control_param_form, "Control gains"),
             power=power,
             comms_pointing=comms_pointing,
             rf_link=self._rf_link_to_dataclass(),

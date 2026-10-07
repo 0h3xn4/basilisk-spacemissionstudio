@@ -21,11 +21,15 @@ and :class:`schema.scenario.ActuatorConfig` -- their shape is identical
 (``kind``, ``name``, ``params``), so one generic widget covers both,
 parameterized by which item class and which kind whitelist to use.
 
-``params`` is edited as raw JSON text rather than a custom form per
-sensor/actuator kind: the schema deliberately keeps ``params`` an open
-dict (see ``schema.scenario.SensorConfig``'s docstring) so new kinds don't
-need a schema migration, and a JSON text box is the one editor that never
-falls behind that dict's actual shape.
+``params`` is edited through :class:`gui.param_form.ParamForm`: one
+labelled row per parameter known to _KIND_PARAM_SPECS (unit in the field,
+full description in the tooltip, a checkbox on each optional parameter),
+plus a collapsed "Advanced" JSON box for any other key. The schema keeps
+``params`` an open dict (see ``schema.scenario.SensorConfig``'s
+docstring), so that JSON box is what keeps a key this module doesn't
+know yet editable. Real user feedback replaced the earlier layout (a
+cramped bullet-list reference over a JSON box, and the device information
+as raw text) with this form and a device card.
 
 User feedback (this app's own beginner testing): a blank ``{}`` JSON box
 with zero in-dialog guidance meant a user had to already know -- from
@@ -61,17 +65,16 @@ kind's non-vector keys.
 
 from __future__ import annotations
 
-import json
-import math
+import html
 from typing import NamedTuple
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QDialogButtonBox,
-    QDoubleSpinBox,
     QFormLayout,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -87,7 +90,8 @@ from PySide6.QtWidgets import (
 
 from ..engine.device_catalog import catalog_entries_for_kind
 from .feedback import clear_invalid, mark_invalid, show_toast
-from .widgets import PreciseDoubleSpinBox
+from .param_form import ParamForm
+from .theme import PALETTE
 
 
 class _ParamSpec(NamedTuple):
@@ -108,6 +112,7 @@ class _ParamSpec(NamedTuple):
     # also fixes the same latent bug already present on magnetometer's
     # noise_std_tesla.
     normalizable: bool = True
+    label: str = ""  # short form-row label; filled from _PARAM_LABELS below
 
     @property
     def is_vector(self) -> bool:
@@ -286,6 +291,80 @@ _KIND_PARAM_SPECS: dict[str, list[_ParamSpec]] = {
     ],
 }
 
+# Short form-row labels (the full description stays in each row's
+# tooltip). Keyed by (kind, key) so the same key can read differently per
+# kind; a missing entry falls back to the start of the help text.
+_PARAM_LABELS: dict[tuple[str, str], str] = {
+    ("star_tracker", "noise_arcsec"): "Attitude noise (1-sigma)",
+    ("star_tracker", "bias_walk_bound_arcsec"): "Bias random-walk bound",
+    ("imu", "gyro_noise_rad_s"): "Gyro noise (1-sigma)",
+    ("imu", "accel_noise_m_s2"): "Accel. noise (1-sigma)",
+    ("imu", "gyro_bias_rad_s"): "Gyro bias",
+    ("imu", "accel_bias_m_s2"): "Accel. bias",
+    ("imu", "gyro_saturation_rad_s"): "Gyro saturation",
+    ("imu", "accel_saturation_m_s2"): "Accel. saturation",
+    ("imu", "gyro_lsb_rad_s"): "Gyro quantization step",
+    ("imu", "accel_lsb_m_s2"): "Accel. quantization step",
+    ("coarse_sun_sensor", "nHat_B"): "Boresight direction",
+    ("coarse_sun_sensor", "fov_deg"): "Field of view (full)",
+    ("coarse_sun_sensor", "noise_std"): "Output noise (1-sigma)",
+    ("coarse_sun_sensor", "bias"): "Output bias",
+    ("coarse_sun_sensor", "saturation_max"): "Saturation, upper",
+    ("coarse_sun_sensor", "saturation_min"): "Saturation, lower",
+    ("coarse_sun_sensor", "fault_mode"): "Fault mode",
+    ("coarse_sun_sensor", "fault_noise_std"): "Fault noise (random mode)",
+    ("magnetometer", "noise_std_tesla"): "Noise per axis (1-sigma)",
+    ("magnetometer", "bias_tesla"): "Bias per axis",
+    ("magnetometer", "saturation_tesla"): "Saturation",
+    ("magnetometer", "fault_mode"): "Fault mode",
+    ("magnetometer", "fault_axis"): "Fault axis (0, 1 or 2)",
+    ("magnetometer", "stuck_value_tesla"): "Stuck value",
+    ("magnetometer", "spike_probability"): "Spike probability per tick",
+    ("magnetometer", "spike_amount"): "Spike multiplier",
+    ("reaction_wheel", "gsHat_B"): "Spin axis",
+    ("reaction_wheel", "rw_type"): "Wheel model",
+    ("reaction_wheel", "Omega_max"): "Max wheel speed",
+    ("reaction_wheel", "u_max"): "Max motor torque",
+    ("reaction_wheel", "Js"): "Rotor inertia (spin axis)",
+    ("reaction_wheel", "useRWfriction"): "Friction model",
+    ("reaction_wheel", "fCoulomb"): "Coulomb friction",
+    ("reaction_wheel", "fStatic"): "Static friction",
+    ("reaction_wheel", "cViscous"): "Viscous friction",
+    ("reaction_wheel", "betaStatic"): "Stribeck coefficient",
+    ("reaction_wheel", "motor_thermal_initial_temp_c"): "Motor start temperature",
+    ("reaction_wheel", "motor_thermal_efficiency"): "Motor efficiency",
+    ("reaction_wheel", "motor_thermal_ambient_resistance_w_c"): "Motor thermal resistance",
+    ("reaction_wheel", "motor_thermal_heat_capacity_j_c"): "Motor heat capacity",
+    ("thruster", "r_B"): "Location",
+    ("thruster", "tHat_B"): "Thrust direction",
+    ("thruster", "MaxThrust"): "Max thrust",
+    ("thruster", "thruster_type"): "Thruster model",
+    ("thruster", "steadyIsp"): "Specific impulse",
+    ("thruster", "MinOnTime"): "Minimum on-time",
+    ("thruster", "thrusterMagDisp"): "Thrust dispersion",
+    ("magnetic_torque_rod", "gtHat_B"): "Dipole axis",
+    ("magnetic_torque_rod", "max_dipole_a_m2"): "Max dipole",
+    ("thermal", "nHat_B"): "Face normal",
+    ("thermal", "area_m2"): "Radiating area",
+    ("thermal", "absorptivity"): "Absorptivity (0-1)",
+    ("thermal", "emissivity"): "Emissivity (0-1)",
+    ("thermal", "mass_kg"): "Mass",
+    ("thermal", "specific_heat_j_kg_k"): "Specific heat",
+    ("thermal", "initial_temp_c"): "Start temperature",
+    ("thermal", "power_draw_w"): "Internal heat",
+    ("thermal", "measurement_bias_c"): "Sensor bias",
+    ("thermal", "measurement_noise_std_c"): "Sensor noise (1-sigma)",
+    ("thermal", "measurement_walk_bound_c"): "Sensor bias-walk bound",
+    ("thermal", "measurement_fault_mode"): "Sensor fault mode",
+    ("thermal", "measurement_stuck_value_c"): "Sensor stuck value",
+    ("thermal", "measurement_spike_probability"): "Spike probability per tick",
+    ("thermal", "measurement_spike_amount"): "Spike multiplier",
+}
+_KIND_PARAM_SPECS = {
+    kind: [spec._replace(label=_PARAM_LABELS.get((kind, spec.key), "")) for spec in specs]
+    for kind, specs in _KIND_PARAM_SPECS.items()
+}
+
 # Schema-valid (SUPPORTED_ACTUATOR_KINDS) but engine.fsw/engine.service
 # raise a specific error if actually configured -- see
 # schema.scenario.SUPPORTED_ACTUATOR_KINDS's module-level docstring note.
@@ -310,34 +389,8 @@ _CONDITIONAL_ACTUATOR_NOTES = {
 }
 
 
-# Height cap for the per-kind parameter reference panel (see
-# _ItemEditorDialog's own comment where it's built).
-_MAX_HINT_HEIGHT_PX = 150
-
-
-def _spin_component(value: float = 0.0) -> QDoubleSpinBox:
-    box = PreciseDoubleSpinBox()
-    box.setRange(-1.0e6, 1.0e6)
-    box.setDecimals(6)
-    box.setSingleStep(0.1)
-    box.setValue(value)
-    return box
-
-
-def _vector_specs(kind: str) -> list[_ParamSpec]:
-    return [spec for spec in _KIND_PARAM_SPECS.get(kind, []) if spec.is_vector]
-
-
-def _non_vector_specs(kind: str) -> list[_ParamSpec]:
-    return [spec for spec in _KIND_PARAM_SPECS.get(kind, []) if not spec.is_vector]
-
-
 def _template_params(kind: str) -> dict:
     return {spec.key: spec.example for spec in _KIND_PARAM_SPECS.get(kind, [])}
-
-
-def _non_vector_template_params(kind: str) -> dict:
-    return {spec.key: spec.example for spec in _non_vector_specs(kind)}
 
 
 def _missing_required_keys(kind: str, params: dict) -> list[str]:
@@ -345,232 +398,227 @@ def _missing_required_keys(kind: str, params: dict) -> list[str]:
 
 
 def _hint_text(kind: str) -> str:
+    """Notes/warnings for a kind (shown as a banner only when there are
+    any) -- the per-parameter reference itself is now the form's own
+    labels, units and tooltips."""
     if kind in _UNIMPLEMENTED_ACTUATOR_KINDS:
         return (
             f"⚠ {kind!r} is schema-valid but not simulated yet -- engine.service will raise an error at "
             "Run Simulation if this actuator is actually configured on a spacecraft with fsw_mode set. "
             "Pick 'reaction_wheel' for a working actuator."
         )
-    specs = _KIND_PARAM_SPECS.get(kind)
-    lines = []
     note = _CONDITIONAL_ACTUATOR_NOTES.get(kind)
-    if note:
-        lines.append(f"ℹ {note}")
-    if not specs:
-        lines.append("No params needed for this kind.")
-        return "\n".join(lines)
-    for spec in specs:
-        tag = "required" if spec.required else "optional"
-        where = " -- see X/Y/Z fields below" if spec.is_vector else ""
-        lines.append(f"• {spec.key} ({tag}): {spec.help_text}{where}")
-    return "\n".join(lines)
+    return f"ℹ {note}" if note else ""
+
+
+_STATUS_COLORS = {"RFI priority": "success", "RFI": "warning", "Candidate": "text_muted",
+                  "Check": "danger", "Development": "warning"}
+
+
+def _device_card_html(entry) -> str:
+    """A catalog device as a structured card: name, summary, labelled facts
+    and small-print conversion notes (real user feedback: the old plain-text
+    dump looked "unclear, confusing, all over the place and not
+    professional")."""
+    esc = html.escape
+    status_color = next((PALETTE[color] for prefix, color in _STATUS_COLORS.items()
+                         if entry.procurement_status.startswith(prefix)), PALETTE["text_muted"])
+    rows = [
+        ("Heritage", esc(entry.heritage)),
+        ("Procurement", f"<span style='color:{status_color}; font-weight:600;'>"
+                        f"{esc(entry.procurement_status)}</span>"),
+        ("Export control", esc(entry.itar_free_note)),
+        ("Source", f"<a href='{esc(entry.source_url)}'>{esc(entry.source_url)}</a>"),
+    ]
+    table = "".join(
+        f"<tr><td style='color:{PALETTE['text_muted']}; padding:2px 10px 2px 0; white-space:nowrap;'"
+        f" valign='top'>{label}</td><td style='padding:2px 0;'>{value}</td></tr>"
+        for label, value in rows if value)
+    notes = (f"<p style='color:{PALETTE['text_muted']}; font-size:90%; margin-top:8px;'>"
+             f"<b>How the values were set:</b> {esc(entry.notes)}</p>" if entry.notes else "")
+    return (f"<p style='font-size:115%; font-weight:600; margin:0;'>{esc(entry.manufacturer)} "
+            f"{esc(entry.product_name)}</p>"
+            f"<p style='color:{PALETTE['text_muted']}; margin:0 0 6px 0;'>{esc(entry.country)}</p>"
+            f"<p style='margin:0 0 6px 0;'>{esc(entry.description)}</p>"
+            f"<table cellspacing='0'>{table}</table>{notes}")
 
 
 class _ItemEditorDialog(QDialog):
+    """Edit one sensor or actuator: Kind and Name, an optional real device
+    from the catalog (shown as a card beside the form), and a form with
+    one labelled field per parameter of the kind -- units in the field,
+    the full description in its tooltip, and a checkbox on each OPTIONAL
+    parameter (unchecked = Basilisk's own default). Parameters the form
+    doesn't know are kept in a collapsed "Advanced" JSON box.
+
+    Real user feedback drove this layout: the old dialog crammed a
+    bullet-list parameter reference into a small scroll box, dumped the
+    device information as raw text, and took most parameters as raw JSON.
+    """
+
     def __init__(self, item_cls, kind_choices, item=None, parent: QWidget | None = None,
                  other_names: list[str] | None = None):
         super().__init__(parent)
         self._item_cls = item_cls
         self._other_names = other_names or []
-        # A defensive copy, not the original item's own dict: _rebuild_vector_rows
-        # below writes the live spin-box values back into this cache on every
-        # Kind change so switching away and back never loses an edit (see that
-        # method's docstring) -- aliasing item.params directly would let that
-        # write-back mutate the caller's SpacecraftConfig/SensorConfig in place
-        # even if this dialog is ultimately cancelled.
+        # Per-kind snapshot of the form, so switching Kind away and back
+        # never loses an edit (only Reset to template may).
+        self._kind_params: dict[str, dict] = {}
+        if item is not None:
+            self._kind_params[item.kind] = dict(item.params)
         self._item_params = dict(item.params) if item is not None else {}
         label = "sensor" if item_cls.__name__ == "SensorConfig" else "actuator"
         self.setWindowTitle(f"Edit {label}" if item is not None else f"New {label}")
 
         layout = QVBoxLayout(self)
-        form = QFormLayout()
+        layout.setSpacing(10)
+        top = QFormLayout()
         self.kind_combo = QComboBox()
-        self.kind_combo.setToolTip(
-            "Which real piece of hardware this is -- picks which params this needs (see the "
-            "hint text below, which updates for whichever kind is selected) and which FSW "
-            "modes/features can use it (e.g. a 'locationPointing' FSW mode needs no particular "
-            "actuator, but 'momentum_dumping' needs both a reaction_wheel AND a thruster)."
-        )
+        self.kind_combo.setToolTip("Which kind of hardware this is: it sets the parameters below.")
         self.kind_combo.addItems(list(kind_choices))
         if item is not None:
             index = self.kind_combo.findText(item.kind)
             if index >= 0:
                 self.kind_combo.setCurrentIndex(index)
-        form.addRow("Kind", self.kind_combo)
-
+        top.addRow("Kind", self.kind_combo)
         self.name_edit = QLineEdit(item.name if item is not None else "")
         self.name_edit.textChanged.connect(self._on_name_changed)
-        form.addRow("Name", self.name_edit)
-        layout.addLayout(form)
+        top.addRow("Name", self.name_edit)
+        layout.addLayout(top)
 
-        self.hint_label = QLabel(_hint_text(self.kind_combo.currentText()))
+        self.hint_label = QLabel()
         self.hint_label.setWordWrap(True)
-        self.hint_label.setStyleSheet("color: palette(mid);")
-        # A bordered, height-capped reference panel rather than a bare
-        # label: reaction_wheel alone documents 16 params, and inline
-        # that wall of bullets made this dialog ~900 px tall and pushed
-        # the actual fields (vector rows, params box) off a laptop
-        # screen. Any warning/note line comes first, so it's always in view.
-        self._hint_scroll = QScrollArea()
-        self._hint_scroll.setObjectName("paramReference")
-        self._hint_scroll.setWidgetResizable(True)
-        self._hint_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self._hint_scroll.setWidget(self.hint_label)
-        self.hint_label.setContentsMargins(6, 4, 6, 4)
-        layout.addWidget(self._hint_scroll)
+        self.hint_label.setStyleSheet(f"background: {PALETTE['accent_soft']}; border-radius: 4px; padding: 6px;")
+        layout.addWidget(self.hint_label)
 
-        # Direct user feedback: "the user should be able to either create
-        # their own sensor/actuator or select from a range of commonly
-        # used devices from the space industry. They must be ITAR free
-        # and available in europe." -- engine.device_catalog holds a
-        # small set of real, sourced, European-manufactured devices (see
-        # that module's own docstring for the sourcing/honesty
-        # discipline). Selecting one and clicking "Apply device preset"
-        # is just a faster path to the SAME fields "Reset to template"
-        # already fills -- never a separate/locked mode, so the result
-        # stays fully editable afterward like any other sensor/actuator
-        # here. Hidden entirely for a kind with no catalog entry yet
-        # (falls back to the ordinary custom editor silently, not an
-        # error).
+        body = QHBoxLayout()
+        body.setSpacing(14)
+
+        # Left: the catalog picker and the selected device's card.
         self._catalog_container = QWidget()
         catalog_layout = QVBoxLayout(self._catalog_container)
         catalog_layout.setContentsMargins(0, 0, 0, 0)
-        catalog_row = QHBoxLayout()
-        catalog_row.addWidget(QLabel("Catalog"))
+        catalog_title = QLabel("Start from a real device")
+        catalog_title.setStyleSheet("font-weight: 600;")
+        catalog_layout.addWidget(catalog_title)
         self.catalog_combo = QComboBox()
-        self.catalog_combo.setToolTip(
-            "A real, commercially available device for this Kind -- selecting one previews its real "
-            "specs and source below. Click \"Apply device preset\" to actually fill the fields with "
-            "it (same effect as \"Reset to template\", but with a real device's own numbers instead "
-            "of a generic example)."
-        )
+        self.catalog_combo.setToolTip("A real, commercially available device for this kind. Its card "
+                                      "appears below; Apply fills the parameters with its values.")
         self.catalog_combo.currentIndexChanged.connect(self._on_catalog_selection_changed)
-        catalog_row.addWidget(self.catalog_combo, 1)
-        self.apply_catalog_button = QPushButton("Apply device preset")
-        self.apply_catalog_button.setToolTip(
-            "Fill the fields above and the params box below with the selected catalog device's real "
-            "specs -- overwrites whatever is currently typed/set there, same as \"Reset to template\"."
-        )
+        catalog_layout.addWidget(self.catalog_combo)
+        self.apply_catalog_button = QPushButton("Apply device values")
+        self.apply_catalog_button.setToolTip("Fill the parameters with the selected device's values "
+                                             "(overwrites the current ones).")
         self.apply_catalog_button.clicked.connect(self._on_apply_catalog_entry)
-        catalog_row.addWidget(self.apply_catalog_button)
-        catalog_layout.addLayout(catalog_row)
+        catalog_layout.addWidget(self.apply_catalog_button)
         self.catalog_info_label = QLabel()
         self.catalog_info_label.setWordWrap(True)
-        self.catalog_info_label.setStyleSheet("color: palette(mid);")
-        self.catalog_info_label.setVisible(False)  # only shown once a device is picked (see below)
-        catalog_layout.addWidget(self.catalog_info_label)
-        layout.addWidget(self._catalog_container)
-        self._rebuild_catalog_row(self.kind_combo.currentText())
+        self.catalog_info_label.setTextFormat(Qt.TextFormat.RichText)
+        self.catalog_info_label.setOpenExternalLinks(True)
+        self.catalog_info_label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+        self.catalog_info_label.setContentsMargins(10, 8, 10, 8)
+        card = QFrame()
+        card.setObjectName("deviceCard")
+        card.setStyleSheet(f"QFrame#deviceCard {{ background: {PALETTE['surface']}; "
+                           f"border: 1px solid {PALETTE['border']}; border-radius: 6px; }}")
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(0, 0, 0, 0)
+        card_layout.addWidget(self.catalog_info_label)
+        card_scroll = QScrollArea()
+        card_scroll.setWidgetResizable(True)
+        card_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        card_scroll.setWidget(card)
+        self._card_scroll = card_scroll
+        catalog_layout.addWidget(card_scroll, 1)
+        self._catalog_container.setFixedWidth(340)
+        body.addWidget(self._catalog_container)
 
-        # Vector-shaped params (nHat_B, gsHat_B, ...) get their own X/Y/Z
-        # spin-box row instead of living inside the JSON params box -- see
-        # this module's docstring. Rebuilt whenever Kind changes, since
-        # different kinds have different vector keys.
-        self._vector_form_container = QWidget()
-        self._vector_form = QFormLayout(self._vector_form_container)
-        self._vector_form.setContentsMargins(0, 0, 0, 0)
-        self._vector_boxes: dict[str, tuple[QDoubleSpinBox, QDoubleSpinBox, QDoubleSpinBox]] = {}
-        layout.addWidget(self._vector_form_container)
-        self._rebuild_vector_rows(self.kind_combo.currentText())
-
-        self.kind_combo.currentTextChanged.connect(self._on_kind_changed)
-
-        params_row = QHBoxLayout()
-        params_row.addWidget(QLabel("Other params (JSON object)"))
-        params_row.addStretch(1)
+        # Right: the parameter form.
+        params_column = QVBoxLayout()
+        params_header = QHBoxLayout()
+        params_title = QLabel("Parameters")
+        params_title.setStyleSheet("font-weight: 600;")
+        params_header.addWidget(params_title)
+        params_header.addStretch(1)
         self.reset_template_button = QPushButton("Reset to template")
-        self.reset_template_button.setToolTip(
-            "Fill the fields above and the params box below with a working example for the "
-            "selected Kind -- overwrites whatever is currently typed/set there."
-        )
+        self.reset_template_button.setToolTip("Required parameters back to a working example; optional "
+                                              "ones back to their defaults.")
         self.reset_template_button.clicked.connect(self._on_reset_template)
-        params_row.addWidget(self.reset_template_button)
-        layout.addLayout(params_row)
-
-        if item is not None:
-            initial_non_vector = {k: v for k, v in item.params.items()
-                                   if k not in {spec.key for spec in _vector_specs(item.kind)}}
-        else:
-            initial_non_vector = _non_vector_template_params(self.kind_combo.currentText())
-        self.params_edit = QPlainTextEdit(json.dumps(initial_non_vector, indent=2))
-        self.params_edit.setTabChangesFocus(True)
-        layout.addWidget(self.params_edit)
+        params_header.addWidget(self.reset_template_button)
+        params_column.addLayout(params_header)
+        legend = QLabel("Optional parameters use Basilisk's default unless ticked. Hover a name for details.")
+        legend.setWordWrap(True)
+        legend.setStyleSheet(f"color: {PALETTE['text_muted']};")
+        params_column.addWidget(legend)
+        self.param_form = ParamForm()
+        form_holder = QWidget()
+        holder_layout = QVBoxLayout(form_holder)
+        holder_layout.setContentsMargins(4, 4, 4, 4)
+        holder_layout.addWidget(self.param_form)
+        holder_layout.addStretch(1)
+        form_scroll = QScrollArea()
+        form_scroll.setWidgetResizable(True)
+        form_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        form_scroll.setWidget(form_holder)
+        params_column.addWidget(form_scroll, 1)
+        body.addLayout(params_column, 1)
+        layout.addLayout(body, 1)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self._on_accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
-        # See constellation_dialog.py's identical fix for why this is
-        # needed: Qt can size a freshly-constructed QDialog smaller than
-        # its own sizeHint() on first show() on a real desktop, a gap
-        # this project's own offscreen test rendering doesn't reproduce.
-        self._fit_hint_height()
-        self.resize(self.sizeHint())
+        self._current_kind = self.kind_combo.currentText()
+        initial = (dict(item.params) if item is not None
+                   else self._default_params(self._current_kind))
+        self._build_form(self._current_kind, initial)
+        self._rebuild_catalog_row(self._current_kind)
+        self._update_hint(self._current_kind)
+        self.kind_combo.currentTextChanged.connect(self._on_kind_changed)
+        self.resize(self.sizeHint().expandedTo(QSize(980, 640)))  # [px]
 
-    def _rebuild_vector_rows(self, kind: str) -> None:
-        # Regression fix: this used to only re-use self._item_params (the
-        # ORIGINAL item's saved values) when switching back to the exact
-        # kind this dialog opened on, and fell back to the kind's static
-        # template example for every other kind -- including a kind the
-        # user had already edited earlier in this same dialog session.
-        # Switching Kind away and back (even via a third, unrelated kind)
-        # silently reverted any in-session edit to whatever the dialog
-        # originally opened with, contradicting this module's own "Kind
-        # changes must not clobber user edits, only Reset to template may"
-        # rule that the non-vector JSON params box already follows (see
-        # test_switching_kind_does_not_clobber_params_until_reset_clicked).
-        # Snapshotting the live spin-box values into the cache before
-        # tearing the rows down -- instead of only ever reading the
-        # original item -- makes the cache track the user's latest edit
-        # for whichever kind(s) they've actually visited.
-        for key, (x, y, z) in self._vector_boxes.items():
-            self._item_params[key] = [x.value(), y.value(), z.value()]
-        while self._vector_form.rowCount():
-            self._vector_form.removeRow(0)
-        self._vector_boxes.clear()
-        for spec in _vector_specs(kind):
-            value = self._item_params.get(spec.key, spec.example)
-            x, y, z = (_spin_component(v) for v in value)
-            row = QHBoxLayout()
-            row.addWidget(x)
-            row.addWidget(y)
-            row.addWidget(z)
-            if spec.normalizable:
-                normalize_button = QPushButton("Normalize")
-                normalize_button.setToolTip("Rescale to a unit vector (preserves direction).")
-                normalize_button.clicked.connect(lambda _checked, k=spec.key: self._on_normalize(k))
-                row.addWidget(normalize_button)
-            row_widget = QWidget()
-            row_widget.setLayout(row)
-            required_tag = "" if spec.required else " (optional)"
-            self._vector_form.addRow(f"{spec.key}{required_tag}", row_widget)
-            self._vector_boxes[spec.key] = (x, y, z)
+    # -- form ----------------------------------------------------------
+    @staticmethod
+    def _default_params(kind: str) -> dict:
+        """A working starting point: every REQUIRED parameter at its example."""
+        return {spec.key: spec.example for spec in _KIND_PARAM_SPECS.get(kind, []) if spec.required}
 
-    def _fit_hint_height(self) -> None:
-        # Fits the panel to its text for a short hint, capped for a long one
-        # (which then scrolls inside the panel). Recomputed whenever the
-        # text or the available width changes.
-        width = max(self._hint_scroll.viewport().width(), 200)
-        frame = 2 * self._hint_scroll.frameWidth()
-        self._hint_scroll.setFixedHeight(min(self.hint_label.heightForWidth(width) + frame, _MAX_HINT_HEIGHT_PX))
+    @property
+    def params_edit(self) -> QPlainTextEdit:
+        """The collapsed "Advanced" JSON box (keys the form doesn't cover)."""
+        return self.param_form.params_edit
 
-    def resizeEvent(self, event) -> None:  # noqa: N802 -- Qt override
-        super().resizeEvent(event)
-        self._fit_hint_height()
+    @property
+    def _vector_boxes(self) -> dict:
+        return self.param_form.vector_boxes
+
+    def _build_form(self, kind: str, params: dict) -> None:
+        self.param_form.set_specs(_KIND_PARAM_SPECS.get(kind, []), params,
+                                  empty_text="This kind has no parameters.")
+
+    def _update_hint(self, kind: str) -> None:
+        text = _hint_text(kind)
+        self.hint_label.setText(text)
+        self.hint_label.setVisible(bool(text))
 
     def _on_kind_changed(self, kind: str) -> None:
-        self.hint_label.setText(_hint_text(kind))
-        self._fit_hint_height()
-        self._rebuild_vector_rows(kind)
+        try:
+            self._kind_params[self._current_kind] = self.param_form.params()
+        except ValueError:
+            pass  # unparseable advanced JSON: just don't snapshot it
+        self._current_kind = kind
+        self._build_form(kind, self._kind_params.get(kind, self._default_params(kind)))
         self._rebuild_catalog_row(kind)
+        self._update_hint(kind)
 
+    # -- catalog -------------------------------------------------------
     def _rebuild_catalog_row(self, kind: str) -> None:
         entries = catalog_entries_for_kind(kind)
         self._catalog_container.setVisible(bool(entries))
         self.catalog_combo.blockSignals(True)
         self.catalog_combo.clear()
-        self.catalog_combo.addItem("-- custom (no preset) --")
+        self.catalog_combo.addItem("-- none (custom values) --")
         for entry in entries:
             self.catalog_combo.addItem(entry.display_name)
         self.catalog_combo.setCurrentIndex(0)
@@ -582,21 +630,13 @@ class _ItemEditorDialog(QDialog):
         entries = getattr(self, "_current_catalog_entries", [])
         if index <= 0 or index - 1 >= len(entries):
             self.catalog_info_label.setText("")
-            # Hidden, not just blank: an empty word-wrapped QLabel still
-            # reserved a blank ~40 px band between this row and the next.
-            self.catalog_info_label.setVisible(False)
+            self._card_scroll.setVisible(False)
             self.apply_catalog_button.setEnabled(False)
             return
         entry = entries[index - 1]
-        self.catalog_info_label.setVisible(True)
+        self._card_scroll.setVisible(True)
         self.apply_catalog_button.setEnabled(True)
-        self.catalog_info_label.setText(
-            f"{entry.description}"
-            + (f"\n\nHeritage: {entry.heritage}" if entry.heritage else "")
-            + (f"\nProcurement status: {entry.procurement_status}" if entry.procurement_status else "")
-            + f"\n\nSource: {entry.source_url}\n\nExport control: {entry.itar_free_note}"
-            + (f"\n\n{entry.notes}" if entry.notes else "")
-        )
+        self.catalog_info_label.setText(_device_card_html(entry))
 
     def _on_apply_catalog_entry(self) -> None:
         entries = getattr(self, "_current_catalog_entries", [])
@@ -604,40 +644,17 @@ class _ItemEditorDialog(QDialog):
         if index <= 0 or index - 1 >= len(entries):
             return
         entry = entries[index - 1]
-        kind = entry.kind
-        for spec in _vector_specs(kind):
-            x, y, z = self._vector_boxes[spec.key]
-            value = entry.params.get(spec.key, spec.example)
-            x.setValue(value[0])
-            y.setValue(value[1])
-            z.setValue(value[2])
-        vector_keys = {spec.key for spec in _vector_specs(kind)}
-        non_vector_params = {k: v for k, v in entry.params.items() if k not in vector_keys}
-        self.params_edit.setPlainText(json.dumps(non_vector_params, indent=2))
-        show_toast(self.window(), f"Applied {entry.display_name} preset", kind="info")
-
-    def _on_normalize(self, key: str) -> None:
-        x, y, z = self._vector_boxes[key]
-        magnitude = math.sqrt(x.value() ** 2 + y.value() ** 2 + z.value() ** 2)
-        if magnitude > 0.0:
-            x.setValue(x.value() / magnitude)
-            y.setValue(y.value() / magnitude)
-            z.setValue(z.value() / magnitude)
+        params = {**self._default_params(entry.kind), **entry.params}
+        self._build_form(entry.kind, params)
 
     def _on_reset_template(self) -> None:
         kind = self.kind_combo.currentText()
-        for spec in _vector_specs(kind):
-            x, y, z = self._vector_boxes[spec.key]
-            x.setValue(spec.example[0])
-            y.setValue(spec.example[1])
-            z.setValue(spec.example[2])
-        self.params_edit.setPlainText(json.dumps(_non_vector_template_params(kind), indent=2))
+        self._build_form(kind, self._default_params(kind))
 
+    # -- result --------------------------------------------------------
     def _on_name_changed(self, text: str) -> None:
         """Live inline feedback (see gui.feedback / spacecraft_editor.py's
-        own ``_on_name_changed`` for the identical pattern this mirrors)
-        -- ``self._other_names`` is already known at construction time.
-        """
+        own ``_on_name_changed`` for the identical pattern this mirrors)."""
         name = text.strip()
         if not name:
             mark_invalid(self.name_edit, "Name must not be empty")
@@ -647,14 +664,8 @@ class _ItemEditorDialog(QDialog):
             clear_invalid(self.name_edit)
 
     def _on_accept(self) -> None:
-        # Real data-loss bug this used to have, same shape as
-        # spacecraft_editor.py's SpacecraftEditorDialog (see that
-        # dialog's own _on_accept docstring): a duplicate name wasn't
-        # checked HERE, so accept() always succeeded and the dialog
-        # closed -- only THEN did the caller (SensorActuatorListWidget's
-        # _on_add/_on_edit) notice the duplicate, by which point every
-        # edit the user just made was gone. Checked here first so the
-        # dialog stays open instead.
+        # Validated here, before closing: a duplicate or empty name used to
+        # be noticed only by the caller, after every edit was gone.
         name = self.name_edit.text().strip()
         if not name:
             mark_invalid(self.name_edit, "Name must not be empty")
@@ -676,17 +687,7 @@ class _ItemEditorDialog(QDialog):
         if not name:
             raise ValueError("name must not be empty")
         kind = self.kind_combo.currentText()
-        text = self.params_edit.toPlainText().strip() or "{}"
-        try:
-            params = json.loads(text)
-        except json.JSONDecodeError as exc:
-            raise ValueError(f"params is not valid JSON: {exc}") from exc
-        if not isinstance(params, dict):
-            raise ValueError("params must be a JSON object (e.g. {\"noise_std\": 0.01})")
-        vector_keys = {spec.key for spec in _vector_specs(kind)}
-        params = {k: v for k, v in params.items() if k not in vector_keys}  # vector rows are authoritative
-        for key, (x, y, z) in self._vector_boxes.items():
-            params[key] = [x.value(), y.value(), z.value()]
+        params = self.param_form.params()
         missing = _missing_required_keys(kind, params)
         if missing:
             raise ValueError(

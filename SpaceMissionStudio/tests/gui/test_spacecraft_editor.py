@@ -175,7 +175,7 @@ def test_dialog_catches_missing_locationpointing_target_immediately(qtbot):
     qtbot.addWidget(dialog)
     index = dialog.fsw_mode_combo.findData("locationPointing")
     dialog.fsw_mode_combo.setCurrentIndex(index)
-    dialog.fsw_params_edit.setPlainText("{}")  # no target_ground_station
+    dialog.fsw_param_form.include_box("target_ground_station").setChecked(False)  # no target at all
 
     with pytest.raises(ValueError, match="target_ground_station"):
         dialog.to_dataclass()
@@ -201,9 +201,75 @@ def test_dialog_fsw_hint_updates_with_mode(qtbot):
     qtbot.addWidget(dialog)
     assert "no attitude control" in dialog.fsw_hint_label.text().lower()
 
+    assert dialog.fsw_params_group.isHidden()
+
     index = dialog.fsw_mode_combo.findData("locationPointing")
     dialog.fsw_mode_combo.setCurrentIndex(index)
-    assert "target_ground_station" in dialog.fsw_hint_label.text()
+    assert "ground station" in dialog.fsw_hint_label.text()
+    assert not dialog.fsw_params_group.isHidden()
+    assert set(dialog.fsw_param_form.fields) == {"target_ground_station", "target_body", "pHat_B"}
+
+
+def test_attitude_tab_is_a_form_not_bullets_over_json(qtbot):
+    """Real user feedback on the Attitude control tab ("another bad UI/UX
+    example"): a bullet list of keys above two raw JSON boxes. Each
+    parameter and gain is now a labelled row; the JSON boxes are only a
+    collapsed "Advanced" area for keys the form doesn't cover."""
+    from spacemissionstudio.gui.spacecraft_editor import SpacecraftEditorDialog
+
+    dialog = SpacecraftEditorDialog(ground_station_names=["berlin", "kiruna"])
+    qtbot.addWidget(dialog)
+    dialog.name_edit.setText("sat-1")
+    dialog.fsw_mode_combo.setCurrentIndex(dialog.fsw_mode_combo.findData("locationPointing"))
+    assert "•" not in dialog.fsw_hint_label.text()
+    assert dialog.fsw_params_edit.isHidden() and dialog.control_params_edit.isHidden()
+
+    # The ground-station row lists the scenario's stations.
+    station = dialog.fsw_param_form.widget("target_ground_station")
+    assert [station.itemText(i) for i in range(station.count())] == ["berlin", "kiruna"]
+    station.setCurrentText("kiruna")
+    # Exactly one target: ticking the body unticks the station.
+    dialog.fsw_param_form.include_box("target_body").setChecked(True)
+    assert not dialog.fsw_param_form.include_box("target_ground_station").isChecked()
+    dialog.fsw_param_form.include_box("target_ground_station").setChecked(True)
+    assert not dialog.fsw_param_form.include_box("target_body").isChecked()
+
+    dialog.control_param_form.set_value("K", 0.5)
+    sc = dialog.to_dataclass()
+    assert sc.fsw_params == {"target_ground_station": "kiruna", "pHat_B": [0.0, 0.0, 1.0]}
+    assert sc.control_params == {"K": 0.5}
+
+
+def test_attitude_tab_round_trips_existing_params_and_extras(qtbot):
+    """Opening and OK'ing a spacecraft keeps its fsw/control params,
+    including keys the form doesn't know (kept in the Advanced box)."""
+    from spacemissionstudio.gui.spacecraft_editor import SpacecraftEditorDialog
+    from spacemissionstudio.schema.scenario import OrbitIC, SpacecraftConfig
+
+    orbit = OrbitIC(type="classical_elements", semi_major_axis_km=6928.0, eccentricity=0.001,
+                    inclination_deg=97.6, raan_deg=0.0, arg_periapsis_deg=0.0, true_anomaly_deg=0.0)
+    config = SpacecraftConfig(name="sat-1", orbit=orbit, fsw_mode="sunSafePoint",
+                              fsw_params={"sHatBdyCmd": [1.0, 0.0, 0.0], "custom_key": 2},
+                              control_params={"P": 12.0, "extra_gain": 1.5})
+    dialog = SpacecraftEditorDialog(config)
+    qtbot.addWidget(dialog)
+    assert not dialog.fsw_params_edit.isHidden()  # extras present -> Advanced expanded
+    sc = dialog.to_dataclass()
+    assert sc.fsw_params == config.fsw_params
+    assert sc.control_params == config.control_params
+
+
+def test_switching_fsw_mode_away_and_back_keeps_edits(qtbot):
+    from spacemissionstudio.gui.spacecraft_editor import SpacecraftEditorDialog
+
+    dialog = SpacecraftEditorDialog()
+    qtbot.addWidget(dialog)
+    dialog.name_edit.setText("sat-1")
+    dialog.fsw_mode_combo.setCurrentIndex(dialog.fsw_mode_combo.findData("sunSafePoint"))
+    dialog.fsw_param_form.set_value("min_unit_mag", 0.25)
+    dialog.fsw_mode_combo.setCurrentIndex(dialog.fsw_mode_combo.findData("hillPoint"))
+    dialog.fsw_mode_combo.setCurrentIndex(dialog.fsw_mode_combo.findData("sunSafePoint"))
+    assert dialog.to_dataclass().fsw_params["min_unit_mag"] == pytest.approx(0.25)
 
 
 def test_dialog_power_and_rf_link_default_to_none(qtbot):

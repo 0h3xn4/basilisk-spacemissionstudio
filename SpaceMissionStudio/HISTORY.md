@@ -6823,3 +6823,43 @@ The user's screenshot showed the Load tab's description panel for template 05: a
 * **Tests** keep descriptions short and structured: under 1,400 characters, summary under 300, bullets under 200, with no development-history wording. They also check the rich-text rendering, including escaping, and that the card is visible without scrolling the tab.
 
 **Follow-up: "a lot of unused empty space".** Showing one section at a time left a one-field section ("Reaction wheels" in template 07) as a nearly empty dialog with an 800 px wide field. The Customize dialog now shows every section as a compact card on one scrolling page. The left list is a table of contents: click to jump, and it follows the scroll. Fields have a fixed, readable width; a curated field's help text sits to its right instead of in a narrow column underneath; and card titles no longer repeat the spacecraft name that heads their group.
+
+## Sensor/actuator and attitude-control editors: forms instead of bullet lists over JSON
+
+The user sent four screenshots:
+* The Edit sensor/actuator dialog was "cramped": a bullet-list parameter reference squeezed into a small scroll box, above a JSON box.
+* The selected device's information was "raw text … unclear, confusing, all over the place and not professional". The IMU with the ARIETIS-NS preset was a second example.
+* The spacecraft editor's Attitude control tab had the same pattern: bullet lists of keys above two raw JSON boxes.
+
+**A shared parameter form.** New `gui/param_form.py` (`ParamForm`) turns a list of parameter specs into labelled rows:
+* **Labels.** Each row has a short name. The unit is in the field (`rad/s`, `N*m`, …) and the full description is in the tooltip.
+* **Optional parameters.** Each has a checkbox. Unticked means the key is left out and Basilisk's default applies.
+* **Field types.** On/off values are checkboxes, and named options (fault modes) are drop-downs. A 3-component vector gets x/y/z boxes on their own line, with Normalize only for directions.
+* **Other keys.** Any key the specs don't know stays editable in a collapsed "Advanced: other parameters (JSON)" box. It opens automatically when such keys are present, so nothing is lost on open + OK.
+* **Labels for every parameter.** Each sensor/actuator parameter got an explicit short label (for example "Bias random-walk bound" instead of "Long-run random-walk BOUND on the noise above").
+
+**Sensor/actuator dialog.**
+* **Layout.** Kind and Name at the top, a note banner only when the kind has a note, the device picker and card on the left, and the parameter form on the right. Required and optional parameters are grouped.
+* **Device card.** It is now structured rich text: name and country, the summary, a labelled table (Heritage, Procurement in its status colour, Export control, Source link), and "How the values were set" in small print.
+* **Defaults.** A new item starts with the required parameters at a working example and the optional ones at Basilisk's defaults. Switching Kind away and back keeps edits, and Reset to template restores the defaults.
+* **No toast over the buttons.** The "Applied … values" toast covered the OK button and has been removed, since the form visibly changes.
+
+**Attitude control tab.**
+* **Mode description.** A one-line description of the selected mode replaces the key list.
+* **Pointing parameters.** A form, hidden when no mode is selected. locationPointing's "Point at ground station" lists the scenario's stations, and it is mutually exclusive with "Point at celestial body". The mode's values are kept when switching modes away and back.
+* **Control gains.** A form in which unticked gains use the defaults.
+* **Comms pointing.** The group has shorter labels, collapses to its title while unticked, and shows its unit in the field.
+
+**New catalog device: VECTRONIC Aerospace VRW-D-6.** Added from the user's datasheet (A4, 25 Apr 2024):
+* **Values.** 6.0 N*m*s, ±6,000 RPM, 50 mN*m (90 mN*m variant noted), and rotor inertia 9.56e-3 kg*m^2.
+* **Status.** Built in Berlin; the datasheet has no ITAR statement, so the entry is "RFI - confirm ITAR in writing".
+* **Basilisk check.** Basilisk's `rwFactory` builds it with H_max = 6.007 N*m*s, matching the datasheet's 6.0 N*m*s. A full simulation was not possible in this container because the SPICE kernels are not cached and there is no network.
+
+**Tests.** New tests cover:
+* the device card's structure;
+* units in fields and optional-parameter checkboxes;
+* the attitude tab's form (station list, exclusive targets, no bullets, JSON collapsed);
+* round-tripping existing fsw/control params, including unknown keys;
+* mode switching that keeps edits.
+
+The tests that assumed JSON boxes now use the form. The catalog test applies and validates all 39 entries through the dialog.
