@@ -308,8 +308,12 @@ class ThrusterOnTimeModel:
                         return 0.0, 0.0, True  # below half an impulse bit: not worth a firing
                     extra_dv = (self.minOnTimeS - on_time) * thrust_n / mass_kg
                     on_time = self.minOnTimeS
-                if self.eccentricityNeutral:
-                    on_time = min(on_time, chunk_s)
+                if self.eccentricityNeutral and on_time >= chunk_s + self.minOnTimeS:
+                    # Split into gate-checked pieces, but never leave a
+                    # last piece shorter than one minimum firing (it would
+                    # be rounded up or skipped): fly a shorter remainder,
+                    # up to chunk + minimum on-time, as one firing.
+                    on_time = chunk_s
             if not self._start_allowed(sign, on_time, thrust_n, mass_kg, u_rad, v_mps, mean_motion):
                 return 0.0, 0.0, False
             self.pulseLeftS = on_time
@@ -489,6 +493,7 @@ class StationKeepingController(sysModel.SysModel):
         # build_phasing_keeping, never by build_station_keeping itself.
         self.formationFollower = False
         self.formationReference: Optional["StationKeepingController"] = None
+        self._floorBurn = False  # formation follower: the current burn is a safety-floor burn, not a mirror
         # Latest smoothed altitude (None before the first tick) -- read by
         # a formation follower's controller to compare against this one.
         self.lastSmoothAlt: Optional[float] = None  # [m]
@@ -516,6 +521,7 @@ class StationKeepingController(sysModel.SysModel):
 
     def Reset(self, CurrentSimNanos):
         self.burnOn = False
+        self._floorBurn = False
         self.lastSmoothAlt = None
         self._lastT = CurrentSimNanos * macros.NANO2SEC
         self._altHistory = []
@@ -534,12 +540,23 @@ class StationKeepingController(sysModel.SysModel):
         """
         reference = self.formationReference
         if reference is None or reference.lastSmoothAlt is None:
+            self._floorBurn = False
             return False
         if reference.burnOn:
+            self._floorBurn = False
             return True
-        if self.burnOn:  # a safety-floor burn already in progress
-            return smoothAlt < reference.lastSmoothAlt
-        return windowFull and smoothAlt < (reference.lastSmoothAlt - self.deadband)
+        if self.burnOn and self._floorBurn:  # a safety-floor burn already in progress
+            self._floorBurn = smoothAlt < reference.lastSmoothAlt
+            return self._floorBurn
+        # A MIRRORED burn ends with the reference's. Real bug: it used to be
+        # carried on as if it were a safety-floor burn, until this smoothed
+        # altitude caught up with the reference's -- but a one-orbit boxcar
+        # lags a burn by up to an orbit, so a follower that ended its mirror
+        # a few metres short kept firing and overshot by ~700 m of semi-major
+        # axis (with eclipse gating and a 300 s minimum on-time). The
+        # co-located phasing controller trims the small residual instead.
+        self._floorBurn = windowFull and smoothAlt < (reference.lastSmoothAlt - self.deadband)
+        return self._floorBurn
 
     def UpdateState(self, CurrentSimNanos):
         t = CurrentSimNanos * macros.NANO2SEC  # [s]
@@ -983,6 +1000,7 @@ class PhasingKeepingController(sysModel.SysModel):
         self._targetDv = 0.0  # [m/s]
         self._accumDv = 0.0  # [m/s]
         self._burnSign = 1.0  # [-] direction of the CURRENT burn: +1 prograde (raise a), -1 retrograde
+        self._pendingLegDv = 0.0  # [m/s] signed second leg of a two-firing trim (0 = none), see _start_burn
         self._driftSign = 1.0  # [-] sign of the planned drift offset (= sign of the error being corrected)
         self._driftStartT = 0.0  # [s]
         # Closed-loop relative semi-major axis (see UpdateState): one-orbit
@@ -1050,19 +1068,39 @@ class PhasingKeepingController(sysModel.SysModel):
         self._quietSinceT = None
         self._plannedDeltaA = 0.0
         self._trimOnly = False
+        self._pendingLegDv = 0.0
         if self.extForceEffectorB is not None:
             self.extForceEffectorB.extForce_N = [0.0, 0.0, 0.0]
 
     def _burn_complete(self) -> bool:
         # Relative slack: partial-tick thrust (see UpdateState) lands the
         # accumulated delta-V on the target itself, give or take rounding.
-        return self._accumDv >= self._targetDv * (1.0 - 1e-9)
+        if self._accumDv < self._targetDv * (1.0 - 1e-9):
+            return False
+        if self._pendingLegDv != 0.0:
+            # First leg of a two-firing trim done: fly the second.
+            self._targetDv = abs(self._pendingLegDv)
+            self._burnSign = float(np.sign(self._pendingLegDv))
+            self._pendingLegDv = 0.0
+            self._accumDv = 0.0
+            return False
+        return True
 
     def _start_burn(self, deltaA_needed_m: float) -> None:
         """Arms a tangential burn that changes this follower's semi-major
         axis by ``deltaA_needed_m`` (linearized: deltaA/a = 2*dv/v)."""
         vCirc = np.sqrt(self.mu / self.aNom)  # [m/s]
         dv = deltaA_needed_m / self.aNom * vCirc / 2.0  # [m/s]
+        self._pendingLegDv = 0.0
+        bitDv = self._impulse_bit_delta_a_m() / self.aNom * vCirc / 2.0  # [m/s]
+        if 0.0 < abs(dv) < bitDv * (1.0 - 1e-6):
+            # Finer than one minimum firing: fly (one bit + dv) then one bit
+            # back, which nets exactly dv. Rounding to whole bits instead
+            # left up to half a bit (~130 m of semi-major axis for a 300 s
+            # firing of 0.05 N), which drifts the formation ~18 km/day, so a
+            # coarse thruster cycled a full correction every day.
+            self._pendingLegDv = -float(np.copysign(bitDv, dv))
+            dv = float(np.copysign(bitDv + abs(dv), dv))
         self._targetDv = abs(dv)
         self._burnSign = 1.0 if dv >= 0.0 else -1.0
         self._accumDv = 0.0
@@ -1074,12 +1112,6 @@ class PhasingKeepingController(sysModel.SysModel):
         mass = self.dryMass + self._propellant_tracker().propellant  # [kg]
         vCirc = np.sqrt(self.mu / self.aNom)  # [m/s]
         return 2.0 * self.aNom * self.thruster.minimum_impulse_dv(self.thrustN, mass) / vCirc
-
-    def _trim_tolerance_m(self) -> float:
-        """Relative-SMA mismatch [m] worth a corrective burn: never below 1.5
-        minimum firings' worth, or a trim rounded to whole impulse bits could
-        overshoot straight back out of tolerance."""
-        return max(_RELATIVE_SMA_TRIM_TOLERANCE_M, 1.5 * self._impulse_bit_delta_a_m())
 
     @staticmethod
     def _argument_of_latitude(rVec, vVec):
@@ -1377,7 +1409,7 @@ class PhasingKeepingController(sysModel.SysModel):
                 self._start_burn(deltaA - (relA if relASettled else 0.0))
                 self._trimOnly = False
                 self.state = self.BURN_OUT
-            elif relASettled and abs(relA) > self._trim_tolerance_m():
+            elif relASettled and abs(relA) > _RELATIVE_SMA_TRIM_TOLERANCE_M:
                 # Not a phasing correction: something else (e.g. a reboost
                 # only one spacecraft made) left the two orbits at different
                 # semi-major axes, which would otherwise drift the formation
@@ -1411,7 +1443,7 @@ class PhasingKeepingController(sysModel.SysModel):
                 self._trimOnly = False
                 self.state = self.BURN_RESTORE
             elif relASettled and abs(relA - self._plannedDeltaA) > max(
-                    self._trim_tolerance_m(), 0.5 * abs(self._plannedDeltaA)):
+                    _RELATIVE_SMA_TRIM_TOLERANCE_M, 0.5 * abs(self._plannedDeltaA)):
                 # Disturbed mid-drift (e.g. a station-keeping burn): steer back
                 # to the planned offset, keeping this cycle's target/clock.
                 self._start_burn(self._plannedDeltaA - relA)

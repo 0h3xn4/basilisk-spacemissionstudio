@@ -169,6 +169,11 @@ def test_formation_follower_burn_logic():
     # Chief burning: mirror it.
     chief.burnOn = True
     assert follower._formation_follower_burn_on(545e3, windowFull=True) is True
+    # A mirrored burn ends with the chief's, even a few metres short of level:
+    # the lagging one-orbit average would otherwise make it overshoot.
+    follower.burnOn, chief.burnOn = True, False
+    assert follower._formation_follower_burn_on(544.99e3, windowFull=True) is False
+    follower.burnOn = False
     # Fallen more than the deadband below the chief: safety-floor burn, until level again.
     chief.burnOn = False
     assert follower._formation_follower_burn_on(542e3, windowFull=True) is True
@@ -309,3 +314,49 @@ def test_shared_thruster_firing_belongs_to_the_controller_that_started_it():
         ticks += 1
     assert ticks == 10  # the full 300 s, uninterrupted
     assert model.command(want_firing=True, remaining_dv=None, **{**_KW, "owner": station_keeping})[0] > 0.0
+
+
+@pytest.mark.parametrize("delta_a_m", [30.0, -30.0, 100.0])  # [m] all finer than one 300 s firing (~240 m)
+def test_a_trim_finer_than_one_impulse_bit_is_flown_as_an_exact_pair(delta_a_m):
+    """Rounding a sub-bit trim to whole firings left up to half a bit of
+    semi-major-axis error (~120 m here), which drifts the formation by
+    ~17 km/day, so a coarse thruster ran a full correction every day. A
+    trim finer than one bit is flown as (one bit + dv), then one bit back.
+    """
+    from spacemissionstudio.engine.orbit_maintenance import PhasingKeepingController, ThrusterOnTimeModel
+
+    controller = PhasingKeepingController.__new__(PhasingKeepingController)
+    controller.mu, controller.aNom = 3.986004418e14, _SMA_M  # [m^3/s^2], [m]
+    controller.thrustN, controller.dryMass, controller.propellant = 0.05, 100.0, 5.0  # [N], [kg], [kg]
+    controller.altitudeControllerB = None
+    controller.thruster = ThrusterOnTimeModel(min_on_time_s=300.0)  # [s]
+    v_circ = np.sqrt(controller.mu / _SMA_M)  # [m/s]
+    wanted_dv = delta_a_m / _SMA_M * v_circ / 2.0  # [m/s]
+    bit_dv = 0.05 * 300.0 / 105.0  # [m/s]
+
+    controller._start_burn(delta_a_m)
+    legs = []
+    for _ in range(3):
+        legs.append(controller._burnSign * controller._targetDv)
+        controller._accumDv = controller._targetDv  # fly this leg
+        if controller._burn_complete():
+            break
+    assert len(legs) == 2
+    assert min(abs(leg) for leg in legs) >= bit_dv * (1.0 - 1e-9)  # both legs are flyable firings
+    assert sum(legs) == pytest.approx(wanted_dv, rel=1e-9)  # [m/s] and they net exactly the trim
+
+
+def test_eccentricity_neutral_split_never_leaves_a_piece_shorter_than_the_minimum_on_time():
+    """A 450 s burn with a 300 s minimum on-time is flown as ONE 450 s
+    firing: splitting it into 300 s + 150 s would round the remainder up
+    to a whole extra firing (or skip it)."""
+    from spacemissionstudio.engine.orbit_maintenance import ThrusterOnTimeModel
+
+    model = ThrusterOnTimeModel(min_on_time_s=300.0, eccentricity_neutral=True)  # [s]
+    _, extra, too_small = model.command(want_firing=True, remaining_dv=0.05 * 450.0 / 100.0, **_KW)  # [m/s]
+    assert extra == 0.0 and not too_small
+    assert model.pulseLeftS == pytest.approx(450.0 - 30.0)  # [s]
+    # A long burn is still split into gate-checked pieces.
+    model.reset()
+    model.command(want_firing=True, remaining_dv=0.05 * 900.0 / 100.0, **_KW)  # [m/s]
+    assert model.pulseLeftS == pytest.approx(300.0 - 30.0)  # [s]
