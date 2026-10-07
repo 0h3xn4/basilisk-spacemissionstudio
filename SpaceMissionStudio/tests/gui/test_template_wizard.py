@@ -346,3 +346,35 @@ def test_value_fields_keep_a_visible_border(qtbot):
         edge = image.pixelColor(0, image.height() // 2)
         interior = image.pixelColor(image.width() // 3, 3)
         assert edge != interior, f"{box.objectName() or box.text()!r} has no visible border"
+
+
+def test_inline_hints_and_intros_are_short_plain_lines(qtbot):
+    """Real user feedback: three-line help paragraphs in small grey type
+    beside each field were "cramped" (e.g. "The along-track distance
+    phasing_keeping actively holds..."). Hints are now one short line,
+    intros one short sentence, neither with code names; the full text is
+    the tooltip."""
+    import re
+
+    from PySide6.QtWidgets import QLabel
+
+    from spacemissionstudio.gui.load_scenario_widget import TEMPLATES_DIR
+    from spacemissionstudio.gui.template_wizard import _MAX_HINT_CHARS, _SPECS, TemplateCustomizeWizard
+    from spacemissionstudio.schema import load_scenario
+
+    code_name = re.compile(r"[a-z]_[a-z]|docstring|\(\)")
+    for filename, spec in _SPECS.items():
+        for page in spec.pages:
+            assert len(page.intro) <= 90 and not code_name.search(page.intro), (filename, page.intro)
+            for field in page.fields:
+                hint = field.inline_hint
+                assert hint, (filename, field.label)  # every curated field gets a hint
+                assert len(hint) <= _MAX_HINT_CHARS and not code_name.search(hint), (filename, hint)
+
+    filename = "05_formation_flying_phasing.json"
+    wizard = TemplateCustomizeWizard(load_scenario(TEMPLATES_DIR / filename), _SPECS[filename])
+    qtbot.addWidget(wizard)
+    hint = next(label for label in wizard.findChildren(QLabel)
+                if label.text() == "Distance the follower holds ahead of the chief")
+    assert not hint.wordWrap()
+    assert "follower-1" in hint.toolTip() and "phasing_keeping" not in hint.toolTip()

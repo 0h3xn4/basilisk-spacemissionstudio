@@ -124,12 +124,29 @@ class WizardField:
     step: float = 1.0
     suffix: str = ""
     kind: str = "float"  # "float", "int" (whole number) or "bool" (a checkbox)
-    help_inline: bool = True  # show help_text under the field (always also its tooltip)
+    help_inline: bool = True  # show a one-line hint beside the field (help_text is always the tooltip)
     group: str = ""  # sub-heading shown above this field when it differs from the previous field's
     # Consecutive fields with the same vector_key share one row (one box
     # per component, each prefixed by its ``component`` name).
     vector_key: str = ""
     component: str = ""
+    # Short inline hint (at most _MAX_HINT_CHARS). Without one, help_text
+    # itself is shown when it is that short, otherwise only the tooltip.
+    hint: str = ""
+
+    @property
+    def inline_hint(self) -> str:
+        if not self.help_inline:
+            return ""
+        if self.hint:
+            return self.hint
+        return self.help_text if len(self.help_text) <= _MAX_HINT_CHARS else ""
+
+
+# Real user feedback: two- and three-line help paragraphs in small grey
+# type beside each field were "cramped". Inline hints are one short line;
+# the full explanation is the field's tooltip.
+_MAX_HINT_CHARS = 60
 
 
 @dataclass(frozen=True)
@@ -361,6 +378,7 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
                         lambda s: _sc(s).station_keeping.deadband_km,
                         lambda s, v: setattr(_sc(s).station_keeping, "deadband_km", v),
                         0.1, 500.0, decimals=2, step=0.5, suffix=" km",
+                        hint="Drift allowed before a burn; smaller = more, smaller burns",
                     ),
                     WizardField(
                         "Thrust", "The station-keeping thruster's thrust magnitude.",
@@ -373,7 +391,7 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
                         "unit of delta-V.",
                         lambda s: _sc(s).station_keeping.isp_s,
                         lambda s, v: setattr(_sc(s).station_keeping, "isp_s", v),
-                        50.0, 5000.0, decimals=0, step=50.0, suffix=" s",
+                        50.0, 5000.0, decimals=0, step=50.0, suffix=" s", hint='Higher uses less propellant',
                     ),
                     WizardField(
                         "Propellant budget", "Total propellant available for station-keeping over the run.",
@@ -385,8 +403,7 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
             ),
             WizardPageSpec(
                 title="Simulation length",
-                intro="How long to propagate -- longer runs show more (or, with a wide enough "
-                      "deadband, possibly zero) correction burns.",
+                intro='Longer runs show more correction burns.',
                 fields=[
                     WizardField(
                         "Duration", "Total simulated time.",
@@ -403,8 +420,7 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
         pages=[
             WizardPageSpec(
                 title="Orbit altitude",
-                intro="Lower altitude means thicker atmosphere means faster drag decay means more "
-                      "frequent corrections -- the single biggest knob for this template.",
+                intro='Lower means more drag and more frequent corrections: the biggest setting here.',
                 fields=[
                     WizardField(
                         "Altitude", "Target (and starting) altitude above the Earth's surface.",
@@ -428,7 +444,7 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
                         "between about 2.0 and 2.5.",
                         lambda s: _sc(s).drag_coeff,
                         lambda s, v: setattr(_sc(s), "drag_coeff", v),
-                        1.0, 4.0, decimals=2, step=0.1,
+                        1.0, 4.0, decimals=2, step=0.1, hint='Shape factor; most satellites are 2.0 to 2.5',
                     ),
                 ],
             ),
@@ -442,6 +458,7 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
                         lambda s: _sc(s).station_keeping.deadband_km,
                         lambda s, v: setattr(_sc(s).station_keeping, "deadband_km", v),
                         0.05, 50.0, decimals=2, step=0.1, suffix=" km",
+                        hint="Decay allowed before a burn; smaller = more, smaller burns",
                     ),
                     WizardField(
                         "Thrust", "The station-keeping thruster's thrust magnitude.",
@@ -454,7 +471,7 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
                         "unit of delta-V.",
                         lambda s: _sc(s).station_keeping.isp_s,
                         lambda s, v: setattr(_sc(s).station_keeping, "isp_s", v),
-                        50.0, 5000.0, decimals=0, step=50.0, suffix=" s",
+                        50.0, 5000.0, decimals=0, step=50.0, suffix=" s", hint='Higher uses less propellant',
                     ),
                     WizardField(
                         "Propellant budget", "Total propellant available for station-keeping over the run.",
@@ -466,7 +483,7 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
             ),
             WizardPageSpec(
                 title="Simulation length",
-                intro="How long to propagate -- longer runs at low altitude show faster cumulative decay.",
+                intro='Longer runs show more cumulative decay.',
                 fields=[
                     WizardField(
                         "Duration", "Total simulated time.",
@@ -490,6 +507,7 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
                         "and needs desaturating.",
                         _rw_max_momentum, _set_rw_max_momentum,
                         1.0, 1000.0, decimals=1, step=10.0, suffix=" N*m*s",
+                        hint="Momentum each wheel stores before it saturates",
                     ),
                 ],
             ),
@@ -537,6 +555,7 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
                         lambda s: _sc(s).orbit.semi_major_axis_km,
                         lambda s, v: setattr(_sc(s).orbit, "semi_major_axis_km", v),
                         6500.0, 100000.0, decimals=1, step=100.0, suffix=" km",
+                        hint="Higher = slower, longer-period orbit",
                     ),
                     WizardField(
                         "Inclination", "Watch the ground track in Vizard change with this.",
@@ -548,7 +567,7 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
                         "Eccentricity", "0 is circular -- see '02' for a non-circular example.",
                         lambda s: _sc(s).orbit.eccentricity,
                         lambda s, v: setattr(_sc(s).orbit, "eccentricity", v),
-                        0.0, 0.9, decimals=4, step=0.01,
+                        0.0, 0.9, decimals=4, step=0.01, hint='0 is circular',
                     ),
                 ],
             ),
@@ -583,7 +602,7 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
                         "Eccentricity", "How elongated the orbit is -- 0.7 here is a real GTO-like value.",
                         lambda s: _sc(s).orbit.eccentricity,
                         lambda s, v: setattr(_sc(s).orbit, "eccentricity", v),
-                        0.0, 0.95, decimals=4, step=0.01,
+                        0.0, 0.95, decimals=4, step=0.01, hint='How elongated; 0.7 is GTO-like',
                     ),
                     WizardField(
                         "Inclination", "The orbit plane's tilt from the equator.",
@@ -602,13 +621,13 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
                         "(compare against this template's own precession lesson); this template ships at 10.",
                         lambda s: float(s.gravity.central_body_degree),
                         lambda s, v: setattr(s.gravity, "central_body_degree", int(round(v))),
-                        0.0, 20.0, decimals=0, step=2.0,
+                        0.0, 20.0, decimals=0, step=2.0, hint='0 = point mass (no J2); this template uses 10',
                     ),
                 ],
             ),
             WizardPageSpec(
                 title="Simulation length",
-                intro="How long to propagate -- longer runs make the J2/third-body precession more visible.",
+                intro='Longer runs make the J2 and third-body precession more visible.',
                 fields=[
                     WizardField(
                         "Duration", "Total simulated time.",
@@ -625,12 +644,7 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
         pages=[
             WizardPageSpec(
                 title="Constellation geometry",
-                intro="Applied uniformly to every satellite (a real Walker constellation shares one "
-                      "altitude/inclination across every plane and satellite by construction -- only "
-                      "RAAN/mean anomaly differ between them). To change the satellite/plane COUNT "
-                      "itself, regenerate via the GUI's 'Generate Walker constellation...' dialog or the "
-                      "'generate-constellation' CLI subcommand instead -- hand-editing that here would "
-                      "leave this scenario's spacecraft list structurally wrong.",
+                intro="Applied to every satellite. Change the satellite count with Generate Walker constellation.",
                 fields=[
                     WizardField(
                         "Altitude", "Every satellite's shared orbital altitude above Earth's surface.",
@@ -649,11 +663,13 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
                         # now displays as a clean "700.0000", not
                         # "700.0004".
                         200.0, 2000.0, decimals=4, step=10.0, suffix=" km",
+                        hint="Above the surface, shared by every satellite",
                     ),
                     WizardField(
                         "Inclination", "Every satellite's shared orbit-plane tilt from the equator.",
                         _walker_inclination_deg, _set_walker_inclination_deg,
                         0.0, 180.0, decimals=2, step=1.0, suffix=" deg",
+                        hint="Orbit tilt, shared by every satellite",
                     ),
                 ],
             ),
@@ -676,21 +692,21 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
         pages=[
             WizardPageSpec(
                 title="Formation geometry",
-                intro="How far AHEAD of chief 'chief-1' the follower 'follower-1' should hold station, along-track.",
+                intro='How far ahead of chief-1 the follower holds station, along-track.',
                 fields=[
                     WizardField(
-                        "Target separation", "The along-track distance phasing_keeping actively holds "
-                        "'follower-1' at, ahead of 'chief-1' (always a positive, 'follower leads chief' distance).",
+                        "Target separation", "The along-track distance follower-1 holds ahead of chief-1. "
+                        "Always positive: the follower leads.",
                         lambda s: _follower(s).phasing_keeping.target_separation_km[0],
                         lambda s, v: _follower(s).phasing_keeping.target_separation_km.__setitem__(0, v),
                         1.0, 1000.0, decimals=2, step=5.0, suffix=" km",
+                        hint="Distance the follower holds ahead of the chief",
                     ),
                 ],
             ),
             WizardPageSpec(
                 title="Station-keeping controller",
-                intro="'follower-1's own altitude-holding burns (phasing_keeping always needs this "
-                      "configured on the same spacecraft -- see PhasingKeepingConfig's own docstring).",
+                intro="follower-1's altitude-holding burns, which phasing needs.",
                 fields=[
                     WizardField(
                         "Deadband", "How far 'follower-1' may decay below target altitude before a "
@@ -698,6 +714,7 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
                         lambda s: _follower(s).station_keeping.deadband_km,
                         lambda s, v: setattr(_follower(s).station_keeping, "deadband_km", v),
                         0.05, 50.0, decimals=2, step=0.1, suffix=" km",
+                        hint="Decay allowed before a correction burn",
                     ),
                     WizardField(
                         "Thrust", "The station-keeping thruster's thrust magnitude.",
@@ -710,7 +727,7 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
                         "unit of delta-V.",
                         lambda s: _follower(s).station_keeping.isp_s,
                         lambda s, v: setattr(_follower(s).station_keeping, "isp_s", v),
-                        50.0, 5000.0, decimals=0, step=50.0, suffix=" s",
+                        50.0, 5000.0, decimals=0, step=50.0, suffix=" s", hint='Higher uses less propellant',
                     ),
                     WizardField(
                         "Propellant budget", "Total propellant available, shared between "
@@ -718,6 +735,7 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
                         lambda s: _follower(s).station_keeping.propellant_kg,
                         lambda s, v: setattr(_follower(s).station_keeping, "propellant_kg", v),
                         0.01, 100.0, decimals=2, step=0.1, suffix=" kg",
+                        hint="Shared by station-keeping and phasing burns",
                     ),
                 ],
             ),
@@ -744,34 +762,31 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
         pages=[
             WizardPageSpec(
                 title="Initial attitude tip",
-                intro="How far off the hillPoint-commanded attitude this spacecraft starts -- watch "
-                      "the controller drive this back to zero.",
+                intro='The starting error the controller removes.',
                 fields=[
                     WizardField(
                         "Sigma X", "MRP attitude-error component (body-to-reference), X axis.",
                         lambda s: _sc(s).sigma_bn_init[0],
                         lambda s, v: _sc(s).sigma_bn_init.__setitem__(0, v),
-                        -0.9, 0.9, decimals=3, step=0.05,
+                        -0.9, 0.9, decimals=3, step=0.05, hint='Starting attitude error (MRP)',
                     ),
                     WizardField(
                         "Sigma Y", "MRP attitude-error component (body-to-reference), Y axis.",
                         lambda s: _sc(s).sigma_bn_init[1],
                         lambda s, v: _sc(s).sigma_bn_init.__setitem__(1, v),
-                        -0.9, 0.9, decimals=3, step=0.05,
+                        -0.9, 0.9, decimals=3, step=0.05, hint='Starting attitude error (MRP)',
                     ),
                     WizardField(
                         "Sigma Z", "MRP attitude-error component (body-to-reference), Z axis.",
                         lambda s: _sc(s).sigma_bn_init[2],
                         lambda s, v: _sc(s).sigma_bn_init.__setitem__(2, v),
-                        -0.9, 0.9, decimals=3, step=0.05,
+                        -0.9, 0.9, decimals=3, step=0.05, hint='Starting attitude error (MRP)',
                     ),
                 ],
             ),
             WizardPageSpec(
                 title="Simulation length",
-                intro="How long to propagate -- deliberately kept short here (see this template's own "
-                      "dynamics_task_rate_s comment on why a coarser rate is unsafe for idealized "
-                      "actuation, not changed by this wizard).",
+                intro='Kept short on purpose: this template needs a fine time step.',
                 fields=[
                     WizardField(
                         "Duration", "Total simulated time.",
@@ -788,7 +803,7 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
         pages=[
             WizardPageSpec(
                 title="Burn",
-                intro="The single prograde maneuver command's own delta-V magnitude.",
+                intro='Size of the single prograde burn.',
                 fields=[
                     WizardField(
                         "Delta-V (prograde)", "Positive raises the opposite side of the orbit; negative "
@@ -796,6 +811,7 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
                         lambda s: _maneuver_command(s).params["delta_v_m_s"][0],
                         lambda s, v: _maneuver_command(s).params["delta_v_m_s"].__setitem__(0, v),
                         -500.0, 500.0, decimals=2, step=5.0, suffix=" m/s",
+                        hint="Positive raises the far side; negative lowers it",
                     ),
                 ],
             ),
@@ -824,7 +840,7 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
         pages=[
             WizardPageSpec(
                 title="Monte Carlo batch",
-                intro="The dry_mass_kg dispersion every one of this batch's cases independently redraws.",
+                intro='Each run draws its own dry mass from this distribution.',
                 fields=[
                     WizardField(
                         "Number of runs", "More runs give a smoother distribution of outcomes, at "
@@ -832,6 +848,7 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
                         lambda s: float(s.monte_carlo.num_runs),
                         lambda s, v: setattr(s.monte_carlo, "num_runs", int(round(v))),
                         1.0, 1000.0, decimals=0, step=5.0,
+                        hint="More runs = smoother statistics, longer runtime",
                     ),
                     WizardField(
                         "Mean mass", "The normal distribution's own mean dry mass.",
@@ -866,8 +883,7 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
         pages=[
             WizardPageSpec(
                 title="Inertia spread",
-                intro="A spherically-symmetric inertia (all three equal) makes gravity-gradient torque "
-                      "identically zero -- the more elongated this spread, the stronger the effect.",
+                intro='Equal inertias give zero gravity-gradient torque; more spread, stronger effect.',
                 fields=[
                     WizardField(
                         "Ixx", "Body-X principal moment of inertia.",
@@ -891,8 +907,7 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
             ),
             WizardPageSpec(
                 title="Orbit altitude",
-                intro="Gravity-gradient torque falls off as 1/r^3 -- much stronger in a very low orbit "
-                      "than at GEO altitude.",
+                intro='Gravity-gradient torque falls off as 1/r^3: much stronger in low orbit.',
                 fields=[
                     WizardField(
                         "Semi-major axis", "Lower means a stronger gravity-gradient effect.",
@@ -921,8 +936,7 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
         pages=[
             WizardPageSpec(
                 title="Thruster strength",
-                intro="Applied to all 8 thrusters uniformly -- weaker thrusters take longer to null "
-                      "the same attitude error.",
+                intro='Applied to all 8 thrusters; weaker ones take longer to correct an error.',
                 fields=[
                     WizardField(
                         "Max thrust", "Each thruster's own maximum thrust.",
@@ -933,7 +947,7 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
             ),
             WizardPageSpec(
                 title="Initial attitude tip",
-                intro="How far off the commanded inertial3D attitude this spacecraft starts.",
+                intro='The starting error from the commanded attitude.',
                 fields=[
                     WizardField(
                         "Sigma X", "MRP attitude-error component, X axis.",
@@ -962,20 +976,20 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
         pages=[
             WizardPageSpec(
                 title="Desaturation threshold",
-                intro="momentum_dumping fires its desaturation thrusters once total wheel momentum "
-                      "crosses this.",
+                intro='Desaturation burns fire once total wheel momentum crosses this.',
                 fields=[
                     WizardField(
                         "Momentum threshold", "A lower threshold triggers desaturation sooner and more often.",
                         lambda s: _sc(s).momentum_dumping.hs_max,
                         lambda s, v: setattr(_sc(s).momentum_dumping, "hs_max", v),
                         1.0, 1000.0, decimals=1, step=5.0, suffix=" N*m*s",
+                        hint="Lower = desaturates sooner and more often",
                     ),
                 ],
             ),
             WizardPageSpec(
                 title="Initial wheel speeds",
-                intro="Closer to each wheel's own maxMomentum desaturates almost immediately.",
+                intro='Speeds close to the wheel limit desaturate almost at once.',
                 fields=[
                     WizardField("Wheel 1", "rw-1's initial spin rate.", *_wheel_omega_rpm(0),
                                  0.0, 6000.0, decimals=1, step=100.0, suffix=" RPM"),
@@ -994,8 +1008,7 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
         pages=[
             WizardPageSpec(
                 title="Wheel speed targets",
-                intro="The speed each reaction wheel is continuously biased toward via the magnetic "
-                      "torque rods.",
+                intro='The speed each wheel is steered toward using the torque rods.',
                 fields=[
                     WizardField("Wheel 1 target", "rw-1's target speed.", *_wheel_bias_rpm(0),
                                  0.0, 5000.0, decimals=1, step=50.0, suffix=" RPM"),
@@ -1009,8 +1022,7 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
             ),
             WizardPageSpec(
                 title="Control gain and orbit",
-                intro="How aggressively the magnetic torque rods react, and the field geometry they "
-                      "react to.",
+                intro='How hard the torque rods react, and the field they work with.',
                 fields=[
                     WizardField(
                         "Control gain", "A larger gain reacts faster but can overshoot/oscillate.",
@@ -1024,6 +1036,7 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
                         lambda s: _sc(s).orbit.inclination_deg,
                         lambda s, v: setattr(_sc(s).orbit, "inclination_deg", v),
                         0.0, 180.0, decimals=2, step=5.0, suffix=" deg",
+                        hint="Higher gives the torque rods a better field to use",
                     ),
                 ],
             ),
@@ -1034,8 +1047,7 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
         pages=[
             WizardPageSpec(
                 title="Sensor field of view",
-                intro="Applied to all 8 coarse sun sensors uniformly -- a narrower FOV sees fewer "
-                      "sensors illuminated at once, degrading the WLS estimate's conditioning.",
+                intro='Applied to all 8 sun sensors; narrower means fewer lit, a poorer estimate.',
                 fields=[
                     WizardField(
                         "Field of view", "Each sensor's own half-cone field of view.",
@@ -1063,8 +1075,7 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
         pages=[
             WizardPageSpec(
                 title="Target pointing axis",
-                intro="Which body-fixed axis stays pointed at the Moon -- re-point a different "
-                      "physical location on the spacecraft (e.g. an antenna mounted off a different face).",
+                intro='The body axis kept pointed at the Moon.',
                 fields=[
                     WizardField(
                         "pHat X", "Pointing-axis component, body X.",
@@ -1088,9 +1099,7 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
             ),
             WizardPageSpec(
                 title="Simulation length",
-                intro="How long to propagate -- deliberately kept short here (see this template's own "
-                      "dynamics_task_rate_s comment on why a coarser rate is unsafe for idealized "
-                      "actuation, not changed by this wizard).",
+                intro='Kept short on purpose: this template needs a fine time step.',
                 fields=[
                     WizardField(
                         "Duration", "Total simulated time.",
@@ -1107,15 +1116,14 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
         pages=[
             WizardPageSpec(
                 title="Transfer target",
-                intro="Where lambert_transfer solves for a delta-V to reach, and when -- the coast-to"
-                      "-arrival command's own duration is kept in lockstep with time of flight "
-                      "automatically, so the 'after transfer' report still snapshots the real arrival.",
+                intro='Where and when the transfer arrives; the coast after it follows automatically.',
                 fields=[
                     WizardField(
                         "Target range", "Distance from the central body's center (along the same "
                         "-X direction this template already targets).",
                         _lambert_target_range_m, _set_lambert_target_range_m,
                         1.0e5, 1.0e8, decimals=0, step=1000.0, suffix=" m",
+                        hint="Distance from the central body's centre",
                     ),
                     WizardField(
                         "Time of flight", "Very short times need very large (often rejected) delta-Vs.",
@@ -1126,14 +1134,15 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
             ),
             WizardPageSpec(
                 title="Transfer constraints",
-                intro="lambertValidator's own feasibility checks on the solved transfer.",
+                intro='Checks a solved transfer must pass.',
                 fields=[
                     WizardField(
-                        "Max distance from target", "Reject a solution that misses target_position_m "
-                        "by more than this.",
+                        "Max distance from target", "Reject a solution whose arrival misses the target "
+                        "position by more than this.",
                         lambda s: _lambert_command(s).params["max_distance_target_m"],
                         lambda s, v: _lambert_command(s).params.__setitem__("max_distance_target_m", v),
                         1.0, 1.0e6, decimals=1, step=10.0, suffix=" m",
+                        hint="Reject a solution that misses the target by more",
                     ),
                     WizardField(
                         "Min orbit radius", "Reject any transfer trajectory that would dip below this "
@@ -1141,6 +1150,7 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
                         lambda s: _lambert_command(s).params["min_orbit_radius_m"],
                         lambda s, v: _lambert_command(s).params.__setitem__("min_orbit_radius_m", v),
                         1.0e5, 1.0e8, decimals=0, step=1000.0, suffix=" m",
+                        hint="Reject transfers that dip below this radius",
                     ),
                 ],
             ),
@@ -1151,8 +1161,7 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
         pages=[
             WizardPageSpec(
                 title="Fuel tank",
-                intro="Set propellant_mass_kg below what the convergence burn needs (confirmed "
-                      "~0.185 kg for this template's own setup) to see the tank run dry mid-maneuver.",
+                intro='Start below about 0.185 kg of propellant to see the tank run dry mid-burn.',
                 fields=[
                     WizardField(
                         "Initial propellant", "How much propellant the tank starts with.",
@@ -1175,8 +1184,7 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
         pages=[
             WizardPageSpec(
                 title="Ground-station pass geometry",
-                intro="How easy it is for the spacecraft to acquire and hold a real, "
-                      "geometry-driven link with 'berlin-gs'.",
+                intro='How easily the spacecraft gets and keeps a link with berlin-gs.',
                 fields=[
                     WizardField(
                         "Minimum elevation", "The lowest elevation angle (above the local horizon) "
@@ -1185,14 +1193,13 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
                         lambda s: s.ground_stations[0].min_elevation_deg,
                         lambda s, v: setattr(s.ground_stations[0], "min_elevation_deg", v),
                         0.0, 89.0, decimals=1, step=5.0, suffix=" deg",
+                        hint="Lowest elevation counted as a pass",
                     ),
                 ],
             ),
             WizardPageSpec(
                 title="RF link / antenna pointing",
-                intro="How strongly the downlink's antenna-pointing-loss term (and so the "
-                      "computed link margin) responds to the spacecraft's actually-achieved "
-                      "pointing error during each Sun-pointing <-> comms-pointing transition.",
+                intro='How much pointing error during mode switches costs in link margin.',
                 fields=[
                     WizardField(
                         "Antenna beamwidth", "The downlink antenna's half-power beamwidth -- "
@@ -1200,6 +1207,7 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
                         lambda s: _sc(s).rf_link.antenna_beamwidth_deg,
                         lambda s, v: setattr(_sc(s).rf_link, "antenna_beamwidth_deg", v),
                         1.0, 180.0, decimals=1, step=5.0, suffix=" deg",
+                        hint="Narrower = pointing errors cost more margin",
                     ),
                     WizardField(
                         "Comms transmitter power", "Extra electrical power the downlink "
@@ -1208,14 +1216,13 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
                         lambda s: _sc(s).comms_pointing.comms_power_w,
                         lambda s, v: setattr(_sc(s).comms_pointing, "comms_power_w", v),
                         0.0, 200.0, decimals=1, step=5.0, suffix=" W",
+                        hint="Extra draw while pointing at the station",
                     ),
                 ],
             ),
             WizardPageSpec(
                 title="Simulation length",
-                intro="Longer runs show more ground-station passes, at the cost of a bigger "
-                      "recorded dataset (see scripts/_generate_templates.py's own comment on "
-                      "why this template defaults to half a day, not more).",
+                intro='Longer runs show more passes but record more data.',
                 fields=[
                     WizardField(
                         "Duration", "Total simulated time.",
@@ -1232,8 +1239,7 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
         pages=[
             WizardPageSpec(
                 title="Thermal sensor",
-                intro="therm-1 (sensorThermal.SensorThermal) models an externally-mounted "
-                      "component's real temperature as it cycles through sunlight and eclipse.",
+                intro="therm-1: an outside component's temperature through sunlight and eclipse.",
                 fields=[
                     WizardField(
                         "Surface area", "Larger means more solar absorption AND more radiative "
@@ -1241,6 +1247,7 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
                         lambda s: _thermal_sensor(s).params["area_m2"],
                         lambda s, v: _thermal_sensor(s).params.__setitem__("area_m2", v),
                         0.001, 10.0, decimals=3, step=0.01, suffix=" m^2",
+                        hint="More solar heating and more radiative cooling",
                     ),
                     WizardField(
                         "Mass", "Combined with specific heat below, this is the sensor's thermal "
@@ -1249,20 +1256,20 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
                         lambda s: _thermal_sensor(s).params["mass_kg"],
                         lambda s, v: _thermal_sensor(s).params.__setitem__("mass_kg", v),
                         0.01, 50.0, decimals=2, step=0.1, suffix=" kg",
+                        hint="With specific heat, the thermal mass: larger = slower",
                     ),
                     WizardField(
                         "Internal power draw", "Electrical power dissipated as heat inside the "
                         "sensor itself -- adds a constant heating term on top of the solar one.",
                         lambda s: _thermal_sensor(s).params["power_draw_w"],
                         lambda s, v: _thermal_sensor(s).params.__setitem__("power_draw_w", v),
-                        0.0, 50.0, decimals=2, step=0.5, suffix=" W",
+                        0.0, 50.0, decimals=2, step=0.5, suffix=" W", hint='Heat generated inside the sensor',
                     ),
                 ],
             ),
             WizardPageSpec(
                 title="Reaction wheel motor thermal",
-                intro="rw-1 (motorThermal.MotorThermal) separately models real motor heat from "
-                      "spin losses/inefficiency, independent of the sensor above.",
+                intro="rw-1's motor heating from spin losses, separate from the sensor.",
                 fields=[
                     WizardField(
                         "Motor efficiency", "Closer to 1.0 means less waste heat and a flatter "
@@ -1272,6 +1279,7 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
                         lambda s, v: _rw_with_motor_thermal(s).params.__setitem__(
                             "motor_thermal_efficiency", v),
                         0.01, 0.99, decimals=2, step=0.05,
+                        hint="Closer to 1 = less waste heat (1.0 not allowed)",
                     ),
                     WizardField(
                         "Ambient thermal resistance", "Lower means heat dissipates to the "
@@ -1280,6 +1288,7 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
                         lambda s, v: _rw_with_motor_thermal(s).params.__setitem__(
                             "motor_thermal_ambient_resistance_w_c", v),
                         0.1, 100.0, decimals=2, step=0.5, suffix=" C/W",
+                        hint="Lower = settles closer to ambient",
                     ),
                 ],
             ),
@@ -1386,12 +1395,15 @@ class _WizardFieldPage(QFrame):
                 row_box_layout.setContentsMargins(0, 0, 0, 0)
                 row_box_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
                 row_box_layout.addWidget(box)
-                if field_spec.help_inline:
-                    help_label = QLabel(field_spec.help_text)
-                    help_label.setWordWrap(True)
-                    help_label.setMinimumWidth(260)
-                    help_label.setStyleSheet(f"color: {PALETTE['text_muted']}; font-size: 90%; border: none;")
-                    row_box_layout.addSpacing(8)
+                if field_spec.inline_hint:
+                    # One short line in normal-size type, centred on the box;
+                    # the full explanation is the tooltip.
+                    help_label = QLabel(field_spec.inline_hint)
+                    help_label.setToolTip(field_spec.help_text)
+                    help_label.setMinimumHeight(box.sizeHint().height())
+                    help_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+                    help_label.setStyleSheet(f"color: {PALETTE['text_muted']}; border: none;")
+                    row_box_layout.addSpacing(12)
                     row_box_layout.addWidget(help_label, 1)
                 self._form.addRow(label, holder)
             previous_vector = field_spec.vector_key or None

@@ -6932,3 +6932,23 @@ After the Customize-dialog fix, the user asked for the other dialogs to be check
 **Result.** Every dialog already draws its input borders correctly; the Customize dialog was the only one affected, and it was fixed in the previous commit.
 
 **Proof that the test works.** With the old unscoped rule put back in the Customize dialog, all 20 Customize cases fail.
+
+## Customize dialog: short one-line hints instead of cramped help paragraphs
+
+The user's screenshot showed the Target separation note: "The along-track distance phasing_keeping actively holds 'follower-1' at, ahead of 'chief-1' (always a positive, 'follower leads chief' distance)." It was wrapped over three lines in small grey type beside the field: "cramped text is also bad UX/UI".
+
+**Hints.**
+* **Short and plain.** Each curated field now has a one-line hint of at most 60 characters, with no code names, for example "Distance the follower holds ahead of the chief".
+* **How they look.** Hints are in normal-size muted type, kept on one line and centred on their box.
+* **Full text on hover.** The full explanation moved to the tooltip, on the field and on its hint.
+* **Which fields changed.** Help text already 60 characters or shorter is used as the hint. The 34 longer ones got a hand-written hint (`WizardField.hint`).
+* **Tooltips cleaned.** Two tooltips that named code fields (`phasing_keeping`, `target_position_m`) were rewritten.
+
+**Section intros.** 30 of the 46 intros were shortened to one sentence of at most 90 characters, without code or documentation references. Examples:
+* Template 05's station-keeping section said "… see PhasingKeepingConfig's own docstring". It now says "follower-1's altitude-holding burns, which phasing needs."
+* Template 04's 450-character constellation note is now "Applied to every satellite. Change the satellite count with Generate Walker constellation."
+
+**Tests.**
+* A new test checks every curated hint (present, at most 60 characters, no code names) and every intro (at most 90 characters).
+* It also checks that template 05's hint renders on one line with its full text as the tooltip.
+* The round-trip and coverage tests pass for all 20 templates.
