@@ -402,21 +402,7 @@ class PropagationSetupDialog(QDialog):
         form.addRow("Source", self.space_weather_source_combo)
 
         local_file_row = QHBoxLayout()
-        # Pre-fills with the most recently startup-fetched CelesTrak CSV
-        # (see gui.startup_fetch_dialog) when the scenario doesn't already
-        # have its own local_file_path set -- a real user-visible fetch
-        # that produces a local file nobody can actually USE unless they
-        # know its path isn't much of a convenience. Still just a
-        # suggestion: the field stays plain text, editable/clearable like
-        # any other, and nothing here touches the network -- it only
-        # checks whether a previous fetch already left a file on disk.
-        initial_local_file_path = space_weather.local_file_path
-        if not initial_local_file_path:
-            from ..engine import spaceweather as sw
-            cached = sw.cached_fetch_path()
-            if cached is not None:
-                initial_local_file_path = str(cached)
-        self.local_file_edit = QLineEdit(initial_local_file_path or "")
+        self.local_file_edit = QLineEdit(space_weather.local_file_path or "")
         self.local_file_edit.setToolTip(
             "Path to a real historical space-weather CSV (e.g. a CelesTrak F10.7/Ap extract "
             "you downloaded ahead of time) -- only read when Source above is 'local_file'; "
@@ -509,6 +495,26 @@ class PropagationSetupDialog(QDialog):
         is_msis = self._selected_atmosphere_model() == "nrlmsise00"
         self.local_file_edit.setEnabled(is_msis and source == "local_file")
         self.local_file_browse_button.setEnabled(is_msis and source == "local_file")
+        if source == "local_file":
+            self._suggest_cached_local_file()
+
+    def _suggest_cached_local_file(self) -> None:
+        """Fill an empty "Local CSV file" with the most recently
+        startup-fetched CelesTrak CSV (see gui.startup_fetch_dialog), so a
+        fetched file is usable without knowing where it went. Only when
+        the source IS local_file: real bug, found on a real user's
+        machine, where pre-filling it for every scenario meant merely
+        opening this dialog and clicking OK wrote the user's own absolute
+        cache path into a synthetic-source scenario (and so into any file
+        they saved and shared). Never touches the network -- it only
+        checks whether a previous fetch already left a file on disk.
+        """
+        if self.local_file_edit.text().strip():
+            return
+        from ..engine import spaceweather as sw
+        cached = sw.cached_fetch_path()
+        if cached is not None:
+            self.local_file_edit.setText(str(cached))
 
     def _on_browse_local_file(self) -> None:
         path, _filter = QFileDialog.getOpenFileName(self, "Select space-weather CSV", "", "CSV files (*.csv)")

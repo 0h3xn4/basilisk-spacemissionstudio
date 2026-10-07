@@ -71,6 +71,15 @@ def _isolate_logging_setup(tmp_path, monkeypatch):
     # test observe this fixture's stand-in instead of the function it's
     # meant to test.
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    # Same isolation for the space-weather cache, whose default directory
+    # is computed from Path.home() once, at import time -- often during
+    # test COLLECTION, before the patch above. Real bug: a real user's
+    # full run then saw their actual ~/.cache startup-fetch CSV, and 20
+    # template round-trip tests failed (they caught a real dialog bug, but
+    # no test should depend on what is in the user's real cache).
+    from spacemissionstudio.engine import spaceweather
+
+    monkeypatch.setattr(spaceweather, "DEFAULT_CACHE_DIR", tmp_path / ".cache" / "SpaceMissionStudio" / "spaceweather")
 
     root_logger = logging.getLogger()
     original_handlers = list(root_logger.handlers)

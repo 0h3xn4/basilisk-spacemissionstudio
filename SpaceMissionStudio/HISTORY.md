@@ -6724,3 +6724,10 @@ The user asked whether finite burns had been considered. Burns already were fini
 | same | 300 s | 0.59 m/s (33.6 at worst before); 205/204 burn ticks | 45.8–47.0 km | 1 |
 
 No run suspended. A 300 s firing of 50 mN is ~260 m of semi-major axis, so a coarse thruster costs real Δv: it is roughly one impulse bit (0.14 m/s) per firing the formation needs. A realistic on-time for this thruster class (well under one 30 s tick) costs nothing. Template 05 keeps both settings off, so its published numbers are unchanged. New unit tests cover firing ownership, the mirror end, the exact pair, the no-split cases and the chunking rule.
+
+## Real bug from a user's full test run: opening Propagation Setup wrote their cache path into the scenario
+
+The user's first complete `pytest` run on their own machine: 1479 passed, 11 skipped, 20 failed. All 20 failures were the template round-trip test (open every editor on every template, click OK, nothing may change), and all at `space_weather.local_file_path: None -> '/home/<user>/.cache/SpaceMissionStudio/spaceweather/SW-All.csv'`.
+* **Real dialog bug.** The Propagation Setup dialog pre-filled "Local CSV file" with the most recently startup-fetched CelesTrak CSV for *every* scenario. Merely opening it on a `synthetic`-source scenario and clicking OK wrote the user's absolute cache path into the scenario, which marked it modified and leaked that path into any file they saved and shared. The cached file is now suggested only when the source is, or is switched to, `local_file`.
+* **Why the sandbox never saw it.** The sandbox has no cache file. An earlier fix had isolated only that dialog's own test file from the real cache, which hid the dialog bug instead of fixing it. The real cache was also reachable from any test: `spaceweather.DEFAULT_CACHE_DIR` is computed from `Path.home()` at import time, often during collection, before `conftest`'s `Path.home` patch. `tests/conftest.py` now redirects it for every test.
+* Reproduced with a populated fake home directory: the old code gives 21 failures (the 20, plus the new regression test), the fixed code none.
