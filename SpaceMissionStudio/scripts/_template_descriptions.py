@@ -247,7 +247,7 @@ position after a set time of flight, then applies it.
 
 What to look at:
 - The Mission Output tab: after the time of flight, the position sits at the target [-6578000, 0, 0] m, \
-within millimetres.
+within about 2 m (the solver accepts up to 500 m).
 
 Try changing:
 - Target position or time of flight (too short a time is rejected with a clear error).

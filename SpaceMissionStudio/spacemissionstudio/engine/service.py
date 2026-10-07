@@ -1804,6 +1804,8 @@ class SimulationService:
                                        handle.nav_recorder.sigma_BN, units="-"))
                 result.add(TimeSeries(f"{name}.body_rate_omega_BN_B", nav_t_s, ("x", "y", "z"),
                                        handle.nav_recorder.omega_BN_B, units="rad/s"))
+                result.add(TimeSeries(f"{name}.sun_heading_body", nav_t_s, ("x", "y", "z"),
+                                       handle.nav_recorder.vehSunPntBdy, units="-"))
             elif self.scenario.simulation_mode == "full_attitude":
                 # No attitude control, so no navigation recorder -- but the
                 # attitude still evolves (template 10's gravity-gradient
@@ -1813,8 +1815,6 @@ class SimulationService:
                                        handle.recorder.sigma_BN, units="-"))
                 result.add(TimeSeries(f"{name}.body_rate_omega_BN_B", t_s, ("x", "y", "z"),
                                        handle.recorder.omega_BN_B, units="rad/s"))
-                result.add(TimeSeries(f"{name}.sun_heading_body", nav_t_s, ("x", "y", "z"),
-                                       handle.nav_recorder.vehSunPntBdy, units="-"))
             if handle.css_sun_estimate_recorder is not None:
                 css_t_s = handle.css_sun_estimate_recorder.times() * macros.NANO2SEC
                 result.add(TimeSeries(f"{name}.sun_heading_body_estimated", css_t_s, ("x", "y", "z"),

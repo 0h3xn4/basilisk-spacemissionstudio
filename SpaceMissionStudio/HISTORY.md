@@ -7330,3 +7330,24 @@ At 620 px, template 19's five chips (Access Window, Pointing Mode, Pointing Erro
 * A run handing the featured series to the Results tab.
 
 USER_MANUAL Section 7 describes "Suggested".
+
+## First real Basilisk runs of the templates; fix for a regression in the previous commit
+
+The user opened the environment's network access, so the SPICE kernels could finally be fetched (`spacemissionstudio kernels-status`: all six support files cached). The first real CLI runs of templates 03, 07, 10, 16, 19 and 20 followed.
+
+**Regression found and fixed.** The previous commit ("one-click suggested series") moved the uncontrolled-attitude branch one line too early in `SimulationService._extract_results`. As a result:
+* `sun_heading_body` was no longer recorded for any attitude-controlled spacecraft;
+* an uncontrolled full-attitude run (template 10, or any such user scenario) failed with "cannot access local variable 'nav_t_s'".
+
+Fixed: `sun_heading_body` is back in the navigation branch, and template 10 now runs and records its attitude. `sigma_BN` drifts from 0 to ~0.9 over 12 h, which is the gravity-gradient lesson, now visible in Results.
+
+**Confirmed in Basilisk:**
+* **16:** the full sequence runs, and both reports fire, at 2490 s and 4980 s. The arrival is about 1.6 m from `target_position_m`. The description said "within millimetres" and now says "within about 2 m (the solver accepts up to 500 m)"; the catalog README states the real result.
+* **19:** passes at 10.5-18.2 min and 106.9-111.7 min, peak 61.5 deg. The offline predictor had said 10.5-18.0 min and 60.6 deg. Comms mode switches exactly with access, link margin spans -18.6 to +20.2 dB, and the battery dips in eclipse.
+* **03:** no burns and 0 kg propellant; the smoothed altitude error is -0.71 to +0.08 km. This matches the recast lesson.
+* **20:** therm-1 (now on +Z) cycles between ~80 C in sunlight and ~11 C in eclipse.
+* **07:** css-1 (now on +Z) reads 1.03 once Sun-pointed.
+
+**Found, still open:**
+* **20's motor temperature** moves only 0.0002 C: the wheel starts at rest and makes one gentle slew.
+* **07's battery** stays at 80 Wh: it starts full with a 0 W bus load. Its "through sunlight and eclipse" lesson shows nothing.
