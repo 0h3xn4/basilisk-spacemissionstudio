@@ -890,7 +890,13 @@ def build_16_lambert_transfer() -> Scenario:
     from spacemissionstudio.schema.command import Command
 
     r_earth_m = 6378.0e3
-    time_of_flight_s = 2490.0
+    # Same timing as examples/scenarioLambertSolver.py: burn a quarter
+    # orbit in, arrive half an orbit in. Burning at t = 0 instead puts the
+    # transfer arc below Earth's surface (~6366 km), which
+    # min_orbit_radius_m rejects; the coast also gives the first report
+    # something recorded to show.
+    maneuver_time_s = 2490.0  # [s] a quarter of the 9952 s orbit
+    time_of_flight_s = 2490.0  # [s]
 
     return Scenario(
         name="16 - Lambert transfer: solving for a point-to-point delta-V",
@@ -910,6 +916,8 @@ def build_16_lambert_transfer() -> Scenario:
             ),
         ],
         mission_sequence=[
+            Command(kind="propagate", label="Coast to burn point",
+                    params={"stop_condition": "duration", "duration_days": maneuver_time_s / 86400.0}),
             Command(kind="report", label="Before transfer", params={"series": []}),
             Command(kind="lambert_transfer", label="Lambert transfer burn", params={
                 "spacecraft": "sat-1",

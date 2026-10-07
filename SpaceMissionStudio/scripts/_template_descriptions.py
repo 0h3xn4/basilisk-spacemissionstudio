@@ -242,7 +242,8 @@ within millimetres.
 
 Try changing:
 - Target position or time of flight (too short a time is rejected with a clear error).
-- Minimum orbit radius: set it to Earth's radius to reject paths through the surface.""",
+- Coast to burn point: shorten it to 10 s and the path dips below Earth's surface, so the minimum \
+orbit radius check rejects it.""",
 
     "17": """\
 Template 11's eight-thruster attitude control with a real fuel tank: propellant runs down as the \

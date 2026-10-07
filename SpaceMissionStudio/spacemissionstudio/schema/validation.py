@@ -53,6 +53,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, List
 
+from .command import report_before_propagate_errors
 from .scenario import ScenarioValidationError
 
 if TYPE_CHECKING:
@@ -92,6 +93,7 @@ def validate_all(scenario: "Scenario") -> List[str]:
 
     for i, command in enumerate(scenario.mission_sequence):
         errors.extend(command.validate(f"mission_sequence[{i}]"))
+    errors.extend(report_before_propagate_errors(scenario.mission_sequence))
 
     errors.extend(_dangling_command_references(scenario, spacecraft_names, ground_station_names))
 

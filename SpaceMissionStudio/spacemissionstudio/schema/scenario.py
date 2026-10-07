@@ -62,7 +62,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from .command import Command
+from .command import Command, report_before_propagate_errors
 
 CURRENT_SCHEMA_VERSION = 2
 
@@ -1609,6 +1609,8 @@ class Scenario:
         for i, command in enumerate(self.mission_sequence):
             command_errors = command.validate(f"mission_sequence[{i}]")
             _require(not command_errors, "; ".join(command_errors))
+        order_errors = report_before_propagate_errors(self.mission_sequence)
+        _require(not order_errors, "; ".join(order_errors))
         # local import: schema.references only imports schema.scenario
         # under TYPE_CHECKING (never at runtime), so this has no real
         # import cycle to avoid -- kept local anyway, matching

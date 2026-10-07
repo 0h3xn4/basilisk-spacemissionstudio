@@ -284,3 +284,24 @@ class Command:
             params=dict(data.get("params", {})),
             children=[Command.from_dict(c) for c in data.get("children", [])],
         )
+
+
+def report_before_propagate_errors(commands: List[Command], path: str = "mission_sequence") -> List[str]:
+    """A top-level ``report`` that runs before any ``propagate`` has nothing
+    recorded to snapshot: the engine fails on it at run time ("no recorded
+    samples yet"). Flagged here instead, so the editor shows it before the
+    run. Only certain cases are flagged: a report inside ``if``/``while``
+    may never run, and a propagate anywhere in an earlier command (even
+    nested) may have run, so neither is treated as an error -- the engine's
+    own run-time message still covers them. Returns at most one error."""
+
+    def has_propagate(command: Command) -> bool:
+        return command.kind == "propagate" or any(has_propagate(child) for child in command.children)
+
+    for i, command in enumerate(commands):
+        if has_propagate(command):
+            return []
+        if command.kind == "report":
+            return [f"{path}[{i}]: this report runs before any propagate, so nothing has been recorded yet -- "
+                    "add a propagate command before it"]
+    return []

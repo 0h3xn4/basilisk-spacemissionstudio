@@ -381,6 +381,8 @@ def test_report_unknown_series_raises():
     from spacemissionstudio.engine.mission_engine import MissionEngine, MissionEngineError
 
     scenario = _scenario(mission_sequence=[
+        # A propagate first: a report before any is rejected by validation.
+        Command(kind="propagate", params={"stop_condition": "duration", "duration_days": 0.001}),
         Command(kind="report", params={"series": ["sat-1.nonexistent_series"]}),
     ])
     with pytest.raises(MissionEngineError, match="not found in the result set"):

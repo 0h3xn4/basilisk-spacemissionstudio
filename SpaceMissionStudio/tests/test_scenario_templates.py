@@ -205,3 +205,22 @@ def test_template_descriptions_are_short_and_structured(path):
     for line in description.splitlines():
         if line.startswith("- "):
             assert len(line) < 200, line  # short bullets, not paragraphs
+
+
+def test_lambert_template_burns_a_quarter_orbit_in_like_basilisks_example():
+    """examples/scenarioLambertSolver.py burns at tau/4 and arrives at tau/2.
+    Burning at t = 0 puts the arc below Earth's surface (~6366 km), which
+    the template's own min_orbit_radius_m rejects; the coast also gives the
+    first report something recorded to show."""
+    import math
+
+    scenario = load_scenario(_TEMPLATES_DIR / "16_lambert_transfer.json")
+    kinds = [c.kind for c in scenario.mission_sequence]
+    assert kinds == ["propagate", "report", "lambert_transfer", "propagate", "report"]
+    a_m = scenario.spacecraft[0].orbit.semi_major_axis_km * 1e3
+    period_s = 2 * math.pi * math.sqrt(a_m ** 3 / 3.986004415e14)  # [s] Basilisk's Earth mu
+    coast_s = scenario.mission_sequence[0].params["duration_days"] * 86400.0
+    assert coast_s == pytest.approx(round(period_s / 4 / 10) * 10)  # [s] the example's tm, on its 10 s step
+    lambert = scenario.mission_sequence[2]
+    arrival_coast_s = scenario.mission_sequence[3].params["duration_days"] * 86400.0
+    assert arrival_coast_s == pytest.approx(lambert.params["time_of_flight_s"])

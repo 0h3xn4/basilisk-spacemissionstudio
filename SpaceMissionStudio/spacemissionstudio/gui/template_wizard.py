@@ -335,7 +335,11 @@ def _lambert_command(scenario: Scenario):
 
 
 def _lambert_coast_command(scenario: Scenario):
-    return next(c for c in scenario.mission_sequence if c.kind == "propagate")
+    """The coast to arrival: the first propagate AFTER the transfer burn
+    (the template also coasts to the burn point before it)."""
+    sequence = scenario.mission_sequence
+    after_burn = sequence[sequence.index(_lambert_command(scenario)) + 1:]
+    return next(c for c in after_burn if c.kind == "propagate")
 
 
 def _lambert_target_range_m(scenario: Scenario) -> float:
@@ -1118,6 +1122,14 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
                 title="Transfer target",
                 intro='Where and when the transfer arrives; the coast after it follows automatically.',
                 fields=[
+                    WizardField(
+                        "Coast to burn point", "How long to coast before the transfer burn.",
+                        lambda s: _coast_command(s, "burn point").params["duration_days"] * 86400.0,
+                        lambda s, v: _coast_command(s, "burn point").params.__setitem__("duration_days",
+                                                                                         v / 86400.0),
+                        10.0, 100000.0, decimals=1, step=10.0, suffix=" s",
+                        hint="Where on the orbit the burn happens",
+                    ),
                     WizardField(
                         "Target range", "Distance from the central body's center (along the same "
                         "-X direction this template already targets).",

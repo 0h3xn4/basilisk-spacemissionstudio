@@ -378,3 +378,25 @@ def test_inline_hints_and_intros_are_short_plain_lines(qtbot):
                 if label.text() == "Distance the follower holds ahead of the chief")
     assert not hint.wordWrap()
     assert "follower-1" in hint.toolTip() and "phasing_keeping" not in hint.toolTip()
+
+
+def test_lambert_wizard_time_of_flight_moves_the_arrival_coast_not_the_pre_burn_coast(qtbot):
+    """Template 16 now coasts to the burn point first; the time-of-flight
+    field must keep the coast AFTER the burn in step, and leave the one
+    before it alone (it has its own field)."""
+    from spacemissionstudio.gui.load_scenario_widget import TEMPLATES_DIR
+    from spacemissionstudio.gui.template_wizard import TemplateCustomizeWizard, get_wizard_spec
+    from spacemissionstudio.schema import load_scenario
+
+    scenario = load_scenario(TEMPLATES_DIR / "16_lambert_transfer.json")
+    wizard = TemplateCustomizeWizard(scenario, get_wizard_spec("16_lambert_transfer.json"))
+    qtbot.addWidget(wizard)
+    _set_field(wizard, "Time of flight", "Transfer target", 3000.0)  # [s]
+    _set_field(wizard, "Coast to burn point", "Transfer target", 1200.0)  # [s]
+    wizard.accept()
+    result = wizard.result_scenario()
+    result.validate()
+    before, _report, lambert, after, _report2 = result.mission_sequence
+    assert lambert.params["time_of_flight_s"] == 3000.0
+    assert after.params["duration_days"] * 86400.0 == pytest.approx(3000.0)
+    assert before.params["duration_days"] * 86400.0 == pytest.approx(1200.0)

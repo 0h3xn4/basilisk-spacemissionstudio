@@ -255,3 +255,57 @@ def test_from_dict_defaults_missing_optional_fields():
     assert rebuilt.label is None
     assert rebuilt.params == {}
     assert rebuilt.children == []
+
+
+# -- report before any propagate ------------------------------------------------
+
+def _report(label="r"):
+    return Command(kind="report", label=label, params={"series": []})
+
+
+def _propagate():
+    return Command(kind="propagate", params={"stop_condition": "duration", "duration_days": 0.01})
+
+
+def test_a_report_before_any_propagate_is_flagged():
+    """The engine fails on such a report at run time ("no recorded samples
+    yet") -- template 16 shipped that way; it is now caught up front."""
+    from spacemissionstudio.schema.command import report_before_propagate_errors
+
+    errors = report_before_propagate_errors([_report(), _propagate(), _report()])
+    assert len(errors) == 1
+    assert errors[0].startswith("mission_sequence[0]") and "before any propagate" in errors[0]
+
+
+def test_a_report_after_a_propagate_is_fine():
+    from spacemissionstudio.schema.command import report_before_propagate_errors
+
+    assert report_before_propagate_errors([_propagate(), _report(), _report()]) == []
+    assert report_before_propagate_errors([]) == []
+
+
+def test_only_certain_cases_are_flagged():
+    """A report inside if/while may never run, and a propagate nested in an
+    earlier command may have run -- flagging either would block Run on a
+    sequence that can work, so neither is an error."""
+    from spacemissionstudio.schema.command import report_before_propagate_errors
+
+    skipped = Command(kind="if", params={"condition": "t_s > 0.0"}, children=[_report()])
+    assert report_before_propagate_errors([skipped, _propagate()]) == []
+    loop = Command(kind="while", params={"condition": "t_s < 10.0"}, children=[_propagate()])
+    assert report_before_propagate_errors([loop, _report()]) == []
+
+
+def test_scenario_validation_reports_it(tmp_path):
+    from pathlib import Path
+
+    import pytest
+
+    from spacemissionstudio.schema import ScenarioValidationError, load_scenario, validate_all
+
+    templates = Path(__file__).resolve().parent.parent / "spacemissionstudio" / "scenarios" / "templates"
+    scenario = load_scenario(templates / "08_mission_sequence_orbit_raise.json")
+    scenario.mission_sequence.insert(0, _report("too early"))
+    with pytest.raises(ScenarioValidationError, match="before any propagate"):
+        scenario.validate()
+    assert any("before any propagate" in error for error in validate_all(scenario))

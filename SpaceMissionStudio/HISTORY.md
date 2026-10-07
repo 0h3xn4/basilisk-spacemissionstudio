@@ -7164,3 +7164,26 @@ The user asked for the Mission Output tab to be checked for the same clutter. It
 * the short-way-round angle change;
 * filtering to a report's column, and to matching rows;
 * two-spacecraft prefixes.
+
+## Template 16 (Lambert transfer): would fail at its first step
+
+Found while checking the Mission Output tab: template 16's first command was the "Before transfer" report, ahead of any propagate. `MissionEngine.run()` builds the simulation and goes straight into the commands. Recorders only get a sample once the simulation has ticked, so `_run_report` raises "no recorded samples yet": the template fails at its first step. HISTORY's own Lambert entry explains how this slipped through. The Lambert step was verified on its own, and the template wrapped it in a Mission Sequence that was never run end to end.
+
+**A second problem behind it.** The template claims the same configuration as Basilisk's `examples/scenarioLambertSolver.py`, but the example burns a quarter orbit in (`tm = tau/4`, 2490 s) and arrives half an orbit in. The template burned immediately, from a different point on the orbit. A numpy two-body check of both Lambert arcs:
+* **Burn at t = 0 (as shipped):** the lowest point is about 6366 km, below the template's own `min_orbit_radius_m` (Earth's radius, 6378 km). `lambertValidator` would reject it.
+* **Burn at t = 2490 s (the example's timing):** the lowest point is the 6578 km target itself, and the arc hits it.
+
+Both problems were found by reading the code and running that offline check. Neither could be confirmed with Basilisk itself here, because the SPICE kernels can't be downloaded in this environment.
+
+**Fix.**
+* **Template.** Template 16 now starts with a "Coast to burn point" propagate of 2490 s (a quarter of the 9952 s orbit, on the 10 s step), then the report, the Lambert burn, the 2490 s coast to arrival and the final report. Only template 16 changed on regeneration. Its "Try changing" line now suggests shortening the coast to 10 s to see the minimum-radius check reject a path through the Earth.
+* **Customize wizard.** It gained a "Coast to burn point" field. Its time-of-flight setter used to keep "the first propagate" in step with the time of flight; with the new coast that would have edited the wrong command. It now targets the first propagate after the burn.
+* **Validation.** `schema.command.report_before_propagate_errors()`, used by `Scenario.validate()` and `validate_all()`, flags a top-level report that runs before any propagate. The scenario editor now shows this before a run. Only certain cases are flagged: a report inside `if`/`while` may never run, and a propagate nested in an earlier command may have run, so the engine's run-time message still covers those. The Basilisk test that relied on a leading report (`test_report_unknown_series_raises`) now propagates first.
+
+**Tests.** Six new tests:
+* the rule flags a leading report and ignores later or uncertain ones;
+* `Scenario.validate()` and `validate_all()` report it;
+* template 16's sequence and its quarter-orbit timing;
+* the wizard's time of flight moves the arrival coast, not the pre-burn coast.
+
+Against the old template, every template-16 test fails, since the new rule rejects it at load time.
