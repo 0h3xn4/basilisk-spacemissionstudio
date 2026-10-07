@@ -262,6 +262,23 @@ def _display_indices(values: np.ndarray, max_points: int = _MAX_PLOT_POINTS_PER_
     return np.unique(np.asarray(keep))
 
 
+def _wrapping_display_indices(n: int, max_points: int = _MAX_PLOT_POINTS_PER_LINE) -> np.ndarray:
+    """Evenly spaced indices for a wrapping angle: min-max decimation would
+    pair ~0 and ~360 deg in every stretch and draw a solid band."""
+    if n <= max_points:
+        return np.arange(n)
+    return np.unique(np.linspace(0, n - 1, max_points).astype(int))
+
+
+def _break_at_wraps(x: np.ndarray, y: np.ndarray, period: float):
+    """Inserts a gap wherever ``y`` wraps (jumps by more than half a
+    ``period``), so 359 -> 1 deg isn't drawn as a vertical line."""
+    jumps = np.flatnonzero(np.abs(np.diff(y)) > period / 2.0) + 1
+    if not len(jumps):
+        return x, y
+    return np.insert(x, jumps, x[jumps - 1]), np.insert(y.astype(float), jumps, np.nan)
+
+
 def _series_label(name: str, series: TimeSeries) -> str:
     """The name shown for a series in the Series list -- the same title
     its plot gets (e.g. "chief-1: Mean Semi-Major Axis"), not the dotted
@@ -757,10 +774,14 @@ class ResultsWidget(QWidget):
         column_labels = display.columns or {}
         x_array = np.asarray(x_values, dtype=object if isinstance(x_values, list) else None)
         for i, column in enumerate(series.columns):
-            keep = _display_indices(display_data[:, i])  # see _MAX_PLOT_POINTS_PER_LINE
-            x_shown = x_array[keep]
+            if display.wrap_period:
+                keep = _wrapping_display_indices(len(display_data))
+                x_shown, y_shown = _break_at_wraps(x_array[keep], display_data[keep, i], display.wrap_period)
+            else:
+                keep = _display_indices(display_data[:, i])  # see _MAX_PLOT_POINTS_PER_LINE
+                x_shown, y_shown = x_array[keep], display_data[keep, i]
             fig.add_trace(go.Scatter(
-                x=list(x_shown) if x_array.dtype == object else x_shown, y=display_data[keep, i], mode="lines",
+                x=list(x_shown) if x_array.dtype == object else x_shown, y=y_shown, mode="lines",
                 name=column_labels.get(column, column),
                 line=dict(color=_SERIES_COLORS[i % len(_SERIES_COLORS)], width=2),
             ))

@@ -763,6 +763,35 @@ def test_mean_orbital_element_series_is_plotted_and_labeled_distinctly_from_oscu
     assert w.figure.layout.title.text == "sat-1: Mean (first-order J2) Inclination"
 
 
+def test_wrapping_angle_breaks_its_line_instead_of_drawing_a_vertical_jump(widget):
+    """True anomaly runs 0 -> 360 deg every orbit; drawn as one line, each
+    wrap was a false vertical stroke across the whole plot."""
+    from spacemissionstudio.engine.results import ResultSet, TimeSeries
+
+    t = np.arange(0.0, 3 * 5400.0, 60.0)  # [s] three ~90 min orbits
+    nu_rad = np.mod(2 * np.pi * t / 5400.0, 2 * np.pi)  # [rad]
+    rs = ResultSet(scenario_name="demo")
+    rs.add(TimeSeries("sat-1.orbit_elements.true_anomaly", t, ("nu",), nu_rad.reshape(-1, 1), units="rad"))
+    widget.set_result(rs)
+
+    y = np.asarray(widget.figure.data[0].y, dtype=float)
+    assert np.count_nonzero(np.isnan(y)) == 2  # one gap per wrap
+    finite = y[np.isfinite(y)]
+    np.testing.assert_allclose(finite, np.degrees(nu_rad))  # every sample still drawn, still in [0, 360)
+    segments = np.split(y, np.flatnonzero(np.isnan(y)))
+    assert all(np.all(np.abs(np.diff(seg[np.isfinite(seg)])) < 180.0) for seg in segments)
+
+
+def test_long_wrapping_series_is_thinned_evenly_not_min_max():
+    """Min-max thinning would pick ~0 and ~360 deg from every stretch."""
+    from spacemissionstudio.gui.results_widget import _MAX_PLOT_POINTS_PER_LINE, _wrapping_display_indices
+
+    keep = _wrapping_display_indices(10 * _MAX_PLOT_POINTS_PER_LINE)
+    assert len(keep) == _MAX_PLOT_POINTS_PER_LINE
+    assert keep[0] == 0 and keep[-1] == 10 * _MAX_PLOT_POINTS_PER_LINE - 1
+    assert np.ptp(np.diff(keep)) <= 1  # evenly spaced
+
+
 def test_dimensionless_series_is_not_unit_converted(widget):
     from spacemissionstudio.engine.results import ResultSet, TimeSeries
 

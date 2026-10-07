@@ -72,7 +72,10 @@ class SeriesDisplay:
     (access-window/link-margin series) whose own title already names
     every identifying detail -- everything else gets the owning
     spacecraft's name (the series name's own first dotted segment)
-    prefixed automatically by the caller.
+    prefixed automatically by the caller. ``wrap_period`` (in display
+    units, e.g. 360 for an angle in [0, 360) deg) marks a series that
+    wraps around, so a plot breaks its line at each wrap instead of
+    drawing a false vertical jump.
     """
 
     title: str
@@ -81,6 +84,7 @@ class SeriesDisplay:
     factor: float = 1.0
     columns: Optional[Dict[str, str]] = None
     standalone_title: bool = False
+    wrap_period: Optional[float] = None
 
 
 def _vector_display(name: str) -> Optional[SeriesDisplay]:
@@ -149,11 +153,14 @@ def _orbit_element_display(name: str) -> Optional[SeriesDisplay]:
         ("arg_periapsis", "Argument of Periapsis", "Argument of periapsis", "deg", _RAD2DEG),
         ("true_anomaly", "True Anomaly", "True anomaly", "deg", _RAD2DEG),
     ]
+    wrapping = ("raan", "arg_periapsis", "true_anomaly")  # [0, 360) deg; inclination stays in [0, 180]
     for field, title_suffix, y_label, unit, factor in specs:
+        wrap_period = 360.0 if field in wrapping else None  # [deg]
         if name.endswith(f".orbit_elements.{field}"):
-            return SeriesDisplay(f"Osculating {title_suffix}", y_label, unit, factor)
+            return SeriesDisplay(f"Osculating {title_suffix}", y_label, unit, factor, wrap_period=wrap_period)
         if name.endswith(f".orbit_elements_mean.{field}"):
-            return SeriesDisplay(f"Mean (first-order J2) {title_suffix}", y_label, unit, factor)
+            return SeriesDisplay(f"Mean (first-order J2) {title_suffix}", y_label, unit, factor,
+                                 wrap_period=wrap_period)
     return None
 
 

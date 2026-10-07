@@ -7446,3 +7446,13 @@ Mission Sequence editor: a "Ground station" picker appears for the two pass even
 **Confirmed in Basilisk** on template 19's orbit, with a pass_start, pass_end, pass_start, pass_start sequence. The stops land at 10.5, 18.2 and 106.9 min, matching the real pass times, and the last stop skips the pass already under way.
 
 **Also:** fixed the two old lint errors in `tests/test_formation.py` (imports after `pytestmark`). `ruff check .` is now clean.
+
+## Angle plots break at the 360 -> 0 deg wrap
+
+RAAN, argument of periapsis and true anomaly (osculating and mean) run over [0, 360) deg. Drawn as one line, every wrap became a false vertical stroke across the plot: once per orbit for true anomaly.
+
+**Fix.** `SeriesDisplay.wrap_period` marks these series, and the Results plot inserts a gap wherever consecutive samples jump by more than half a period. Every sample is still drawn, still in [0, 360).
+
+**Thinning.** Long wrapping series are thinned evenly rather than by min-max: min-max would pick ~0 and ~360 deg from every stretch and paint a solid band. Unwrapping was rejected because true anomaly would climb to thousands of degrees.
+
+Mission Output's Change column already took the short way round for degree values, so it needed no change.
