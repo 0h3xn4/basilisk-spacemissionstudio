@@ -202,6 +202,23 @@ def _controller_display(name: str) -> Optional[SeriesDisplay]:
     return None
 
 
+def _comms_and_thermal_display(name: str) -> Optional[SeriesDisplay]:
+    """Template 19's comms-pointing series and the reaction-wheel motor
+    thermal model -- both featured in template descriptions, and both
+    used to show as raw code names."""
+    if name.endswith(".comms_pointing.active_mode"):
+        return SeriesDisplay("Pointing Mode (0 Sun, 1 ground station)", "Mode", "-", 1.0,
+                              {"active_mode": "Mode"})
+    if name.endswith(".comms_pointing.pointing_error_deg"):
+        return SeriesDisplay("Pointing Error", "Pointing error", "deg", 1.0,
+                              {"pointing_error_deg": "Pointing error"})
+    if name.endswith(".motor_temperature") and ".actuator." in name:
+        actuator = name[: -len(".motor_temperature")].rsplit(".actuator.", 1)[-1]
+        return SeriesDisplay(f"Motor Temperature: {actuator}", "Temperature", "deg C", 1.0,
+                              {"temperature": "Temperature"})
+    return None
+
+
 def parse_access_pair(name: str) -> Optional[tuple]:
     """Recovers ``(gs, sc, field)`` from a ``"{gs}.access_to_{sc}.<field>"``
     series name (``engine.service``'s access-analysis loop, plus
@@ -272,6 +289,9 @@ def _sensor_display(name: str, series: TimeSeries) -> Optional[SeriesDisplay]:
         return SeriesDisplay(f"Coarse Sun Sensor: {sensor_name}", "Output", "-")
     if series.units == "T":
         return SeriesDisplay(f"Magnetometer: {sensor_name}", "Magnetic field", "T", 1.0, dict(_XYZ_LABELS))
+    if tuple(series.columns) == ("temperature",):
+        return SeriesDisplay(f"Thermal Sensor: {sensor_name}", "Temperature", "deg C", 1.0,
+                              {"temperature": "Temperature"})
     return None
 
 
@@ -285,7 +305,8 @@ def categorize(name: str, series: TimeSeries) -> Optional[SeriesDisplay]:
     series still renders reasonably -- exactly as it would have before
     this feature existed -- rather than erroring or looking unfinished.
     """
-    for fn in (_vector_display, _orbit_element_display, _controller_display, _access_pair_display):
+    for fn in (_vector_display, _orbit_element_display, _controller_display, _comms_and_thermal_display,
+               _access_pair_display):
         result = fn(name)
         if result is not None:
             return result

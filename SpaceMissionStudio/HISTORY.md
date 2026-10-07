@@ -7299,3 +7299,34 @@ This follows today's template fixes. Each of them (19's missing contact, 07/20's
 * never raising on a half-edited scenario.
 
 Further tests cover the Checks section's position and wording, the duration label, and the tab title.
+
+## Results tab: one-click "What to look at" series
+
+The template descriptions name the series to look at, e.g. template 19's `berlin-gs.access_to_leo-comms-1.link_margin_db`. Users then had to find each one among 30-40 entries. The user asked for this next, from the improvement list.
+
+**How it works.**
+* **`engine/series_names.featured_series(scenario)`** (Basilisk-free) reads the description's "What to look at" section and returns, in order, every series name there that a run will actually produce (`expected_series_names`). It expands shorthand siblings ("sat-1.orbit_elements_mean.arg_periapsis and .raan"). Typos and names of renamed spacecraft are skipped, so it only offers series that exist. It works for user-written descriptions too.
+* **ResultsWidget** gains a "Suggested:" row of chips (new wrapping `gui/flow_layout.py`) under the Series/X-axis toolbar, one per featured series in the result:
+  * each chip is labelled with its plot title, minus the spacecraft when the result has only one and minus the station -> spacecraft pair when there is only one; the tooltip still gives the code name;
+  * the chip for the series on screen is highlighted, and clicking one shows it, leaving the access timeline view if needed;
+  * a new result opens on the first featured series instead of whatever series comes first;
+  * the row is hidden when there's nothing to suggest.
+* **MainWindow** passes `featured_series(scenario)` when a run starts.
+
+At 620 px, template 19's five chips (Access Window, Pointing Mode, Pointing Error, Battery State of Charge, Link Margin) fit on two lines.
+
+**Found along the way.**
+* **Raw code names.** `comms_pointing.active_mode`, `comms_pointing.pointing_error_deg`, the reaction-wheel `motor_temperature` and the thermal sensor had no display category, so plots, the series list and chips showed raw code names. They now read "Pointing Mode (0 Sun, 1 ground station)", "Pointing Error", "Motor Temperature: rw-1" and "Thermal Sensor: therm-1", with units.
+* **No attitude for uncontrolled spacecraft.** An uncontrolled full-attitude spacecraft (template 10) recorded no attitude at all, because the attitude series came only from the navigation module, which exists only with attitude control. Its gravity-gradient drift was visible only in Vizard. `engine.service` now records `attitude_sigma_BN` and `body_rate_omega_BN_B` from the spacecraft-state message (`SCStatesMsgPayload` carries both) when there is no navigation recorder. `expected_series_names` mirrors that. Not run in Basilisk here (no SPICE kernels); `test_prediction_matches_a_real_run` checks the two agree in a Basilisk run.
+* **Descriptions without series names.** Template 18's and 10's descriptions now name their series (altitude/propellant, attitude).
+* **Shutdown crash.** At shutdown, Python can remove the plot page's temporary directory before Qt destroys the widget; a late redraw (the Series box losing focus) then raised `FileNotFoundError`. That redraw is now skipped.
+
+**Tests.**
+* `featured_series`: order, siblings, and skipping unknown names and other sections.
+* For every template, each series name its "What to look at" mentions really exists. This catches description typos from now on.
+* Template 10 now has attitude series predicted.
+* The chips: labels, default selection, clicking from the access timeline, hiding.
+* The new display names.
+* A run handing the featured series to the Results tab.
+
+USER_MANUAL Section 7 describes "Suggested".

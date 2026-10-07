@@ -20,7 +20,8 @@
 
 Basilisk-free. Used by the mission sequence editor's Report command, which
 used to ask the user to type series names from memory (and a wrong name
-fails the run). :func:`expected_series_names` mirrors
+fails the run), and by the Results tab's one-click suggestions
+(:func:`featured_series`). :func:`expected_series_names` mirrors
 ``engine.service.SimulationService._extract_results`` and the build-time
 conditions that decide which recorders exist -- keep the two in sync. A
 Basilisk test (``tests/test_series_names.py``) compares this prediction
@@ -28,6 +29,8 @@ with a real run's series for every bundled template.
 """
 
 from __future__ import annotations
+
+import re
 
 from typing import List
 
@@ -68,6 +71,9 @@ def _spacecraft_series(scenario: Scenario, sc) -> List[str]:
     elif sc.comms_pointing is not None:
         names += [f"{name}.attitude_sigma_BN", f"{name}.body_rate_omega_BN_B", f"{name}.sun_heading_body",
                   f"{name}.control_torque"]
+    elif scenario.simulation_mode == "full_attitude":
+        # Uncontrolled: attitude comes straight from the spacecraft state.
+        names += [f"{name}.attitude_sigma_BN", f"{name}.body_rate_omega_BN_B"]
 
     for sensor in sc.sensors:
         series = f"{name}.sensor.{sensor.name}"
@@ -110,3 +116,47 @@ def expected_series_names(scenario: Scenario) -> List[str]:
             if sc.rf_link is not None:
                 names.append(f"{prefix}.link_margin_db")
     return sorted(dict.fromkeys(names))
+
+
+_SERIES_TOKEN = re.compile(r"(?<![\w.-])[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)+")
+_SIBLING_TOKEN = re.compile(r"(?<![\w.-])\.([A-Za-z_][A-Za-z0-9_-]*)")
+
+
+def featured_series(scenario: Scenario) -> List[str]:
+    """The series a scenario's description points the user at, in order:
+    every name in its "What to look at" section that a run will actually
+    produce. Shorthand siblings resolve against the name before them
+    ("sat-1.orbit_elements_mean.arg_periapsis and .raan"). Names a run
+    won't produce (a typo, a renamed spacecraft) are skipped, so this only
+    ever offers series that exist."""
+    description = getattr(scenario, "description", "") or ""
+    section = _what_to_look_at(description)
+    if not section:
+        return []
+    known = set(expected_series_names(scenario))
+    found: List[str] = []
+    for line in section:
+        tokens = sorted([(m.start(), m.group(0), False) for m in _SERIES_TOKEN.finditer(line)]
+                        + [(m.start(), m.group(1), True) for m in _SIBLING_TOKEN.finditer(line)])
+        previous = None
+        for _start, token, sibling in tokens:
+            name = f"{previous.rsplit('.', 1)[0]}.{token}" if sibling and previous else token
+            if name in known:
+                if name not in found:
+                    found.append(name)
+                previous = name
+    return found
+
+
+def _what_to_look_at(description: str) -> List[str]:
+    """Lines of the "What to look at..." section, up to the next heading."""
+    lines = description.splitlines()
+    for i, line in enumerate(lines):
+        if line.startswith("What to look at"):
+            body = []
+            for following in lines[i + 1:]:
+                if following.strip() and not following.startswith("- ") and following.rstrip().endswith(":"):
+                    break  # the next heading ("Try changing:", "Why:", ...)
+                body.append(following)
+            return body
+    return []

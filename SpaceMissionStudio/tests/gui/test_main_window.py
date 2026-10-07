@@ -1840,3 +1840,21 @@ def test_explain_tab_title_counts_pre_run_warnings(window, qapp):
     assert window.right_tabs.tabText(tab_index) == "Explain (1 to check)"
     assert window.open_path(next(templates.glob("19_*.json")))
     assert window.right_tabs.tabText(tab_index) == "Explain"
+
+
+def test_a_run_hands_the_scenarios_featured_series_to_the_results_tab(window, monkeypatch):
+    """The Results tab's one-click suggestions come from the scenario
+    being run -- template 19's description names five series."""
+    from pathlib import Path
+
+    from spacemissionstudio.engine.series_names import featured_series
+    from spacemissionstudio.gui.run_worker import RunWorker
+    from spacemissionstudio.schema import load_scenario
+
+    path = next((Path(__file__).resolve().parents[2] / "spacemissionstudio" / "scenarios" / "templates")
+                .glob("19_*.json"))
+    assert window.open_path(path)
+    monkeypatch.setattr(RunWorker, "start", lambda self: None)  # don't actually spin up the thread
+    window.on_run()
+    assert window.results_widget._featured == featured_series(load_scenario(path))
+    assert len(window.results_widget._featured) == 5

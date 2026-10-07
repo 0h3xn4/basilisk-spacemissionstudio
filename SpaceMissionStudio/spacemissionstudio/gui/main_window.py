@@ -50,6 +50,7 @@ from PySide6.QtWidgets import (
     QToolBar,
 )
 
+from ..engine.series_names import featured_series
 from ..logging_setup import get_log_file_path
 from ..schema.scenario import Scenario, ScenarioValidationError, load_scenario
 from . import autosave
@@ -1108,6 +1109,7 @@ class MainWindow(QMainWindow):
         # needs to recompute a live link-budget breakdown.
         self._last_run_epoch_utc = scenario.epoch_utc
         self._last_run_scenario = scenario
+        self.results_widget.set_featured_series(featured_series(scenario))
         _join_finished_worker(self._run_worker)
         self._run_worker = RunWorker(scenario, vizard_request=self._vizard_request, live=live)
         self._run_worker.progress.connect(self._on_run_progress)

@@ -1804,6 +1804,15 @@ class SimulationService:
                                        handle.nav_recorder.sigma_BN, units="-"))
                 result.add(TimeSeries(f"{name}.body_rate_omega_BN_B", nav_t_s, ("x", "y", "z"),
                                        handle.nav_recorder.omega_BN_B, units="rad/s"))
+            elif self.scenario.simulation_mode == "full_attitude":
+                # No attitude control, so no navigation recorder -- but the
+                # attitude still evolves (template 10's gravity-gradient
+                # drift), and the spacecraft-state message already carries
+                # it. Without this the drift could only be seen in Vizard.
+                result.add(TimeSeries(f"{name}.attitude_sigma_BN", t_s, ("s1", "s2", "s3"),
+                                       handle.recorder.sigma_BN, units="-"))
+                result.add(TimeSeries(f"{name}.body_rate_omega_BN_B", t_s, ("x", "y", "z"),
+                                       handle.recorder.omega_BN_B, units="rad/s"))
                 result.add(TimeSeries(f"{name}.sun_heading_body", nav_t_s, ("x", "y", "z"),
                                        handle.nav_recorder.vehSunPntBdy, units="-"))
             if handle.css_sun_estimate_recorder is not None:

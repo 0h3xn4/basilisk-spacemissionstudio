@@ -171,6 +171,7 @@ on. Without the torque the spacecraft would stay at its initial attitude; with i
 
 What to look at:
 - Vizard's attitude view: the spacecraft drifts away from its starting orientation.
+- sat-1.attitude_sigma_BN: moving away from zero, its starting value.
 
 Try changing:
 - Inertia: make all three values equal and the torque vanishes.
@@ -270,7 +271,8 @@ The LEO counterpart to 03: a 400 km satellite holding its altitude against atmos
 deadband. Radiation pressure is off, to isolate drag.
 
 What to look at:
-- The propellant used and the number of burns over 14 days; compare 03, where at GEO the thruster never fires.
+- leo-sat-1.station_keeping.altitude and .propellant_remaining: each reboost, and the propellant it costs over \
+14 days; compare 03, where at GEO the thruster never fires.
 
 Try changing:
 - Orbit altitude: lower decays much faster (try 350 or 300 km).

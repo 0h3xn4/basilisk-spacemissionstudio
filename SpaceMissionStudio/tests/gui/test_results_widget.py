@@ -1021,3 +1021,83 @@ def test_access_timeline_marks_each_pass_and_starts_at_zero(widget):
     assert "markers" in with_passes.mode
     assert with_passes.marker.symbol == "line-ns"
     assert widget.figure.layout.xaxis.range == (0.0, 1.0)  # [hr] the whole 3600 s run
+
+
+# -- one-click "What to look at" suggestions ------------------------------------
+
+def _comms_result():
+    from spacemissionstudio.engine.results import ResultSet, TimeSeries
+
+    t = np.linspace(0, 600, 20)
+    rs = ResultSet(scenario_name="19")
+    rs.add(TimeSeries("leo-comms-1.position_N", t, ("x", "y", "z"), np.zeros((20, 3)), units="m"))
+    rs.add(TimeSeries("berlin-gs.access_to_leo-comms-1.has_access", t, ("has_access",),
+                      (t > 300).astype(float)[:, None], units="-"))
+    rs.add(TimeSeries("leo-comms-1.comms_pointing.pointing_error_deg", t, ("pointing_error_deg",),
+                      np.linspace(90, 1, 20)[:, None], units="deg"))
+    rs.add(TimeSeries("leo-comms-1.battery_charge", t, ("charge",), np.linspace(36, 30, 20)[:, None], units="W*hr"))
+    return rs
+
+
+def test_suggestions_offer_the_featured_series_and_open_on_the_first(widget):
+    widget.show()
+    widget.set_featured_series(["berlin-gs.access_to_leo-comms-1.has_access",
+                                "leo-comms-1.comms_pointing.pointing_error_deg",
+                                "leo-comms-1.battery_charge",
+                                "leo-comms-1.comms_pointing.active_mode"])  # not in this result: no chip
+    widget.set_result(_comms_result())
+
+    assert widget.suggestion_row.isVisible()
+    # One spacecraft and one station pair: the chips don't repeat them.
+    assert [c.text() for c in widget._suggestion_chips] == ["Access Window", "Pointing Error", "Battery State of Charge"]
+    assert [c.toolTip() for c in widget._suggestion_chips][0] == "berlin-gs.access_to_leo-comms-1.has_access"
+    assert widget.current_series_name() == "berlin-gs.access_to_leo-comms-1.has_access"  # not position_N
+    assert [c.isChecked() for c in widget._suggestion_chips] == [True, False, False]
+
+
+def test_clicking_a_suggestion_shows_it_even_from_the_access_timeline(widget):
+    widget.show()
+    widget.set_featured_series(["leo-comms-1.battery_charge"])
+    widget.set_result(_comms_result())
+    widget.view_combo.setCurrentIndex(widget.view_combo.findData("access_timeline"))
+
+    widget._suggestion_chips[0].click()
+
+    assert widget.view_combo.currentData() == "single"
+    assert widget.current_series_name() == "leo-comms-1.battery_charge"
+    assert widget.figure.layout.title.text == "leo-comms-1: Battery State of Charge"
+    assert widget._suggestion_chips[0].isChecked()
+
+
+def test_suggestions_keep_names_that_tell_spacecraft_apart_and_hide_when_empty(widget):
+    from spacemissionstudio.engine.results import TimeSeries
+
+    widget.show()
+    widget.set_featured_series(["leo-comms-1.battery_charge", "sat-2.position_N"])
+    result = _comms_result()
+    result.add(TimeSeries("sat-2.position_N", np.linspace(0, 600, 20), ("x", "y", "z"), np.zeros((20, 3)), units="m"))
+    widget.set_result(result)
+    assert [c.text() for c in widget._suggestion_chips] == ["leo-comms-1: Battery State of Charge",
+                                                           "sat-2: Inertial Position (ECI)"]
+
+    widget.set_featured_series([])
+    assert not widget.suggestion_row.isVisible()
+    widget.set_featured_series(["leo-comms-1.battery_charge"])
+    widget.set_result(None)
+    assert not widget.suggestion_row.isVisible()
+
+
+def test_newly_named_series_get_plot_titles():
+    """Featured in templates 19/20 but shown as raw code names before."""
+    from spacemissionstudio.engine.results import TimeSeries
+    from spacemissionstudio.gui.results_widget import _series_label
+
+    def label(name, columns, units):
+        return _series_label(name, TimeSeries(name, np.zeros(1), columns, np.zeros((1, len(columns))), units=units))
+
+    assert label("leo-comms-1.comms_pointing.active_mode", ("active_mode",), "-") == \
+        "leo-comms-1: Pointing Mode (0 Sun, 1 ground station)"
+    assert label("leo-comms-1.comms_pointing.pointing_error_deg", ("pointing_error_deg",), "deg") == \
+        "leo-comms-1: Pointing Error"
+    assert label("sat-1.actuator.rw-1.motor_temperature", ("temperature",), "C") == "sat-1: Motor Temperature: rw-1"
+    assert label("sat-1.sensor.therm-1", ("temperature",), "C") == "sat-1: Thermal Sensor: therm-1"

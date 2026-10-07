@@ -149,6 +149,7 @@ from ..engine.results import ResultSet, TimeSeries
 from ..plot_categories import categorize as _categorize
 from ..plot_categories import legacy_display as _legacy_display
 from ..plot_categories import parse_access_pair as _parse_access_pair
+from .flow_layout import FlowLayout
 from .theme import PALETTE
 from .widgets import ComboBox
 
@@ -427,6 +428,31 @@ class ResultsWidget(QWidget):
         top_row.addWidget(self.x_axis_combo)
         layout.addLayout(top_row)
 
+        # One-click shortcuts to the series the scenario's own description
+        # points at ("What to look at"), so nobody has to find
+        # berlin-gs.access_to_leo-comms-1.link_margin_db among 40 entries.
+        # Filled from set_featured_series(); hidden when there are none.
+        self._featured: list = []
+        self._suggestion_chips: list = []
+        self.suggestion_row = QWidget()
+        suggestion_layout = QHBoxLayout(self.suggestion_row)
+        suggestion_layout.setContentsMargins(0, 0, 0, 0)
+        suggestion_label = QLabel("Suggested:")
+        suggestion_label.setStyleSheet(f"color: {PALETTE['text_muted']};")
+        suggestion_layout.addWidget(suggestion_label, 0, Qt.AlignmentFlag.AlignTop)
+        self._suggestion_box = QWidget()
+        self._suggestion_flow = FlowLayout(self._suggestion_box)
+        suggestion_layout.addWidget(self._suggestion_box, 1)
+        self.suggestion_row.setStyleSheet(
+            f"QPushButton#suggestionChip {{ border: 1px solid {PALETTE['border']}; border-radius: 10px; "
+            f"padding: 2px 10px; background-color: {PALETTE['surface']}; color: {PALETTE['text']}; }}"
+            f"QPushButton#suggestionChip:hover {{ border-color: {PALETTE['accent']}; }}"
+            f"QPushButton#suggestionChip:checked {{ background-color: {PALETTE['accent_soft']}; "
+            f"border-color: {PALETTE['accent']}; color: {PALETTE['accent']}; }}"
+        )
+        self.suggestion_row.setVisible(False)
+        layout.addWidget(self.suggestion_row)
+
         # Real UI regression, caught from a screenshot: this row used to
         # share ONE QHBoxLayout with the "View"/"Series"/"X-axis" combos
         # above. Adding the "View" combo (roadmap item M5) and the "Save
@@ -550,12 +576,74 @@ class ResultsWidget(QWidget):
             for name, label in labels.items():
                 self.series_combo.addItem(label if label_counts[label] == 1 else name, name)
                 self.series_combo.setItemData(self.series_combo.count() - 1, name, Qt.ItemDataRole.ToolTipRole)
+        featured_present = [name for name in self._featured if result is not None and name in result.series]
+        if featured_present:  # open on what the scenario says to look at, not whatever comes first
+            self.series_combo.setCurrentIndex(self.series_combo.findData(featured_present[0]))
         self.series_combo.blockSignals(False)
+        self._refresh_suggestions()
         has_access = _has_access_series(result)
         if not has_access and self.view_combo.currentData() != "single":
             self.view_combo.setCurrentIndex(self.view_combo.findData("single"))
         self.view_label.setVisible(has_access)
         self.view_combo.setVisible(has_access)
+
+    def set_featured_series(self, names) -> None:
+        """The series to offer as one-click suggestions (normally
+        ``engine.series_names.featured_series(scenario)`` for the scenario
+        being run). Only those present in the result are shown, and a new
+        result opens on the first of them."""
+        self._featured = list(names)
+        self._refresh_suggestions()
+
+    def _refresh_suggestions(self) -> None:
+        for chip in self._suggestion_chips:
+            self._suggestion_flow.removeWidget(chip)
+            chip.deleteLater()
+        self._suggestion_chips = []
+        result = self._result
+        names = [name for name in self._featured if result is not None and name in result.series]
+        for name in names:
+            chip = QPushButton(self._chip_label(name))
+            chip.setObjectName("suggestionChip")
+            chip.setCheckable(True)
+            chip.setAutoDefault(False)
+            chip.setToolTip(name)
+            chip.setProperty("series_name", name)
+            chip.clicked.connect(lambda _checked=False, n=name: self.show_series(n))
+            self._suggestion_flow.addWidget(chip)
+            self._suggestion_chips.append(chip)
+        self.suggestion_row.setVisible(bool(names))
+        self._update_suggestion_states()
+
+    def _chip_label(self, name: str) -> str:
+        """The plot title, minus what every chip would repeat: the
+        spacecraft when the result has only one, and the station ->
+        spacecraft pair when there is only one (the tooltip and the plot
+        title still name them)."""
+        result = self._result
+        label = _series_label(name, result.series[name])
+        pairs = {_parse_access_pair(n)[:2] for n in result.series if _parse_access_pair(n) is not None}
+        spacecraft = {n.split(".", 1)[0] for n in result.series if _parse_access_pair(n) is None}
+        if len(spacecraft) == 1 and label.startswith(f"{next(iter(spacecraft))}: "):
+            label = label.split(": ", 1)[1]
+        if len(pairs) == 1:
+            gs, sc = next(iter(pairs))
+            label = label.removesuffix(f": {gs} -> {sc}")
+        return label
+
+    def _update_suggestion_states(self) -> None:
+        showing = self.current_series_name() if self.view_combo.currentData() == "single" else ""
+        for chip in self._suggestion_chips:
+            chip.setChecked(chip.property("series_name") == showing)
+
+    def show_series(self, name: str) -> None:
+        """Show one series (switching out of the access timeline if needed)."""
+        if self.view_combo.currentData() != "single":
+            self.view_combo.setCurrentIndex(self.view_combo.findData("single"))
+        index = self.series_combo.findData(name)
+        if index >= 0 and index != self.series_combo.currentIndex():
+            self.series_combo.setCurrentIndex(index)  # redraws via currentIndexChanged
+        self._update_suggestion_states()
 
     def current_series_name(self) -> str:
         """Code name of the selected series ("" when there is none)."""
@@ -873,6 +961,11 @@ class ResultsWidget(QWidget):
             # that is still loading.
             self._page_counter += 1
             page = Path(self._page_dir.name) / f"plot-{self._page_counter % 2}.html"
+            if not page.parent.is_dir():
+                # Shutting down: Python removed the temporary directory
+                # before Qt destroyed this widget, and a late signal (the
+                # series box losing focus) asked for one more redraw.
+                return
             page.write_text(html, encoding="utf-8")
             self.web_view.load(QUrl.fromLocalFile(str(page)))
         # Never force-enable while a save-as-PNG poll is in flight (e.g. a
@@ -889,6 +982,7 @@ class ResultsWidget(QWidget):
     def _redraw(self) -> None:
         self._update_figure()
         self._push_figure_to_webview()
+        self._update_suggestion_states()
 
     def _on_series_text_committed(self, text: str) -> None:
         """A series name was committed via the completer popup or by

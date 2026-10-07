@@ -475,6 +475,7 @@ SpaceMissionStudio/
       spacecraft_template_dialog.py  -- Phase 5: "New from template" picker dialog
       kernel_status_widget.py        -- SPICE kernel status panel
       results_widget.py              -- Plotly results plot (QWebEngineView) + CSV export + save-plot-as-PNG
+      flow_layout.py                 -- wrapping chip layout (the Results tab's "Suggested" series)
       mission_dashboard_widget.py    -- "Mission Dashboard" tab: live operating-state/attitude/power/RF-link telemetry for a comms_pointing spacecraft
       scenario_explainer_widget.py   -- "Explain" tab: renders engine/scenario_explainer.py's output as stat tiles/badges/a per-spacecraft table, live-updated from ScenarioEditorWidget.changed
       formation_diagram_widget.py    -- QPainter-drawn along-track formation-geometry diagram (target separation + trigger/restore tolerance bands) for the Explain tab
@@ -608,7 +609,7 @@ python3 -m pip install -e ".[dev,gui]"
 python3 -m pytest tests/ -v
 ```
 
-The suite has 1871 tests. Without Basilisk on `PYTHONPATH`, 1636 of
+The suite has 1900 tests. Without Basilisk on `PYTHONPATH`, 1665 of
 them run and pass (schema, space weather, results, link budget,
 constellation generation, CLI, and the full PySide6 GUI, run headless),
 and the 235 that need a real Basilisk build (marked `requires_basilisk`,

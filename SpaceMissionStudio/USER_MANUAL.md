@@ -216,6 +216,11 @@ After a run finishes, the **Results** tab shows one plot at a time:
   (e.g. "sat-1: Inertial Position (ECI)"). Type to filter the list.
   Hover an entry to see its code name (e.g. `sat-1.position_N`), which
   is also its CSV file name.
+* **Suggested** -- one-click shortcuts to the series the scenario's own
+  description points at under "What to look at" (e.g. template 19's
+  access window, pointing error, battery and link margin). A new run
+  opens on the first of them. For your own scenarios, write series names
+  in that section of the Description and they show up here too.
 * **X-axis** -- toggle between elapsed simulation time and the real
   calendar epoch, whichever you find easier to read.
 * **Export CSV...** -- saves every series (not just the current one) to
