@@ -63,6 +63,7 @@ from .mission_output_widget import MissionOutputWidget
 from .results_widget import ResultsWidget
 from .run_worker import MonteCarloWorker, RunWorker
 from .scenario_editor import ScenarioEditorWidget
+from .scenario_explainer_widget import ScenarioExplainerWidget
 from .startup_fetch_dialog import maybe_run_startup_fetch
 from .vizard_dialog import VizardDialog
 from .vizard_launcher import (
@@ -145,6 +146,7 @@ class MainWindow(QMainWindow):
         self.scenario_editor = ScenarioEditorWidget()
         self.scenario_editor.reset_to_default()
         self.scenario_editor.changed.connect(self._mark_dirty)
+        self.scenario_editor.changed.connect(self._refresh_scenario_explainer)
 
         self.load_scenario_widget = LoadScenarioWidget()
         self.load_scenario_widget.path_chosen.connect(self._on_load_scenario_path_chosen)
@@ -154,12 +156,15 @@ class MainWindow(QMainWindow):
         self.mission_dashboard_widget = MissionDashboardWidget()
         self.mission_output_widget = MissionOutputWidget()
         self.kernel_status_widget = KernelStatusWidget()
+        self.scenario_explainer_widget = ScenarioExplainerWidget()
 
         self.right_tabs = QTabWidget()
         self.right_tabs.addTab(self.results_widget, "Results")
         self.right_tabs.addTab(self.mission_dashboard_widget, "Mission Dashboard")
         self.right_tabs.addTab(self.mission_output_widget, "Mission Output")
         self.right_tabs.addTab(self.kernel_status_widget, "Kernel Status")
+        self.right_tabs.addTab(self.scenario_explainer_widget, "Explain")
+        self._refresh_scenario_explainer()  # initial paint for the default scenario reset_to_default() just set up
 
         # "Load Scenario" first (index 0, so it's what a freshly launched
         # window shows) -- a new user's first move is picking a built-in
@@ -483,6 +488,21 @@ class MainWindow(QMainWindow):
             self._dirty = True
             self._update_window_title()
 
+    def _refresh_scenario_explainer(self) -> None:
+        # Same "silently skip a tick where the in-memory scenario doesn't
+        # currently validate" tolerance as _on_autosave_tick -- this runs
+        # on every keystroke (via ScenarioEditorWidget.changed), so a
+        # momentarily-invalid mid-edit state (e.g. a required field
+        # briefly blank) must never raise an error dialog the user didn't
+        # directly trigger. ScenarioExplainerWidget.set_scenario(None)
+        # shows its own short placeholder instead of crashing.
+        try:
+            scenario = self.scenario_editor.to_scenario()
+        except ScenarioValidationError:
+            self.scenario_explainer_widget.set_scenario(None)
+            return
+        self.scenario_explainer_widget.set_scenario(scenario)
+
     def _mark_clean(self) -> None:
         self._dirty = False
         self._update_window_title()
@@ -539,6 +559,7 @@ class MainWindow(QMainWindow):
             autosave.clear_recovery_file()
             return
         self.scenario_editor.from_scenario(info.scenario)
+        self._refresh_scenario_explainer()
         self._current_path = info.original_path
         self.results_widget.set_result(None)
         self.mission_dashboard_widget.set_result(None)
@@ -567,6 +588,7 @@ class MainWindow(QMainWindow):
         if not self._confirm_discard_unsaved():
             return
         self.scenario_editor.reset_to_default()
+        self._refresh_scenario_explainer()
         self._current_path = None
         self.results_widget.set_result(None)
         self.mission_dashboard_widget.set_result(None)
@@ -635,6 +657,7 @@ class MainWindow(QMainWindow):
         picking a path to write to.
         """
         self.scenario_editor.from_scenario(scenario)
+        self._refresh_scenario_explainer()
         self._current_path = current_path
         self.results_widget.set_result(None)
         self.mission_dashboard_widget.set_result(None)

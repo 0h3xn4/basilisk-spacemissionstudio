@@ -96,8 +96,11 @@ A few things to notice right away:
 * Two tabs on the **left**: **Load Scenario** (where you start) and
   **Scenario Editor** (where you build/edit a mission in detail --
   Section 6).
-* Three tabs on the **right**: **Results**, **Mission Output**, and
-  **Kernel Status** -- all empty until you run something.
+* Five tabs on the **right**: **Results**, **Mission Dashboard**,
+  **Mission Output**, **Kernel Status** (all empty until you run
+  something), and **Explain** (a live, always-current summary of
+  what the scenario you're currently editing actually does -- see
+  the end of Section 7).
 
 The app opens on the **Load Scenario** tab deliberately: picking a
 starting point is the natural first move for everyone, whether you end
@@ -230,6 +233,22 @@ ignore it.
 see [Section 11](#11-common-questions-and-problems) if Run ever
 complains about missing kernels.
 
+**Explain** is different from the other four tabs: it doesn't need a
+run at all, and it updates live as you edit the Scenario Editor. It's a
+short, at-a-glance recipe of what the CURRENT scenario is actually
+configured to do -- a handful of stat tiles (spacecraft count,
+duration, gravity model, ...), colored badges for what's turned on
+(station-keeping, Sun-synchronous, drag, ...), and, once a scenario has
+two or more spacecraft, a side-by-side comparison table. It never shows
+prose -- where a badge uses a term you don't recognize (Sun
+-synchronous, spherical-harmonics gravity, ...), check the glossary in
+[Section 12](#12-a-short-glossary). Unlike the free-text Description
+box at the top of the Scenario Editor (which is hand-written and only
+really meaningful for the bundled templates), Explain is built fresh
+from the scenario's actual current fields every time, so it's never out
+of date -- useful for checking that a bespoke scenario you built from
+scratch actually ended up configured the way you intended.
+
 ## 8. Saving your work
 
 **File > Save** (or **Save As...** for a new file/location) writes your
@@ -339,6 +358,26 @@ anyone who hasn't worked with spacecraft before:
 * **Station-keeping** -- firing small thruster burns periodically to
   correct a satellite's orbit as it naturally drifts (from gravity
   irregularities, drag, etc.), so it stays where it's supposed to be.
+* **Phasing (along-track separation)** -- how far ahead of or behind
+  another spacecraft (the "chief") a satellite sits along the SAME
+  orbit, measured as a distance along the direction of travel.
+  "Phasing-keeping" holds that separation steady over time, the same
+  way station-keeping holds altitude steady.
+* **Sun-synchronous orbit** -- an orbit whose plane rotates (from
+  Earth's own gravity being slightly non-spherical) at exactly the same
+  rate the Sun appears to move around the sky over a year -- so the
+  satellite crosses any given latitude at the same local solar time on
+  every pass. The most common choice for Earth-observation satellites,
+  since lighting conditions on the ground stay consistent.
+* **Spherical-harmonics gravity** -- a more detailed model of a
+  planet's gravity than "a single point mass at the center" -- it
+  accounts for the planet's real, slightly lumpy/non-spherical shape
+  (Earth bulges at the equator, for instance). Higher "degree" means
+  more detail, at the cost of more computation.
+* **Third-body perturbation** -- the small extra pull on a spacecraft
+  from a body OTHER than the one it's orbiting -- e.g. the Sun or Moon's
+  gravity acting on a satellite orbiting Earth. Usually a small effect
+  next to the central body's own gravity, but real over long enough runs.
 * **Ground station** -- a fixed point on Earth's surface a spacecraft
   might need to communicate with; SpaceMissionStudio can compute exactly
   when each spacecraft is visible to each ground station.

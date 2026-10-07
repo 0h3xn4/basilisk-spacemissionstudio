@@ -68,6 +68,7 @@ _C = {
     "on_accent": "#FFFFFF",     # text/icon color drawn ON the accent color
     "danger": "#C0392B",
     "success": "#1F8A4C",
+    "warning": "#B7791F",
 }
 
 # Public alias -- other gui/ modules (e.g. feedback.py's toast/inline

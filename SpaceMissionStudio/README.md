@@ -441,10 +441,13 @@ SpaceMissionStudio/
       formation.py                   -- phasing-formation generator: chief + Hill-frame (R/T/N) offset -> follower spacecraft (needs Basilisk)
       spacecraft_templates.py        -- Phase 5: reusable spacecraft "bus" templates (no Basilisk needed)
       mission_engine.py              -- Phase 6: MissionEngine -- walks mission_sequence against a SimulationService (needs Basilisk)
+      orbit_design.py                -- Sun-synchronous orbit design helpers (sun_synchronous_inclination_deg/raan_for_ltan_deg) -- Basilisk-free
+      scenario_explainer.py          -- explain(scenario) -> a structured, always-current "recipe" summary (stat tiles/badges/table) -- Basilisk-free
     gui/
       app.py                         -- QApplication entry point
       theme.py                       -- Phase 5: app-wide QSS stylesheet + palette
       feedback.py                    -- toast notifications + inline (per-field) validation highlighting
+      badges.py                      -- colored pill/badge QLabel styling helper, shared by mission_dashboard_widget.py and scenario_explainer_widget.py
       icons.py                       -- Phase 5: procedurally-drawn app icon
       main_window.py                 -- MainWindow: File/Run/Help menus + toolbar, ties everything together
       load_scenario_widget.py        -- "Load Scenario" tab: built-in template picker + browse-for-a-file
@@ -467,6 +470,7 @@ SpaceMissionStudio/
       kernel_status_widget.py        -- SPICE kernel status panel
       results_widget.py              -- Plotly results plot (QWebEngineView) + CSV export + save-plot-as-PNG
       mission_dashboard_widget.py    -- "Mission Dashboard" tab: live operating-state/attitude/power/RF-link telemetry for a comms_pointing spacecraft
+      scenario_explainer_widget.py   -- "Explain" tab: renders engine/scenario_explainer.py's output as stat tiles/badges/a per-spacecraft table, live-updated from ScenarioEditorWidget.changed
       run_worker.py                  -- SimulationService/Monte Carlo on a background QThread
     scenarios/
       two_body_validation.json       -- the Phase 0 validation scenario

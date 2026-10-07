@@ -61,12 +61,9 @@ from PySide6.QtWidgets import (
 from ..engine import link_budget
 from ..engine.results import ResultSet
 from ..schema.scenario import Scenario
+from .badges import ACCENT as _ACCENT_BADGE, badge_style as _badge_style
+from .badges import DANGER as _DANGER_BADGE, MUTED as _MUTED_BADGE, SUCCESS as _SUCCESS_BADGE
 from .theme import PALETTE
-
-_MUTED_BADGE = (PALETTE["border_strong"], PALETTE["text"])
-_SUCCESS_BADGE = (PALETTE["success"], PALETTE["on_accent"])
-_DANGER_BADGE = (PALETTE["danger"], PALETTE["on_accent"])
-_ACCENT_BADGE = (PALETTE["accent"], PALETTE["on_accent"])
 
 
 def _find_comms_pointing_spacecraft(result: Optional[ResultSet]) -> Optional[str]:
@@ -121,11 +118,6 @@ def _latest(result: ResultSet, series_name: str) -> Optional[float]:
     if series is None or series.data.shape[0] == 0:
         return None
     return float(series.data[-1, 0])
-
-
-def _badge_style(colors: tuple) -> str:
-    bg, fg = colors
-    return f"background-color: {bg}; color: {fg}; border-radius: 4px; padding: 2px 10px; font-weight: 600;"
 
 
 class MissionDashboardWidget(QWidget):

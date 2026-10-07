@@ -65,6 +65,48 @@ def test_initial_title_is_untitled(window):
     assert window.windowTitle() == "SpaceMissionStudio -- untitled"
 
 
+def test_explain_tab_exists_and_shows_the_default_scenario_on_startup(window):
+    assert window.right_tabs.indexOf(window.scenario_explainer_widget) >= 0
+    assert window.right_tabs.tabText(window.right_tabs.indexOf(window.scenario_explainer_widget)) == "Explain"
+    # reset_to_default()'s own scenario has zero spacecraft (invalid --
+    # Scenario.validate() requires >= 1), so the placeholder is the
+    # correct initial state here, not a crash -- this is the real
+    # regression this test guards: reset_to_default() runs BEFORE
+    # __init__ wires the changed signal, so without the explicit initial
+    # call this fix adds, the widget would be left showing its
+    # constructor-time blank state instead of ever calling set_scenario()
+    # at all.
+    assert not window.scenario_explainer_widget._placeholder_label.isHidden()
+
+
+def test_explain_tab_refreshes_on_edit(window):
+    _add_valid_spacecraft(window)
+    assert window.scenario_explainer_widget._headline_label.isHidden() is False
+    tile_labels = {
+        window.scenario_explainer_widget._tiles_row.itemAt(i).widget()
+        for i in range(window.scenario_explainer_widget._tiles_row.count())
+        if window.scenario_explainer_widget._tiles_row.itemAt(i).widget() is not None
+    }
+    assert tile_labels  # at least one stat tile rendered for the new spacecraft
+
+
+def test_explain_tab_shows_placeholder_while_scenario_is_invalid(window):
+    window.scenario_editor.name_edit.setText("")  # name must not be empty -- an invalid scenario
+    window.scenario_editor.changed.emit()
+    assert not window.scenario_explainer_widget._placeholder_label.isHidden()
+
+
+def test_explain_tab_refreshes_on_new(window):
+    _add_valid_spacecraft(window)
+    assert not window.scenario_explainer_widget._headline_label.isHidden()
+    window.on_new()
+    # on_new() resets to reset_to_default()'s own zero-spacecraft scenario,
+    # which does NOT validate (Scenario.validate() requires >= 1
+    # spacecraft) -- the placeholder, not the stale "sat-1" headline from
+    # before on_new(), is the correct post-reset state.
+    assert not window.scenario_explainer_widget._placeholder_label.isHidden()
+
+
 def test_toolbar_actions_are_all_visible(window, qtbot):
     """Regression test for a real user report, with a screenshot: on
     their platform, one toolbar button ("Launch Vizard") simply wasn't
