@@ -7364,4 +7364,46 @@ All remaining templates were run in Basilisk and checked against their descripti
 
 **Not changed, open:** the same inertia scaling can starve thruster-only attitude control in any small user scenario. The engine docstring warns that unscaled gains can diverge on large spacecraft, so the default is left as it is.
 
-**Tests.** New `tests/test_template_claims.py` (12 tests, `requires_basilisk`) runs templates 03, 07, 08, 10, 11, 12, 13, 14, 16, 17, 19 and 20 as shipped, shortened only where the claim allows, and checks each headline claim. All pass. Full suite with Basilisk: 1901 pass, 11 skip.
+**Tests.** New `tests/test_template_claims.py` (12 tests, `requires_basilisk`) runs templates 03, 07, 08, 10, 11, 12, 13, 14, 16, 17, 19 and 20 as shipped, shortened only where the claim allows, and checks each headline claim. All pass. Full suite with Basilisk at that point: 1901 pass, 11 skip.
+
+## Every template flies a 100-500 kg spacecraft; a wheel setting that crashed the app
+
+The user: "Small spacecraft are never relevant. Spacecraft between 100 kg to 500 kg are actually relevant."
+
+Six templates were outside that range: 13 was a 10 kg CubeSat, 07/14/20 were 50 kg, 19 was 60 kg, and 12 was 2500 kg. Most also carried a 10 kg*m^2 inertia whatever their mass; 11 and 17 had their thrusters ~1 m from the centre, as on a 2.5 m bus.
+
+**Buses.** The generator now derives each inertia from the mass and size of a uniform box (`_box_inertia`), using three buses:
+* **150 kg microsatellite,** 0.8 x 0.8 x 1.0 m (20.5/20.5/16.0 kg*m^2): templates 07, 13, 14, 19 and 20.
+* **300 kg,** 1.2 x 1.2 x 1.5 m: templates 06, 11, 15 and 17.
+* **500 kg,** 1.2 x 1.2 x 1.6 m: templates 01, 02, 03 (with 8 m^2 SRP area), 08, 09 and 12.
+
+Template 10 is a 500 kg, 1 x 1 x 2 m bus, elongated for gravity gradient. 04, 05, 16 and 18 keep their masses (180-400 kg) and get matching inertias.
+
+**Hardware sized to the bus:**
+* 07, 13, 14 and 20: 6 N*m*s, 50 mN*m wheels (the size of the catalog's VRW-D-6), not 100 N*m*s Honeywell HR16s.
+* 13: 15 A*m^2 torque rods (were 0.1).
+* 12: 12 N*m*s Honeywell HR12 wheels; eight 1 N MOOG Monarc-1 dump thrusters (were 5 N); dump threshold 9.6 N*m*s (was 80, the same fraction of the wheels' capacity).
+* 11 and 17: eight 1 N thrusters on the bus corners.
+
+**Gains.** All explicit `control_params` overrides are gone. The inertia-scaled defaults now work for every template. That includes the thruster-only 11 and 17: at these inertias the commanded pulses clear the 20 ms minimum on-time.
+
+**Confirmed in Basilisk:**
+* **11:** within 0.03 in ~110 s, then a ~0.01 limit cycle; pulses up to 40 ms.
+* **17:** ~0.3 g of propellant (was 13 g with the overridden gains).
+* **12:** three dumps (2, 103, 204 s) take the stored momentum from 13.8 to 9.4 N*m*s.
+* **13:** every wheel within 0.5 RPM of its target after 104 min.
+* **20:** therm-1 cycles between -5 and 85 C, and the motor now rises ~0.05 C.
+* **07 and 14:** +Z settles on the Sun.
+* **10:** tumbles to sigma ~0.52 over 12 h.
+* **19:** the two Berlin passes and the mode switches are unchanged.
+
+Descriptions and the catalog README give the new sizes and figures.
+
+**Crash fixed.** Basilisk builds Honeywell HR12/HR14/HR16 wheels only with `maxMomentum` set to one of three sizes (12/25/50, 25/50/75 and 50/75/100 N*m*s). Any other value, or none, makes `rwFactory.create()` call `exit(1)`, which closes the whole app with no message. Template 07's wizard offered any momentum from 1 to 1000 N*m*s on those wheels. Scenario validation now rejects such a wheel with a message naming the allowed sizes. 07's wheels are now "custom", which derives the rotor inertia from any momentum. Test fixtures that built HR16s without a momentum (they would have crashed if simulated) now set one.
+
+**Tests:**
+* New: every template is 100-500 kg with an inertia that fits its mass.
+* New: the wheel-size check.
+* `test_template_claims.py` now checks 12's three dumps, 17's propellant figure and 20's motor rise.
+
+Full suite with Basilisk: 1924 pass, 11 skip; without it, 1688 pass and 247 skip.

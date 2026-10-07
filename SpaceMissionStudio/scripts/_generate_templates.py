@@ -62,9 +62,45 @@ from spacemissionstudio.schema.scenario import (
 
 OUT_DIR = Path(__file__).resolve().parent.parent / "spacemissionstudio" / "scenarios" / "templates"
 
-_INERTIA_SMALL = [5.0, 0.0, 0.0, 0.0, 5.0, 0.0, 0.0, 0.0, 5.0]
-_INERTIA_MEDIUM = [12.5, 0.0, 0.0, 0.0, 12.5, 0.0, 0.0, 0.0, 7.5]
 _RPM_TO_RAD_S = math.pi / 30.0
+
+
+def _box_inertia(mass_kg: float, size_m: tuple) -> list:
+    """Row-major principal inertia [kg*m^2] of a uniform box of ``size_m``
+    (x, y, z) [m]: I_xx = m (y^2 + z^2) / 12, and so on."""
+    x, y, z = size_m
+    return [round(mass_kg * (y * y + z * z) / 12.0, 1), 0.0, 0.0,
+            0.0, round(mass_kg * (x * x + z * z) / 12.0, 1), 0.0,
+            0.0, 0.0, round(mass_kg * (x * x + y * y) / 12.0, 1)]
+
+
+# Every template flies a 100-500 kg spacecraft, the class this app is for.
+# Three buses, each with an inertia derived from its own mass and size:
+_MICROSAT_MASS_KG = 150.0  # [kg]
+_MICROSAT_SIZE_M = (0.8, 0.8, 1.0)  # [m] -> I = 20.5, 20.5, 16.0 kg*m^2
+_SMALLSAT_MASS_KG = 300.0  # [kg]
+_SMALLSAT_SIZE_M = (1.2, 1.2, 1.5)  # [m] -> I = 92.3, 92.3, 72.0 kg*m^2
+_LARGE_SMALLSAT_MASS_KG = 500.0  # [kg]
+_LARGE_SMALLSAT_SIZE_M = (1.2, 1.2, 1.6)  # [m] -> I = 166.7, 166.7, 120.0 kg*m^2
+
+# A 6 N*m*s, 50 mN*m wheel at up to 6000 RPM: the size of the VECTRONIC
+# VRW-D-6 in engine/device_catalog.py, which suits the 150 kg bus. "custom"
+# derives the rotor inertia from maxMomentum/Omega_max, so any maxMomentum
+# a wizard sets stays valid (a named Honeywell type accepts only three).
+_MICROSAT_WHEEL = {"rw_type": "custom", "maxMomentum": 6.0, "Omega_max": 6000.0, "u_max": 0.05}
+
+
+def _corner_thrusters(half_size_m: tuple, max_thrust_n: float, **extra) -> list:
+    """Eight thrusters on the bus corners, two per couple axis (the layout
+    of Basilisk's examples/BskSim, scaled to this bus). Returns one
+    thruster ``params`` dict each."""
+    hx, hy, hz = half_size_m
+    positions = [[-hx, -hy, hz], [hx, -hy, -hz], [hx, -hy, hz], [hx, hy, -hz],
+                 [hx, hy, hz], [-hx, hy, -hz], [-hx, hy, hz], [-hx, -hy, -hz]]
+    directions = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0],
+                  [-1, 0, 0], [1, 0, 0], [0, -1, 0], [0, 1, 0]]
+    return [{"r_B": pos, "tHat_B": direction, "MaxThrust": max_thrust_n, **extra}
+            for pos, direction in zip(positions, directions)]
 
 # Skewed-pyramid 4-wheel layout, beta=52deg -- the exact spin axes
 # examples/scenarioMtbMomentumManagement.py uses, computed here (not
@@ -113,7 +149,7 @@ def _berlin_ground_station(**overrides) -> GroundStationConfig:
 
 def _conservative_drag_margin() -> SpaceWeatherConfig:
     """A nominal, synthetic atmospheric-drag environment -- a fresh
-    instance per call (like ``list(_INERTIA_SMALL)`` above, not a single
+    instance per call (like ``_box_inertia()`` above, not a single
     shared object, since ``SpaceWeatherConfig`` is mutable) for every
     template where drag is physically relevant (a LEO altitude) and
     doesn't undermine that template's own stated lesson (see each
@@ -161,7 +197,8 @@ def build_01_two_body_circular_orbit() -> Scenario:
                                inclination_deg=sun_synchronous_inclination_deg(6778.0),
                                raan_deg=raan_for_ltan_deg("2030-01-01T00:00:00"),
                                arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
-                dry_mass_kg=500.0,
+                dry_mass_kg=_LARGE_SMALLSAT_MASS_KG,
+                inertia_kg_m2=_box_inertia(_LARGE_SMALLSAT_MASS_KG, _LARGE_SMALLSAT_SIZE_M),
             ),
         ],
     )
@@ -182,7 +219,8 @@ def build_02_elliptical_orbit_with_perturbations() -> Scenario:
                 name="sat-1",
                 orbit=OrbitIC(type="classical_elements", semi_major_axis_km=24396.0, eccentricity=0.7,
                                inclination_deg=28.5, raan_deg=0.0, arg_periapsis_deg=180.0, true_anomaly_deg=0.0),
-                dry_mass_kg=1000.0,
+                dry_mass_kg=_LARGE_SMALLSAT_MASS_KG,
+                inertia_kg_m2=_box_inertia(_LARGE_SMALLSAT_MASS_KG, _LARGE_SMALLSAT_SIZE_M),
             ),
         ],
     )
@@ -203,8 +241,9 @@ def build_03_geo_station_keeping() -> Scenario:
                 name="geo-sat-1",
                 orbit=OrbitIC(type="classical_elements", semi_major_axis_km=42164.0, eccentricity=0.0,
                                inclination_deg=0.0, raan_deg=0.0, arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
-                dry_mass_kg=1200.0,
-                enable_srp=True, srp_coeff=1.3, srp_area_m2=15.0,
+                dry_mass_kg=_LARGE_SMALLSAT_MASS_KG,
+                inertia_kg_m2=_box_inertia(_LARGE_SMALLSAT_MASS_KG, _LARGE_SMALLSAT_SIZE_M),
+                enable_srp=True, srp_coeff=1.3, srp_area_m2=8.0,
                 station_keeping=StationKeepingConfig(
                     target_altitude_km=35786.0, deadband_km=5.0, thrust_n=0.5, isp_s=1600.0,
                     propellant_kg=50.0,
@@ -225,6 +264,7 @@ def build_04_walker_constellation() -> Scenario:
                        inclination_deg=0.0, raan_deg=0.0, arg_periapsis_deg=0.0, mean_anomaly_deg=0.0,
                        anomaly_type="mean"),
         dry_mass_kg=180.0,
+        inertia_kg_m2=_box_inertia(180.0, _MICROSAT_SIZE_M),
         enable_drag=True, drag_coeff=2.2, drag_area_m2=1.0,
         enable_srp=True, srp_coeff=1.3, srp_area_m2=1.0,
     )
@@ -338,6 +378,7 @@ def build_05_formation_flying_phasing() -> Scenario:
                                raan_deg=raan_for_ltan_deg("2030-01-01T00:00:00"),
                                arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
                 dry_mass_kg=400.0,
+                inertia_kg_m2=_box_inertia(400.0, _SMALLSAT_SIZE_M),
                 enable_drag=True, drag_coeff=2.2, drag_area_m2=1.0,
                 enable_srp=True, srp_coeff=1.3, srp_area_m2=1.0,
                 # chief-1 needs its OWN station_keeping too -- a real
@@ -408,6 +449,7 @@ def build_05_formation_flying_phasing() -> Scenario:
                                raan_deg=raan_for_ltan_deg("2030-01-01T00:00:00"),
                                arg_periapsis_deg=0.0, anomaly_type="mean", mean_anomaly_deg=0.413509),
                 dry_mass_kg=400.0,
+                inertia_kg_m2=_box_inertia(400.0, _SMALLSAT_SIZE_M),
                 enable_drag=True, drag_coeff=2.2, drag_area_m2=1.0,
                 enable_srp=True, srp_coeff=1.3, srp_area_m2=1.0,
                 station_keeping=StationKeepingConfig(
@@ -458,7 +500,7 @@ def build_06_attitude_pointing_basic() -> Scenario:
         # Basilisk's own examples/BskSim reference, which runs its FSW task
         # at fswRate=0.1s) goes numerically unstable -- sigma_BN reaches
         # NaN within ~15 task ticks -- at 1.0s with this template's inertia
-        # (_INERTIA_MEDIUM), because mrpFeedback's commanded torque is a
+        # (then 12.5 kg*m^2), because mrpFeedback's commanded torque is a
         # zero-order hold applied for the WHOLE task period: a coarser
         # period needs a proportionally weaker P relative to inertia to stay
         # discrete-time stable (see _osculating_elements()'s own
@@ -477,8 +519,8 @@ def build_06_attitude_pointing_basic() -> Scenario:
                                inclination_deg=sun_synchronous_inclination_deg(6928.0),
                                raan_deg=raan_for_ltan_deg("2030-01-01T00:00:00"),
                                arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
-                dry_mass_kg=300.0,
-                inertia_kg_m2=list(_INERTIA_MEDIUM),
+                dry_mass_kg=_SMALLSAT_MASS_KG,
+                inertia_kg_m2=_box_inertia(_SMALLSAT_MASS_KG, _SMALLSAT_SIZE_M),
                 sigma_bn_init=[0.1, 0.2, -0.15],
                 omega_bn_b_init_rad_s=[0.001, -0.001, 0.0005],
                 fsw_mode="hillPoint",
@@ -515,10 +557,10 @@ def build_07_attitude_pointing_with_adcs_hardware() -> Scenario:
                                inclination_deg=sun_synchronous_inclination_deg(6928.0),
                                raan_deg=raan_for_ltan_deg("2030-01-01T00:00:00"),
                                arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
-                dry_mass_kg=50.0,
+                dry_mass_kg=_MICROSAT_MASS_KG,
+                inertia_kg_m2=_box_inertia(_MICROSAT_MASS_KG, _MICROSAT_SIZE_M),
                 enable_drag=True, drag_coeff=2.2, drag_area_m2=1.0,
                 enable_srp=True, srp_coeff=1.3, srp_area_m2=1.0,
-                inertia_kg_m2=list(_INERTIA_SMALL),
                 sigma_bn_init=[0.1, 0.2, -0.15],
                 omega_bn_b_init_rad_s=[0.001, -0.001, 0.0005],
                 sensors=[
@@ -530,35 +572,18 @@ def build_07_attitude_pointing_with_adcs_hardware() -> Scenario:
                 ],
                 actuators=[
                     ActuatorConfig(kind="reaction_wheel", name="rw-1",
-                                    params={"gsHat_B": [1.0, 0.0, 0.0], "rw_type": "Honeywell_HR16",
-                                            "maxMomentum": 100.0}),
+                                    params={"gsHat_B": [1.0, 0.0, 0.0], **_MICROSAT_WHEEL}),
                     ActuatorConfig(kind="reaction_wheel", name="rw-2",
-                                    params={"gsHat_B": [0.0, 1.0, 0.0], "rw_type": "Honeywell_HR16",
-                                            "maxMomentum": 100.0}),
+                                    params={"gsHat_B": [0.0, 1.0, 0.0], **_MICROSAT_WHEEL}),
                     ActuatorConfig(kind="reaction_wheel", name="rw-3",
-                                    params={"gsHat_B": [0.0, 0.0, 1.0], "rw_type": "Honeywell_HR16",
-                                            "maxMomentum": 100.0}),
+                                    params={"gsHat_B": [0.0, 0.0, 1.0], **_MICROSAT_WHEEL}),
                 ],
                 fsw_mode="sunSafePoint",
-                # DEFAULT_MRP_GAINS (engine/fsw.py: K=3.5, P=30.0) is lifted
-                # directly from Basilisk's own examples/BskSim reference
-                # (BSK_Fsw.py's mrpFeedbackRWs), which is tuned for THAT
-                # example's 900 kg*m^2 spacecraft (BSK_Dynamics.py's I_sc).
-                # Applied unscaled to this template's 5 kg*m^2 _INERTIA_SMALL
-                # hub, it is roughly 180x too stiff for this inertia and
-                # produces a persistent, non-decaying ~30-degree pointing
-                # oscillation (confirmed directly against a real Basilisk
-                # build: sigma_BN never settles, even from a dead-rest
-                # initial rate, over a 1500s run) -- bounded by RW torque
-                # saturation rather than NaN, but not a real "pointed and
-                # holding" safe mode. Scaled by this template's inertia
-                # relative to that reference (K,P both x (5/900)) converges
-                # cleanly instead (confirmed: sub-1e-6-degree final pointing
-                # error over the same run). See HISTORY.md for the full
-                # investigation -- this gain/inertia mismatch is a general
-                # risk for ANY small-sat-scale spacecraft left on
-                # DEFAULT_MRP_GAINS, not specific to this template.
-                control_params={"K": 0.0194, "P": 0.167},
+                # No control_params: the default gains are scaled to this
+                # bus's inertia (engine.fsw._default_mrp_gains_for_inertia).
+                # The unscaled K=3.5/P=30 (tuned for a 900 kg*m^2 spacecraft)
+                # left an earlier 5 kg*m^2 version of this template in a
+                # 30-degree oscillation.
                 # A 12 W bus load and a battery starting at 80%: with the old
                 # 0 W load and a full battery, charge sat flat at 80 Wh for
                 # the whole run (confirmed in a real Basilisk run). Now it
@@ -590,7 +615,8 @@ def build_08_mission_sequence_orbit_raise() -> Scenario:
                                inclination_deg=sun_synchronous_inclination_deg(6778.0),
                                raan_deg=raan_for_ltan_deg("2030-01-01T00:00:00"),
                                arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
-                dry_mass_kg=500.0,
+                dry_mass_kg=_LARGE_SMALLSAT_MASS_KG,
+                inertia_kg_m2=_box_inertia(_LARGE_SMALLSAT_MASS_KG, _LARGE_SMALLSAT_SIZE_M),
                 enable_drag=True, drag_coeff=2.2, drag_area_m2=1.0,
                 enable_srp=True, srp_coeff=1.3, srp_area_m2=1.0,
             ),
@@ -625,7 +651,8 @@ def build_09_monte_carlo_dispersion_analysis() -> Scenario:
                                inclination_deg=sun_synchronous_inclination_deg(6778.0),
                                raan_deg=raan_for_ltan_deg("2030-01-01T00:00:00"),
                                arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
-                dry_mass_kg=500.0,
+                dry_mass_kg=_LARGE_SMALLSAT_MASS_KG,
+                inertia_kg_m2=_box_inertia(_LARGE_SMALLSAT_MASS_KG, _LARGE_SMALLSAT_SIZE_M),
             ),
         ],
         monte_carlo=MonteCarloConfig(
@@ -659,8 +686,10 @@ def build_10_gravity_gradient_torque() -> Scenario:
                                inclination_deg=sun_synchronous_inclination_deg(6778.0),
                                raan_deg=raan_for_ltan_deg("2030-01-01T00:00:00"),
                                arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
-                dry_mass_kg=500.0,
-                inertia_kg_m2=list(_INERTIA_MEDIUM),
+                # An elongated 1 x 1 x 2 m bus: the spread between Izz and
+                # Ixx/Iyy is what gravity gradient acts on.
+                dry_mass_kg=_LARGE_SMALLSAT_MASS_KG,
+                inertia_kg_m2=_box_inertia(_LARGE_SMALLSAT_MASS_KG, (1.0, 1.0, 2.0)),  # [kg*m^2] 208.3/208.3/83.3
                 sigma_bn_init=[0.0, 0.0, 0.0],
                 omega_bn_b_init_rad_s=[0.0, 0.0, 0.0],
                 enable_gravity_gradient=True,
@@ -684,28 +713,19 @@ def build_11_thruster_attitude_control() -> Scenario:
                 name="sat-1",
                 orbit=OrbitIC(type="classical_elements", semi_major_axis_km=6928.0, eccentricity=0.0,
                                inclination_deg=45.0, raan_deg=0.0, arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
-                dry_mass_kg=100.0,
-                inertia_kg_m2=[10.0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 10.0],
+                dry_mass_kg=_SMALLSAT_MASS_KG,
+                inertia_kg_m2=_box_inertia(_SMALLSAT_MASS_KG, _SMALLSAT_SIZE_M),
                 sigma_bn_init=[0.3, 0.2, -0.1],
                 omega_bn_b_init_rad_s=[0.0, 0.0, 0.0],
                 fsw_mode="inertial3D",
                 fsw_params={"sigma_R0N": [0.0, 0.0, 0.0]},
-                # Explicit reference gains: the inertia-scaled default
-                # (K 0.039, P 0.33 at 10 kg*m^2) suits wheels, but here it
-                # asks for <1% of the thrusters' torque. On-times stay under
-                # the thrusters' 20 ms minimum, so they barely fire and the
-                # attitude never settles (real Basilisk run). With these the
-                # thrusters fire up to 0.25 s and it settles in ~5 min.
-                control_params={"K": 3.5, "P": 30.0},
+                # Default (inertia-scaled) gains. On an earlier 10 kg*m^2
+                # version they asked for on-times below the thrusters' 20 ms
+                # minimum, so the thrusters barely fired; on this bus they
+                # do not.
                 actuators=[
-                    ActuatorConfig(kind="thruster", name=f"thr-{i + 1}",
-                                     params={"r_B": pos, "tHat_B": direction, "MaxThrust": 1.0})
-                    for i, (pos, direction) in enumerate(zip(
-                        [[-1, -1, 1.28], [1, -1, -1.28], [1, -1, 1.28], [1, 1, -1.28],
-                         [1, 1, 1.28], [-1, 1, -1.28], [-1, 1, 1.28], [-1, -1, -1.28]],
-                        [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0],
-                         [-1, 0, 0], [1, 0, 0], [0, -1, 0], [0, 1, 0]],
-                    ))
+                    ActuatorConfig(kind="thruster", name=f"thr-{i + 1}", params=params)
+                    for i, params in enumerate(_corner_thrusters((0.6, 0.6, 0.75), 1.0))  # [m], [N]
                 ],
             ),
         ],
@@ -729,38 +749,32 @@ def build_12_reaction_wheel_momentum_dumping() -> Scenario:
                                inclination_deg=sun_synchronous_inclination_deg(6928.0),
                                raan_deg=raan_for_ltan_deg("2030-01-01T00:00:00"),
                                arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
-                dry_mass_kg=2500.0,
-                inertia_kg_m2=[1700.0, 0.0, 0.0, 0.0, 1700.0, 0.0, 0.0, 0.0, 1800.0],
+                dry_mass_kg=_LARGE_SMALLSAT_MASS_KG,
+                inertia_kg_m2=_box_inertia(_LARGE_SMALLSAT_MASS_KG, _LARGE_SMALLSAT_SIZE_M),
                 sigma_bn_init=[0.0, 0.0, 0.0],
                 omega_bn_b_init_rad_s=[0.0, 0.0, 0.0],
                 fsw_mode="inertial3D",
                 fsw_params={"sigma_R0N": [0.0, 0.0, 0.0]},
                 actuators=[
                     ActuatorConfig(kind="reaction_wheel", name="rw-1",
-                                     params={"gsHat_B": [0.7071, 0.0, 0.7071], "rw_type": "Honeywell_HR16",
-                                             "maxMomentum": 100.0, "Omega": 4000.0}),
+                                     params={"gsHat_B": [0.7071, 0.0, 0.7071], "rw_type": "Honeywell_HR12",
+                                             "maxMomentum": 12.0, "Omega": 4000.0}),
                     ActuatorConfig(kind="reaction_wheel", name="rw-2",
-                                     params={"gsHat_B": [0.0, 0.7071, 0.7071], "rw_type": "Honeywell_HR16",
-                                             "maxMomentum": 100.0, "Omega": 2000.0}),
+                                     params={"gsHat_B": [0.0, 0.7071, 0.7071], "rw_type": "Honeywell_HR12",
+                                             "maxMomentum": 12.0, "Omega": 2000.0}),
                     ActuatorConfig(kind="reaction_wheel", name="rw-3",
-                                     params={"gsHat_B": [-0.7071, 0.0, 0.7071], "rw_type": "Honeywell_HR16",
-                                             "maxMomentum": 100.0, "Omega": 3500.0}),
+                                     params={"gsHat_B": [-0.7071, 0.0, 0.7071], "rw_type": "Honeywell_HR12",
+                                             "maxMomentum": 12.0, "Omega": 3500.0}),
                     ActuatorConfig(kind="reaction_wheel", name="rw-4",
-                                     params={"gsHat_B": [0.0, -0.7071, 0.7071], "rw_type": "Honeywell_HR16",
-                                             "maxMomentum": 100.0, "Omega": 0.0}),
+                                     params={"gsHat_B": [0.0, -0.7071, 0.7071], "rw_type": "Honeywell_HR12",
+                                             "maxMomentum": 12.0, "Omega": 0.0}),
                     *[
-                        ActuatorConfig(kind="thruster", name=f"desat-{i + 1}",
-                                         params={"r_B": pos, "tHat_B": direction, "MaxThrust": 5.0,
-                                                 "thruster_type": "MOOG_Monarc_5"})
-                        for i, (pos, direction) in enumerate(zip(
-                            [[-1, -1, 1.28], [1, -1, -1.28], [1, -1, 1.28], [1, 1, -1.28],
-                             [1, 1, 1.28], [-1, 1, -1.28], [-1, 1, 1.28], [-1, -1, -1.28]],
-                            [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0],
-                             [-1, 0, 0], [1, 0, 0], [0, -1, 0], [0, 1, 0]],
-                        ))
+                        ActuatorConfig(kind="thruster", name=f"desat-{i + 1}", params=params)
+                        for i, params in enumerate(_corner_thrusters(
+                            (0.6, 0.6, 0.8), 1.0, thruster_type="MOOG_Monarc_1"))  # [m], [N]
                     ],
                 ],
-                momentum_dumping=MomentumDumpingConfig(hs_max=80.0, thr_min_fire_time=0.02, max_counter_value=100),
+                momentum_dumping=MomentumDumpingConfig(hs_max=9.6, thr_min_fire_time=0.02, max_counter_value=100),  # [N*m*s], [s]
             ),
         ],
     )
@@ -781,27 +795,26 @@ def build_13_magnetic_torque_rod_momentum_management() -> Scenario:
                 name="sat-1",
                 orbit=OrbitIC(type="classical_elements", semi_major_axis_km=6778.14, eccentricity=0.0,
                                inclination_deg=45.0, raan_deg=60.0, arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
-                dry_mass_kg=10.0,
-                inertia_kg_m2=[0.02 / 3, 0.0, 0.0, 0.0, 0.1256 / 3, 0.0, 0.0, 0.0, 0.1256 / 3],
+                dry_mass_kg=_MICROSAT_MASS_KG,
+                inertia_kg_m2=_box_inertia(_MICROSAT_MASS_KG, _MICROSAT_SIZE_M),
                 sigma_bn_init=[0.1, 0.2, -0.3],
                 omega_bn_b_init_rad_s=[0.001, -0.01, 0.03],
                 fsw_mode="inertial3D",
                 fsw_params={"sigma_R0N": [0.0, 0.0, 0.0]},
-                control_params={"K": 0.0001, "P": 0.002},
                 actuators=[
                     *[
                         ActuatorConfig(kind="reaction_wheel", name=f"rw-{i + 1}",
-                                         params={"gsHat_B": axis, "rw_type": "BCT_RWP015", "Omega_max": 5000.0})
+                                         params={"gsHat_B": axis, **_MICROSAT_WHEEL})
                         for i, axis in enumerate(_MTB_DEMO_RW_AXES)
                     ],
                     ActuatorConfig(kind="magnetic_torque_rod", name="mtb-1",
-                                     params={"gtHat_B": [1.0, 0.0, 0.0], "max_dipole_a_m2": 0.1}),
+                                     params={"gtHat_B": [1.0, 0.0, 0.0], "max_dipole_a_m2": 15.0}),
                     ActuatorConfig(kind="magnetic_torque_rod", name="mtb-2",
-                                     params={"gtHat_B": [0.0, 1.0, 0.0], "max_dipole_a_m2": 0.1}),
+                                     params={"gtHat_B": [0.0, 1.0, 0.0], "max_dipole_a_m2": 15.0}),
                     ActuatorConfig(kind="magnetic_torque_rod", name="mtb-3",
-                                     params={"gtHat_B": [0.0, 0.0, 1.0], "max_dipole_a_m2": 0.1}),
+                                     params={"gtHat_B": [0.0, 0.0, 1.0], "max_dipole_a_m2": 15.0}),
                     ActuatorConfig(kind="magnetic_torque_rod", name="mtb-4",
-                                     params={"gtHat_B": [0.70710678, 0.70710678, 0.0], "max_dipole_a_m2": 0.1}),
+                                     params={"gtHat_B": [0.70710678, 0.70710678, 0.0], "max_dipole_a_m2": 15.0}),
                 ],
                 magnetic_momentum_management=MagneticMomentumManagementConfig(
                     wheel_speed_biases_rad_s=[
@@ -833,8 +846,8 @@ def build_14_css_sun_heading_estimation() -> Scenario:
                 name="sat-1",
                 orbit=OrbitIC(type="classical_elements", semi_major_axis_km=6928.0, eccentricity=0.0,
                                inclination_deg=45.0, raan_deg=0.0, arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
-                dry_mass_kg=50.0,
-                inertia_kg_m2=list(_INERTIA_SMALL),
+                dry_mass_kg=_MICROSAT_MASS_KG,
+                inertia_kg_m2=_box_inertia(_MICROSAT_MASS_KG, _MICROSAT_SIZE_M),
                 sigma_bn_init=[0.1, 0.2, -0.15],
                 omega_bn_b_init_rad_s=[0.001, -0.001, 0.0005],
                 sensors=[
@@ -849,18 +862,14 @@ def build_14_css_sun_heading_estimation() -> Scenario:
                 ],
                 actuators=[
                     ActuatorConfig(kind="reaction_wheel", name="rw-1",
-                                     params={"gsHat_B": [1.0, 0.0, 0.0], "rw_type": "Honeywell_HR16",
-                                             "maxMomentum": 100.0}),
+                                     params={"gsHat_B": [1.0, 0.0, 0.0], **_MICROSAT_WHEEL}),
                     ActuatorConfig(kind="reaction_wheel", name="rw-2",
-                                     params={"gsHat_B": [0.0, 1.0, 0.0], "rw_type": "Honeywell_HR16",
-                                             "maxMomentum": 100.0}),
+                                     params={"gsHat_B": [0.0, 1.0, 0.0], **_MICROSAT_WHEEL}),
                     ActuatorConfig(kind="reaction_wheel", name="rw-3",
-                                     params={"gsHat_B": [0.0, 0.0, 1.0], "rw_type": "Honeywell_HR16",
-                                             "maxMomentum": 100.0}),
+                                     params={"gsHat_B": [0.0, 0.0, 1.0], **_MICROSAT_WHEEL}),
                 ],
                 fsw_mode="sunSafePoint",
                 fsw_params={"sHatBdyCmd": [0.0, 0.0, 1.0], "use_css_estimation": True},
-                control_params={"K": 0.0194, "P": 0.167},
             ),
         ],
     )
@@ -889,8 +898,8 @@ def build_15_celestial_body_pointing() -> Scenario:
                                inclination_deg=sun_synchronous_inclination_deg(6928.0),
                                raan_deg=raan_for_ltan_deg("2030-01-01T00:00:00"),
                                arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
-                dry_mass_kg=300.0,
-                inertia_kg_m2=list(_INERTIA_MEDIUM),
+                dry_mass_kg=_SMALLSAT_MASS_KG,
+                inertia_kg_m2=_box_inertia(_SMALLSAT_MASS_KG, _SMALLSAT_SIZE_M),
                 sigma_bn_init=[0.1, 0.2, -0.15],
                 omega_bn_b_init_rad_s=[0.001, -0.001, 0.0005],
                 fsw_mode="locationPointing",
@@ -927,6 +936,7 @@ def build_16_lambert_transfer() -> Scenario:
                 orbit=OrbitIC(type="classical_elements", semi_major_axis_km=10000.0, eccentricity=0.001,
                                inclination_deg=5.0, raan_deg=10.0, arg_periapsis_deg=10.0, true_anomaly_deg=10.0),
                 dry_mass_kg=330.0,
+                inertia_kg_m2=_box_inertia(330.0, _SMALLSAT_SIZE_M),
             ),
         ],
         mission_sequence=[
@@ -962,28 +972,19 @@ def build_17_fuel_tank_depletion() -> Scenario:
                 name="sat-1",
                 orbit=OrbitIC(type="classical_elements", semi_major_axis_km=6928.0, eccentricity=0.0,
                                inclination_deg=45.0, raan_deg=0.0, arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
-                dry_mass_kg=100.0,
-                inertia_kg_m2=[10.0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 10.0],
+                dry_mass_kg=_SMALLSAT_MASS_KG,
+                inertia_kg_m2=_box_inertia(_SMALLSAT_MASS_KG, _SMALLSAT_SIZE_M),
                 sigma_bn_init=[0.3, 0.2, -0.1],
                 omega_bn_b_init_rad_s=[0.0, 0.0, 0.0],
                 fsw_mode="inertial3D",
                 fsw_params={"sigma_R0N": [0.0, 0.0, 0.0]},
-                # Explicit reference gains: the inertia-scaled default
-                # (K 0.039, P 0.33 at 10 kg*m^2) suits wheels, but here it
-                # asks for <1% of the thrusters' torque. On-times stay under
-                # the thrusters' 20 ms minimum, so they barely fire and the
-                # attitude never settles (real Basilisk run). With these the
-                # thrusters fire up to 0.25 s and it settles in ~5 min.
-                control_params={"K": 3.5, "P": 30.0},
+                # Default (inertia-scaled) gains. On an earlier 10 kg*m^2
+                # version they asked for on-times below the thrusters' 20 ms
+                # minimum, so the thrusters barely fired; on this bus they
+                # do not.
                 actuators=[
-                    ActuatorConfig(kind="thruster", name=f"thr-{i + 1}",
-                                     params={"r_B": pos, "tHat_B": direction, "MaxThrust": 1.0})
-                    for i, (pos, direction) in enumerate(zip(
-                        [[-1, -1, 1.28], [1, -1, -1.28], [1, -1, 1.28], [1, 1, -1.28],
-                         [1, 1, 1.28], [-1, 1, -1.28], [-1, 1, 1.28], [-1, -1, -1.28]],
-                        [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0],
-                         [-1, 0, 0], [1, 0, 0], [0, -1, 0], [0, 1, 0]],
-                    ))
+                    ActuatorConfig(kind="thruster", name=f"thr-{i + 1}", params=params)
+                    for i, params in enumerate(_corner_thrusters((0.6, 0.6, 0.75), 1.0))  # [m], [N]
                 ],
                 fuel_tank=FuelTankConfig(propellant_mass_kg=0.5, max_propellant_mass_kg=1.0),
             ),
@@ -1032,6 +1033,7 @@ def build_18_leo_station_keeping() -> Scenario:
                                raan_deg=raan_for_ltan_deg("2030-01-01T00:00:00"),
                                arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
                 dry_mass_kg=120.0,
+                inertia_kg_m2=_box_inertia(120.0, _MICROSAT_SIZE_M),
                 enable_drag=True, drag_coeff=2.2, drag_area_m2=1.5,
                 station_keeping=StationKeepingConfig(
                     target_altitude_km=400.0, deadband_km=1.0, thrust_n=0.05, isp_s=1500.0,
@@ -1052,7 +1054,7 @@ def build_19_sun_pointing_comms_link() -> Scenario:
     # below for the short version): this sandbox has no Basilisk build, so
     # nothing here could be run end-to-end. The ONE piece of numeric tuning
     # this template reuses -- idealized-torque mrpFeedback control on
-    # _INERTIA_MEDIUM at dynamics_task_rate_s=0.1s with DEFAULT_MRP_GAINS --
+    # dynamics_task_rate_s=0.1s with the inertia-scaled default gains --
     # is the EXACT combination '06' already confirmed stable against a real
     # Basilisk build (see build_06_attitude_pointing_basic()'s own comment);
     # comms_pointing only supports idealized actuation (see
@@ -1099,8 +1101,8 @@ def build_19_sun_pointing_comms_link() -> Scenario:
                                inclination_deg=sun_synchronous_inclination_deg(6928.0),
                                raan_deg=raan_for_ltan_deg(_COMMS_EPOCH_UTC),
                                arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
-                dry_mass_kg=60.0,
-                inertia_kg_m2=list(_INERTIA_MEDIUM),
+                dry_mass_kg=_MICROSAT_MASS_KG,
+                inertia_kg_m2=_box_inertia(_MICROSAT_MASS_KG, _MICROSAT_SIZE_M),
                 sigma_bn_init=[0.2, -0.1, 0.15],
                 omega_bn_b_init_rad_s=[0.001, -0.001, 0.0005],
                 power=PowerConfig(
@@ -1127,10 +1129,8 @@ def build_19_sun_pointing_comms_link() -> Scenario:
 def build_20_thermal_simulation() -> Scenario:
     # Verification note (same sandbox limitation as every other template's
     # own comment): no Basilisk build exists here, so this couldn't be run
-    # end-to-end in this environment. sunSafePoint + idealized-ish hardware
-    # control reuses the EXACT control_params/_INERTIA_SMALL combination
-    # '07'/'15' already confirmed stable against a real Basilisk build
-    # (see build_07_attitude_pointing_with_adcs_hardware()'s own comment);
+    # end-to-end in this environment. sunSafePoint control uses the same
+    # bus, wheels and inertia-scaled default gains as '07';
     # the "thermal" sensor/motor-thermal physical parameters themselves
     # (area_m2/absorptivity/emissivity/mass_kg/specific_heat_j_kg_k) were
     # run for real against this project's own Basilisk venv in
@@ -1159,8 +1159,8 @@ def build_20_thermal_simulation() -> Scenario:
                                inclination_deg=sun_synchronous_inclination_deg(6928.0),
                                raan_deg=raan_for_ltan_deg("2030-01-01T00:00:00"),
                                arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
-                dry_mass_kg=50.0,
-                inertia_kg_m2=list(_INERTIA_SMALL),
+                dry_mass_kg=_MICROSAT_MASS_KG,
+                inertia_kg_m2=_box_inertia(_MICROSAT_MASS_KG, _MICROSAT_SIZE_M),
                 sigma_bn_init=[0.1, 0.2, -0.15],
                 omega_bn_b_init_rad_s=[0.001, -0.001, 0.0005],
                 sensors=[
@@ -1183,8 +1183,7 @@ def build_20_thermal_simulation() -> Scenario:
                 ],
                 actuators=[
                     ActuatorConfig(kind="reaction_wheel", name="rw-1",
-                                    params={"gsHat_B": [1.0, 0.0, 0.0], "rw_type": "Honeywell_HR16",
-                                            "maxMomentum": 100.0,
+                                    params={"gsHat_B": [1.0, 0.0, 0.0], **_MICROSAT_WHEEL,
                                             # Optional motor-thermal model
                                             # -- see this template's own
                                             # description above for why
@@ -1195,17 +1194,11 @@ def build_20_thermal_simulation() -> Scenario:
                                             "motor_thermal_ambient_resistance_w_c": 5.0,
                                             "motor_thermal_heat_capacity_j_c": 50.0}),
                     ActuatorConfig(kind="reaction_wheel", name="rw-2",
-                                    params={"gsHat_B": [0.0, 1.0, 0.0], "rw_type": "Honeywell_HR16",
-                                            "maxMomentum": 100.0}),
+                                    params={"gsHat_B": [0.0, 1.0, 0.0], **_MICROSAT_WHEEL}),
                     ActuatorConfig(kind="reaction_wheel", name="rw-3",
-                                    params={"gsHat_B": [0.0, 0.0, 1.0], "rw_type": "Honeywell_HR16",
-                                            "maxMomentum": 100.0}),
+                                    params={"gsHat_B": [0.0, 0.0, 1.0], **_MICROSAT_WHEEL}),
                 ],
                 fsw_mode="sunSafePoint",
-                # Same inertia-scaled gains as '07'/'15' (_INERTIA_SMALL,
-                # 5 kg*m^2) -- see build_07_attitude_pointing_with_adcs_hardware()'s
-                # own comment for the real-Basilisk-confirmed derivation.
-                control_params={"K": 0.0194, "P": 0.167},
                 power=PowerConfig(panel_area_m2=0.3, panel_efficiency=0.28, battery_capacity_wh=80.0),
             ),
         ],

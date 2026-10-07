@@ -86,6 +86,8 @@ def test_20_thermal_sensor_heats_in_sunlight_and_cools_in_eclipse():
     start, sunlit_end, eclipse_end = _at(therm, 60.0), _at(therm, 22 * 60.0), _at(therm, 57 * 60.0)  # [C]
     assert sunlit_end > start + 10.0
     assert eclipse_end < sunlit_end - 10.0
+    motor = result.series["sat-1.actuator.rw-1.motor_temperature"].data[:, 0]  # [C]
+    assert 0.01 < motor.max() - 20.0 < 0.2  # "only ~0.05 C above its 20 C ambient"
 
 
 def test_07_battery_charges_in_sunlight_and_drains_in_eclipse():
@@ -116,15 +118,18 @@ def test_10_uncontrolled_spacecraft_drifts_under_gravity_gradient():
 
 def test_12_thrusters_dump_wheel_momentum():
     result = _run(_template("12"))
-    assert result.series["sat-1.thruster_on_time"].data.max() > 0.0
+    firing = result.series["sat-1.thruster_on_time"].data.max(axis=1) > 0.0
+    assert np.count_nonzero(np.diff(firing.astype(int)) == 1) == 3  # "three in the first 4 minutes"
+    speeds = result.series["sat-1.rw_speeds"].data  # [rad/s]
+    assert speeds[-1, 0] < 0.9 * speeds[0, 0]
 
 
 def test_17_fuel_tank_drains_about_as_described():
-    """With the inertia-scaled default gains the thrusters' on-times stayed
-    under their 20 ms minimum: no propellant used at all."""
+    """On an earlier 10 kg*m^2 bus the thrusters' on-times stayed under their
+    20 ms minimum: no propellant used at all."""
     result = _run(_template("17"))
     fuel = result.series["sat-1.fuel_mass_remaining"].data[:, 0]
-    assert 0.008 <= fuel[0] - fuel[-1] <= 0.02  # [kg] "about 0.013 kg of the 0.5 kg"
+    assert 0.1e-3 <= fuel[0] - fuel[-1] <= 1.0e-3  # [kg] "about 0.3 g of the 0.5 kg"
 
 
 def test_11_thrusters_settle_the_attitude_within_a_few_minutes():

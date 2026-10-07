@@ -28,17 +28,17 @@
         "tle_line1": null,
         "tle_line2": null
       },
-      "dry_mass_kg": 1000.0,
+      "dry_mass_kg": 500.0,
       "inertia_kg_m2": [
-        10.0,
+        166.7,
         0.0,
         0.0,
         0.0,
-        10.0,
+        166.7,
         0.0,
         0.0,
         0.0,
-        10.0
+        120.0
       ],
       "sigma_bn_init": [
         0.0,

@@ -589,7 +589,8 @@ def test_every_catalog_entry_applies_and_validates(qtbot, entry_index):
         # Torque rods are only simulated for momentum management, which also
         # needs a reaction wheel.
         wheel = ActuatorConfig(name="rw-1", kind="reaction_wheel",
-                               params={"gsHat_B": [0.0, 0.0, 1.0], "rw_type": "Honeywell_HR16"})
+                               params={"gsHat_B": [0.0, 0.0, 1.0], "rw_type": "Honeywell_HR16",
+                                       "maxMomentum": 100.0})
         devices = {"actuators": [config, wheel],
                    "magnetic_momentum_management": MagneticMomentumManagementConfig(wheel_speed_biases_rad_s=[0.0])}
     SpacecraftConfig(name="sat-1", orbit=orbit, **devices).validate()

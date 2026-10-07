@@ -28,17 +28,17 @@
         "tle_line1": null,
         "tle_line2": null
       },
-      "dry_mass_kg": 50.0,
+      "dry_mass_kg": 150.0,
       "inertia_kg_m2": [
-        5.0,
+        20.5,
         0.0,
         0.0,
         0.0,
-        5.0,
+        20.5,
         0.0,
         0.0,
         0.0,
-        5.0
+        16.0
       ],
       "sigma_bn_init": [
         0.1,
@@ -113,8 +113,10 @@
               0.0,
               0.0
             ],
-            "rw_type": "Honeywell_HR16",
-            "maxMomentum": 100.0,
+            "rw_type": "custom",
+            "maxMomentum": 6.0,
+            "Omega_max": 6000.0,
+            "u_max": 0.05,
             "motor_thermal_initial_temp_c": 20.0,
             "motor_thermal_ambient_temp_c": 20.0,
             "motor_thermal_efficiency": 0.7,
@@ -131,8 +133,10 @@
               1.0,
               0.0
             ],
-            "rw_type": "Honeywell_HR16",
-            "maxMomentum": 100.0
+            "rw_type": "custom",
+            "maxMomentum": 6.0,
+            "Omega_max": 6000.0,
+            "u_max": 0.05
           }
         },
         {
@@ -144,17 +148,16 @@
               0.0,
               1.0
             ],
-            "rw_type": "Honeywell_HR16",
-            "maxMomentum": 100.0
+            "rw_type": "custom",
+            "maxMomentum": 6.0,
+            "Omega_max": 6000.0,
+            "u_max": 0.05
           }
         }
       ],
       "fsw_mode": "sunSafePoint",
       "fsw_params": {},
-      "control_params": {
-        "K": 0.0194,
-        "P": 0.167
-      },
+      "control_params": {},
       "power": {
         "panel_area_m2": 0.3,
         "panel_efficiency": 0.28,

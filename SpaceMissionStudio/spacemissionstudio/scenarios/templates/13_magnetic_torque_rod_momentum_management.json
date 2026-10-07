@@ -25,17 +25,17 @@
         "tle_line1": null,
         "tle_line2": null
       },
-      "dry_mass_kg": 10.0,
+      "dry_mass_kg": 150.0,
       "inertia_kg_m2": [
-        0.006666666666666667,
+        20.5,
         0.0,
         0.0,
         0.0,
-        0.04186666666666666,
+        20.5,
         0.0,
         0.0,
         0.0,
-        0.04186666666666666
+        16.0
       ],
       "sigma_bn_init": [
         0.1,
@@ -65,8 +65,10 @@
               0.6156614753256583,
               0.788010753606722
             ],
-            "rw_type": "BCT_RWP015",
-            "Omega_max": 5000.0
+            "rw_type": "custom",
+            "maxMomentum": 6.0,
+            "Omega_max": 6000.0,
+            "u_max": 0.05
           }
         },
         {
@@ -78,8 +80,10 @@
               0.788010753606722,
               -0.6156614753256583
             ],
-            "rw_type": "BCT_RWP015",
-            "Omega_max": 5000.0
+            "rw_type": "custom",
+            "maxMomentum": 6.0,
+            "Omega_max": 6000.0,
+            "u_max": 0.05
           }
         },
         {
@@ -91,8 +95,10 @@
               -0.788010753606722,
               0.0
             ],
-            "rw_type": "BCT_RWP015",
-            "Omega_max": 5000.0
+            "rw_type": "custom",
+            "maxMomentum": 6.0,
+            "Omega_max": 6000.0,
+            "u_max": 0.05
           }
         },
         {
@@ -104,8 +110,10 @@
               -0.788010753606722,
               0.0
             ],
-            "rw_type": "BCT_RWP015",
-            "Omega_max": 5000.0
+            "rw_type": "custom",
+            "maxMomentum": 6.0,
+            "Omega_max": 6000.0,
+            "u_max": 0.05
           }
         },
         {
@@ -117,7 +125,7 @@
               0.0,
               0.0
             ],
-            "max_dipole_a_m2": 0.1
+            "max_dipole_a_m2": 15.0
           }
         },
         {
@@ -129,7 +137,7 @@
               1.0,
               0.0
             ],
-            "max_dipole_a_m2": 0.1
+            "max_dipole_a_m2": 15.0
           }
         },
         {
@@ -141,7 +149,7 @@
               0.0,
               1.0
             ],
-            "max_dipole_a_m2": 0.1
+            "max_dipole_a_m2": 15.0
           }
         },
         {
@@ -153,7 +161,7 @@
               0.70710678,
               0.0
             ],
-            "max_dipole_a_m2": 0.1
+            "max_dipole_a_m2": 15.0
           }
         }
       ],
@@ -165,10 +173,7 @@
           0.0
         ]
       },
-      "control_params": {
-        "K": 0.0001,
-        "P": 0.002
-      },
+      "control_params": {},
       "power": null,
       "rf_link": null,
       "comms_pointing": null,

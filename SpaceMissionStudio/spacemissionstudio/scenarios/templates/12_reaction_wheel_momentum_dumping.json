@@ -25,17 +25,17 @@
         "tle_line1": null,
         "tle_line2": null
       },
-      "dry_mass_kg": 2500.0,
+      "dry_mass_kg": 500.0,
       "inertia_kg_m2": [
-        1700.0,
+        166.7,
         0.0,
         0.0,
         0.0,
-        1700.0,
+        166.7,
         0.0,
         0.0,
         0.0,
-        1800.0
+        120.0
       ],
       "sigma_bn_init": [
         0.0,
@@ -65,8 +65,8 @@
               0.0,
               0.7071
             ],
-            "rw_type": "Honeywell_HR16",
-            "maxMomentum": 100.0,
+            "rw_type": "Honeywell_HR12",
+            "maxMomentum": 12.0,
             "Omega": 4000.0
           }
         },
@@ -79,8 +79,8 @@
               0.7071,
               0.7071
             ],
-            "rw_type": "Honeywell_HR16",
-            "maxMomentum": 100.0,
+            "rw_type": "Honeywell_HR12",
+            "maxMomentum": 12.0,
             "Omega": 2000.0
           }
         },
@@ -93,8 +93,8 @@
               0.0,
               0.7071
             ],
-            "rw_type": "Honeywell_HR16",
-            "maxMomentum": 100.0,
+            "rw_type": "Honeywell_HR12",
+            "maxMomentum": 12.0,
             "Omega": 3500.0
           }
         },
@@ -107,8 +107,8 @@
               -0.7071,
               0.7071
             ],
-            "rw_type": "Honeywell_HR16",
-            "maxMomentum": 100.0,
+            "rw_type": "Honeywell_HR12",
+            "maxMomentum": 12.0,
             "Omega": 0.0
           }
         },
@@ -117,17 +117,17 @@
           "name": "desat-1",
           "params": {
             "r_B": [
-              -1,
-              -1,
-              1.28
+              -0.6,
+              -0.6,
+              0.8
             ],
             "tHat_B": [
               1,
               0,
               0
             ],
-            "MaxThrust": 5.0,
-            "thruster_type": "MOOG_Monarc_5"
+            "MaxThrust": 1.0,
+            "thruster_type": "MOOG_Monarc_1"
           }
         },
         {
@@ -135,17 +135,17 @@
           "name": "desat-2",
           "params": {
             "r_B": [
-              1,
-              -1,
-              -1.28
+              0.6,
+              -0.6,
+              -0.8
             ],
             "tHat_B": [
               -1,
               0,
               0
             ],
-            "MaxThrust": 5.0,
-            "thruster_type": "MOOG_Monarc_5"
+            "MaxThrust": 1.0,
+            "thruster_type": "MOOG_Monarc_1"
           }
         },
         {
@@ -153,17 +153,17 @@
           "name": "desat-3",
           "params": {
             "r_B": [
-              1,
-              -1,
-              1.28
+              0.6,
+              -0.6,
+              0.8
             ],
             "tHat_B": [
               0,
               1,
               0
             ],
-            "MaxThrust": 5.0,
-            "thruster_type": "MOOG_Monarc_5"
+            "MaxThrust": 1.0,
+            "thruster_type": "MOOG_Monarc_1"
           }
         },
         {
@@ -171,17 +171,17 @@
           "name": "desat-4",
           "params": {
             "r_B": [
-              1,
-              1,
-              -1.28
+              0.6,
+              0.6,
+              -0.8
             ],
             "tHat_B": [
               0,
               -1,
               0
             ],
-            "MaxThrust": 5.0,
-            "thruster_type": "MOOG_Monarc_5"
+            "MaxThrust": 1.0,
+            "thruster_type": "MOOG_Monarc_1"
           }
         },
         {
@@ -189,17 +189,17 @@
           "name": "desat-5",
           "params": {
             "r_B": [
-              1,
-              1,
-              1.28
+              0.6,
+              0.6,
+              0.8
             ],
             "tHat_B": [
               -1,
               0,
               0
             ],
-            "MaxThrust": 5.0,
-            "thruster_type": "MOOG_Monarc_5"
+            "MaxThrust": 1.0,
+            "thruster_type": "MOOG_Monarc_1"
           }
         },
         {
@@ -207,17 +207,17 @@
           "name": "desat-6",
           "params": {
             "r_B": [
-              -1,
-              1,
-              -1.28
+              -0.6,
+              0.6,
+              -0.8
             ],
             "tHat_B": [
               1,
               0,
               0
             ],
-            "MaxThrust": 5.0,
-            "thruster_type": "MOOG_Monarc_5"
+            "MaxThrust": 1.0,
+            "thruster_type": "MOOG_Monarc_1"
           }
         },
         {
@@ -225,17 +225,17 @@
           "name": "desat-7",
           "params": {
             "r_B": [
-              -1,
-              1,
-              1.28
+              -0.6,
+              0.6,
+              0.8
             ],
             "tHat_B": [
               0,
               -1,
               0
             ],
-            "MaxThrust": 5.0,
-            "thruster_type": "MOOG_Monarc_5"
+            "MaxThrust": 1.0,
+            "thruster_type": "MOOG_Monarc_1"
           }
         },
         {
@@ -243,17 +243,17 @@
           "name": "desat-8",
           "params": {
             "r_B": [
-              -1,
-              -1,
-              -1.28
+              -0.6,
+              -0.6,
+              -0.8
             ],
             "tHat_B": [
               0,
               1,
               0
             ],
-            "MaxThrust": 5.0,
-            "thruster_type": "MOOG_Monarc_5"
+            "MaxThrust": 1.0,
+            "thruster_type": "MOOG_Monarc_1"
           }
         }
       ],
@@ -273,7 +273,7 @@
       "phasing_keeping": null,
       "constant_thrust": null,
       "momentum_dumping": {
-        "hs_max": 80.0,
+        "hs_max": 9.6,
         "thr_min_fire_time": 0.02,
         "max_counter_value": 100
       },

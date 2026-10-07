@@ -117,6 +117,16 @@ def test_magnetic_momentum_management_template_mixes_reaction_wheel_and_mtb_actu
     assert len(sat.magnetic_momentum_management.wheel_speed_biases_rad_s) == num_rw
 
 
+@pytest.mark.parametrize("path", _TEMPLATE_PATHS, ids=lambda p: p.name)
+def test_every_template_flies_a_100_to_500_kg_spacecraft(path):
+    """The class this app is for. Its inertia must fit that mass: at least
+    that of a 0.5 m cube, at most that of a 2.5 m one."""
+    for sc in load_scenario(path).spacecraft:
+        assert 100.0 <= sc.dry_mass_kg <= 500.0, sc.name  # [kg]
+        mean_inertia = sum(sc.inertia_kg_m2[i] for i in (0, 4, 8)) / 3.0  # [kg*m^2]
+        assert sc.dry_mass_kg * 0.5 ** 2 / 6.0 <= mean_inertia <= sc.dry_mass_kg * 2.5 ** 2 / 6.0, sc.name
+
+
 def test_css_sun_heading_estimation_template_wires_use_css_estimation():
     scenario = load_scenario(_TEMPLATES_DIR / "14_css_sun_heading_estimation.json")
     sat = scenario.spacecraft[0]
@@ -124,11 +134,12 @@ def test_css_sun_heading_estimation_template_wires_use_css_estimation():
     assert sat.fsw_params.get("use_css_estimation") is True
     assert sum(1 for s in sat.sensors if s.kind == "coarse_sun_sensor") == 8
     assert "sun" in scenario.gravity.third_body_perturbers
-    # DEFAULT_MRP_GAINS (K=3.5/P=30) scaled down for this template's 5 kg*m^2
-    # hub -- see scripts/_generate_templates.py's own comment and
-    # HISTORY.md for why an unscaled default never converges here.
-    assert sat.control_params.get("K", 3.5) < 1.0
-    assert sat.control_params.get("P", 30.0) < 1.0
+    # No explicit gains: engine.fsw scales its K=3.5/P=30 defaults by the
+    # mean inertia over 900 kg*m^2, far below the unscaled pair that never
+    # converged here.
+    assert not sat.control_params
+    mean_inertia = sum(sat.inertia_kg_m2[i] for i in (0, 4, 8)) / 3.0  # [kg*m^2]
+    assert 30.0 * mean_inertia / 900.0 < 1.0  # the scaled P
 
 
 def test_celestial_body_pointing_template_uses_target_body_not_ground_station():

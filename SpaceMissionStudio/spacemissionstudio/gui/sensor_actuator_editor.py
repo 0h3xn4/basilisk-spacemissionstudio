@@ -194,7 +194,8 @@ _KIND_PARAM_SPECS: dict[str, list[_ParamSpec]] = {
     "reaction_wheel": [
         _ParamSpec("gsHat_B", True, [0.0, 0.0, 1.0], "spin-axis direction, body frame, unit vector [-]"),
         _ParamSpec("rw_type", False, "custom",
-                    "wheel model name known to Basilisk's simIncludeRW.rwFactory(), e.g. 'Honeywell_HR16'"),
+                    "wheel model name known to Basilisk's simIncludeRW.rwFactory(), e.g. 'Honeywell_HR12' "
+                    "(which needs maxMomentum 12, 25 or 50 N*m*s)"),
         _ParamSpec("Omega_max", False, 6000.0, "max wheel speed [RPM]"),
         _ParamSpec("u_max", False, 0.2, "max motor torque [N*m]"),
         _ParamSpec("Js", False, 0.028, "wheel inertia about the spin axis [kg*m^2] -- rw_type='custom' can "

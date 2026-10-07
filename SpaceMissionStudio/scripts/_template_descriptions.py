@@ -129,8 +129,8 @@ Try changing:
 - The initial attitude tip.""",
 
     "07": """\
-The realistic counterpart to 06: a star tracker, IMU and coarse sun sensor, three reaction wheels for \
-torque, and a solar array with a battery. Sun-safe pointing, with full perturbations.
+The realistic counterpart to 06, on a 150 kg microsatellite: a star tracker, IMU and coarse sun sensor, \
+three 6 N*m*s reaction wheels, and a solar array with a battery. Sun-safe pointing, with full perturbations.
 
 What to look at:
 - sat-1.rw_speeds as the wheels absorb the pointing manoeuvre.
@@ -167,8 +167,8 @@ Try changing:
 - Add an initial-attitude dispersion (needs full-attitude simulation).""",
 
     "10": """\
-No attitude control, an elongated inertia (Ixx = Iyy = 12.5, Izz = 7.5 kg*m^2) and gravity-gradient torque \
-on. Without the torque the spacecraft would stay at its initial attitude; with it, it slowly turns.
+No attitude control, an elongated 500 kg bus (1 x 1 x 2 m: Ixx = Iyy = 208, Izz = 83 kg*m^2) and \
+gravity-gradient torque on. Without the torque the spacecraft would stay at its initial attitude; with it, it slowly turns.
 
 What to look at:
 - Vizard's attitude view: the spacecraft drifts away from its starting orientation.
@@ -180,8 +180,8 @@ Try changing:
 - Add inertial3D pointing with reaction wheels (see 07) to cancel it.""",
 
     "11": """\
-Attitude control with eight thrusters (a corner-mounted cube layout) instead of reaction wheels, pointing \
-at a fixed inertial attitude from an initial tip.
+Attitude control with eight 1 N thrusters on the corners of a 300 kg bus, instead of reaction wheels, \
+pointing at a fixed inertial attitude from an initial tip.
 
 What to look at:
 - sat-1.thruster_on_time: which thrusters fire, and for how long.
@@ -194,11 +194,11 @@ Try changing:
 - The layout: fewer than 6 well-placed thrusters can't produce torque about every axis.""",
 
     "12": """\
-Reaction-wheel pointing whose four wheels start heavily spun up. A thruster cluster dumps the excess \
-momentum whenever it passes 80 N*m*s, while the wheels stay in control of the attitude.
+A 500 kg spacecraft whose four 12 N*m*s reaction wheels start heavily spun up. Eight 1 N thrusters dump \
+the excess momentum whenever it passes 9.6 N*m*s, while the wheels stay in control of the attitude.
 
 What to look at:
-- sat-1.rw_speeds dropping in sharp steps, one per dump.
+- sat-1.rw_speeds dropping in sharp steps, one per dump (three in the first 4 minutes).
 - sat-1.thruster_on_time: when the dump thrusters fire.
 
 Try changing:
@@ -207,8 +207,8 @@ Try changing:
 - Remove momentum dumping: the wheel speeds never come down.""",
 
     "13": """\
-The alternative to 12: four magnetic torque rods and Earth's magnetic field continuously steer four \
-reaction wheels toward target speeds (800, 600, 400 and 200 RPM) while the wheels point the spacecraft.
+The alternative to 12, on a 150 kg microsatellite: four 15 A*m^2 magnetic torque rods and Earth's \
+magnetic field continuously steer four reaction wheels toward target speeds (800, 600, 400 and 200 RPM) while the wheels point the spacecraft.
 
 What to look at:
 - sat-1.rw_speeds settling smoothly near the targets over ~2 hours (within ~0.5 RPM), not in steps.
@@ -228,10 +228,7 @@ What to look at:
 
 Try changing:
 - The sensors' field of view: narrower means fewer lit sensors and a worse estimate.
-- Turn off "Estimate Sun heading from coarse sun sensors" to compare with the true direction.
-
-Note:
-- The control gains are scaled to this small spacecraft (5 kg*m^2); the defaults would oscillate.""",
+- Turn off "Estimate Sun heading from coarse sun sensors" to compare with the true direction.""",
 
     "15": """\
 The spacecraft's +Z axis stays pointed at the Moon for the whole run, about three-quarters of an orbit \
@@ -262,11 +259,11 @@ Template 11's eight-thruster attitude control with a real fuel tank: propellant 
 thrusters fire, and the centre of mass shifts with it.
 
 What to look at:
-- sat-1.fuel_mass_remaining with sat-1.thruster_on_time: about 0.013 kg of the 0.5 kg drains while the \
-attitude settles; after ~400 s the pulses are too short to fire and it goes flat.
+- sat-1.fuel_mass_remaining with sat-1.thruster_on_time: about 0.3 g of the 0.5 kg drains while the \
+attitude settles; after ~3 minutes only occasional short pulses fire and it barely moves.
 
 Try changing:
-- Propellant below ~0.013 kg, to run dry mid-manoeuvre.
+- Propellant below ~0.0003 kg, to run dry mid-manoeuvre.
 - Thruster specific impulse: lower uses more propellant for the same correction.""",
 
     "18": """\
@@ -314,8 +311,8 @@ and cools in eclipse, and reaction wheel rw-1 carries a motor-thermal model.
 
 What to look at:
 - sat-1.sensor.therm-1 (temperature) rising in sunlight and falling in each eclipse.
-- sat-1.actuator.rw-1.motor_temperature: it stays at its 20 C ambient (within 0.001 C). The motor heats from \
-wheel power and friction, and this gentle slew uses almost none.
+- sat-1.actuator.rw-1.motor_temperature: it rises only ~0.05 C above its 20 C ambient. The motor heats \
+from wheel power and friction, and this gentle slew uses little of either.
 
 Try changing:
 - therm-1's facing direction, area, absorptivity, emissivity, mass or specific heat (more heat capacity \

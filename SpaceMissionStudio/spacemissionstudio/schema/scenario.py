@@ -104,6 +104,15 @@ ANOMALY_TYPES = ("true", "mean")
 SUPPORTED_SENSOR_KINDS = ("star_tracker", "imu", "coarse_sun_sensor", "magnetometer", "thermal")
 SUPPORTED_ACTUATOR_KINDS = ("reaction_wheel", "thruster", "magnetic_torque_rod")
 
+# The only maxMomentum values [N*m*s] simIncludeRW.rwFactory accepts for
+# these named wheels; any other value, or none, makes rwFactory.create()
+# call exit(1) and take the whole app down with it.
+NAMED_RW_MAX_MOMENTUM_OPTIONS = {
+    "Honeywell_HR12": (12.0, 25.0, 50.0),
+    "Honeywell_HR14": (25.0, 50.0, 75.0),
+    "Honeywell_HR16": (50.0, 75.0, 100.0),
+}
+
 # "thermal" (sensorThermal.SensorThermal, optionally chained into
 # tempMeasurement.TempMeasurement for measurement noise/bias/fault) models
 # the temperature of any flat-plate component -- a generic thermal sensor,
@@ -1049,6 +1058,14 @@ class SpacecraftConfig:
                               "set -- rwFactory.create() hard-exits the whole process because it builds this "
                               "wheel's inertia exactly one way, never both; remove params['Js'] (let it be "
                               "derived from Omega_max/maxMomentum) or remove the Omega_max/maxMomentum pair")
+                options = NAMED_RW_MAX_MOMENTUM_OPTIONS.get(rw_type)
+                if options is not None:
+                    max_momentum = actuator.params.get("maxMomentum")
+                    _require(isinstance(max_momentum, (int, float)) and float(max_momentum) in options,
+                              f"{self.name}: reaction_wheel {actuator.name!r} is a {rw_type}, which Basilisk "
+                              f"builds only with params['maxMomentum'] set to one of {options} N*m*s (got "
+                              f"{max_momentum!r}); for another size, use rw_type 'custom' with maxMomentum, "
+                              "Omega_max and u_max")
                 # Optional motor-thermal model (motorThermal.MotorThermal,
                 # see engine.fsw.build_reaction_wheel_motor_thermal) -- an
                 # all-or-nothing group, confirmed directly against
