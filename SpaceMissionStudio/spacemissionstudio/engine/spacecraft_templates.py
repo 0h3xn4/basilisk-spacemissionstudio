@@ -37,15 +37,15 @@ be equally usable from a headless/CLI path later without needing a
 Basilisk build.
 
 Numbers here are ROUNDED, ORDER-OF-MAGNITUDE-REASONABLE engineering
-figures for illustration (e.g. a 3U CubeSat's inertia from its rectangular
--prism dimensions/mass), not a specific real flight vehicle's actual
+figures for illustration (e.g. each bus's inertia from its box
+dimensions/mass), not a specific real flight vehicle's actual
 datasheet -- same "don't fabricate precision this project doesn't have"
 discipline used elsewhere (see e.g. ``engine.link_budget``'s module
 docstring). Pick a template as a STARTING POINT, then adjust for your
-actual spacecraft. Reaction-wheel figures intentionally reuse
-``gui.sensor_actuator_editor._KIND_PARAM_SPECS``'s own "reaction_wheel"
-example values, so this module doesn't invent a second, inconsistent set
-of "typical RW numbers".
+actual spacecraft. The ESPA bus's wheels reuse
+``gui.sensor_actuator_editor._KIND_PARAM_SPECS``'s "reaction_wheel"
+example values; the 150-500 kg buses match the bundled scenario
+templates' buses (``scripts/_generate_templates.py``).
 
 Every template's orbit is the same placeholder (~500 km circular,
 97.4 deg -- a common sun-synchronous inclination at that altitude): the
@@ -97,39 +97,78 @@ def _three_reaction_wheels() -> List[ActuatorConfig]:
     ]
 
 
-def _build_cubesat_3u_passive() -> SpacecraftConfig:
-    # 3U CubeSat: ~10x10x34 cm, 4 kg -- treated as a uniform rectangular
-    # prism (z = long axis) for the inertia estimate:
-    #   Izz = m*(a^2+b^2)/12, Ixx=Iyy = m*(b^2+c^2)/12
+def _box_inertia(mass_kg: float, x_m: float, y_m: float, z_m: float) -> List[float]:
+    """Row-major principal inertia [kg*m^2] of a uniform box: I_xx =
+    m (y^2 + z^2) / 12, and so on."""
+    return [round(mass_kg * (y_m ** 2 + z_m ** 2) / 12.0, 1), 0.0, 0.0,
+            0.0, round(mass_kg * (x_m ** 2 + z_m ** 2) / 12.0, 1), 0.0,
+            0.0, 0.0, round(mass_kg * (x_m ** 2 + y_m ** 2) / 12.0, 1)]
+
+
+def _sun_safe_bus(mass_kg: float, size_m: tuple, wheel_params: dict, drag_area_m2: float,
+                  srp_area_m2: float, power: PowerConfig) -> SpacecraftConfig:
+    """A three-axis-stabilized bus in Sun-safe pointing: star tracker, IMU,
+    a coarse sun sensor and the solar array all on +Z, the axis
+    ``sunSafePoint`` turns to the Sun, and three orthogonal wheels."""
     return SpacecraftConfig(
         name="template",
         orbit=_placeholder_orbit(),
-        dry_mass_kg=4.0,
-        inertia_kg_m2=[0.042, 0.0, 0.0, 0.0, 0.042, 0.0, 0.0, 0.0, 0.007],
+        dry_mass_kg=mass_kg,
+        inertia_kg_m2=_box_inertia(mass_kg, *size_m),
         enable_drag=True,
         drag_coeff=2.2,
-        drag_area_m2=0.03,  # ~0.1 x 0.3 m average projected (tumbling) area
+        drag_area_m2=drag_area_m2,
         enable_srp=True,
         srp_coeff=1.3,
-        srp_area_m2=0.03,
+        srp_area_m2=srp_area_m2,
+        sensors=[
+            SensorConfig(kind="star_tracker", name="st-1", params={"noise_arcsec": 5.0}),
+            SensorConfig(kind="imu", name="imu-1", params={"gyro_noise_rad_s": 1e-5}),
+            SensorConfig(kind="coarse_sun_sensor", name="css-1", params={"nHat_B": [0.0, 0.0, 1.0]}),
+        ],
+        actuators=[
+            ActuatorConfig(kind="reaction_wheel", name=f"rw-{axis_name}", params={"gsHat_B": axis, **wheel_params})
+            for axis_name, axis in (("x", [1.0, 0.0, 0.0]), ("y", [0.0, 1.0, 0.0]), ("z", [0.0, 0.0, 1.0]))
+        ],
+        power=power,
+        fsw_mode="sunSafePoint",
+        fsw_params={"sHatBdyCmd": [0.0, 0.0, 1.0]},
     )
 
 
-def _build_cubesat_3u_stabilized() -> SpacecraftConfig:
-    config = _build_cubesat_3u_passive()
-    config.sensors = [SensorConfig(kind="coarse_sun_sensor", name="css-1", params={"nHat_B": [1.0, 0.0, 0.0]})]
-    config.actuators = _three_reaction_wheels()
-    config.power = PowerConfig(
-        panel_area_m2=0.06,  # two 3U side panels' worth of deployed cell area, order of magnitude
-        panel_efficiency=0.29,
-        panel_normal_b=[0.0, 0.0, 1.0],
-        bus_idle_power_w=5.0,
-        battery_capacity_wh=20.0,
-        battery_initial_soc=0.9,
+def _build_microsat_150() -> SpacecraftConfig:
+    # 0.8 x 0.8 x 1.0 m -> I = 20.5, 20.5, 16.0 kg*m^2. Wheels the size of
+    # the catalog's VRW-D-6; "custom" derives the rotor inertia from
+    # maxMomentum/Omega_max.
+    return _sun_safe_bus(
+        150.0, (0.8, 0.8, 1.0),  # [kg], [m]
+        {"rw_type": "custom", "maxMomentum": 6.0, "Omega_max": 6000.0, "u_max": 0.05},  # [N*m*s], [RPM], [N*m]
+        drag_area_m2=0.8, srp_area_m2=1.5,
+        power=PowerConfig(panel_area_m2=1.0, panel_efficiency=0.29, panel_normal_b=[0.0, 0.0, 1.0],
+                          bus_idle_power_w=60.0, battery_capacity_wh=300.0, battery_initial_soc=0.9),
     )
-    config.fsw_mode = "sunSafePoint"
-    config.fsw_params = {"sHatBdyCmd": [1.0, 0.0, 0.0]}
-    return config
+
+
+def _build_smallsat_300() -> SpacecraftConfig:
+    # 1.2 x 1.2 x 1.5 m -> I = 92.3, 92.3, 72.0 kg*m^2; 12 N*m*s Honeywell HR12 wheels.
+    return _sun_safe_bus(
+        300.0, (1.2, 1.2, 1.5),  # [kg], [m]
+        {"rw_type": "Honeywell_HR12", "maxMomentum": 12.0},  # [N*m*s]
+        drag_area_m2=1.8, srp_area_m2=4.0,
+        power=PowerConfig(panel_area_m2=2.5, panel_efficiency=0.29, panel_normal_b=[0.0, 0.0, 1.0],
+                          bus_idle_power_w=150.0, battery_capacity_wh=700.0, battery_initial_soc=0.9),
+    )
+
+
+def _build_smallsat_500() -> SpacecraftConfig:
+    # 1.2 x 1.2 x 1.6 m -> I = 166.7, 166.7, 120.0 kg*m^2; 25 N*m*s Honeywell HR12 wheels.
+    return _sun_safe_bus(
+        500.0, (1.2, 1.2, 1.6),  # [kg], [m]
+        {"rw_type": "Honeywell_HR12", "maxMomentum": 25.0},  # [N*m*s]
+        drag_area_m2=2.0, srp_area_m2=6.0,
+        power=PowerConfig(panel_area_m2=4.0, panel_efficiency=0.29, panel_normal_b=[0.0, 0.0, 1.0],
+                          bus_idle_power_w=250.0, battery_capacity_wh=1200.0, battery_initial_soc=0.9),
+    )
 
 
 def _build_smallsat_espa() -> SpacecraftConfig:
@@ -170,21 +209,27 @@ class SpacecraftTemplate:
 
 SPACECRAFT_TEMPLATES: List[SpacecraftTemplate] = [
     SpacecraftTemplate(
-        "3U CubeSat -- passive (no ADCS)",
-        "4 kg, no sensors/actuators/power/attitude control -- drag+SRP enabled. A minimal orbit-propagation-"
-        "only bus: good for delta-V/station-keeping/orbit-lifetime studies where attitude doesn't matter.",
-        _build_cubesat_3u_passive,
-    ),
-    SpacecraftTemplate(
-        "3U CubeSat -- 3-axis stabilized",
-        "4 kg, coarse sun sensor + 3 reaction wheels + sunSafePoint attitude control + a small power budget. "
-        "Drag+SRP enabled.",
-        _build_cubesat_3u_stabilized,
-    ),
-    SpacecraftTemplate(
         "ESPA-class smallsat (100 kg)",
         "100 kg, star tracker + coarse sun sensor + 3 reaction wheels + inertial3D attitude control + a "
         "~1 m-class power budget. Drag+SRP enabled.",
         _build_smallsat_espa,
+    ),
+    SpacecraftTemplate(
+        "Microsatellite (150 kg)",
+        "150 kg, 0.8 x 0.8 x 1.0 m. Star tracker, IMU, sun sensor, three 6 N*m*s wheels, a 1 m^2 array "
+        "and 300 Wh battery. Starts Sun-safe pointing. Drag+SRP enabled.",
+        _build_microsat_150,
+    ),
+    SpacecraftTemplate(
+        "Small satellite (300 kg)",
+        "300 kg, 1.2 x 1.2 x 1.5 m. Star tracker, IMU, sun sensor, three 12 N*m*s wheels, a 2.5 m^2 array "
+        "and 700 Wh battery. Starts Sun-safe pointing. Drag+SRP enabled.",
+        _build_smallsat_300,
+    ),
+    SpacecraftTemplate(
+        "Small satellite (500 kg)",
+        "500 kg, 1.2 x 1.2 x 1.6 m. Star tracker, IMU, sun sensor, three 25 N*m*s wheels, a 4 m^2 array "
+        "and 1.2 kWh battery. Starts Sun-safe pointing. Drag+SRP enabled.",
+        _build_smallsat_500,
     ),
 ]

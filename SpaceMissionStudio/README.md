@@ -373,8 +373,9 @@ to download AVS's own pre-built binary automatically if none can be
 found -- see "Running the CLI" above), not just configures what feeds
 it.
 
-**Reusable starting points** -- three spacecraft "bus" templates
-(passive CubeSat, 3-axis-stabilized CubeSat, ESPA-class smallsat) and
+**Reusable starting points** -- four spacecraft "bus" templates
+(100 kg ESPA-class, 150 kg microsatellite, 300 kg and 500 kg small
+satellites) and
 twenty complete example scenarios, eighteen covering one major concept
 each in isolation plus two integrated demonstrations (see "Template
 missions" below).
@@ -609,15 +610,15 @@ python3 -m pip install -e ".[dev,gui]"
 python3 -m pytest tests/ -v
 ```
 
-The suite has 1935 tests. Without Basilisk on `PYTHONPATH`, 1688 of
+The suite has 1938 tests. Without Basilisk on `PYTHONPATH`, 1688 of
 them run and pass (schema, space weather, results, link budget,
 constellation generation, CLI, and the full PySide6 GUI, run headless),
-and the 247 that need a real Basilisk build (marked `requires_basilisk`,
+and the 250 that need a real Basilisk build (marked `requires_basilisk`,
 or skipped on a Basilisk-availability check, per `tests/conftest.py`)
 are skipped.
 
 With Basilisk installed (`pip install "bsk[all]"` -- see "Getting
-started" above), those tests run for real: 1924 pass and 11 skip (the
+started" above), those tests run for real: 1927 pass and 11 skip (the
 ones whose premise is specifically "Basilisk is unavailable"). The
 first run needs internet access once, so Basilisk can download its
 SPICE ephemeris kernels; without them, the ~45 kernel-dependent tests

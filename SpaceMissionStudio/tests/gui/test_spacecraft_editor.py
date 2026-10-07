@@ -1175,7 +1175,7 @@ def test_list_widget_new_from_template(qtbot, monkeypatch):
     lw = SpacecraftListWidget()
     qtbot.addWidget(lw)
 
-    stabilized = next(t for t in SPACECRAFT_TEMPLATES if "stabilized" in t.name.lower() and "3u" in t.name.lower())
+    stabilized = next(t for t in SPACECRAFT_TEMPLATES if "150 kg" in t.name)
 
     def fake_picker_exec(self):
         return QDialog.DialogCode.Accepted
@@ -1216,10 +1216,10 @@ def test_list_widget_new_from_template_dedupes_name_on_collision(qtbot, monkeypa
                                     orbit=OrbitIC(type="cartesian", position_km=[7000, 0, 0],
                                                   velocity_km_s=[0, 7.5, 0]))])
 
-    passive = next(t for t in SPACECRAFT_TEMPLATES if "passive" in t.name.lower())
+    first = SPACECRAFT_TEMPLATES[0]
 
     monkeypatch.setattr(SpacecraftTemplateDialog, "exec", lambda self: QDialog.DialogCode.Accepted)
-    monkeypatch.setattr(SpacecraftTemplateDialog, "selected_template", lambda self: passive)
+    monkeypatch.setattr(SpacecraftTemplateDialog, "selected_template", lambda self: first)
     captured_names = []
 
     def fake_editor_exec(self):

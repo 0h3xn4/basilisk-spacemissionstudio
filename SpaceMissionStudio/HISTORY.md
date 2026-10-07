@@ -7407,3 +7407,26 @@ Descriptions and the catalog README give the new sizes and figures.
 * `test_template_claims.py` now checks 12's three dumps, 17's propellant figure and 20's motor rise.
 
 Full suite with Basilisk: 1924 pass, 11 skip; without it, 1688 pass and 247 skip.
+
+## Spacecraft presets: 150, 300 and 500 kg buses replace the CubeSats
+
+The user asked for the two 4 kg 3U CubeSat presets ("New from template...") to be replaced with 150, 300 and 500 kg presets. The 100 kg ESPA preset stays, since it's already in range.
+
+The new presets use the same buses as the scenario templates, with inertias from their box dimensions:
+
+| Preset | Bus | Wheels | Array | Battery | Bus load |
+|---|---|---|---|---|---|
+| 150 kg | 0.8 x 0.8 x 1.0 m | 6 N*m*s | 1 m^2 | 300 Wh | 60 W |
+| 300 kg | 1.2 x 1.2 x 1.5 m | 12 N*m*s HR12 | 2.5 m^2 | 700 Wh | 150 W |
+| 500 kg | 1.2 x 1.2 x 1.6 m | 25 N*m*s HR12 | 4 m^2 | 1.2 kWh | 250 W |
+
+Each carries a star tracker, an IMU and a sun sensor, and starts in Sun-safe pointing with the array, sun sensor and Sun axis all on +Z. Drag and SRP are on.
+
+**Confirmed in Basilisk** at the default 10 s step: all three turn +Z onto the Sun within 70 s and hold it. In a 10:30-LTAN orbit the 150 kg bus drains ~35 Wh per eclipse and recharges in sunlight. The placeholder orbit (RAAN 0 at a January epoch) is dawn-dusk, so it sees no eclipse; the user sets the real orbit in the editor that opens next.
+
+**Tests:**
+* Every preset is 100-500 kg with a fitting inertia.
+* The Sun-safe presets keep array, sensor and Sun axis on one face.
+* A new Basilisk test flies each Sun-safe preset.
+
+Full suite with Basilisk: 1927 pass, 11 skip; without it, 1688 pass and 250 skip.
