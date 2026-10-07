@@ -178,7 +178,7 @@ environment issue.
   `engine/orbit_design.py`, `engine/scenario_explainer.py`, `cli.py`, and
   the entire `spacemissionstudio/gui/` package) has no Basilisk import
   and is fully exercised either way -- `pytest tests/` runs and passes
-  1298 tests without Basilisk installed (see "Running the tests" below).
+  1305 tests without Basilisk installed (see "Running the tests" below).
   That includes the PySide6 GUI: built, run headless, and driven with
   `pytest-qt` for real -- every form field, every menu action, every
   dialog -- not asserted about in the abstract.
@@ -606,16 +606,21 @@ python3 -m pip install -e ".[dev,gui]"
 python3 -m pytest tests/ -v
 ```
 
-Without Basilisk on `PYTHONPATH`, this runs 1298 tests (schema, space
-weather, results, link budget, constellation generation, CLI, and the
-full PySide6 GUI, run headless) and skips the 183 that need a real
-Basilisk build (marked `requires_basilisk`, or skipped on a
-Basilisk-availability check), per `tests/conftest.py`.
+The suite has 1511 tests. Without Basilisk on `PYTHONPATH`, 1305 of
+them run and pass (schema, space weather, results, link budget,
+constellation generation, CLI, and the full PySide6 GUI, run headless),
+and the 206 that need a real Basilisk build (marked `requires_basilisk`,
+or skipped on a Basilisk-availability check, per `tests/conftest.py`)
+are skipped.
 
 With Basilisk installed (`pip install "bsk[all]"` -- see "Getting
-started" above), those skipped tests run for real instead (and the
-handful whose premise is specifically "Basilisk is unavailable" skip
-instead).
+started" above), those tests run for real: 1500 pass and 11 skip (the
+ones whose premise is specifically "Basilisk is unavailable"). The
+first run needs internet access
+once, so Basilisk can download its SPICE ephemeris kernels; without
+them, the ~45 kernel-dependent tests fail with `KernelError`.
+`pip install pytest-xdist` and `pytest tests/ -n auto` runs the suite
+on all CPU cores.
 See "Verification status" above for how thoroughly that's actually been
 exercised -- short version: yes, including a real full multi-day run.
 
