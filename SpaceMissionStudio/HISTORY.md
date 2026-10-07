@@ -6738,3 +6738,20 @@ The user's 30-day template 05 run log was clean: no warnings, no errors, no phas
 * **Cause.** `run_live` extracts the results 60 times per run to feed the live plots. Each extraction recomputed every recorded sample's osculating and mean orbital elements: a Python loop of `rv2elem` / `clMeanOscMap` calls, measured at 9.6 s + 3.2 s per spacecraft for a 30-day, 30 s-step history. The work per step grew with simulated time, so the total grew with the square of the duration. A 90-day run would have spent over an hour on it.
 * **Fix.** `SimulationService._orbit_elements` caches each spacecraft's elements and computes only samples not computed before. Both mappings are pointwise, so the result is identical (asserted bit-for-bit against one full pass). The NaN guard's message still reports the recorded sample index.
 * **Measured.** For the user's run's pattern (60 updates, 2 spacecraft, 30 days), element extraction drops from ~13 minutes to 27 s here.
+
+## Phasing was too slow: correction window default 21 -> 3 days
+
+The user's next 30-day run (their 100 km configuration, follower placed 50 km ahead) behaved correctly: it closed steadily to ~97 km, then held 97–98 km for 0.018 m/s, with no station-keeping burns. But they found it "very slow": reaching the target took ~22 days. That's by design rather than a bug. Every correction is planned to take `correction_window_days`, which defaulted to 21 days, so the drift rate was only ~2.2 km/day. A correction's Δv scales roughly as 1 / window.
+
+Verified with Basilisk (eclipse harness, the user's configuration, 30 days):
+
+| window | target reached | phasing Δv | separation afterwards |
+|---|---|---|---|
+| 21 days | day ~21.6 | 0.017 m/s | 94–99 km |
+| 5 days | day ~5 | 0.077 m/s | 95–98 km |
+| 3 days | day ~3 | 0.13 m/s | 98–102 km |
+| 1 day | day ~1 | 0.38 m/s | 97–100 km |
+
+No overshoot, cycling or suspension in any case. The default is now **3 days** in the schema, the phasing-formation generator and its dialog, the spacecraft editor and the CLI, and a new test keeps them in agreement. The editor's tooltip states the Δv trade-off.
+
+Over 90 days, stock template 05 still fires its one drift correction (day ~28 in the degree-10 no-eclipse harness, ~35 with eclipses). That correction now finishes in ~2.4 days instead of ~2 weeks, with the separation held at 45–52 km, for 0.014 m/s instead of 0.003 m/s. The chief-reboost case is unchanged (one trim, 0.014 m/s, burns 276/275). The template's description now quotes these numbers. Old scenario files that set the window explicitly keep their value; only files that omit it pick up the new default.

@@ -347,9 +347,9 @@ def build_05_formation_flying_phasing() -> Scenario:
             "Confirmed on a real Basilisk run (degree-10 Earth gravity, without the Sun/Moon/drag "
             "this template also enables): small real perturbations make the separation drift slowly "
             "away from 50 km; it reaches phasing_keeping's 10% tolerance band (45 km) around day 28, "
-            "which fires ONE small along-track correction that drifts it back toward 50 km over the "
-            "next ~2 weeks, and keeps it within ~45-52 km for the whole run, for only ~0.003 m/s of "
-            "phasing delta-V in total -- this "
+            "which fires ONE small along-track correction that drifts it back toward 50 km in ~2.4 "
+            "days (phasing_keeping.correction_window_days = 3), and keeps it within ~45-52 km for the "
+            "whole run, for only ~0.014 m/s of phasing delta-V in total -- this "
             "IS the point of phasing_keeping: a formation mostly drifts on its own and the controller "
             "only steps in once drift exceeds the tolerance band, rather than fighting every tiny "
             "perturbation continuously. A shorter run (try duration_days=24.0) stays inside the "
@@ -359,6 +359,8 @@ def build_05_formation_flying_phasing() -> Scenario:
             "Try changing: target_separation_km (a schedule -- see PhasingKeepingConfig; a single "
             "-element list holds one separation for the whole run, more elements step through a "
             "schedule), phasing_keeping.tolerance_fraction (tighter triggers a correction sooner), "
+            "phasing_keeping.correction_window_days (how long a correction takes: delta-V scales "
+            "roughly as 1 / window -- here 21 days cost ~0.003 m/s, 3 days ~0.014 m/s), "
             "sim_settings.duration_days (shorter than ~35 days and no correction will fire at all; "
             "SimSettings.validate() caps this at 100.0 days -- see that method's own comment for why), "
             "or follower-1's own starting mean_anomaly_deg to begin with a deliberate mismatch and "
@@ -372,7 +374,10 @@ def build_05_formation_flying_phasing() -> Scenario:
             "network calls at runtime, so a real-historical-data CONSERVATIVE margin isn't available "
             "out of the box here anymore -- see template 04's own description for how to restore it "
             "via a self-supplied local CelesTrak CSV).\n\n"
-            "Audit history (most recent first): a real user's 90-day run of an edited copy of this "
+            "Audit history (most recent first): a real user found the phasing too slow -- the "
+            "correction window was 21 days, so closing 50 km to a 100 km target took three weeks. "
+            "The default is now 3 days (~0.13 m/s for that 50 km, verified with Basilisk). Before "
+            "that, a real user's 90-day run of an edited copy of this "
             "template (follower-1 targeting 100 km with a 2 km station-keeping deadband) had "
             "follower-1 lapping chief-1 for the whole run. follower-1's own station-keeping had "
             "reboosted it alone to its absolute 550 km target, ~5 km above this orbit's natural "
@@ -432,9 +437,9 @@ def build_05_formation_flying_phasing() -> Scenario:
         # against a real Basilisk run (degree-10 Earth gravity, no Sun/Moon/
         # drag): over 90 days the separation drifts to phasing_keeping's 10%
         # tolerance band around day 28, which fires one real correction that
-        # brings it back, keeping it within ~45-52 km for ~0.003 m/s of
-        # phasing delta-V (re-verified after the partial-tick-thrust and
-        # formation-relative station-keeping fixes) -- exactly the
+        # brings it back in ~2.4 days, keeping it within ~45-52 km for
+        # ~0.014 m/s of phasing delta-V (re-verified with the 3-day default
+        # correction window; 21 days gave ~0.003 m/s over ~2 weeks) -- exactly the
         # "drift, then correct" behavior this controller exists to show, not
         # visible at 24 days.
         #
