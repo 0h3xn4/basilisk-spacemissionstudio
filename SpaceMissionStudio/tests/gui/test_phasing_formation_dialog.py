@@ -163,3 +163,16 @@ def test_dialog_resizes_to_its_own_sizehint_on_construction(qtbot):
     qtbot.addWidget(dialog)
 
     assert dialog.size() == dialog.sizeHint()
+
+
+def test_thruster_realism_settings_reach_the_request(qtbot):
+    from spacemissionstudio.gui.phasing_formation_dialog import PhasingFormationDialog
+
+    dialog = PhasingFormationDialog(["chief-1"])
+    qtbot.addWidget(dialog)
+    dialog.min_on_time_s.setValue(120.0)  # [s]
+    dialog.eccentricity_neutral_check.setChecked(True)
+
+    request = dialog.to_request()
+    assert request.min_on_time_s == 120.0  # [s]
+    assert request.eccentricity_neutral_burns is True

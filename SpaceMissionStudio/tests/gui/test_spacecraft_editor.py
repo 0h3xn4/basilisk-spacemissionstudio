@@ -1744,3 +1744,22 @@ def test_dialog_rejects_malformed_wheel_speed_biases(qtbot):
 
     with pytest.raises(ScenarioValidationError, match="comma-separated numbers"):
         dialog.to_dataclass()
+
+
+def test_dialog_round_trips_thruster_realism_settings(qtbot):
+    from spacemissionstudio.gui.spacecraft_editor import SpacecraftEditorDialog
+    from spacemissionstudio.schema.scenario import OrbitIC, SpacecraftConfig, StationKeepingConfig
+
+    existing = SpacecraftConfig(
+        name="sat-ep",
+        orbit=OrbitIC(type="cartesian", position_km=[7000, 0, 0], velocity_km_s=[0, 7.5, 0]),
+        station_keeping=StationKeepingConfig(target_altitude_km=550.0, deadband_km=5.0, thrust_n=0.05,
+                                              isp_s=1500.0, propellant_kg=5.0, min_on_time_s=300.0,
+                                              eccentricity_neutral_burns=True),
+    )
+    dialog = SpacecraftEditorDialog(config=existing)
+    qtbot.addWidget(dialog)
+
+    assert dialog.sk_min_on_time_s.value() == 300.0  # [s]
+    assert dialog.sk_eccentricity_neutral_check.isChecked()
+    assert dialog.to_dataclass().station_keeping == existing.station_keeping

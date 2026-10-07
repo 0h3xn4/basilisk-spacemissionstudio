@@ -171,6 +171,17 @@ class PhasingFormationDialog(QDialog):
         propulsion_form.addRow("Thruster thrust [N]", self.thrust_n)
         propulsion_form.addRow("Thruster Isp [s]", self.isp_s)
         propulsion_form.addRow("Propellant available [kg]", self.propellant_kg)
+        self.min_on_time_s = _double_spin(0.0, 86400.0, 1, 10.0, 0.0)
+        self.min_on_time_s.setToolTip(
+            "Shortest firing the thruster can make [s] (minimum impulse bit = thrust x this); 0 = an "
+            "ideal thruster. See the spacecraft editor's station-keeping field of the same name."
+        )
+        propulsion_form.addRow("Minimum on-time [s]", self.min_on_time_s)
+        self.eccentricity_neutral_check = QCheckBox("Eccentricity-neutral burns")
+        self.eccentricity_neutral_check.setToolTip(
+            "Gate firings so long, eclipse-interrupted burns don't change the orbit's eccentricity."
+        )
+        propulsion_form.addRow(self.eccentricity_neutral_check)
         station_form.addRow("Deadband [km]", self.deadband_km)
 
         # station_keeping_target_altitude_km: None (the checkbox below
@@ -278,6 +289,8 @@ class PhasingFormationDialog(QDialog):
             isp_s=self.isp_s.value(),
             propellant_kg=self.propellant_kg.value(),
             eclipse_sunlit_threshold=self.eclipse_sunlit_threshold.value(),
+            min_on_time_s=self.min_on_time_s.value(),
+            eccentricity_neutral_burns=self.eccentricity_neutral_check.isChecked(),
         )
         request.validate()  # raises ScenarioValidationError with a specific message on anything bad
         return request

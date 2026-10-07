@@ -713,12 +713,30 @@ class SpacecraftEditorDialog(QDialog):
             "run its thruster off battery alone during eclipse. 1.0 = must be in full sunlight; "
             "lower values tolerate partial shadow (e.g. penumbra)."
         )
+        self.sk_min_on_time_s = _spin(0.0, 86400.0, decimals=1, step=10.0,
+                                      value=sk0.min_on_time_s if sk0 else 0.0)
+        self.sk_min_on_time_s.setToolTip(
+            "Shortest firing this thruster can make [s] -- its minimum impulse bit is thrust x this. "
+            "A firing, once started, always lasts at least this long; a correction needing less than "
+            "half of one minimum firing is skipped, and one needing more is rounded up to it. 0 = an "
+            "ideal thruster. Also applies to phasing-keeping burns on this spacecraft (same thruster). "
+            "Electric thrusters are typically minutes, cold-gas/chemical ones milliseconds."
+        )
+        self.sk_eccentricity_neutral_check = QCheckBox("Eccentricity-neutral burns")
+        self.sk_eccentricity_neutral_check.setChecked(bool(sk0.eccentricity_neutral_burns) if sk0 else False)
+        self.sk_eccentricity_neutral_check.setToolTip(
+            "Skips just enough sunlit arc that a long, eclipse-interrupted burn doesn't change the "
+            "orbit's eccentricity (without this, a 15 km reboost of the formation template changed it "
+            "by ~1e-3, more than doubling it). Burns take longer, for the same delta-V."
+        )
         sk_form.addRow("Target altitude [km]", self.sk_target_altitude_km)
         sk_form.addRow("Deadband below target [km]", self.sk_deadband_km)
         sk_form.addRow("Reboost thrust [N]", self.sk_thrust_n)
         sk_form.addRow("Reboost thruster Isp [s]", self.sk_isp_s)
         sk_form.addRow("Propellant available [kg]", self.sk_propellant_kg)
         sk_form.addRow("Eclipse sunlit threshold [-]", self.sk_eclipse_sunlit_threshold)
+        sk_form.addRow("Minimum thruster on-time [s]", self.sk_min_on_time_s)
+        sk_form.addRow(self.sk_eccentricity_neutral_check)
         power_layout.addWidget(self.station_keeping_group)
 
         # Independent of station keeping above -- its own propellant
@@ -1453,6 +1471,8 @@ class SpacecraftEditorDialog(QDialog):
             isp_s=self.sk_isp_s.value(),
             propellant_kg=self.sk_propellant_kg.value(),
             eclipse_sunlit_threshold=self.sk_eclipse_sunlit_threshold.value(),
+            min_on_time_s=self.sk_min_on_time_s.value(),
+            eccentricity_neutral_burns=self.sk_eccentricity_neutral_check.isChecked(),
         )
 
     def _constant_thrust_to_dataclass(self) -> ConstantThrustConfig | None:

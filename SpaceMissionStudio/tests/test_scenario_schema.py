@@ -1899,3 +1899,28 @@ def test_direction_vectors_reject_zero_and_non_finite_values(target, bad_vector)
         craft.power.panel_normal_b = bad_vector
     with pytest.raises(ScenarioValidationError, match="non-zero, finite"):
         sc.validate()
+
+
+@pytest.mark.parametrize("min_on_time_s", [-1.0, float("nan"), 1.0e6])
+def test_station_keeping_rejects_an_invalid_min_on_time(min_on_time_s):
+    sc = _minimal_scenario()
+    sc.spacecraft[0].station_keeping = StationKeepingConfig(target_altitude_km=550.0, deadband_km=5.0, thrust_n=0.05,
+                                                             isp_s=1500.0, propellant_kg=5.0,
+                                                             min_on_time_s=min_on_time_s)
+    with pytest.raises(ScenarioValidationError, match="min_on_time_s"):
+        sc.spacecraft[0].station_keeping.validate("sat-1")
+
+
+def test_station_keeping_thruster_realism_fields_default_to_an_ideal_thruster_when_absent_from_json():
+    from spacemissionstudio.schema.scenario import Scenario
+
+    sc = _minimal_scenario()
+    sc.spacecraft[0].station_keeping = StationKeepingConfig(target_altitude_km=550.0, deadband_km=5.0, thrust_n=0.05,
+                                                             isp_s=1500.0, propellant_kg=5.0)
+    data = json.loads(json.dumps(sc.to_dict()))
+    sk = data["spacecraft"][0]["station_keeping"]
+    sk.pop("min_on_time_s")
+    sk.pop("eccentricity_neutral_burns")
+    loaded = Scenario.from_dict(data)
+    assert loaded.spacecraft[0].station_keeping.min_on_time_s == 0.0  # [s]
+    assert loaded.spacecraft[0].station_keeping.eccentricity_neutral_burns is False

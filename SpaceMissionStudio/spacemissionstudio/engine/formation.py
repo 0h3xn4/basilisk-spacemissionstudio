@@ -156,6 +156,8 @@ class PhasingFormationRequest:
     isp_s: float = 1500.0  # [s]
     propellant_kg: float = 5.0  # [kg]
     eclipse_sunlit_threshold: float = 0.99  # [-]
+    min_on_time_s: float = 0.0  # [s] shared thruster's minimum firing duration (StationKeepingConfig)
+    eccentricity_neutral_burns: bool = False  # see StationKeepingConfig
 
     def validate(self) -> None:
         _require(bool(self.chief_name), "phasing_formation.chief_name must not be empty")
@@ -187,6 +189,7 @@ class PhasingFormationRequest:
         _require(self.propellant_kg >= 0, "phasing_formation.propellant_kg must be >= 0")
         _require(0.0 < self.eclipse_sunlit_threshold <= 1.0,
                   "phasing_formation.eclipse_sunlit_threshold must be in (0, 1]")
+        _require(0.0 <= self.min_on_time_s <= 86400.0, "phasing_formation.min_on_time_s must be in [0, 86400] s")
 
 
 def generate_phasing_follower(request: PhasingFormationRequest, chief: SpacecraftConfig,
@@ -330,6 +333,8 @@ def generate_phasing_follower(request: PhasingFormationRequest, chief: Spacecraf
         isp_s=request.isp_s,
         propellant_kg=request.propellant_kg,
         eclipse_sunlit_threshold=request.eclipse_sunlit_threshold,
+        min_on_time_s=request.min_on_time_s,
+        eccentricity_neutral_burns=request.eccentricity_neutral_burns,
     )
     follower.phasing_keeping = PhasingKeepingConfig(
         chief_spacecraft=chief.name,

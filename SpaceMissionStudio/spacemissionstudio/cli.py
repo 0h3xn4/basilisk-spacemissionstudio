@@ -382,6 +382,8 @@ def cmd_generate_phasing_formation(args: argparse.Namespace) -> int:
         station_keeping_deadband_km=args.station_keeping_deadband_km,
         thrust_n=args.thrust_n, isp_s=args.isp_s, propellant_kg=args.propellant_kg,
         eclipse_sunlit_threshold=args.eclipse_sunlit_threshold,
+        min_on_time_s=args.min_on_time_s,
+        eccentricity_neutral_burns=args.eccentricity_neutral_burns,
     )
     try:
         follower = generate_phasing_follower(request, chief, template, scenario.gravity.central_body)
@@ -521,6 +523,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_phasing.add_argument("--eclipse-sunlit-threshold", type=float, default=0.99,
                             help="minimum shadow factor [-] (1.0 = full sunlight) before a station-keeping "
                                  "reboost burn may fire")
+    p_phasing.add_argument("--min-on-time-s", type=float, default=0.0,
+                            help="shared thruster's minimum firing duration [s] (minimum impulse bit = "
+                                 "thrust x this); 0 = ideal")
+    p_phasing.add_argument("--eccentricity-neutral-burns", action="store_true",
+                            help="gate firings so long eclipse-interrupted burns don't change eccentricity")
     p_phasing.set_defaults(func=cmd_generate_phasing_formation)
 
     p_gui = subparsers.add_parser("gui", help="launch the PySide6 GUI shell")

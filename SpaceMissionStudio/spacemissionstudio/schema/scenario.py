@@ -452,9 +452,22 @@ class StationKeepingConfig:
     isp_s: float  # [s] reboost thruster specific impulse
     propellant_kg: float  # [kg] initial propellant mass available for station-keeping
     eclipse_sunlit_threshold: float = 0.99  # [-] shadow factor above which the spacecraft is treated as sunlit
+    # Thruster hardware/firing realism, shared by a co-located
+    # phasing_keeping (one physical thruster) -- see
+    # engine.orbit_maintenance.ThrusterOnTimeModel. 0.0 = an ideal thruster
+    # that can fire for arbitrarily short times.
+    min_on_time_s: float = 0.0  # [s] minimum firing duration (minimum impulse bit = thrust_n * min_on_time_s)
+    # Gate firings so a multi-orbit, eclipse-interrupted burn doesn't
+    # accumulate an eccentricity change (it waits for the balancing side
+    # of the orbit instead).
+    eccentricity_neutral_burns: bool = False
 
     def validate(self, spacecraft_name: str) -> None:
         _require(self.target_altitude_km > 0, f"{spacecraft_name}: station_keeping.target_altitude_km must be > 0")
+        _require(math.isfinite(self.min_on_time_s) and 0.0 <= self.min_on_time_s <= 86400.0,
+                  f"{spacecraft_name}: station_keeping.min_on_time_s must be in [0, 86400] s")
+        _require(isinstance(self.eccentricity_neutral_burns, bool),
+                  f"{spacecraft_name}: station_keeping.eccentricity_neutral_burns must be true or false")
         _require(0.0 < self.deadband_km < self.target_altitude_km,
                   f"{spacecraft_name}: station_keeping.deadband_km must be > 0 and < target_altitude_km")
         _require(self.thrust_n > 0, f"{spacecraft_name}: station_keeping.thrust_n must be > 0")
