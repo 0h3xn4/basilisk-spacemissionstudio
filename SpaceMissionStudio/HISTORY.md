@@ -6894,3 +6894,14 @@ A follow-up check of every other editor found no more bullets-over-JSON boxes. I
 * The report list ticks, filters and clears, and keeps and flags an unknown series.
 * The series prediction is checked for templates 05, 07 and 19, plus the real-run comparison above.
 * The tests that typed comma lists now use the new widgets.
+
+## Full-suite run on the user's machine: all green, plus a NaN in GEO mean elements
+
+The user's run with Basilisk: **1649 passed, 11 skipped, 1 warning**.
+* **Skips.** The 11 skips are the "without Basilisk" tests, which can't run when Basilisk is installed.
+* **Series prediction confirmed.** The new real-run check passed for all 20 templates, so the Report command's series list is right for every bundled template.
+
+**The warning was a real bug.** It was "invalid value encountered in scalar divide" inside Basilisk's `orbitalMotion.clMeanOscMap`, for template 03 (GEO).
+* **Cause.** The J2 osc → mean mapping divides by tan(i). An exactly equatorial sample (template 03 starts at i = 0) came back with NaN mean inclination and RAAN, which showed as a gap at the start of those plots.
+* **Fix.** `engine/service._mean_elements` now keeps the inclination it passes in at least 1e-9 rad away from 0 and 180 deg, which changes no plotted or reported value.
+* **Test.** A new Basilisk test maps exactly equatorial samples (i = 0 and 180 deg, e = 0 and 1e-5) with warnings turned into errors. It fails without the fix and passes with it.

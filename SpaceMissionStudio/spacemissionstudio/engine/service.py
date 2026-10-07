@@ -150,6 +150,7 @@ installed version happens to add.
 from __future__ import annotations
 
 import logging
+import math
 import os
 import tempfile
 from dataclasses import dataclass, field
@@ -431,6 +432,9 @@ def _osculating_elements(mu: float, r_bn_n: np.ndarray, v_bn_n: np.ndarray,
     return {"a": a, "e": e, "i": i, "raan": raan, "argp": argp, "true_anomaly": true_anomaly}
 
 
+_MEAN_ELEMENTS_MIN_INCLINATION_RAD = 1.0e-9  # [rad]
+
+
 def _mean_elements(oe: Dict[str, np.ndarray], req: float, j2: float) -> Dict[str, np.ndarray]:
     """First-order J2 MEAN classical orbital elements, mapped pointwise
     from the already-computed OSCULATING elements (``_osculating_elements``
@@ -469,7 +473,12 @@ def _mean_elements(oe: Dict[str, np.ndarray], req: float, j2: float) -> Dict[str
     for k in range(n):
         osc.a = oe["a"][k]
         osc.e = oe["e"][k]
-        osc.i = oe["i"][k]
+        # clMeanOscMap divides by tan(i), so an EXACTLY equatorial sample
+        # (e.g. a GEO scenario's first sample at i = 0) came back as NaN
+        # mean inclination and RAAN. Keep i a hair off 0/180 deg: 1e-9 rad
+        # changes no plotted or reported value.
+        osc.i = min(max(oe["i"][k], _MEAN_ELEMENTS_MIN_INCLINATION_RAD),
+                    math.pi - _MEAN_ELEMENTS_MIN_INCLINATION_RAD)
         osc.Omega = oe["raan"][k]
         osc.omega = oe["argp"][k]
         osc.f = oe["true_anomaly"][k]

@@ -107,6 +107,28 @@ def test_mean_elements_are_finite_and_close_to_osculating():
     assert abs(mean["a"][0] - osc["a"][0]) < 10e3
 
 
+@pytest.mark.parametrize("inclination_rad", [0.0, np.pi])
+@pytest.mark.parametrize("eccentricity", [0.0, 1.0e-5])
+def test_exactly_equatorial_sample_gives_finite_mean_elements(inclination_rad, eccentricity):
+    """Regression test (warning in a real full-suite run, template 03):
+    clMeanOscMap divides by tan(i), so a GEO scenario's exactly equatorial
+    first sample came back as NaN mean inclination and RAAN."""
+    import warnings
+
+    from Basilisk.utilities import orbitalMotion
+
+    from spacemissionstudio.engine.service import _mean_elements
+
+    osc = {key: np.array([value]) for key, value in dict(
+        a=42164.0e3, e=eccentricity, i=inclination_rad, raan=0.3, argp=0.5, true_anomaly=1.0).items()}  # [m], [rad]
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")  # the NaN came with a numpy RuntimeWarning
+        mean = _mean_elements(osc, orbitalMotion.REQ_EARTH * 1000.0, orbitalMotion.J2_EARTH)
+    for key, value in mean.items():
+        assert np.isfinite(value[0]), key
+    assert abs(mean["i"][0] - inclination_rad) < 1.0e-6  # [rad]
+
+
 def test_mean_elements_round_trip_back_to_osculating():
     """clMeanOscMap is explicitly documented as invertible via its own
     ``sign`` argument (sgn=1: mean -> osc, sgn=-1: osc -> mean) --
