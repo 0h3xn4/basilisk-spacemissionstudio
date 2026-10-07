@@ -1362,6 +1362,11 @@ class _WizardFieldPage(QFrame):
             label = QLabel(field_spec.label)
             label.setToolTip(field_spec.help_text)
             label.setStyleSheet("border: none;")
+            # The form puts a label at the top of its row; with a box-tall
+            # label and the box pinned to the top too, the label's text lines
+            # up with the value instead of sitting above it.
+            label.setMinimumHeight(box.sizeHint().height())
+            label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
             help_row = None
             if field_spec.vector_key and field_spec.vector_key == previous_vector:
                 row_box_layout.addWidget(box)  # same vector: one row
@@ -1372,9 +1377,14 @@ class _WizardFieldPage(QFrame):
                 # RIGHT on the same row, using the width instead of a
                 # narrow wrapped column underneath.
                 holder = QWidget()
-                holder.setStyleSheet("background: transparent; border: none;")
+                # Scoped to the holder itself: an unscoped rule cascaded to
+                # the spin box inside and erased its border, so the values
+                # no longer looked editable (real user feedback).
+                holder.setObjectName("wizardRow")
+                holder.setStyleSheet("QWidget#wizardRow { background: transparent; border: none; }")
                 row_box_layout = QHBoxLayout(holder)
                 row_box_layout.setContentsMargins(0, 0, 0, 0)
+                row_box_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
                 row_box_layout.addWidget(box)
                 if field_spec.help_inline:
                     help_label = QLabel(field_spec.help_text)

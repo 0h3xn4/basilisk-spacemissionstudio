@@ -6905,3 +6905,11 @@ The user's run with Basilisk: **1649 passed, 11 skipped, 1 warning**.
 * **Cause.** The J2 osc → mean mapping divides by tan(i). An exactly equatorial sample (template 03 starts at i = 0) came back with NaN mean inclination and RAAN, which showed as a gap at the start of those plots.
 * **Fix.** `engine/service._mean_elements` now keeps the inclination it passes in at least 1e-9 rad away from 0 and 180 deg, which changes no plotted or reported value.
 * **Test.** A new Basilisk test maps exactly equatorial samples (i = 0 and 180 deg, e = 0 and 1e-5) with warnings turned into errors. It fails without the fix and passes with it.
+
+## Customize dialog: the value boxes had lost their borders
+
+The user's screenshot of the Customize dialog (template 05): "I can't really distinguish if the values are editable or not, there is no box around them."
+* **Cause.** Each row's holder widget had the stylesheet `background: transparent; border: none;`. That is unscoped, so Qt applied it to every child, including the spin boxes, and their frames disappeared. The values looked like plain text.
+* **Fix.** The rule is now scoped to the holder alone (`QWidget#wizardRow { … }`), so the spin boxes get the app's normal bordered style back. A scan of every other `setStyleSheet` call in the GUI found no other unscoped container rule.
+* **Alignment.** While checking, the labels sat above their values in rows with help text, because the form places labels at the top of a row. Labels are now as tall as their box, with the text centred, and the box is pinned to the top of the row, so each label lines up with its value.
+* **Test.** A new test renders the template-05 dialog and checks that each value field draws a visible edge, distinct from its interior. It fails with the old stylesheet and passes with the fix.

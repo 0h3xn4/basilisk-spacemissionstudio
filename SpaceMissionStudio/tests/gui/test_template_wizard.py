@@ -321,3 +321,28 @@ def test_filter_shows_only_matching_sections_and_jumps_to_the_first(qtbot):
     assert wizard.current_page().title() == "follower-1: phasing keeping"
     wizard._filter.setText("")
     assert all(not wizard._sections.item(row).isHidden() for row in range(wizard._sections.count()))
+
+
+def test_value_fields_keep_a_visible_border(qtbot):
+    """Real user feedback: "I can't really distinguish if the values are
+    editable or not, there is no box around them". The row holder's
+    transparent/no-border style leaked into the spin boxes inside it. Each
+    field must render a visible edge, distinct from its own interior."""
+    from PySide6.QtWidgets import QAbstractSpinBox
+
+    from spacemissionstudio.gui.load_scenario_widget import TEMPLATES_DIR
+    from spacemissionstudio.gui.template_wizard import TemplateCustomizeWizard, get_wizard_spec
+    from spacemissionstudio.schema import load_scenario
+
+    filename = "05_formation_flying_phasing.json"
+    wizard = TemplateCustomizeWizard(load_scenario(TEMPLATES_DIR / filename), get_wizard_spec(filename))
+    qtbot.addWidget(wizard)
+    wizard.show()
+    qtbot.waitExposed(wizard)
+    boxes = [box for box in wizard.findChildren(QAbstractSpinBox) if box.isVisible()][:10]
+    assert boxes
+    for box in boxes:
+        image = box.grab().toImage()
+        edge = image.pixelColor(0, image.height() // 2)
+        interior = image.pixelColor(image.width() // 3, 3)
+        assert edge != interior, f"{box.objectName() or box.text()!r} has no visible border"
