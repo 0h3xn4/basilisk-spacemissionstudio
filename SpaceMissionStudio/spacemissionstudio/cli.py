@@ -99,6 +99,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         vizard_request = VizardRequest(
             save_file=args.vizard_save_file, live_stream=args.vizard_live_stream,
             camera_target=args.vizard_camera_target, show_orbit_lines=not args.vizard_no_orbit_lines,
+            show_trajectory_trail=args.vizard_trail, show_ground_tracks=args.vizard_ground_tracks,
         )
 
     print(f"Running {scenario.name!r} ({len(scenario.spacecraft)} spacecraft, "
@@ -443,7 +444,10 @@ def build_parser() -> argparse.ArgumentParser:
                              "(default: the scenario's central body -- an Earth-centered view with the orbit "
                              "tracing around it, like STK/GMAT/FreeFlyer, rather than a spacecraft-locked close-up)")
     p_run.add_argument("--vizard-no-orbit-lines", action="store_true",
-                        help="don't draw Vizard's orbit-trace lines (they're on by default)")
+                        help="don't draw each spacecraft's orbit in Vizard (on by default)")
+    p_run.add_argument("--vizard-trail", action="store_true",
+                        help="also draw the flown path in Vizard (builds up into a band over long runs)")
+    p_run.add_argument("--vizard-ground-tracks", action="store_true", help="also draw ground tracks in Vizard")
     p_run.set_defaults(func=cmd_run)
 
     p_mc = subparsers.add_parser("monte-carlo", help="run a Monte Carlo batch and archive retained results")

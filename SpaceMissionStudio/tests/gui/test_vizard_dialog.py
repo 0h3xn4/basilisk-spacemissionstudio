@@ -134,3 +134,25 @@ def test_dialog_resizes_to_its_own_sizehint_on_construction(qtbot):
     qtbot.addWidget(dialog)
 
     assert dialog.size() == dialog.sizeHint()
+
+
+def test_trail_and_ground_tracks_default_off_and_round_trip(qtbot):
+    """The flown-path trail and ground tracks build up into a solid band
+    over a long run (real user feedback), so both start unticked."""
+    from spacemissionstudio.gui.vizard_dialog import VizardDialog
+
+    dialog = VizardDialog(current_live_stream=True)
+    qtbot.addWidget(dialog)
+    assert not dialog.trail_check.isChecked() and not dialog.ground_tracks_check.isChecked()
+    request = dialog.to_request()
+    assert request.show_trajectory_trail is False and request.show_ground_tracks is False
+
+    dialog.trail_check.setChecked(True)
+    dialog.ground_tracks_check.setChecked(True)
+    request = dialog.to_request()
+    assert request.show_trajectory_trail is True and request.show_ground_tracks is True
+
+    reopened = VizardDialog(current_live_stream=True, current_show_trajectory_trail=True,
+                            current_show_ground_tracks=True)
+    qtbot.addWidget(reopened)
+    assert reopened.trail_check.isChecked() and reopened.ground_tracks_check.isChecked()

@@ -872,3 +872,51 @@ def test_set_live_result_rebuilds_combo_if_series_names_change(widget):
 
     assert widget.series_combo.count() == 1
     assert widget.series_combo.currentText() == "sat-2.position_N"
+
+
+def test_a_large_series_still_shows_when_selected(widget, qtbot):
+    """Real user report: during a long run, switching to chief-1.position_N
+    or .velocity_N "just doesn't change" -- each was a ~5.8 MB page and
+    QWebEngineView.setHtml() silently shows nothing above 2 MB, so the
+    previous plot stayed up. Pages now load from a file, so a 90,000-
+    sample, 3-line series must actually render after switching to it."""
+    import numpy as np
+
+    from spacemissionstudio.engine.results import ResultSet, TimeSeries
+
+    t = np.arange(90000) * 30.0  # [s] 30 s samples over ~31 days
+    result = ResultSet(scenario_name="big")
+    result.add(TimeSeries("sat-1.semi_major_axis", t, ("a",), np.full((len(t), 1), 6928e3), units="m"))
+    position = np.column_stack([7e6 * np.cos(t / 900.0), 7e6 * np.sin(t / 900.0), np.zeros(len(t))])  # [m]
+    result.add(TimeSeries("sat-1.position_N", t, ("x", "y", "z"), position, units="m"))
+    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=20000):
+        widget.set_result(result)
+    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=20000):
+        widget.series_combo.setCurrentIndex(widget.series_combo.findText("sat-1.position_N"))
+
+    shown = {}
+    widget.web_view.page().runJavaScript(
+        "(function(){var d=document.querySelector('.plotly-graph-div');"
+        "return d && d.layout ? d.layout.title.text + '|' + d.data.length : 'NO PLOT';})()",
+        0, lambda value: shown.setdefault("title", value))
+    qtbot.waitUntil(lambda: "title" in shown, timeout=10000)
+    assert shown["title"].startswith("sat-1: ") and shown["title"].endswith("|3"), shown["title"]
+
+
+def test_display_thinning_keeps_peaks_and_caps_points():
+    """Each plotted line is thinned to at most _MAX_PLOT_POINTS_PER_LINE
+    points, keeping every stretch's minimum and maximum, so a short burn
+    or spike still shows. Small series are drawn in full."""
+    import numpy as np
+
+    from spacemissionstudio.gui.results_widget import _MAX_PLOT_POINTS_PER_LINE, _display_indices
+
+    small = np.arange(500.0)
+    assert np.array_equal(_display_indices(small), np.arange(500))
+
+    values = np.sin(np.arange(200000) / 50.0)
+    values[123457] = 25.0  # a one-sample spike
+    keep = _display_indices(values)
+    assert len(keep) <= _MAX_PLOT_POINTS_PER_LINE
+    assert 123457 in keep and 0 in keep and len(values) - 1 in keep
+    assert np.all(np.diff(keep) > 0)  # in time order

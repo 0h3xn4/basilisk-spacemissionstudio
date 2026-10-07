@@ -7000,3 +7000,24 @@ The user asked for every dialog to be checked for the scroll-wheel issue. A new 
 * The dialog test passed in repeated runs, with no crash.
 * The unit test checks that every kind of box and tab bar leaves the wheel event unaccepted (so real scrolling reaches the page) and that its value does not change.
 * Putting a plain `QComboBox` back in the propagation dialog makes the dialog test fail. That needed the per-step check: wheeling up then down on a drop-down's last item lands back where it started.
+
+## Results plots that wouldn't switch, and a confusing Vizard view
+
+**Plots stuck on the previous series.** The user reported that during a live run, switching to `chief-1.position_N` or `chief-1.velocity_N` "just doesn't change", and the previous plot stayed.
+* **Cause.** Each plot is a page loaded with `QWebEngineView.setHtml()`, which silently shows nothing above 2 MB. With the user's own template-05 data (86,400 samples):
+  * position and velocity pages were 5.8 MB each (three lines);
+  * delta-V was 2.1 MB and orbit elements 1.9 MB, so longer runs would have broken nearly every plot.
+* **Not only live runs.** Measured directly with that data, before the fix none of these plots loaded after switching, even with the run finished.
+* **Fix.**
+  * Plot pages are written to a temporary file and loaded from it, which has no size limit. They are written to alternating file names, so a new page never overwrites one still loading.
+  * Each drawn line is thinned to at most 10,000 points. The minimum and maximum of every stretch are kept, so burns and spikes still show.
+  * CSV export keeps every sample.
+* **Tests.**
+  * A 90,000-sample, three-line series renders after switching to it; this fails without the fix.
+  * Thinning caps the point count, keeps a one-sample spike, and leaves small series untouched.
+  * All 55 existing results tests pass.
+
+**Vizard: a solid cyan band** (user screenshot of a 26-day template-05 run). The flown-path trail (`trueTrajectoryLinesOn`) keeps every orbit flown. As the orbit plane precesses, hundreds of overlapping lines merge into a solid band, and the ground tracks (left at Vizard's own default) add to it.
+* **New defaults.** Each spacecraft's current orbit is still shown as one ring. The flown-path trail and the ground tracks are now off unless asked for, and each is sent to Vizard explicitly as on or off.
+* **How to turn them on.** The Vizard dialog has new checkboxes ("Show the flown path (builds up over long runs)", "Show ground tracks"), and the CLI has `--vizard-trail` and `--vizard-ground-tracks`.
+* **Tests.** A Basilisk test reads the settings Vizard receives, for both defaults and opt-in. Dialog and CLI tests cover the new options.

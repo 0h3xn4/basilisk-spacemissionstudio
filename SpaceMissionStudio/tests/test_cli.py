@@ -517,3 +517,11 @@ def test_phasing_defaults_agree_between_schema_generator_and_cli():
     for name in request_defaults.keys() & schema_defaults.keys():
         assert cli_defaults[name] == request_defaults[name], name
     assert schema_defaults["correction_window_days"] == 3.0  # [day]
+
+
+def test_run_parses_vizard_trail_and_ground_track_flags():
+    parser = cli.build_parser()
+    assert parser.parse_args(["run", "s.json"]).vizard_trail is False
+    assert parser.parse_args(["run", "s.json"]).vizard_ground_tracks is False
+    args = parser.parse_args(["run", "s.json", "--vizard-trail", "--vizard-ground-tracks"])
+    assert args.vizard_trail is True and args.vizard_ground_tracks is True

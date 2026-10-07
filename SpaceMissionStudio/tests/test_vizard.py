@@ -208,3 +208,33 @@ def test_enable_vizard_with_comms_pointing_builds_the_three_new_panels():
     assert storage_list[0][0].label == "Pointing Error"
     sensor_labels = {sensor.label for sensor in sensor_list[0]}
     assert sensor_labels == {"Mode", "Link status"}
+
+
+@pytest.mark.parametrize("trail, ground_tracks", [(False, False), (True, True)])
+def test_trail_and_ground_tracks_are_off_unless_asked_for(trail, ground_tracks):
+    """Real user feedback on a 26-day formation run in Vizard: "visually
+    this is very confusing and not really clear" -- a solid cyan band
+    built from hundreds of overlapping flown-path/ground-track lines.
+    Each line type is now set explicitly on (1) or off (-1); 0 would
+    leave it to Vizard's own default."""
+    import tempfile
+
+    from Basilisk.simulation import spacecraft
+    from Basilisk.utilities import SimulationBaseClass, macros
+
+    from spacemissionstudio.engine.vizard import VizardRequest, enable_vizard
+
+    scSim = SimulationBaseClass.SimBaseClass()
+    scSim.CreateNewProcess("dynProc").addTask(scSim.CreateNewTask("dynTask", macros.sec2nano(1.0)))
+    sc_object = spacecraft.Spacecraft()
+    sc_object.ModelTag = "sat-1"
+    scSim.AddModelToTask("dynTask", sc_object)
+    request = VizardRequest(save_file=str(Path(tempfile.mkdtemp()) / "lines.viz.bin"),
+                            show_trajectory_trail=trail, show_ground_tracks=ground_tracks)
+    viz = enable_vizard(scSim, "dynTask", [sc_object], request)[0]
+
+    on = {True: 1, False: -1}
+    assert viz.settings.orbitLinesOn == 1  # each spacecraft's current orbit stays on by default
+    assert viz.settings.trueTrajectoryLinesOn == on[trail]
+    assert viz.settings.showTruePathGroundTrackLines == on[ground_tracks]
+    assert viz.settings.showOsculatingGroundTrackLines == -1

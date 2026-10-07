@@ -587,10 +587,16 @@ class VizardRequest:
     # STK/GMAT/FreeFlyer's default framing, rather than a spacecraft-locked
     # close-up. Set this to a spacecraft name to start zoomed in on it instead.
     camera_target: Optional[str] = None
-    # Draw osculating + true orbit-trace lines so the orbit path is visible,
-    # not just a moving dot. On by default for the same "understandable at a
-    # glance" reason as camera_target.
+    # Draw each spacecraft's current (osculating) orbit as one ring, so the
+    # orbit is visible, not just a moving dot. On by default for the same
+    # "understandable at a glance" reason as camera_target.
     show_orbit_lines: bool = True
+    # The flown-path trail and the ground tracks are OFF by default (real
+    # user feedback: "very confusing and not really clear"). Over a long
+    # run both keep every orbit flown, and as the orbit plane precesses
+    # hundreds of overlapping lines merge into a solid band.
+    show_trajectory_trail: bool = False
+    show_ground_tracks: bool = False
 
 
 def enable_vizard(scSim, task_name: str, sc_objects: List, request: VizardRequest,
@@ -990,9 +996,12 @@ def enable_vizard(scSim, task_name: str, sc_objects: List, request: VizardReques
     # default (spacecraft-locked, no orbit trace) instead of an
     # STK/GMAT/FreeFlyer-style central-body-centered view.
     viz.settings.mainCameraTarget = request.camera_target or central_body_name
-    if request.show_orbit_lines:
-        viz.settings.orbitLinesOn = 1  # osculating orbit line, relative to parent body
-        viz.settings.trueTrajectoryLinesOn = 1  # true (propagated) trajectory line, inertial
+    # Each one set explicitly on (1) or off (-1): 0 would mean "Vizard's own
+    # default", which drew ground tracks nobody asked for.
+    viz.settings.orbitLinesOn = 1 if request.show_orbit_lines else -1  # current orbit, relative to parent body
+    viz.settings.trueTrajectoryLinesOn = 1 if request.show_trajectory_trail else -1  # flown path, inertial
+    viz.settings.showTruePathGroundTrackLines = 1 if request.show_ground_tracks else -1
+    viz.settings.showOsculatingGroundTrackLines = -1
     viz.settings.showSpacecraftLabels = 1
     viz.settings.showCelestialBodyLabels = 1
 

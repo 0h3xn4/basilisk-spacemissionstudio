@@ -760,7 +760,11 @@ class MainWindow(QMainWindow):
         current_show_orbit_lines = getattr(self._vizard_request, "show_orbit_lines", True)
         dialog = VizardDialog(current_save_file=current_save_file, current_live_stream=current_live_stream,
                                current_camera_target=current_camera_target,
-                               current_show_orbit_lines=current_show_orbit_lines, parent=self)
+                               current_show_orbit_lines=current_show_orbit_lines,
+                               current_show_trajectory_trail=getattr(self._vizard_request,
+                                                                     "show_trajectory_trail", False),
+                               current_show_ground_tracks=getattr(self._vizard_request, "show_ground_tracks", False),
+                               parent=self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self._vizard_request = dialog.to_request()
             if self._vizard_request is None:

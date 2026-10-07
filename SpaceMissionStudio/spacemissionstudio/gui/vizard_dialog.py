@@ -50,7 +50,9 @@ class VizardDialog(QDialog):
     """
 
     def __init__(self, current_save_file: str | None = None, current_live_stream: bool = False,
-                 current_camera_target: str | None = None, current_show_orbit_lines: bool = True, parent=None):
+                 current_camera_target: str | None = None, current_show_orbit_lines: bool = True,
+                 current_show_trajectory_trail: bool = False, current_show_ground_tracks: bool = False,
+                 parent=None):
         super().__init__(parent)
         self.setWindowTitle("Vizard visualization")
 
@@ -92,9 +94,19 @@ class VizardDialog(QDialog):
         view_form.addRow("Camera starts locked on", self.camera_target_edit)
         layout.addLayout(view_form)
 
-        self.orbit_lines_check = QCheckBox("Show orbit trace lines")
+        self.orbit_lines_check = QCheckBox("Show each spacecraft's orbit")
+        self.orbit_lines_check.setToolTip("One ring per spacecraft: its current orbit.")
         self.orbit_lines_check.setChecked(current_show_orbit_lines)
         layout.addWidget(self.orbit_lines_check)
+        self.trail_check = QCheckBox("Show the flown path (builds up over long runs)")
+        self.trail_check.setToolTip("Every orbit flown so far. Over days of simulated time the lines merge "
+                                    "into a solid band.")
+        self.trail_check.setChecked(current_show_trajectory_trail)
+        layout.addWidget(self.trail_check)
+        self.ground_tracks_check = QCheckBox("Show ground tracks")
+        self.ground_tracks_check.setToolTip("The path under each spacecraft on the planet's surface.")
+        self.ground_tracks_check.setChecked(current_show_ground_tracks)
+        layout.addWidget(self.ground_tracks_check)
 
         if current_live_stream:
             self.live_stream_radio.setChecked(True)
@@ -144,8 +156,9 @@ class VizardDialog(QDialog):
         from ..engine.vizard import VizardRequest
 
         camera_target = self.camera_target_edit.text().strip() or None
-        show_orbit_lines = self.orbit_lines_check.isChecked()
+        lines = dict(show_orbit_lines=self.orbit_lines_check.isChecked(),
+                     show_trajectory_trail=self.trail_check.isChecked(),
+                     show_ground_tracks=self.ground_tracks_check.isChecked())
         if self.live_stream_radio.isChecked():
-            return VizardRequest(live_stream=True, camera_target=camera_target, show_orbit_lines=show_orbit_lines)
-        return VizardRequest(save_file=self.save_file_edit.text().strip(),
-                              camera_target=camera_target, show_orbit_lines=show_orbit_lines)
+            return VizardRequest(live_stream=True, camera_target=camera_target, **lines)
+        return VizardRequest(save_file=self.save_file_edit.text().strip(), camera_target=camera_target, **lines)

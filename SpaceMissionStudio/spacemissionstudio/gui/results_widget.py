@@ -122,9 +122,12 @@ import urllib.parse
 if hasattr(os, "geteuid") and os.geteuid() == 0:
     os.environ.setdefault("QTWEBENGINE_CHROMIUM_FLAGS", "--no-sandbox")
 
+import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
+
+import numpy as np
 
 import plotly.graph_objects as go
 from PySide6.QtCore import QElapsedTimer, Qt, QTimer, QUrl
@@ -223,6 +226,39 @@ _SAVE_PNG_MAX_POLL_ATTEMPTS = 100  # 100 * 100ms = 10s -- Plotly.toImage took ~2
 # being generous enough for a full page reload to settle on a typical
 # machine -- not tuned to any specific scenario.
 _LIVE_REDRAW_MIN_INTERVAL_MS = 300
+
+
+# Real user report: during a long run, switching to chief-1.position_N or
+# .velocity_N "just doesn't change" -- the plot stayed on the previous
+# series. Each was a 5.8 MB page (86,400 samples x 3 lines) and
+# QWebEngineView.setHtml() silently shows nothing above 2 MB. Pages are
+# now loaded from a file (no size limit), and each line is thinned to at
+# most this many points for display (min and max of every stretch kept, so
+# burns and peaks still show). Exports keep every sample.
+_MAX_PLOT_POINTS_PER_LINE = 10000
+
+
+def _display_indices(values: np.ndarray, max_points: int = _MAX_PLOT_POINTS_PER_LINE) -> np.ndarray:
+    """Indices of ``values`` to draw: all of them when there are few
+    enough, otherwise the first, last, and the minimum and maximum of each
+    of ``max_points // 2`` equal stretches (min-max decimation)."""
+    n = len(values)
+    if n <= max_points:
+        return np.arange(n)
+    buckets = max(1, (max_points - 2) // 2)
+    edges = np.linspace(0, n, buckets + 1).astype(int)
+    keep = [0, n - 1]
+    finite = np.where(np.isfinite(values), values, np.nan)
+    for start, end in zip(edges[:-1], edges[1:]):
+        if end <= start:
+            continue
+        chunk = finite[start:end]
+        if np.all(np.isnan(chunk)):
+            keep.append(start)
+            continue
+        keep.append(start + int(np.nanargmin(chunk)))
+        keep.append(start + int(np.nanargmax(chunk)))
+    return np.unique(np.asarray(keep))
 
 
 def _plotlyjs_path() -> Path:
@@ -438,6 +474,10 @@ class ResultsWidget(QWidget):
         layout.addWidget(self.warnings_label)
 
         self.web_view = QWebEngineView()
+        # Plot pages are written here and loaded from file -- see
+        # _MAX_PLOT_POINTS_PER_LINE for why setHtml() can't be used.
+        self._page_dir = tempfile.TemporaryDirectory(prefix="spacemissionstudio-plot-")
+        self._page_counter = 0
         # stretch=1: the one widget in this column that should actually
         # claim all leftover vertical space -- see provenance_label's own
         # comment above for the real bug this fixes.
@@ -567,9 +607,13 @@ class ResultsWidget(QWidget):
 
         fig = go.Figure()
         column_labels = display.columns or {}
+        x_array = np.asarray(x_values, dtype=object if isinstance(x_values, list) else None)
         for i, column in enumerate(series.columns):
+            keep = _display_indices(display_data[:, i])  # see _MAX_PLOT_POINTS_PER_LINE
+            x_shown = x_array[keep]
             fig.add_trace(go.Scatter(
-                x=x_values, y=display_data[:, i], mode="lines", name=column_labels.get(column, column),
+                x=list(x_shown) if x_array.dtype == object else x_shown, y=display_data[keep, i], mode="lines",
+                name=column_labels.get(column, column),
                 line=dict(color=_SERIES_COLORS[i % len(_SERIES_COLORS)], width=2),
             ))
 
@@ -756,15 +800,18 @@ class ResultsWidget(QWidget):
         throttling comment for why this is split out separately.
         """
         if self.figure is None:
-            html = _empty_state_html()
-            base_url = QUrl()
+            self.web_view.setHtml(_empty_state_html(), QUrl())  # small: setHtml's 2 MB limit is no issue
         else:
             html = self.figure.to_html(
-                include_plotlyjs=str(_plotlyjs_path()), full_html=True, div_id=_PLOT_DIV_ID,
-                config={"displaylogo": False, "responsive": True},
+                include_plotlyjs=QUrl.fromLocalFile(str(_plotlyjs_path())).toString(), full_html=True,
+                div_id=_PLOT_DIV_ID, config={"displaylogo": False, "responsive": True},
             )
-            base_url = QUrl.fromLocalFile(str(_plotlyjs_path().parent) + "/")
-        self.web_view.setHtml(html, base_url)
+            # Alternating file names, so a new page never overwrites one
+            # that is still loading.
+            self._page_counter += 1
+            page = Path(self._page_dir.name) / f"plot-{self._page_counter % 2}.html"
+            page.write_text(html, encoding="utf-8")
+            self.web_view.load(QUrl.fromLocalFile(str(page)))
         # Never force-enable while a save-as-PNG poll is in flight (e.g. a
         # live-updating run calling _redraw() repeatedly via
         # set_live_result() while the user's earlier click is still being
