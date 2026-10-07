@@ -7021,3 +7021,20 @@ The user asked for every dialog to be checked for the scroll-wheel issue. A new 
 * **New defaults.** Each spacecraft's current orbit is still shown as one ring. The flown-path trail and the ground tracks are now off unless asked for, and each is sent to Vizard explicitly as on or off.
 * **How to turn them on.** The Vizard dialog has new checkboxes ("Show the flown path (builds up over long runs)", "Show ground tracks"), and the CLI has `--vizard-trail` and `--vizard-ground-tracks`.
 * **Tests.** A Basilisk test reads the settings Vizard receives, for both defaults and opt-in. Dialog and CLI tests cover the new options.
+
+## Every plot checked after the large-plot fix
+
+The user asked for the other plots to be checked for the same issue.
+
+**Only the Results tab is affected.** It is the only web view in the app, and since the previous commit it loads every plot page from a file, so the 2 MB `setHtml()` limit can no longer hit any plot.
+
+**Rendered check.** Every series in the user's own template-05 results (40 series, 86,400 samples each) was switched to and confirmed rendered in the page, with the right title and line count. Heavier synthetic cases were checked the same way:
+* an 8-thruster on-time plot (8 lines x 90,000 samples);
+* six ground-station access pairs over 31 days;
+* the access timeline view.
+
+**Result.** All 48 views loaded correctly. Pages are now 0.1-2.0 MB (position/velocity went from 5.8 to 0.67 MB), and each switch takes 0.4-1.6 s.
+
+**One improvement found.** The access timeline drew each pass as its own trace: 2,865 traces for six pairs over a month, which Plotly is slow to draw and which grows with run length. Each pair is now one trace, with its passes as separate segments split by gaps.
+* For the same data that is 6 traces and a 0.26 MB page (it was 1.03 MB), and the chart looks the same, with one row per pair and separate bars per pass.
+* The existing timeline test now checks one trace per pair, with one segment per access window.

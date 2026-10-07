@@ -441,19 +441,23 @@ def test_switching_to_access_timeline_disables_series_combo(widget):
     assert widget.series_combo.isEnabled()
 
 
-def test_access_timeline_plots_one_trace_per_access_window_plus_empty_pair(widget):
+def test_access_timeline_plots_one_trace_per_pair_with_a_segment_per_window(widget):
     widget.set_result(_access_result_set())
     widget.view_combo.setCurrentIndex(widget.view_combo.findData("access_timeline"))
 
     assert widget.figure is not None
     y_values = {trace.y[0] for trace in widget.figure.data}
     assert y_values == {"station-a -> sat-1", "station-b -> sat-1"}
-    # station-a has two separate access windows -> two line traces;
-    # station-b has none -> one invisible placeholder trace.
+    # One trace per pair (thousands of per-pass traces were slow to draw on
+    # long runs): station-a's two separate access windows are two segments
+    # of its one trace, split by a None gap; station-b has none -> one
+    # invisible placeholder trace.
     station_a_traces = [t for t in widget.figure.data if t.y[0] == "station-a -> sat-1"]
     station_b_traces = [t for t in widget.figure.data if t.y[0] == "station-b -> sat-1"]
-    assert len(station_a_traces) == 2
-    assert len(station_b_traces) == 1
+    assert len(station_a_traces) == 1 and len(station_b_traces) == 1
+    segments = [part for part in "|".join("x" if x is None else "s" for x in station_a_traces[0].x).split("x")
+                if part.strip("|")]
+    assert len(segments) == 2
 
 
 def test_access_timeline_with_no_access_series_shows_explanatory_empty_state(widget):

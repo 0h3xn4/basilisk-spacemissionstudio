@@ -743,28 +743,25 @@ class ResultsWidget(QWidget):
             t_hours = series.time_s / 3600.0
             has_access = series.data[:, series.columns.index("has_access")] != 0
             color = _SERIES_COLORS[row_index % len(_SERIES_COLORS)]
-            # Each contiguous True run in has_access becomes one thick
-            # horizontal line segment -- two-point go.Scatter lines
-            # (rather than go.Bar's orientation="h"/base/width) because
-            # a plain Scatter line needs no base/width unit-matching
-            # with the x-axis, numeric or datetime alike, and renders
-            # identically either way.
-            run_start = None
-            legend_shown = False
-            for i in range(len(has_access) + 1):
-                active = i < len(has_access) and has_access[i]
-                if active and run_start is None:
-                    run_start = i
-                elif not active and run_start is not None:
-                    fig.add_trace(go.Scatter(
-                        x=[t_hours[run_start], t_hours[i - 1]], y=[pair_label, pair_label],
-                        mode="lines", line=dict(color=color, width=16),
-                        name=pair_label, legendgroup=pair_label, showlegend=not legend_shown,
-                        hovertemplate=f"{pair_label}<br>%{{x:.3f}} hr<extra></extra>",
-                    ))
-                    legend_shown = True
-                    run_start = None
-            if not legend_shown:
+            # Each contiguous True run in has_access is one thick line
+            # segment; all of a pair's segments share ONE trace, separated
+            # by None gaps. One trace per pass made thousands of traces on
+            # a long run (2,865 for six pairs over a month), which Plotly
+            # is slow to draw.
+            padded = np.concatenate([[False], has_access, [False]])
+            changes = np.flatnonzero(np.diff(padded.astype(int)))
+            starts, ends = changes[0::2], changes[1::2] - 1
+            if len(starts):
+                xs: list = []
+                ys: list = []
+                for start, end in zip(starts, ends):
+                    xs += [t_hours[start], t_hours[end], None]
+                    ys += [pair_label, pair_label, None]
+                fig.add_trace(go.Scatter(
+                    x=xs, y=ys, mode="lines", line=dict(color=color, width=16), connectgaps=False,
+                    name=pair_label, hovertemplate=f"{pair_label}<br>%{{x:.3f}} hr<extra></extra>",
+                ))
+            else:
                 # No access window at all for this pair -- still give it
                 # a row (an invisible trace) so it appears in the legend
                 # and on the y-axis, same as every other pair, rather
