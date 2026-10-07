@@ -143,7 +143,6 @@ from PySide6.QtWidgets import (
 )
 
 from ..engine.results import ResultSet, TimeSeries
-from ..plot_categories import SeriesDisplay as _SeriesDisplay
 from ..plot_categories import categorize as _categorize
 from ..plot_categories import legacy_display as _legacy_display
 from ..plot_categories import parse_access_pair as _parse_access_pair

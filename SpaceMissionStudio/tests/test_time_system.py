@@ -1,14 +1,10 @@
-"""Tests for spacemissionstudio.engine.time_system.utc_iso_to_spice_string().
-
-engine.time_system imports Basilisk.utilities.supportDataTools.dataFetcher
-at module level, so even this pure-Python string-formatting logic needs a
-Basilisk build to import in this development sandbox (marked
-requires_basilisk; see tests/conftest.py for the auto-skip behavior).
+"""Tests for spacemissionstudio.engine.time_system.utc_iso_to_spice_string()
+-- Basilisk-free, runs anywhere.
 """
 
-import pytest
+import locale
 
-pytestmark = pytest.mark.requires_basilisk
+import pytest
 
 
 def test_utc_iso_to_spice_string_whole_second():
@@ -43,3 +39,36 @@ def test_utc_iso_to_spice_string_converts_timezone_aware_input_to_utc():
 
     assert utc_iso_to_spice_string("2030-01-01T00:00:00+05:00") == "2029 DEC 31 19:00:00.000 (UTC)"
     assert utc_iso_to_spice_string("2030-01-01T00:00:00+00:00") == "2030 JAN 01 00:00:00.000 (UTC)"
+
+
+@pytest.mark.parametrize("month,expected", [
+    (1, "JAN"), (2, "FEB"), (3, "MAR"), (4, "APR"), (5, "MAY"), (6, "JUN"),
+    (7, "JUL"), (8, "AUG"), (9, "SEP"), (10, "OCT"), (11, "NOV"), (12, "DEC"),
+])
+def test_every_month_uses_the_english_spice_abbreviation(month, expected):
+    from spacemissionstudio.engine.time_system import utc_iso_to_spice_string
+
+    assert utc_iso_to_spice_string(f"2030-{month:02d}-15T12:00:00") == f"2030 {expected} 15 12:00:00.000 (UTC)"
+
+
+def test_month_abbreviation_ignores_the_process_locale():
+    """Regression test for a real bug found by audit: the function used
+    strftime("%b"), which follows LC_TIME -- and QApplication calls
+    setlocale(LC_ALL, "") on Linux, so under a German desktop locale every
+    GUI run with a March/May/October/December epoch handed SPICE an
+    unparseable "MÄR"/"MAI"/"OKT"/"DEZ". Confirmed directly before the fix:
+    "2030 MÄR 01 00:00:00.000 (UTC)".
+    """
+    from spacemissionstudio.engine.time_system import utc_iso_to_spice_string
+
+    previous = locale.setlocale(locale.LC_TIME)
+    try:
+        locale.setlocale(locale.LC_TIME, "de_DE.UTF-8")
+    except locale.Error:
+        pytest.skip("de_DE.UTF-8 locale not installed on this machine")
+    try:
+        assert utc_iso_to_spice_string("2030-03-01T00:00:00") == "2030 MAR 01 00:00:00.000 (UTC)"
+        assert utc_iso_to_spice_string("2030-10-01T00:00:00") == "2030 OCT 01 00:00:00.000 (UTC)"
+        assert utc_iso_to_spice_string("2030-12-01T00:00:00") == "2030 DEC 01 00:00:00.000 (UTC)"
+    finally:
+        locale.setlocale(locale.LC_TIME, previous)

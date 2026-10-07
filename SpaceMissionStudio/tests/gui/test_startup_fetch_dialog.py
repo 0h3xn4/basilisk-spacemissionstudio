@@ -234,6 +234,7 @@ def test_worker_run_always_emits_even_if_a_helper_raises_unexpectedly(qtbot, mon
     worker = StartupFetchWorker(fetch_kernels=True, fetch_space_weather=False)
     with qtbot.waitSignal(worker.finished_all, timeout=5000) as blocker:
         worker.start()
+    assert worker.wait(5000)  # join it: GC of a still-running QThread aborts the process
 
     result = blocker.args[0]
     assert "error" in result

@@ -56,6 +56,7 @@ painful than reserving the shape up front.
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from pathlib import Path
@@ -148,6 +149,20 @@ class ScenarioValidationError(ValueError):
 def _require(condition: bool, message: str) -> None:
     if not condition:
         raise ScenarioValidationError(message)
+
+
+def _is_direction_vector(values) -> bool:
+    """True for a 3-element ``[x, y, z]`` of finite numbers that is not the
+    zero vector -- what every body-frame axis/direction field here needs.
+    A zero or non-finite vector used to pass validation and only fail
+    mid-run, once Basilisk normalized it into a NaN attitude/thrust axis.
+    """
+    try:
+        components = [float(v) for v in values]
+    except (TypeError, ValueError):
+        return False
+    return (len(components) == 3 and all(math.isfinite(v) for v in components)
+            and math.sqrt(sum(v * v for v in components)) > 1e-12)
 
 
 @dataclass
@@ -290,8 +305,8 @@ class PowerConfig:
                   "value is outside this range, check for a units mixup (e.g. cm^2 instead of m^2)")
         _require(0.0 < self.panel_efficiency <= 1.0,
                   f"{spacecraft_name}: power.panel_efficiency must be in (0, 1]")
-        _require(len(self.panel_normal_b) == 3,
-                  f"{spacecraft_name}: power.panel_normal_b must be a 3-element [x, y, z] list")
+        _require(_is_direction_vector(self.panel_normal_b),
+                  f"{spacecraft_name}: power.panel_normal_b must be a non-zero, finite 3-element [x, y, z] list")
         _require(self.bus_idle_power_w >= 0, f"{spacecraft_name}: power.bus_idle_power_w must be >= 0")
         _require(0.0 < self.battery_capacity_wh <= 1.0e6,
                   f"{spacecraft_name}: power.battery_capacity_wh must be in (0, 1e6] W*hr -- if your "
@@ -396,10 +411,12 @@ class CommsPointingConfig:
     def validate(self, spacecraft_name: str) -> None:
         _require(bool(self.target_ground_station),
                   f"{spacecraft_name}: comms_pointing.target_ground_station must not be empty")
-        _require(len(self.antenna_boresight_b) == 3,
-                  f"{spacecraft_name}: comms_pointing.antenna_boresight_b must be a 3-element [x, y, z] list")
-        _require(self.sun_pointing_axis_b is None or len(self.sun_pointing_axis_b) == 3,
-                  f"{spacecraft_name}: comms_pointing.sun_pointing_axis_b must be None or a 3-element [x, y, z] list")
+        _require(_is_direction_vector(self.antenna_boresight_b),
+                  f"{spacecraft_name}: comms_pointing.antenna_boresight_b must be a non-zero, finite 3-element "
+                  "[x, y, z] list")
+        _require(self.sun_pointing_axis_b is None or _is_direction_vector(self.sun_pointing_axis_b),
+                  f"{spacecraft_name}: comms_pointing.sun_pointing_axis_b must be None or a non-zero, finite "
+                  "3-element [x, y, z] list")
         _require(self.comms_power_w >= 0, f"{spacecraft_name}: comms_pointing.comms_power_w must be >= 0")
 
 
@@ -490,9 +507,8 @@ class ConstantThrustConfig:
         _require(self.frame in SUPPORTED_THRUST_FRAMES,
                   f"{spacecraft_name}: constant_thrust.frame {self.frame!r} must be one of "
                   f"{SUPPORTED_THRUST_FRAMES}")
-        _require(len(self.direction) == 3, f"{spacecraft_name}: constant_thrust.direction must have 3 elements")
-        _require(any(abs(v) > 1e-12 for v in self.direction),
-                  f"{spacecraft_name}: constant_thrust.direction must not be the zero vector")
+        _require(_is_direction_vector(self.direction),
+                  f"{spacecraft_name}: constant_thrust.direction must be a non-zero, finite 3-element vector")
         _require(self.thrust_n > 0, f"{spacecraft_name}: constant_thrust.thrust_n must be > 0")
         _require(self.isp_s > 0, f"{spacecraft_name}: constant_thrust.isp_s must be > 0")
         _require(self.propellant_kg >= 0, f"{spacecraft_name}: constant_thrust.propellant_kg must be >= 0")
@@ -902,14 +918,14 @@ class SpacecraftConfig:
                       f"{SUPPORTED_SENSOR_KINDS}")
             if sensor.kind == "coarse_sun_sensor":
                 nHat_B = sensor.params.get("nHat_B")
-                _require(nHat_B is not None and len(nHat_B) == 3,
+                _require(nHat_B is not None and _is_direction_vector(nHat_B),
                           f"{self.name}: coarse_sun_sensor {sensor.name!r} needs params['nHat_B'] "
-                          "as a 3-element body-frame boresight unit vector")
+                          "as a non-zero, finite 3-element body-frame boresight unit vector")
             if sensor.kind == "thermal":
                 nHat_B = sensor.params.get("nHat_B")
-                _require(nHat_B is not None and len(nHat_B) == 3,
+                _require(nHat_B is not None and _is_direction_vector(nHat_B),
                           f"{self.name}: thermal sensor {sensor.name!r} needs params['nHat_B'] "
-                          "as a 3-element body-frame face-normal unit vector")
+                          "as a non-zero, finite 3-element body-frame face-normal unit vector")
                 # Confirmed directly against sensorThermal.cpp's own Reset():
                 # a non-positive sensorArea/sensorMass/sensorSpecificHeat, or
                 # an absorptivity/emissivity outside (0, 1], each hard-exits
@@ -960,9 +976,9 @@ class SpacecraftConfig:
                       f"{SUPPORTED_ACTUATOR_KINDS}")
             if actuator.kind == "reaction_wheel":
                 gsHat_B = actuator.params.get("gsHat_B")
-                _require(gsHat_B is not None and len(gsHat_B) == 3,
+                _require(gsHat_B is not None and _is_direction_vector(gsHat_B),
                           f"{self.name}: reaction_wheel {actuator.name!r} needs params['gsHat_B'] "
-                          "as a 3-element body-frame spin-axis unit vector")
+                          "as a non-zero, finite 3-element body-frame spin-axis unit vector")
                 rw_type = actuator.params.get("rw_type", "custom")
                 if rw_type == "custom":
                     # Confirmed directly against simIncludeRW.py's rwFactory.create(): the
@@ -1059,9 +1075,9 @@ class SpacecraftConfig:
                           "requires it explicitly rather than silently falling back to it")
             if actuator.kind == "magnetic_torque_rod":
                 gtHat_B = actuator.params.get("gtHat_B")
-                _require(gtHat_B is not None and len(gtHat_B) == 3,
+                _require(gtHat_B is not None and _is_direction_vector(gtHat_B),
                           f"{self.name}: magnetic_torque_rod {actuator.name!r} needs params['gtHat_B'] as a "
-                          "3-element body-frame dipole-axis unit vector [-]")
+                          "non-zero, finite 3-element body-frame dipole-axis unit vector [-]")
                 _require(actuator.params.get("max_dipole_a_m2") is not None,
                           f"{self.name}: magnetic_torque_rod {actuator.name!r} needs params['max_dipole_a_m2'] "
                           "[A*m^2] (maximum commandable dipole magnitude)")

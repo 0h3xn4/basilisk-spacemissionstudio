@@ -31,10 +31,9 @@ spacemissionstudio validate spacemissionstudio/scenarios/templates/01_two_body_c
 Once opened in the GUI, **Save As...** under a new name/location before
 editing if you want to keep the original template intact for next time.
 
-Every one of these nineteen templates also has a standalone
-**"Customize: \<template name\>..."** button in the GUI's Load Scenario
-tab, below the template list (see `gui/template_wizard.py` for the spec
-registry, or that module's own docstring for the two-stage rollout this
+Every one of these twenty templates also has its own **Customize...**
+button, on its row of the GUI's Load Scenario template list (see
+`gui/template_wizard.py` for the spec registry, or that module's own docstring for the two-stage rollout this
 went through): a short, guided multi-step wizard over just that
 template's own key tunable parameters (usually the ones already called
 out below and in each file's own `description`, under "Try changing:" --

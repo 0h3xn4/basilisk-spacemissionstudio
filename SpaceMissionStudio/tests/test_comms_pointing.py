@@ -106,7 +106,7 @@ def _run_comms_pointing(segments, rf_link=None, ground_station_config=None):
     function's own docstring for what they enable.
     """
     from Basilisk.architecture import messaging
-    from Basilisk.simulation import extForceTorque, simplePowerSink, spacecraft
+    from Basilisk.simulation import simplePowerSink, spacecraft
     from Basilisk.utilities import SimulationBaseClass, macros, simHelpers
 
     from spacemissionstudio.engine import fsw

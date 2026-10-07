@@ -76,6 +76,7 @@ from typing import Callable, Dict, List, Optional
 from PySide6.QtWidgets import QDoubleSpinBox, QFormLayout, QLabel, QWizard, QWizardPage
 
 from ..schema.scenario import Scenario
+from .widgets import PreciseDoubleSpinBox
 
 # SpacecraftConfig.orbit.semi_major_axis_km (OrbitIC, "classical_elements")
 # is measured from the central body's CENTER, while
@@ -662,11 +663,11 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
         pages=[
             WizardPageSpec(
                 title="Formation geometry",
-                intro="How far behind the chief 'follower-1' should hold station, along-track.",
+                intro="How far AHEAD of chief 'chief-1' the follower 'follower-1' should hold station, along-track.",
                 fields=[
                     WizardField(
                         "Target separation", "The along-track distance phasing_keeping actively holds "
-                        "'follower-1' at, behind 'chief-1'.",
+                        "'follower-1' at, ahead of 'chief-1' (always a positive, 'follower leads chief' distance).",
                         lambda s: _follower(s).phasing_keeping.target_separation_km[0],
                         lambda s, v: _follower(s).phasing_keeping.target_separation_km.__setitem__(0, v),
                         1.0, 1000.0, decimals=2, step=5.0, suffix=" km",
@@ -1296,7 +1297,7 @@ class _WizardFieldPage(QWizardPage):
         layout.addRow(intro)
 
         for field_spec in self._fields:
-            box = QDoubleSpinBox()
+            box = PreciseDoubleSpinBox()
             box.setRange(field_spec.minimum, field_spec.maximum)
             box.setDecimals(field_spec.decimals)
             box.setSingleStep(field_spec.step)

@@ -44,6 +44,7 @@ from PySide6.QtWidgets import (
 
 from ..engine.constellation import WALKER_PATTERNS, WalkerConstellationRequest
 from ..schema.scenario import ScenarioValidationError
+from .widgets import PreciseDoubleSpinBox
 
 _PATTERN_LABELS = {
     "delta": "Walker-Delta (planes spread over 360°, e.g. GPS)",
@@ -59,7 +60,7 @@ def _int_spin(minimum: int, maximum: int, value: int) -> QSpinBox:
 
 
 def _double_spin(minimum: float, maximum: float, decimals: int, step: float, value: float) -> QDoubleSpinBox:
-    box = QDoubleSpinBox()
+    box = PreciseDoubleSpinBox()
     box.setRange(minimum, maximum)
     box.setDecimals(decimals)
     box.setSingleStep(step)

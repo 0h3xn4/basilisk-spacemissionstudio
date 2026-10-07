@@ -381,6 +381,7 @@ def cmd_generate_phasing_formation(args: argparse.Namespace) -> int:
         station_keeping_target_altitude_km=args.station_keeping_target_altitude_km,
         station_keeping_deadband_km=args.station_keeping_deadband_km,
         thrust_n=args.thrust_n, isp_s=args.isp_s, propellant_kg=args.propellant_kg,
+        eclipse_sunlit_threshold=args.eclipse_sunlit_threshold,
     )
     try:
         follower = generate_phasing_follower(request, chief, template, scenario.gravity.central_body)
@@ -517,6 +518,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_phasing.add_argument("--thrust-n", type=float, default=0.05, help="shared thruster thrust [N]")
     p_phasing.add_argument("--isp-s", type=float, default=1500.0, help="shared thruster specific impulse [s]")
     p_phasing.add_argument("--propellant-kg", type=float, default=5.0, help="shared tank propellant [kg]")
+    p_phasing.add_argument("--eclipse-sunlit-threshold", type=float, default=0.99,
+                            help="minimum shadow factor [-] (1.0 = full sunlight) before a station-keeping "
+                                 "reboost burn may fire")
     p_phasing.set_defaults(func=cmd_generate_phasing_formation)
 
     p_gui = subparsers.add_parser("gui", help="launch the PySide6 GUI shell")

@@ -90,15 +90,26 @@ def test_srp_pointer_label_gets_its_full_wrapped_height_not_clipped(dialog):
     assert label.geometry().height() >= needed_height
 
 
-def test_dialog_resizes_to_its_own_sizehint_on_construction(dialog):
-    """Regression guard: this dialog's window used to stay at whatever
-    size Qt's FIRST layout pass guessed (871x734, measured directly),
-    smaller than its own later-computed sizeHint() (871x768) once every
-    group was actually built -- clipping the bottom rows of the last
-    group against its own border. Explicitly resizing to sizeHint() at
-    the end of __init__ (after every group exists) fixes it.
+def test_no_group_is_squashed_below_its_minimum_height(dialog):
+    """Regression guard: the three groups need ~800 px of height. On an
+    800 px-tall screen (this offscreen test platform's own default, and a
+    common laptop height) the window got clamped and Qt squashed the
+    "Atmosphere & drag" rows until their text was cut off. The content
+    now sits in a QScrollArea, so every group keeps at least its own
+    minimum height and the dialog scrolls instead -- and is still wide
+    enough that no horizontal scrolling is ever needed.
     """
-    assert dialog.size() == dialog.sizeHint()
+    from PySide6.QtWidgets import QApplication, QGroupBox, QScrollArea
+
+    dialog.show()
+    for _ in range(3):
+        QApplication.processEvents()
+
+    for group in dialog.findChildren(QGroupBox):
+        assert group.height() >= group.minimumSizeHint().height(), group.title()
+
+    scroll = dialog.findChildren(QScrollArea)[0]
+    assert scroll.widget().minimumSizeHint().width() <= scroll.viewport().width()
 
 
 def test_defaults_round_trip(dialog):

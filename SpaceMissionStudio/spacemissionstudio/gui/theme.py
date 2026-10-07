@@ -45,6 +45,8 @@ was written against and cross-checked with that reference, not guessed.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import QApplication
 
@@ -77,6 +79,20 @@ _C = {
 # themed system instead of a visually foreign addition. `_C` itself
 # stays the name used throughout this file's own `_qss()` for brevity.
 PALETTE = _C
+
+# Small SVG glyphs (combo/spin arrows, check mark, radio dot) the
+# stylesheet below points at. Needed because styling a subcontrol such as
+# QComboBox::drop-down or QSpinBox::up-button at all makes Qt stop
+# drawing its native arrow there -- every combo box and spin box in the
+# app rendered with NO arrow, indistinguishable from a plain text field.
+# Their stroke/fill colors are hard-coded to text_muted/text_disabled/
+# on_accent above (tests/gui/test_theme.py checks they stay in sync).
+_ASSETS_DIR = Path(__file__).resolve().parent / "assets"
+
+
+def _asset(name: str) -> str:
+    # Qt's url() wants forward slashes on every platform, Windows included.
+    return (_ASSETS_DIR / name).as_posix()
 
 
 def _qss() -> str:
@@ -123,8 +139,8 @@ def _qss() -> str:
         color: {c['accent']};
     }}
     QGroupBox::indicator {{
-        width: 16px;
-        height: 16px;
+        width: 14px;
+        height: 14px;
     }}
 
     /* ---- buttons ---------------------------------------------------- */
@@ -150,6 +166,12 @@ def _qss() -> str:
         background-color: {c['accent']};
         border: 1px solid {c['accent']};
         color: {c['on_accent']};
+    }}
+    /* Bold only for the static primary property, NOT :default -- a button
+       can BECOME the default after Qt has already sized it (QWizard's
+       Finish button on the last page), and the wider bold text was then
+       clipped ("Finisl"). The accent fill alone marks the default button. */
+    QPushButton[primary="true"] {{
         font-weight: 600;
     }}
     QPushButton:default:hover, QPushButton[primary="true"]:hover {{
@@ -157,6 +179,21 @@ def _qss() -> str:
     }}
     QPushButton:default:pressed, QPushButton[primary="true"]:pressed {{
         background-color: {c['accent_pressed']};
+    }}
+    /* Without this, a disabled default/primary button kept the bright
+       accent fill above and looked exactly as clickable as an enabled one. */
+    QPushButton:default:disabled, QPushButton[primary="true"]:disabled {{
+        background-color: {c['surface_alt']};
+        border: 1px solid {c['border']};
+        color: {c['text_disabled']};
+    }}
+    /* Compact in-row action button (e.g. a template list row's own
+       "Customize..." button) -- same look, tighter so it fits a list row. */
+    QPushButton#rowCustomizeButton {{
+        padding: 1px 10px;
+        border-radius: 5px;
+        color: {c['accent']};
+        font-weight: 600;
     }}
 
     /* ---- text/number inputs ------------------------------------------ */
@@ -196,6 +233,14 @@ def _qss() -> str:
         border: none;
         width: 20px;
     }}
+    QComboBox::down-arrow {{
+        image: url({_asset('chevron-down.svg')});
+        width: 10px;
+        height: 10px;
+    }}
+    QComboBox::down-arrow:disabled {{
+        image: url({_asset('chevron-down-disabled.svg')});
+    }}
     QComboBox QAbstractItemView {{
         background-color: {c['surface']};
         border: 1px solid {c['border']};
@@ -206,6 +251,24 @@ def _qss() -> str:
     QSpinBox::up-button, QSpinBox::down-button, QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {{
         width: 16px;
         border: none;
+    }}
+    QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {{
+        image: url({_asset('chevron-up.svg')});
+        width: 8px;
+        height: 8px;
+    }}
+    QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{
+        image: url({_asset('chevron-down.svg')});
+        width: 8px;
+        height: 8px;
+    }}
+    QSpinBox::up-arrow:disabled, QDoubleSpinBox::up-arrow:disabled,
+    QSpinBox::up-arrow:off, QDoubleSpinBox::up-arrow:off {{
+        image: url({_asset('chevron-up-disabled.svg')});
+    }}
+    QSpinBox::down-arrow:disabled, QDoubleSpinBox::down-arrow:disabled,
+    QSpinBox::down-arrow:off, QDoubleSpinBox::down-arrow:off {{
+        image: url({_asset('chevron-down-disabled.svg')});
     }}
 
     /* ---- lists -------------------------------------------------------- */
@@ -260,6 +323,16 @@ def _qss() -> str:
     }}
     QScrollArea > QWidget > QWidget {{
         background-color: transparent;
+    }}
+    /* Bordered, recessed reference panel (e.g. the sensor/actuator
+       editor's per-kind parameter reference). */
+    QScrollArea#paramReference {{
+        border: 1px solid {c['border']};
+        border-radius: 6px;
+        background-color: {c['surface_alt']};
+    }}
+    QScrollArea#paramReference > QWidget > QWidget {{
+        background-color: {c['surface_alt']};
     }}
     QScrollBar:vertical {{
         background: transparent;
@@ -347,6 +420,13 @@ def _qss() -> str:
     QToolButton:disabled {{
         color: {c['text_disabled']};
     }}
+    /* A checkable action's ON state (e.g. "Live Plot") -- without this
+       rule it rendered identically on and off. */
+    QToolButton:checked {{
+        background-color: {c['accent_soft']};
+        border-color: {c['accent']};
+        color: {c['accent']};
+    }}
     QToolButton#primaryToolButton {{
         background-color: {c['accent']};
         color: {c['on_accent']};
@@ -389,9 +469,53 @@ def _qss() -> str:
         border-radius: 4px;
     }}
 
-    /* ---- checkboxes / checkable group boxes --------------------------- */
-    QCheckBox {{
+    /* ---- checkboxes / radio buttons / checkable group boxes --------- */
+    /* Transparent, not the base QWidget rule's window background: inside
+       a white group box that rule painted a grey band behind every
+       checkbox row (and behind QStackedWidget pages, e.g. the orbit
+       initial-condition form). */
+    QCheckBox, QRadioButton, QStackedWidget {{
+        background-color: transparent;
+    }}
+    QCheckBox, QRadioButton {{
         spacing: 8px;
+    }}
+    QCheckBox::indicator, QGroupBox::indicator, QRadioButton::indicator,
+    QListWidget::indicator, QTreeWidget::indicator {{
+        width: 14px;
+        height: 14px;
+        border: 1px solid {c['border_strong']};
+        border-radius: 3px;
+        background-color: {c['surface']};
+    }}
+    QRadioButton::indicator {{
+        border-radius: 8px;
+    }}
+    QCheckBox::indicator:hover, QGroupBox::indicator:hover, QRadioButton::indicator:hover,
+    QListWidget::indicator:hover, QTreeWidget::indicator:hover {{
+        border-color: {c['accent']};
+    }}
+    QCheckBox::indicator:checked, QGroupBox::indicator:checked,
+    QListWidget::indicator:checked, QTreeWidget::indicator:checked {{
+        background-color: {c['accent']};
+        border-color: {c['accent']};
+        image: url({_asset('check.svg')});
+    }}
+    QRadioButton::indicator:checked {{
+        background-color: {c['accent']};
+        border-color: {c['accent']};
+        image: url({_asset('radio-dot.svg')});
+    }}
+    QCheckBox::indicator:disabled, QGroupBox::indicator:disabled, QRadioButton::indicator:disabled,
+    QListWidget::indicator:disabled, QTreeWidget::indicator:disabled {{
+        background-color: {c['surface_alt']};
+        border-color: {c['border']};
+    }}
+    QCheckBox::indicator:checked:disabled, QGroupBox::indicator:checked:disabled,
+    QRadioButton::indicator:checked:disabled,
+    QListWidget::indicator:checked:disabled, QTreeWidget::indicator:checked:disabled {{
+        background-color: {c['text_disabled']};
+        border-color: {c['text_disabled']};
     }}
     """
 

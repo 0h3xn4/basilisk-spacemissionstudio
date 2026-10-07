@@ -55,6 +55,7 @@ from .ground_station_editor import GroundStationListWidget
 from .mission_sequence_editor import MissionSequenceEditorWidget
 from .monte_carlo_editor import MonteCarloGroupWidget
 from .spacecraft_editor import SpacecraftListWidget
+from .theme import PALETTE
 
 
 class ScenarioEditorWidget(QWidget):
@@ -314,6 +315,7 @@ class ScenarioEditorWidget(QWidget):
 
     def from_scenario(self, scenario: Scenario) -> None:
         self.name_edit.setText(scenario.name)
+        self.name_edit.setCursorPosition(0)  # a long name otherwise opens scrolled to its END
         self.epoch_edit.setText(scenario.epoch_utc)
         mode_index = self.simulation_mode_combo.findData(scenario.simulation_mode)
         if mode_index >= 0:
@@ -345,7 +347,7 @@ class ScenarioEditorWidget(QWidget):
             self.to_scenario()
         except ScenarioValidationError as exc:
             self.validation_label.setText(f"⚠ {exc}")
-            self.validation_label.setStyleSheet("color: #b00020;")
+            self.validation_label.setStyleSheet(f"color: {PALETTE['danger']};")
         else:
             self.validation_label.setText("✓ valid")
-            self.validation_label.setStyleSheet("color: #1a7a1a;")
+            self.validation_label.setStyleSheet(f"color: {PALETTE['success']};")

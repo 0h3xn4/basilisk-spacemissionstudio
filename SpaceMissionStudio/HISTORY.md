@@ -6571,3 +6571,62 @@ The stat-tile/badge/table design above landed the SHAPE a real user had converge
 Wired into `gui/scenario_explainer_widget.py`: one `FormationDiagramWidget` per `formation_diagrams` entry, placed directly inside the "Formation / orbit maintenance" section (right below its badges/notes) -- the diagram sits next to the badge that names the mechanism it depicts, not in some separate, disconnected part of the tab.
 
 **Verified**: rendered directly (grabbed to PNG, visually inspected) both against synthetic data at several separation/tolerance scales and against the REAL bundled template 05 (90-day phasing-keeping demo) -- the diagram correctly reflects that template's real 50 km target, 10%/2% trigger/restore tolerances, and renders legibly alongside its stat tiles, badges, and the existing spacecraft comparison table. New `tests/gui/test_formation_diagram_widget.py` (5 tests): zero-height with no diagram, real height once one is set, collapses back to zero on clear, `paintEvent` doesn't raise across a deliberately wide range of separation/tolerance combinations (including the edge case where the restore band would be wider than a naive implementation might clip), accepts an initial diagram via the constructor. Three new `tests/test_scenario_explainer.py` tests cover the extraction logic directly (correct fields for a template-05-shaped pair; the first-entry-of-a-schedule rule for a multi-step separation list; no diagram without `phasing_keeping`). Three new `tests/gui/test_scenario_explainer_widget.py` tests confirm the widget is actually instantiated for a rich (chief/follower) scenario, absent for a trivial one, and correctly removed when switching from rich back to trivial (a real `deleteLater()`-timing bug was caught and fixed here: `QObject.findChildren()` still sees a widget until the NEXT event-loop pass actually runs its deferred deletion, so the test needed a `qtbot.wait(10)` after the switch -- the same reason `ScenarioExplainerWidget._render()`'s own clear-and-repopulate pattern works correctly in the app itself, where the event loop keeps running). Full suite: 1236 passed, 186 skipped, same one pre-existing unrelated flake deselected -- up from 1226.
+
+## Full code + GUI audit: stale code removed, real bugs fixed, every dialog visually reviewed
+
+A request for a complete audit of the whole codebase and GUI, covering stale code, GUI elements with no remaining purpose, visual polish, and any real bugs. Static analysis (ruff/pyflakes/vulture) came first, then every main-window state and every dialog was rendered offscreen and inspected. Then came a mechanical open-then-OK round trip of every editor dialog over all 20 bundled templates, a schema probe with invalid values, a CLI-vs-GUI parity check, and a loop of the GUI suite to chase an intermittent crash.
+
+**Real bugs found and fixed**
+
+* **Opening an editor and clicking OK changed the data.** A plain `QDoubleSpinBox` rounds every value to its *display* decimals as soon as the value is set. So with zero edits, the spacecraft dialog rewrote template 13's 0.00667 kg*m^2 inertia as 0.007 (a 5% change), its 2-hour duration (0.08333 d) as 0.0833, a 7078.1366 km semi-major axis as 7078.137, and more.
+  * The fix is a new `gui/widgets.py` `PreciseDoubleSpinBox`. It stores 10 decimals, treats `setDecimals()` as the *minimum* shown, and so always displays what will actually be saved. It always uses `.` as the decimal point (a typed `,` is also accepted), matching every other number the app prints, instead of switching to `,` under e.g. a German locale. It replaces all 17 spin-box constructions across the GUI.
+  * The same class of bug existed in two comma-separated list fields (`target_separation_km`, `wheel_speed_biases_rad_s`), which were formatted with `{:g}` (6 significant digits). These now use `exact_number_text()`.
+  * New regression test: `test_opening_then_okaying_every_editor_leaves_template_values_unchanged`, parametrized over every template and every spacecraft/sensor/actuator/propagation/ground-station/dispersion dialog.
+* **Intermittent whole-process abort: "QThread: Destroyed while thread is still running".** Workers emit their terminal signal from inside `run()`, so the thread can still be returning when that signal's slot runs. Dropping the last reference to it at that point aborts the process.
+  * In the app, `on_run()`/`on_run_monte_carlo()` replaced `self._run_worker`/`self._mc_worker` unconditionally. They now call `_join_finished_worker()` first.
+  * In the tests, this is the long-standing "pre-existing flake" that earlier entries deselected: looping `test_run_worker.py` alone aborted 8 runs in 25. Three tests returned right after the `failed` signal, so the worker was garbage-collected mid-return. A new autouse fixture in `tests/gui/conftest.py` now joins every QThread a test started, and the affected tests wait on their worker explicitly. After the fix: 0 aborts in 25 loops of every QThread-using test file, and 5 of 5 full GUI-suite runs clean.
+* **Locale-dependent SPICE epoch strings.** `QApplication` calls `setlocale(LC_ALL, "")` on Linux, which made `strftime("%b")` locale-dependent. Under a German locale, any epoch in March, May, October, or December produced e.g. `2030 MÄR 01`, which SPICE rejects. `engine/time_system.py` now uses a fixed English month table.
+* **Zero or non-finite direction vectors passed validation.** Only the length of these vectors was checked: `comms_pointing.antenna_boresight_b`, `comms_pointing.sun_pointing_axis_b`, `power.panel_normal_b`, `constant_thrust.direction`, CSS/thermal `nHat_B`, RW `gsHat_B`, and MTB `gtHat_B`. A `[0, 0, 0]` or NaN axis only failed mid-run, as a NaN attitude target. The new shared check `_is_direction_vector()` requires three finite components and non-zero length.
+* **Template 05's Customize wizard said the opposite of the truth.** It told the user `follower-1` holds station *behind* `chief-1`. `target_separation_km` is a "follower leads chief" distance, so it now says *ahead*.
+* **CLI/GUI parity gap.** `generate-phasing-formation` had no `--eclipse-sunlit-threshold`, though `PhasingFormationRequest` and the GUI dialog both support it. A new test asserts that every `PhasingFormationRequest` field is reachable from the CLI.
+* `SimulationService.log_last_known_state()`'s docstring promised "never raises", but its station-keeping/phasing controller log reads were unguarded. They are now guarded too.
+
+**Stale code removed**
+
+* The five unused `diagnostic_05*.json` debug scenarios, which shipped in every wheel. The one still used by a test moved to `tests/data/vizard_station_keeping_crash_regression.json`.
+* `time_system.py`'s dead, never-called SPICE helpers (`utc_to_et`, `et_to_utc_iso`, `EpochTimes`, `epoch_times`, `build_epoch_msg`) were removed. The module is now Basilisk-free and its tests run everywhere.
+* Unused imports across `gui/` and the tests.
+
+**GUI cleanup**
+
+* **Combo boxes and spin boxes had no arrows at all.** Styling the `::drop-down`/`::up-button` subcontrols makes Qt stop drawing the native arrow, so every dropdown looked like a plain text field. The fix ships SVG chevrons, plus themed check-mark and radio indicators, in `gui/assets/` (added to `package-data`, and verified in a built wheel). `test_theme.py` checks that every referenced asset exists and that the SVG colours match `PALETTE`.
+* **Grey bands in group boxes.** The theme's base `QWidget` background rule painted a grey band behind every checkbox row and stacked-widget page inside a white group box, and across the Explain tab's sections. Those widgets are now transparent.
+* **Load Scenario tab.** It had 20 full-width "Customize: <whole title>..." buttons below the list, which forced a ~690 px minimum width and a horizontal scrollbar at the default window size. They are replaced by a compact **Customize...** button on each row. The buttons sit above the list, and the list fits its rows.
+* **Toolbar.** The platform's mixed stock pixmaps (colour folder/floppy bitmaps, a ▶▶ glyph, no icon at all for Live Plot) are replaced with one consistent SVG line-icon set (`icons.toolbar_icon()`). A checked toolbar action, like Live Plot, now looks different from an unchecked one.
+* **Propagation setup.** The content is now in a scroll area sized to the screen. On an 800 px screen, the window manager had clamped the dialog and squashed the "Atmosphere & drag" rows until their text was cut off. Over-long field labels were shortened, taking the dialog from 905 to 671 px wide.
+* **Phasing formation dialog.** A flat 20-row form (830 px tall) is now five titled groups (Spacecraft, Initial offset, Propulsion, Station-keeping, Phasing-keeping) in two columns, 594 px tall.
+* **Sensor/actuator editor.** The reaction-wheel help was a 16-bullet wall that made the dialog 896 px tall. It is now a recessed reference panel capped at 150 px, with warnings first. An empty catalog-info label that left a 40 px gap is now hidden.
+* **Spacecraft editor.**
+  * The tab bar was clipped, because it was measured before the stylesheet's bold tab font was applied.
+  * The Attitude control tab now puts the Comms pointing group directly under FSW mode, with a hint that changes with context, and the JSON boxes are height-capped.
+  * Tab labels are shortened.
+* **Smaller fixes.**
+  * Disabled primary buttons no longer look enabled.
+  * Explain-tab stat tiles no longer draw nested borders.
+  * The formation diagram's trigger band is no longer clipped at the widget edge.
+  * The Scenario Editor button rows no longer overflow the left pane.
+  * The wizard's Finish button no longer renders clipped ("Finisl"): bold is now reserved for `[primary="true"]`, not the dynamic `:default` state.
+  * Long scenario names no longer open scrolled to their end.
+  * The Vizard dialog's camera placeholder is no longer truncated.
+  * The spacecraft-template list's horizontal scrollbar is gone.
+  * The Mission Dashboard empty state is centred.
+  * Validation-label colours now come from `PALETTE`.
+
+**Docs**
+
+* `USER_MANUAL.md`'s three screenshots were regenerated from the current GUI (they showed the old Load Scenario design and 18 templates).
+* The manual's, README's, and templates README's Customize instructions now describe the per-row button.
+* The README file layout now lists every module and test file (several were missing).
+* The test counts and the Basilisk-independence list were corrected; `time_system.py` is now Basilisk-free.
+
+**Verified**: full suite 1298 passed, 183 skipped (Basilisk-dependent), with nothing deselected (up from 1252 passed at the start of this audit). `scripts/_generate_templates.py` still regenerates all 20 templates byte-identically. A wheel built from a clean tree contains the SVG assets and no diagnostic scenarios. Every dialog and main-window state was re-rendered after the fixes and inspected.

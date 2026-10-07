@@ -94,6 +94,7 @@ from ..schema.scenario import (
 from .feedback import clear_invalid, mark_invalid, show_toast
 from .orbit_ic_widget import OrbitIcWidget
 from .sensor_actuator_editor import SensorActuatorListWidget
+from .widgets import PreciseDoubleSpinBox, exact_number_text
 
 _FSW_MODE_NONE_LABEL = "(none -- no attitude control)"
 
@@ -192,7 +193,7 @@ def _control_params_hint_text() -> str:
 
 
 def _spin(minimum: float, maximum: float, decimals: int = 4, step: float = 1.0, value: float = 0.0) -> QDoubleSpinBox:
-    box = QDoubleSpinBox()
+    box = PreciseDoubleSpinBox()
     box.setRange(minimum, maximum)
     box.setDecimals(decimals)
     box.setSingleStep(step)
@@ -460,6 +461,7 @@ class SpacecraftEditorDialog(QDialog):
 
         initial_fsw_params = config.fsw_params if config else _fsw_template_params(self.fsw_mode_combo.currentData())
         self.fsw_params_edit = QPlainTextEdit(json.dumps(initial_fsw_params, indent=2))
+        self.fsw_params_edit.setMaximumHeight(140)
         fsw_layout.addWidget(self.fsw_params_edit)
 
         fsw_layout.addWidget(QLabel("Control gains (JSON object)"))
@@ -468,7 +470,9 @@ class SpacecraftEditorDialog(QDialog):
         control_hint_label.setStyleSheet("color: palette(mid);")
         fsw_layout.addWidget(control_hint_label)
         self.control_params_edit = QPlainTextEdit(json.dumps(config.control_params if config else {}, indent=2))
+        self.control_params_edit.setMaximumHeight(140)
         fsw_layout.addWidget(self.control_params_edit)
+        fsw_layout.addStretch(1)
 
         # comms_pointing (Phase 6 audit fix): previously had NO editor
         # anywhere in this dialog -- opening then OK'ing a spacecraft that
@@ -574,9 +578,15 @@ class SpacecraftEditorDialog(QDialog):
             "-switching behavior with no extra power draw."
         )
         cp_form.addRow("Comms power [W]", self.cp_comms_power_w)
-        fsw_layout.addWidget(self.comms_pointing_group)
+        # Directly under the FSW mode row, not after the two JSON editors:
+        # comms_pointing is the ALTERNATIVE to an FSW mode, and at the
+        # bottom of the tab it sat below the fold even when it was the
+        # spacecraft's actual, active attitude control (e.g. template 19).
+        fsw_layout.insertWidget(fsw_layout.indexOf(self.fsw_hint_label) + 1, self.comms_pointing_group)
+        self.comms_pointing_group.toggled.connect(self._refresh_fsw_hint)
+        self._refresh_fsw_hint()
 
-        self._fsw_tab_index = tabs.addTab(_scrollable(fsw_tab), "Attitude control (FSW)")
+        self._fsw_tab_index = tabs.addTab(_scrollable(fsw_tab), "Attitude control")
 
         # -- Power budget / RF link budget tab (Phase 4) ----------------------
         # Both are OFF by default (unchecked group box) -- turning one on is
@@ -807,7 +817,7 @@ class SpacecraftEditorDialog(QDialog):
         pk_form.addRow("Chief spacecraft", self.pk_chief_combo)
 
         self.pk_target_separation_edit = QLineEdit(
-            ", ".join(f"{d:g}" for d in pk0.target_separation_km) if pk0 else "100"
+            ", ".join(exact_number_text(d) for d in pk0.target_separation_km) if pk0 else "100"
         )
         self.pk_target_separation_edit.setPlaceholderText("e.g. 1000, 500, 100 (comma-separated, km)")
         self.pk_target_separation_edit.setToolTip(
@@ -960,7 +970,9 @@ class SpacecraftEditorDialog(QDialog):
         self.magnetic_momentum_management_group.setChecked(mmm0 is not None)
         mmm_form = QFormLayout(self.magnetic_momentum_management_group)
         self.mmm_wheel_speed_biases_edit = QLineEdit(
-            ", ".join(f"{v:g}" for v in mmm0.wheel_speed_biases_rad_s) if mmm0 else "0"
+            # exact_number_text, not "{v:g}": that kept only 6 significant
+            # digits, so a plain open-then-OK rewrote 83.7758040957278 as 83.7758
+            ", ".join(exact_number_text(v) for v in mmm0.wheel_speed_biases_rad_s) if mmm0 else "0"
         )
         self.mmm_wheel_speed_biases_edit.setPlaceholderText(
             "e.g. 83.8, 62.8 (comma-separated, rad/s, one per reaction_wheel actuator)"
@@ -1191,7 +1203,7 @@ class SpacecraftEditorDialog(QDialog):
 
         viz_model_layout.addWidget(self.viz_model_group)
         viz_model_layout.addStretch(1)
-        tabs.addTab(_scrollable(viz_model_tab), "Vizard model (cosmetic)")
+        tabs.addTab(_scrollable(viz_model_tab), "Vizard model")
 
         if self._orbit_only:
             tabs.setTabVisible(self._sensors_tab_index, False)
@@ -1244,7 +1256,14 @@ class SpacecraftEditorDialog(QDialog):
         # scrolls independently rather than forcing every other tab's
         # dialog that tall (see _scrollable()'s own docstring).
         widest_tab_content = max(tabs.widget(i).widget().sizeHint().width() for i in range(tabs.count()))
-        self.resize(max(650, widest_tab_content + 40), 700)
+        # Also wide enough for the tab bar itself -- sized from content
+        # alone, the last tab ("Vizard model") was clipped to a sliver.
+        # ensurePolished() first: the theme's bold tab font only applies
+        # once the stylesheet polishes the bar, and the unpolished
+        # sizeHint() comes out ~100 px short, still scrolling the bar.
+        tabs.tabBar().ensurePolished()
+        tab_bar_width = tabs.tabBar().sizeHint().width()
+        self.resize(max(650, widest_tab_content + 40, tab_bar_width + 40), 700)
 
     def _on_name_changed(self, text: str) -> None:
         """Live, per-keystroke feedback (theme.py's ``[state="error"]``
@@ -1292,6 +1311,19 @@ class SpacecraftEditorDialog(QDialog):
         self.accept()
 
     def _on_fsw_mode_changed(self, _index: int) -> None:
+        self._refresh_fsw_hint()
+
+    def _refresh_fsw_hint(self, *_args) -> None:
+        # Comms pointing runs its own guidance AND feeds 'Control gains'
+        # into its mrpFeedback loop (engine.service) -- the plain "(none)"
+        # hint ("...control gains below are unused") was flatly wrong for
+        # a comms_pointing spacecraft such as template 19's.
+        if self.comms_pointing_group.isChecked() and self.fsw_mode_combo.currentData() is None:
+            self.fsw_hint_label.setText(
+                "Attitude is controlled by 'Comms pointing' below -- leave FSW mode at (none). "
+                "FSW params are unused; Control gains ARE used by its feedback loop."
+            )
+            return
         self.fsw_hint_label.setText(_fsw_hint_text(self.fsw_mode_combo.currentData()))
 
     def _on_fsw_reset_template(self) -> None:
@@ -1743,7 +1775,6 @@ class SpacecraftListWidget(QWidget):
 
     def _on_generate_constellation(self) -> None:
         from ..engine.constellation import generate_walker_constellation
-        from ..schema.scenario import OrbitIC
         from .constellation_dialog import WalkerConstellationDialog
 
         central_body = self._central_body_provider() if self._central_body_provider else "earth"

@@ -30,6 +30,7 @@ def test_run_without_basilisk_emits_failed(qtbot):
     worker = RunWorker(_load_two_body_scenario())
     with qtbot.waitSignal(worker.failed, timeout=5000) as blocker:
         worker.start()
+    assert worker.wait(5000)  # join it: GC of a still-running QThread aborts the process
     assert "Basilisk is not installed" in blocker.args[0]
 
 
@@ -44,6 +45,7 @@ def test_live_run_without_basilisk_emits_failed(qtbot):
     worker = RunWorker(_load_two_body_scenario(), live=True)
     with qtbot.waitSignal(worker.failed, timeout=5000) as blocker:
         worker.start()
+    assert worker.wait(5000)  # join it: GC of a still-running QThread aborts the process
     assert "Basilisk is not installed" in blocker.args[0]
 
 
@@ -57,6 +59,7 @@ def test_monte_carlo_worker_without_basilisk_emits_failed(qtbot, tmp_path):
     worker = MonteCarloWorker(scenario, mc_config, tmp_path / "mc")
     with qtbot.waitSignal(worker.failed, timeout=5000) as blocker:
         worker.start()
+    assert worker.wait(5000)  # join it: GC of a still-running QThread aborts the process
     assert "Basilisk is not installed" in blocker.args[0]
 
 

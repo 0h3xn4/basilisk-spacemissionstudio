@@ -1932,22 +1932,28 @@ class SimulationService:
             except Exception:
                 _logger.exception("%s: failed to read last recorded position/velocity for diagnostics", name)
 
-            controller = handle.station_keeping_controller
-            if controller is not None and controller.tLog:
-                _logger.error(
-                    "%s: station_keeping last tick -- t=%.3f s, alt=%.1f m (smoothed %.1f m), burn_on=%s, "
-                    "propellant=%.4f kg, cumulative_dv=%.4f m/s",
-                    name, controller.tLog[-1], controller.altLog[-1], controller.smoothAltLog[-1],
-                    bool(controller.burnLog[-1]), controller.propellantLog[-1], controller.deltaVLog[-1],
-                )
+            # Guarded too, not just the recorder read above: this method's
+            # whole contract is "never raises", and a controller log read
+            # can fail just as well (e.g. one list shorter than another).
+            try:
+                controller = handle.station_keeping_controller
+                if controller is not None and controller.tLog:
+                    _logger.error(
+                        "%s: station_keeping last tick -- t=%.3f s, alt=%.1f m (smoothed %.1f m), burn_on=%s, "
+                        "propellant=%.4f kg, cumulative_dv=%.4f m/s",
+                        name, controller.tLog[-1], controller.altLog[-1], controller.smoothAltLog[-1],
+                        bool(controller.burnLog[-1]), controller.propellantLog[-1], controller.deltaVLog[-1],
+                    )
 
-            phase_controller = handle.phasing_keeping_controller
-            if phase_controller is not None and phase_controller.tLog:
-                state_names = {0: "IDLE", 1: "BURN_OUT", 2: "DRIFT", 3: "BURN_RESTORE"}
-                _logger.error(
-                    "%s: phasing_keeping last tick -- t=%.3f s, error=%.4f deg, state=%s, propellant=%.4f kg, "
-                    "cumulative_dv=%.4f m/s",
-                    name, phase_controller.tLog[-1], phase_controller.errorDegLog[-1],
-                    state_names.get(phase_controller.stateLog[-1], phase_controller.stateLog[-1]),
-                    phase_controller.propellantLog[-1], phase_controller.deltaVLog[-1],
-                )
+                phase_controller = handle.phasing_keeping_controller
+                if phase_controller is not None and phase_controller.tLog:
+                    state_names = {0: "IDLE", 1: "BURN_OUT", 2: "DRIFT", 3: "BURN_RESTORE"}
+                    _logger.error(
+                        "%s: phasing_keeping last tick -- t=%.3f s, error=%.4f deg, state=%s, propellant=%.4f kg, "
+                        "cumulative_dv=%.4f m/s",
+                        name, phase_controller.tLog[-1], phase_controller.errorDegLog[-1],
+                        state_names.get(phase_controller.stateLog[-1], phase_controller.stateLog[-1]),
+                        phase_controller.propellantLog[-1], phase_controller.deltaVLog[-1],
+                    )
+            except Exception:
+                _logger.exception("%s: failed to read the orbit-maintenance controller logs for diagnostics", name)

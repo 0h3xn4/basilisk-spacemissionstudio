@@ -174,14 +174,15 @@ environment issue.
 * **Everything Basilisk-independent** (`spacemissionstudio/schema/`,
   `engine/spaceweather.py`, `engine/results.py`, `engine/link_budget.py`,
   `engine/constellation.py`, `engine/spacecraft_templates.py`,
-  `engine/propellant_bookkeeping.py`, `cli.py`, and the entire
-  `spacemissionstudio/gui/` package) has no Basilisk import and is fully
-  exercised either way -- `pytest tests/` runs and passes 1007 tests
-  with or without Basilisk installed (see "Running the tests" below).
+  `engine/propellant_bookkeeping.py`, `engine/time_system.py`,
+  `engine/orbit_design.py`, `engine/scenario_explainer.py`, `cli.py`, and
+  the entire `spacemissionstudio/gui/` package) has no Basilisk import
+  and is fully exercised either way -- `pytest tests/` runs and passes
+  1298 tests without Basilisk installed (see "Running the tests" below).
   That includes the PySide6 GUI: built, run headless, and driven with
   `pytest-qt` for real -- every form field, every menu action, every
   dialog -- not asserted about in the abstract.
-* **Everything Basilisk-dependent** (`time_system.py`, `kernels.py`,
+* **Everything Basilisk-dependent** (`kernels.py`,
   `service.py`, `fsw.py`/`vizard.py`, `monte_carlo.py`,
   `orbit_maintenance.py`, `mission_engine.py`) has been confirmed
   against a real `pip install "bsk[all]"` Basilisk build, including a
@@ -418,6 +419,7 @@ SpaceMissionStudio/
   spacemissionstudio/
     cli.py                           -- batch/headless CLI + GUI launcher
     logging_setup.py                 -- file-backed logging (so a GUI crash leaves more than one bare line)
+    plot_categories.py               -- per-series display metadata (title, axis label, unit, display-only conversion)
     schema/
       scenario.py                    -- Scenario and friends, validation, save/load
       migrations.py                  -- schema-version migration registry
@@ -425,7 +427,7 @@ SpaceMissionStudio/
       references.py                  -- Phase 6: reference-integrity (find/rename) for resources + commands
       validation.py                  -- Phase 6: validate_all() -- fully-collecting scenario-wide validation
     engine/
-      time_system.py                 -- UTC/TAI/TT/ET, single source of truth (needs Basilisk)
+      time_system.py                 -- UTC epoch -> SPICE time string for Basilisk (locale-independent; no Basilisk import)
       kernels.py                     -- SPICE kernel fetch/status (needs Basilisk; network only at install time/startup prompt)
       spaceweather.py                -- local-file/synthetic resolve+validate (no network); fetch() is opt-in only (no Basilisk needed)
       results.py                     -- TimeSeries/ResultSet, CSV export (no Basilisk needed)
@@ -446,9 +448,12 @@ SpaceMissionStudio/
     gui/
       app.py                         -- QApplication entry point
       theme.py                       -- Phase 5: app-wide QSS stylesheet + palette
+      assets/                        -- SVG glyphs: combo/spin arrows, check marks (theme.py) + toolbar line icons (icons.py)
+      widgets.py                     -- PreciseDoubleSpinBox (stores full precision, not just its display decimals) + exact_number_text()
+      autosave.py                    -- crash-recovery autosave of in-progress scenario edits
       feedback.py                    -- toast notifications + inline (per-field) validation highlighting
       badges.py                      -- colored pill/badge QLabel styling helper, shared by mission_dashboard_widget.py and scenario_explainer_widget.py
-      icons.py                       -- Phase 5: procedurally-drawn app icon
+      icons.py                       -- Phase 5: procedurally-drawn app icon + toolbar_icon() for the toolbar SVGs
       main_window.py                 -- MainWindow: File/Run/Help menus + toolbar, ties everything together
       load_scenario_widget.py        -- "Load Scenario" tab: built-in template picker + browse-for-a-file
       template_wizard.py             -- "Customize: <template name>..." guided wizard spec registry + dialog
@@ -475,7 +480,6 @@ SpaceMissionStudio/
       run_worker.py                  -- SimulationService/Monte Carlo on a background QThread
     scenarios/
       two_body_validation.json       -- the Phase 0 validation scenario
-      diagnostic_05*.json             -- one-off diagnostic scenarios from '05's own station-keeping/constant-thrust investigation (see HISTORY.md); diagnostic_05f_* is the only one a test (test_vizard.py) still reads
       templates/                     -- education/starter-template scenarios -- see that directory's own README
         README.md                    -- the template catalog: what each one teaches, how to open/run one
         01_two_body_circular_orbit.json
@@ -529,7 +533,12 @@ SpaceMissionStudio/
     test_cli.py
     test_two_body_validation.py      -- requires_basilisk
     test_mission_engine.py           -- Phase 6, requires_basilisk
-    test_time_system.py              -- requires_basilisk
+    test_time_system.py              -- UTC -> SPICE epoch string (locale-independent), no Basilisk needed
+    test_orbit_design.py             -- Sun-synchronous inclination / RAAN-for-LTAN helpers, no Basilisk needed
+    test_scenario_explainer.py       -- explain(): structure, short strings, never raises on any template
+    test_autosave.py                 -- crash-recovery autosave (Qt-free half)
+    test_conservation_check.py       -- when the two-body energy/momentum drift check applies
+    test_orbit_maintenance_j2_regression.py -- phasing/station-keeping regressions under real J2 gravity, requires_basilisk
     test_gravity_gradient.py         -- GravityGradientEffector wiring, requires_basilisk
     test_thruster_control.py         -- real "thruster" actuator control path, requires_basilisk
     test_momentum_dumping.py         -- RW momentum desaturation via thrusters, requires_basilisk
@@ -552,11 +561,19 @@ SpaceMissionStudio/
     test_vizard.py                   -- Vizard GenericStorage/GenericSensor dangling-pointer regression, requires_basilisk
     test_vizard_labels.py            -- Vizard RTN panel label helpers, no Basilisk needed
     test_logging_setup.py            -- file-backed logging so a GUI crash leaves more than one bare line
+    data/
+      vizard_station_keeping_crash_regression.json -- input scenario for test_vizard.py
     gui/
+      conftest.py                    -- joins every QThread a test started (a GC'd running QThread aborts the process)
       test_app.py
+      test_widgets.py                -- PreciseDoubleSpinBox / exact_number_text
+      test_feedback.py               -- toast + inline-validation helpers
+      test_mission_dashboard_widget.py
+      test_scenario_explainer_widget.py
+      test_formation_diagram_widget.py
       test_theme.py
       test_icons.py
-      test_scenario_templates_gui.py -- every template round-trips through ScenarioEditorWidget too
+      test_scenario_templates_gui.py -- every template round-trips through ScenarioEditorWidget and every editor dialog unchanged
       test_orbit_ic_widget.py
       test_spacecraft_editor.py
       test_spacecraft_template_dialog.py
@@ -588,14 +605,16 @@ python3 -m pip install -e ".[dev,gui]"
 python3 -m pytest tests/ -v
 ```
 
-Without Basilisk on `PYTHONPATH`, this runs 1007 tests (schema, space
+Without Basilisk on `PYTHONPATH`, this runs 1298 tests (schema, space
 weather, results, link budget, constellation generation, CLI, and the
-full PySide6 GUI, run headless) and skips 130 whose premise is
-specifically "Basilisk is unavailable" (marked `requires_basilisk`), per
-`tests/conftest.py`.
+full PySide6 GUI, run headless) and skips the 183 that need a real
+Basilisk build (marked `requires_basilisk`, or skipped on a
+Basilisk-availability check), per `tests/conftest.py`.
 
 With Basilisk installed (`pip install "bsk[all]"` -- see "Getting
-started" above), the 130 skips above run for real instead of skipping.
+started" above), those skipped tests run for real instead (and the
+handful whose premise is specifically "Basilisk is unavailable" skip
+instead).
 See "Verification status" above for how thoroughly that's actually been
 exercised -- short version: yes, including a real full multi-day run.
 
@@ -728,9 +747,9 @@ The GUI opens on its **Load Scenario** tab (left pane) -- pick one of the
 twenty built-in template missions (see "Template missions" below) or
 browse for any other scenario file; either one switches you to the
 **Scenario Editor** tab next to it with that scenario loaded and ready to
-edit. Below the template list, a standalone **"Customize: \<template
-name\>..."** button for every one of the twenty templates is always
-visible: a short, multi-step walkthrough of just that template's own key
+edit. Every row of the template list carries its own **Customize...**
+button (always enabled, no selection needed; its accessible name is
+"Customize: \<template name\>"): a short, multi-step walkthrough of just that template's own key
 tunable parameters (pre-filled with its current values), ending in the
 same Scenario Editor tab with those changes already applied -- a faster
 path than the full editor form for someone who wants "GEO

@@ -74,11 +74,11 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QApplication,
     QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
-    QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
     QGroupBox,
@@ -89,8 +89,10 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QSpinBox,
     QVBoxLayout,
+    QWidget,
 )
 
 from ..schema.scenario import (
@@ -101,6 +103,7 @@ from ..schema.scenario import (
     SimSettings,
     SpaceWeatherConfig,
 )
+from .widgets import PreciseDoubleSpinBox
 
 # The minimum spherical-harmonics degree/order that's actually meaningful
 # ("spherical harmonics" starting below this is just point-mass again) --
@@ -108,6 +111,10 @@ from ..schema.scenario import (
 # while the degree spinner is still at 0, never enforced as a hard floor
 # (GravityConfig.validate() only requires >= 0).
 _DEFAULT_HARMONICS_DEGREE = 2
+
+# Wrap width for this dialog's explanatory labels -- keeps the dialog a
+# comfortable reading width instead of one label's single-line length.
+_CONTENT_WIDTH = 600
 
 
 class PropagationSetupDialog(QDialog):
@@ -117,6 +124,24 @@ class PropagationSetupDialog(QDialog):
         self.setWindowTitle("Propagation setup")
 
         layout = QVBoxLayout(self)
+
+        # Everything but the OK/Cancel row lives in a QScrollArea: the
+        # three groups together need ~800 px of height, more than a
+        # common 768/800 px-tall laptop screen offers -- found by
+        # rendering this dialog on an 800 px screen, where the window
+        # manager clamped the window and Qt squashed the last group's
+        # rows until their text was cut off. Scrolling degrades cleanly
+        # instead; on a taller screen the dialog simply opens at full size.
+        content = QWidget()
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setWidget(content)
+        layout.addWidget(scroll)
+
         intro_label = QLabel(
             "Everything that governs how this scenario's orbits propagate: the gravity model, "
             "which perturbations are active, the numerical integrator, and the space-weather data "
@@ -126,37 +151,32 @@ class PropagationSetupDialog(QDialog):
         # A word-wrapped QLabel's sizeHint() reports the width needed to
         # lay the text out on ONE line unless something else constrains
         # it -- without this cap, this label alone stretched the whole
-        # dialog (everything else here just fills whatever width the
-        # layout ends up with) to ~1360px wide. Caught by actually
-        # rendering the dialog and looking at it, not from reading the
-        # layout code -- same class of bug as SpacecraftEditorDialog's
-        # tab-sizing issue elsewhere in this app.
-        intro_label.setMaximumWidth(560)
-        layout.addWidget(intro_label)
+        # dialog to ~1360px wide.
+        intro_label.setMaximumWidth(_CONTENT_WIDTH)
+        content_layout.addWidget(intro_label)
 
-        layout.addWidget(self._build_gravity_group(gravity))
-        layout.addWidget(self._build_sim_settings_group(sim_settings))
-        layout.addWidget(self._build_space_weather_group(space_weather))
-        layout.addStretch(1)
+        content_layout.addWidget(self._build_gravity_group(gravity))
+        content_layout.addWidget(self._build_sim_settings_group(sim_settings))
+        content_layout.addWidget(self._build_space_weather_group(space_weather))
+        content_layout.addStretch(1)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self._on_accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
-        # Real bug, found by actually rendering this dialog: on first
-        # show(), Qt sized this window smaller than its OWN sizeHint()
-        # (871x734 vs 871x768 -- measured directly) -- a nested
-        # QGroupBox/QVBoxLayout/QFormLayout structure containing a
-        # heightForWidth-dependent QLabel (srp_pointer above) doesn't
-        # always converge to its final preferred size within Qt's
-        # initial layout pass. Left alone, that shortfall clipped the
-        # bottom two rows of the "Atmosphere & drag" group against the
-        # group box's own border. Explicitly resizing to sizeHint() here
-        # (computed AFTER every group is built, so it reflects the real,
-        # final content) forces the window to actually match what its
-        # own layout says it needs.
-        self.resize(self.sizeHint())
+        # A QScrollArea's own sizeHint() is a small arbitrary default, not
+        # its content's real size, so size the window from the CONTENT
+        # (computed after every group exists), capped to the screen.
+        content_hint = content.sizeHint()
+        margins = layout.contentsMargins()
+        width = content_hint.width() + margins.left() + margins.right() + scroll.verticalScrollBar().sizeHint().width()
+        height = (content_hint.height() + buttons.sizeHint().height() + layout.spacing()
+                  + margins.top() + margins.bottom())
+        screen = self.screen() if self.screen() is not None else QApplication.primaryScreen()
+        if screen is not None:
+            height = min(height, int(screen.availableGeometry().height() * 0.9))
+        self.resize(width, height)
 
     # -- construction ---------------------------------------------------------
     def _build_gravity_group(self, gravity: GravityConfig) -> QGroupBox:
@@ -268,7 +288,7 @@ class PropagationSetupDialog(QDialog):
         group = QGroupBox("Simulation settings")
         form = QFormLayout(group)
 
-        self.duration_days_spin = QDoubleSpinBox()
+        self.duration_days_spin = PreciseDoubleSpinBox()
         self.duration_days_spin.setRange(0.0001, 100000.0)
         self.duration_days_spin.setDecimals(4)
         self.duration_days_spin.setValue(sim_settings.duration_days)
@@ -280,7 +300,7 @@ class PropagationSetupDialog(QDialog):
         )
         form.addRow("Duration [days]", self.duration_days_spin)
 
-        self.task_rate_spin = QDoubleSpinBox()
+        self.task_rate_spin = PreciseDoubleSpinBox()
         self.task_rate_spin.setRange(0.001, 1.0e6)
         self.task_rate_spin.setDecimals(3)
         self.task_rate_spin.setValue(sim_settings.dynamics_task_rate_s)
@@ -340,7 +360,7 @@ class PropagationSetupDialog(QDialog):
             "spacecraft list and look at its \"Orbit / mass\" tab, not here."
         )
         srp_pointer.setWordWrap(True)
-        srp_pointer.setMaximumWidth(520)
+        srp_pointer.setMaximumWidth(_CONTENT_WIDTH)
         group_layout.addWidget(srp_pointer)
 
         form = QFormLayout()
@@ -402,11 +422,12 @@ class PropagationSetupDialog(QDialog):
             "you downloaded ahead of time) -- only read when Source above is 'local_file'; "
             "ignored otherwise. This app never fetches this itself at run time."
         )
+        self.local_file_edit.setPlaceholderText("only used when Source is local_file")
         self.local_file_browse_button = QPushButton("Browse...")
         self.local_file_browse_button.clicked.connect(self._on_browse_local_file)
         local_file_row.addWidget(self.local_file_edit)
         local_file_row.addWidget(self.local_file_browse_button)
-        form.addRow("Local file (used directly if Source=local_file; ignored otherwise)", local_file_row)
+        form.addRow("Local CSV file", local_file_row)
 
         self.activity_level_combo = QComboBox()
         # (display text, schema value)
@@ -425,7 +446,7 @@ class PropagationSetupDialog(QDialog):
         self.activity_level_combo.currentIndexChanged.connect(self._on_activity_level_changed)
         form.addRow("Drag margin", self.activity_level_combo)
 
-        self.activity_percentile_spin = QDoubleSpinBox()
+        self.activity_percentile_spin = PreciseDoubleSpinBox()
         self.activity_percentile_spin.setRange(50.0, 99.9)
         self.activity_percentile_spin.setDecimals(1)
         self.activity_percentile_spin.setValue(space_weather.activity_percentile)
@@ -447,13 +468,13 @@ class PropagationSetupDialog(QDialog):
         # dropped on save (same reasoning as every other optional field
         # in this dialog).
         self.cache_dir_edit = QLineEdit(space_weather.cache_dir or "")
-        self.cache_dir_edit.setPlaceholderText("(default: engine.spaceweather's own cache directory)")
+        self.cache_dir_edit.setPlaceholderText("(default cache directory)")
         self.cache_dir_edit.setToolTip(
             "Overrides where engine.spaceweather caches fetched space-weather data on disk. "
             "Rarely needed -- leave blank unless you specifically need a non-default cache "
             "location (e.g. a read-only home directory)."
         )
-        form.addRow("Cache directory (advanced, rarely needed)", self.cache_dir_edit)
+        form.addRow("Cache directory (advanced)", self.cache_dir_edit)
 
         self._on_atmosphere_model_changed(self.atmosphere_model_combo.currentIndex())
         self._on_space_weather_source_changed(self.space_weather_source_combo.currentText())

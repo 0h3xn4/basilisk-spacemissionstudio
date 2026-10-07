@@ -26,12 +26,7 @@ from spacemissionstudio.schema import load_scenario
 
 pytestmark = pytest.mark.requires_basilisk
 
-SCENARIO_PATH = (
-    Path(__file__).resolve().parent.parent
-    / "spacemissionstudio"
-    / "scenarios"
-    / "diagnostic_05f_station_keeping_fixed_step_integrator.json"
-)
+SCENARIO_PATH = Path(__file__).resolve().parent / "data" / "vizard_station_keeping_crash_regression.json"
 
 
 def test_station_keeping_with_vizard_save_file_does_not_crash(tmp_path):
@@ -41,7 +36,7 @@ def test_station_keeping_with_vizard_save_file_does_not_crash(tmp_path):
     crash within the first couple of dynamics ticks with a
     ``SimulationServiceError`` wrapping ``std::length_error``/
     ``std::bad_alloc`` from VizInterface's background write thread. This
-    scenario is diagnostic_05f, a real, previously-reproducing crash --
+    scenario (originally diagnostic_05f) is a real, previously-reproducing crash --
     run() completing at all (an unhandled RuntimeError would otherwise
     propagate straight out of run()) is the actual regression check.
     """

@@ -83,8 +83,12 @@ class FormationDiagramWidget(QWidget):
         width = self.width()
         track_y = self.height() * _TRACK_Y_FRACTION
         chief_x = float(_MARGIN_X)
-        follower_x = float(width - _MARGIN_X)
-        track_span_px = follower_x - chief_x
+        # The trigger band extends tolerance_fraction * span PAST the
+        # follower, so shrink the span until that band (plus a small gap)
+        # still fits inside the widget instead of being cut off at its edge.
+        track_span_px = min(width - 2 * _MARGIN_X,
+                            (width - _MARGIN_X - 16) / (1.0 + max(diagram.tolerance_fraction, 0.0)))
+        follower_x = chief_x + track_span_px
         if track_span_px <= 0:
             painter.end()
             return

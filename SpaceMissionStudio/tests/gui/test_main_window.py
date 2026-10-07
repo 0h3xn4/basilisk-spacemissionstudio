@@ -1794,3 +1794,36 @@ def test_check_autosave_recovery_user_declines_clears_file_and_leaves_editor_unt
     assert window.scenario_editor.spacecraft_list.to_list() == []
     assert not window._dirty
     assert autosave.read_recovery_file() is None
+
+
+def test_join_finished_worker_waits_out_a_thread_that_already_signalled(qtbot):
+    """Regression test: a worker emits its terminal signal from INSIDE
+    run(), so Run can be re-enabled while that thread is still returning;
+    on_run()/on_run_monte_carlo() replacing the last reference to it then
+    made Qt abort the whole app ("QThread: Destroyed while thread is still
+    running"). _join_finished_worker() must leave it fully stopped first.
+    """
+    import threading
+
+    from PySide6.QtCore import QThread, Signal
+
+    from spacemissionstudio.gui.main_window import _join_finished_worker
+
+    release = threading.Event()
+
+    class _SignalsThenLingers(QThread):
+        done = Signal()
+
+        def run(self):
+            self.done.emit()
+            release.wait(5)  # still "returning" after its terminal signal  # [s]
+
+    worker = _SignalsThenLingers()
+    with qtbot.waitSignal(worker.done, timeout=5000):
+        worker.start()
+    assert worker.isRunning()
+
+    threading.Timer(0.05, release.set).start()  # [s]
+    _join_finished_worker(worker)
+    assert not worker.isRunning()
+    _join_finished_worker(None)  # no previous worker: a no-op

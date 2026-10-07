@@ -1576,7 +1576,7 @@ def test_constant_thrust_rejects_wrong_length_direction():
 def test_constant_thrust_rejects_zero_direction_vector():
     sc = _minimal_scenario()
     sc.spacecraft[0].constant_thrust = ConstantThrustConfig(direction=[0.0, 0.0, 0.0])
-    with pytest.raises(ScenarioValidationError, match="zero vector"):
+    with pytest.raises(ScenarioValidationError, match="non-zero, finite"):
         sc.validate()
 
 
@@ -1874,3 +1874,28 @@ def test_mission_sequence_insert_and_reorder():
     scenario.mission_sequence.reverse()  # b, c, a
     assert [cmd.label for cmd in scenario.mission_sequence] == ["b", "c", "a"]
     scenario.validate()  # must not raise -- order never affects validity for this command set
+
+
+@pytest.mark.parametrize("bad_vector", [[0.0, 0.0, 0.0], [float("nan"), 0.0, 1.0], [float("inf"), 0.0, 0.0],
+                                        ["x", 0.0, 1.0]], ids=["zero", "nan", "inf", "non-numeric"])
+@pytest.mark.parametrize("target", ["comms_boresight", "comms_sun_axis", "panel_normal"])
+def test_direction_vectors_reject_zero_and_non_finite_values(target, bad_vector):
+    """Regression test for an audit finding: a zero or NaN body-frame axis
+    passed validation (only its LENGTH was checked) and only failed
+    mid-run, once normalized into a NaN attitude target.
+    """
+    from pathlib import Path
+
+    from spacemissionstudio.schema import load_scenario
+
+    templates = Path(__file__).resolve().parent.parent / "spacemissionstudio" / "scenarios" / "templates"
+    sc = load_scenario(templates / "19_sun_pointing_comms_link.json")
+    craft = sc.spacecraft[0]
+    if target == "comms_boresight":
+        craft.comms_pointing.antenna_boresight_b = bad_vector
+    elif target == "comms_sun_axis":
+        craft.comms_pointing.sun_pointing_axis_b = bad_vector
+    else:
+        craft.power.panel_normal_b = bad_vector
+    with pytest.raises(ScenarioValidationError, match="non-zero, finite"):
+        sc.validate()

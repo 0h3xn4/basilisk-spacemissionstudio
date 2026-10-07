@@ -59,8 +59,11 @@ include = ["spacemissionstudio*"]
 # see that directory's own README) is a separate glob for the same reason:
 # setuptools package-data globs are not recursive, so "scenarios/*.json"
 # alone would silently drop everything one directory deeper.
+# gui/assets/*.svg are the theme's combo/spin arrow and check-mark glyphs
+# (see gui/theme.py) -- no __init__.py there either, same reason.
 [tool.setuptools.package-data]
-spacemissionstudio = ["scenarios/*.json", "scenarios/templates/*.json", "scenarios/templates/README.md"]
+spacemissionstudio = ["scenarios/*.json", "scenarios/templates/*.json", "scenarios/templates/README.md",
+                      "gui/assets/*.svg"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

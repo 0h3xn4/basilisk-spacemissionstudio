@@ -40,6 +40,7 @@ from PySide6.QtWidgets import (
 
 from ..engine.orbit_design import DEFAULT_LTAN_HOUR, raan_for_ltan_deg, sun_synchronous_inclination_deg
 from ..schema.scenario import ANOMALY_TYPES, ORBIT_IC_TYPES, OrbitIC
+from .widgets import PreciseDoubleSpinBox
 
 _ANOMALY_TYPE_LABELS = {
     "true": "True anomaly [deg]",
@@ -54,7 +55,7 @@ _TYPE_LABELS = {
 
 
 def _spin(minimum: float, maximum: float, decimals: int = 6, step: float = 1.0, value: float = 0.0) -> QDoubleSpinBox:
-    box = QDoubleSpinBox()
+    box = PreciseDoubleSpinBox()
     box.setRange(minimum, maximum)
     box.setDecimals(decimals)
     box.setSingleStep(step)

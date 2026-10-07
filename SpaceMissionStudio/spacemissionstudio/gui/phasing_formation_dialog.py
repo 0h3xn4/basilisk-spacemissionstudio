@@ -41,6 +41,8 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QDoubleSpinBox,
     QFormLayout,
+    QGroupBox,
+    QHBoxLayout,
     QLabel,
     QLineEdit,
     QMessageBox,
@@ -49,10 +51,16 @@ from PySide6.QtWidgets import (
 
 from ..engine.formation import PhasingFormationRequest
 from ..schema.scenario import ScenarioValidationError
+from .widgets import PreciseDoubleSpinBox
+
+
+def _form_group(title: str) -> tuple[QGroupBox, QFormLayout]:
+    group = QGroupBox(title)
+    return group, QFormLayout(group)
 
 
 def _double_spin(minimum: float, maximum: float, decimals: int, step: float, value: float) -> QDoubleSpinBox:
-    box = QDoubleSpinBox()
+    box = PreciseDoubleSpinBox()
     box.setRange(minimum, maximum)
     box.setDecimals(decimals)
     box.setSingleStep(step)
@@ -93,8 +101,16 @@ class PhasingFormationDialog(QDialog):
         description_label.setWordWrap(True)
         layout.addWidget(description_label)
 
-        form = QFormLayout()
-        form.addRow("Central body (from this scenario)", QLabel(central_body))
+        # Grouped by what each field configures, in two columns -- a flat
+        # 20-row form ran ~830 px tall and gave no hint which knobs belong
+        # to which controller.
+        spacecraft_group, spacecraft_form = _form_group("Spacecraft")
+        offset_group, offset_form = _form_group("Initial offset at epoch (Hill frame)")
+        propulsion_group, propulsion_form = _form_group("Propulsion")
+        station_group, station_form = _form_group("Station-keeping (altitude hold)")
+        phasing_group, phasing_form = _form_group("Phasing-keeping (separation hold)")
+
+        spacecraft_form.addRow("Central body", QLabel(central_body))
 
         self.chief_combo = QComboBox()
         self.template_combo = QComboBox()
@@ -107,11 +123,15 @@ class PhasingFormationDialog(QDialog):
             self.chief_combo.setEnabled(False)
             self.template_combo.addItem("(no spacecraft in this scenario yet)", userData=None)
             self.template_combo.setEnabled(False)
-        form.addRow("Chief spacecraft (orbit copied from here)", self.chief_combo)
-        form.addRow("Template spacecraft (everything else copied from here)", self.template_combo)
+        self.chief_combo.setToolTip("The existing spacecraft whose orbit the new follower's orbit is offset from.")
+        self.template_combo.setToolTip(
+            "The existing spacecraft everything else (mass, sensors, actuators, power, ...) is copied from."
+        )
+        spacecraft_form.addRow("Chief (orbit source)", self.chief_combo)
+        spacecraft_form.addRow("Template (everything else)", self.template_combo)
 
         self.follower_name_edit = QLineEdit("follower-1")
-        form.addRow("New follower name", self.follower_name_edit)
+        spacecraft_form.addRow("New follower name", self.follower_name_edit)
 
         self.radial_km = _double_spin(-10000.0, 10000.0, 3, 1.0, 0.0)
         self.radial_km.setToolTip(
@@ -140,18 +160,18 @@ class PhasingFormationDialog(QDialog):
             "orbital plane). Same starting-geometry-only caveat as the radial offset above -- not actively "
             "held by the controller."
         )
-        form.addRow("Radial (R) offset [km]", self.radial_km)
-        form.addRow("Along-track (T) offset [km]", self.along_track_km)
-        form.addRow("Cross-track (N) offset [km]", self.cross_track_km)
+        offset_form.addRow("Radial (R) [km]", self.radial_km)
+        offset_form.addRow("Along-track (T) [km]", self.along_track_km)
+        offset_form.addRow("Cross-track (N) [km]", self.cross_track_km)
 
         self.thrust_n = _double_spin(1e-6, 1000.0, 6, 0.01, 0.05)
         self.isp_s = _double_spin(1.0, 1.0e5, 1, 10.0, 1500.0)
         self.propellant_kg = _double_spin(0.0, 1.0e6, 3, 1.0, 5.0)
         self.deadband_km = _double_spin(1e-6, 1.0e5, 3, 0.5, 2.0)
-        form.addRow("Thruster thrust [N]", self.thrust_n)
-        form.addRow("Thruster Isp [s]", self.isp_s)
-        form.addRow("Propellant available [kg]", self.propellant_kg)
-        form.addRow("Station-keeping deadband [km]", self.deadband_km)
+        propulsion_form.addRow("Thruster thrust [N]", self.thrust_n)
+        propulsion_form.addRow("Thruster Isp [s]", self.isp_s)
+        propulsion_form.addRow("Propellant available [kg]", self.propellant_kg)
+        station_form.addRow("Deadband [km]", self.deadband_km)
 
         # station_keeping_target_altitude_km: None (the checkbox below
         # CHECKED, the default) derives this from the chief's own current
@@ -169,14 +189,14 @@ class PhasingFormationDialog(QDialog):
         )
         self.derive_altitude_check.toggled.connect(lambda checked: self.station_keeping_target_altitude_km
                                                      .setEnabled(not checked))
-        form.addRow("Station-keeping target altitude", self.derive_altitude_check)
+        station_form.addRow("Target altitude", self.derive_altitude_check)
         self.station_keeping_target_altitude_km = _double_spin(0.001, 1.0e6, 3, 10.0, 500.0)
         self.station_keeping_target_altitude_km.setEnabled(False)
         self.station_keeping_target_altitude_km.setToolTip(
             "Explicit station-keeping target altitude for the new follower -- only used while the "
             "checkbox above is OFF."
         )
-        form.addRow("Target altitude [km] (if not derived above)", self.station_keeping_target_altitude_km)
+        station_form.addRow("Explicit altitude [km]", self.station_keeping_target_altitude_km)
         self.eclipse_sunlit_threshold = _double_spin(0.001, 1.0, 4, 0.01, 0.99)
         self.eclipse_sunlit_threshold.setToolTip(
             "The real simulated shadow (eclipse) factor must be at or above this before a reboost "
@@ -184,7 +204,7 @@ class PhasingFormationDialog(QDialog):
             "thruster off battery alone during eclipse. 1.0 = must be in full sunlight; lower values "
             "tolerate partial shadow (e.g. penumbra)."
         )
-        form.addRow("Eclipse sunlit threshold [-]", self.eclipse_sunlit_threshold)
+        station_form.addRow("Eclipse sunlit threshold [-]", self.eclipse_sunlit_threshold)
 
         self.reconfiguration_interval_days = _double_spin(0.0, 1.0e5, 2, 1.0, 90.0)
         self.tolerance_fraction = _double_spin(1e-6, 10.0, 4, 0.01, 0.10)
@@ -192,13 +212,25 @@ class PhasingFormationDialog(QDialog):
         self.correction_window_days = _double_spin(1e-3, 1.0e4, 2, 1.0, 21.0)
         self.max_drift_days = _double_spin(1e-3, 1.0e4, 2, 1.0, 90.0)
         self.max_delta_sma_km = _double_spin(1e-6, 1.0e4, 3, 0.5, 3.0)
-        form.addRow("Reconfiguration interval [day]", self.reconfiguration_interval_days)
-        form.addRow("Tolerance fraction [-]", self.tolerance_fraction)
-        form.addRow("Restore tolerance fraction [-]", self.restore_tolerance_fraction)
-        form.addRow("Correction window [day]", self.correction_window_days)
-        form.addRow("Max drift [day]", self.max_drift_days)
-        form.addRow("Max SMA offset [km]", self.max_delta_sma_km)
-        layout.addLayout(form)
+        phasing_form.addRow("Reconfiguration interval [day]", self.reconfiguration_interval_days)
+        phasing_form.addRow("Tolerance fraction [-]", self.tolerance_fraction)
+        phasing_form.addRow("Restore tolerance fraction [-]", self.restore_tolerance_fraction)
+        phasing_form.addRow("Correction window [day]", self.correction_window_days)
+        phasing_form.addRow("Max drift [day]", self.max_drift_days)
+        phasing_form.addRow("Max SMA offset [km]", self.max_delta_sma_km)
+
+        columns = QHBoxLayout()
+        left_column = QVBoxLayout()
+        right_column = QVBoxLayout()
+        for group in (spacecraft_group, offset_group, propulsion_group):
+            left_column.addWidget(group)
+        for group in (station_group, phasing_group):
+            right_column.addWidget(group)
+        left_column.addStretch(1)
+        right_column.addStretch(1)
+        columns.addLayout(left_column, 1)
+        columns.addLayout(right_column, 1)
+        layout.addLayout(columns)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self._on_accept)

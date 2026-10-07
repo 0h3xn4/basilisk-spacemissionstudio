@@ -8,7 +8,6 @@ see that function's own docstring).
 """
 
 import io
-import subprocess
 import sys
 import zipfile
 
@@ -433,6 +432,7 @@ def test_vizard_fetch_worker_emits_finished_ok_on_success(tmp_path, monkeypatch,
     worker = vizard_launcher.VizardFetchWorker(dest_dir=tmp_path)
     with qtbot.waitSignal(worker.finished_ok, timeout=5000) as blocker:
         worker.start()
+    assert worker.wait(5000)  # join it: GC of a still-running QThread aborts the process
 
     assert blocker.args == [str(fake_path)]
 
@@ -448,6 +448,7 @@ def test_vizard_fetch_worker_emits_failed_on_error(tmp_path, monkeypatch, qtbot)
     worker = vizard_launcher.VizardFetchWorker(dest_dir=tmp_path)
     with qtbot.waitSignal(worker.failed, timeout=5000) as blocker:
         worker.start()
+    assert worker.wait(5000)  # join it: GC of a still-running QThread aborts the process
 
     assert "boom" in blocker.args[0]
 
@@ -467,6 +468,7 @@ def test_vizard_fetch_worker_request_cancel_is_seen_by_should_cancel(tmp_path, m
     worker.request_cancel()
     with qtbot.waitSignal(worker.finished_ok, timeout=5000):
         worker.start()
+    assert worker.wait(5000)  # join it: GC of a still-running QThread aborts the process
 
     assert seen_should_cancel["callable"]() is True  # the Event was already set before start()
 

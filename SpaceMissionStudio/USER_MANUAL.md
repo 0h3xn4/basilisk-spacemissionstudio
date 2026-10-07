@@ -84,7 +84,7 @@ and is written for someone comfortable typing commands, not a programmer.
 
 The window that opens looks like this:
 
-![The Load Scenario tab, listing all eighteen built-in templates](docs/images/load_scenario_tab.png)
+![The Load Scenario tab, listing all twenty built-in templates](docs/images/load_scenario_tab.png)
 
 A few things to notice right away:
 
@@ -108,7 +108,7 @@ up using a template as-is or editing it into something new.
 
 ## 4. Your first simulation, in five minutes
 
-1. **Pick a template.** The list on the left shows all eighteen
+1. **Pick a template.** The list on the left shows all twenty
    built-in example missions, numbered roughly from simplest to most
    advanced -- "01 - Two-body circular orbit" is the simplest possible
    case (one satellite, one orbit, nothing else going on) and a good
@@ -145,9 +145,10 @@ yet; the app will say so clearly rather than failing silently.
 
 Say "02 - Elliptical orbit with perturbations" is close to what you
 want, but you'd like a different inclination or duration, without
-learning the full Scenario Editor. Scroll down the Load Scenario tab,
-below the template list, to a row of **"Customize: ..."** buttons -- one
-per template:
+learning the full Scenario Editor. Every row in the Load Scenario
+tab's template list has its own **Customize...** button on its right
+-- click the one on that template's row (no need to select the row
+first):
 
 ![The "Customize: GEO station-keeping..." wizard, showing the station-keeping controller's own parameters pre-filled](docs/images/customize_wizard.png)
 
@@ -168,7 +169,7 @@ most people start from a template (Section 4) or its customize wizard
 want to build something more specific, or just want to know what you're
 looking at.
 
-![The Scenario Editor tab with template 01 loaded, showing the Scenario, Propagation setup, and Spacecraft sections](docs/images/scenario_editor_tab.png)
+![The Scenario Editor tab with template 01 loaded, showing the Scenario and Propagation setup sections, with the Explain tab's summary on the right](docs/images/scenario_editor_tab.png)
 
 The form is organized top to bottom, roughly in the order you'd fill it
 out for a brand-new scenario:
@@ -395,7 +396,7 @@ anyone who hasn't worked with spacecraft before:
 
 * **More templates to learn from:**
   [`spacemissionstudio/scenarios/templates/README.md`](spacemissionstudio/scenarios/templates/README.md)
-  describes what each of the eighteen built-in templates teaches, in
+  describes what each of the twenty built-in templates teaches, in
   more depth than the in-app description box.
 * **The full feature list and technical details:** [`README.md`](README.md)'s
   "Capabilities" section.

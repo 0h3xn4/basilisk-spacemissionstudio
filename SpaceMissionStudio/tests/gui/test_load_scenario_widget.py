@@ -4,7 +4,6 @@ not synthetic fixtures, since the whole point of this widget is
 surfacing exactly those files.
 """
 
-from pathlib import Path
 
 import pytest
 
@@ -49,16 +48,32 @@ def test_no_selection_disables_open_button_and_clears_description(qtbot):
 
 
 def _customize_button(widget, name_substring: str):
-    """Finds the standalone "Customize: <template name>..." button for a
-    given template -- see _build_customize_buttons's own docstring for
-    why these are separate, always-enabled buttons rather than one
-    shared, selection-dependent button.
+    """Finds a template row's own "Customize..." button (accessible name
+    "Customize: <template name>") -- see this module's docstring for why
+    each row has its own always-enabled button rather than one shared,
+    selection-dependent button.
     """
     from PySide6.QtWidgets import QPushButton
 
-    matches = [b for b in widget.findChildren(QPushButton) if name_substring in b.text()]
+    matches = [b for b in widget.findChildren(QPushButton)
+               if b.accessibleName().startswith("Customize: ") and name_substring in b.accessibleName()]
     assert len(matches) == 1, f"expected exactly one Customize button matching {name_substring!r}, got {matches}"
     return matches[0]
+
+
+def test_left_pane_content_fits_a_default_window_without_horizontal_scrolling(qtbot):
+    """Regression test for a real layout bug found by audit: a second,
+    full-width "Customize: <whole template title>..." button per template
+    demanded up to ~670 px, forcing the Load Scenario tab into a
+    horizontal scrollbar at the default 1400x850 window size (left pane
+    ~580 px) -- clipping the intro text mid-word and hiding this tab's own
+    buttons behind the scrollbar.
+    """
+    from spacemissionstudio.gui.load_scenario_widget import LoadScenarioWidget
+
+    widget = LoadScenarioWidget()
+    qtbot.addWidget(widget)
+    assert widget.minimumSizeHint().width() <= 560
 
 
 def test_customize_button_exists_for_every_template_with_a_registered_wizard_spec(qtbot):

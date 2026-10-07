@@ -77,6 +77,7 @@ from ..schema.command import (
     Command,
 )
 from .feedback import show_toast
+from .widgets import PreciseDoubleSpinBox
 
 # Mirrors engine.mission_engine._ASSIGNMENT_CONTROLLERS/_ASSIGNMENT_ATTRIBUTES
 # -- duplicated here (not imported) because engine.mission_engine imports
@@ -95,7 +96,7 @@ _KIND_PAGE_INDEX = {"propagate": 0, "maneuver": 1, "assignment": 2, "report": 3,
 
 
 def _spin_component(value: float = 0.0) -> QDoubleSpinBox:
-    box = QDoubleSpinBox()
+    box = PreciseDoubleSpinBox()
     box.setRange(-1.0e9, 1.0e9)
     box.setDecimals(6)
     box.setSingleStep(0.1)
@@ -197,7 +198,7 @@ class _CommandEditorDialog(QDialog):
         duration_page = QWidget()
         duration_form = QFormLayout(duration_page)
         duration_form.setContentsMargins(0, 0, 0, 0)
-        self.duration_days_spin = QDoubleSpinBox()
+        self.duration_days_spin = PreciseDoubleSpinBox()
         self.duration_days_spin.setRange(1e-6, 1e6)
         self.duration_days_spin.setDecimals(6)
         self.duration_days_spin.setValue(float(params.get("duration_days", 1.0)))
@@ -309,7 +310,7 @@ class _CommandEditorDialog(QDialog):
         row_widget.setLayout(row)
         form.addRow("Target position [m] (inertial)", row_widget)
 
-        self.lambert_tof_spin = QDoubleSpinBox()
+        self.lambert_tof_spin = PreciseDoubleSpinBox()
         self.lambert_tof_spin.setRange(1.0, 1.0e9)
         self.lambert_tof_spin.setDecimals(1)
         self.lambert_tof_spin.setSingleStep(60.0)
@@ -325,7 +326,7 @@ class _CommandEditorDialog(QDialog):
         self.lambert_num_rev_spin.setValue(int(params.get("num_revolutions", 0)))
         form.addRow("Number of revolutions", self.lambert_num_rev_spin)
 
-        self.lambert_max_dist_spin = QDoubleSpinBox()
+        self.lambert_max_dist_spin = PreciseDoubleSpinBox()
         self.lambert_max_dist_spin.setRange(0.001, 1.0e9)
         self.lambert_max_dist_spin.setDecimals(3)
         self.lambert_max_dist_spin.setValue(float(params.get("max_distance_target_m", 1000.0)))
@@ -335,7 +336,7 @@ class _CommandEditorDialog(QDialog):
         )
         form.addRow("Max distance from target [m]", self.lambert_max_dist_spin)
 
-        self.lambert_min_radius_spin = QDoubleSpinBox()
+        self.lambert_min_radius_spin = PreciseDoubleSpinBox()
         self.lambert_min_radius_spin.setRange(0.0, 1.0e12)
         self.lambert_min_radius_spin.setDecimals(1)
         self.lambert_min_radius_spin.setValue(float(params.get("min_orbit_radius_m", 0.0)))
@@ -376,7 +377,7 @@ class _CommandEditorDialog(QDialog):
         form.addRow("Controller", self.assignment_controller_combo)
         form.addRow("Parameter", self.assignment_parameter_combo)
 
-        self.assignment_value_spin = QDoubleSpinBox()
+        self.assignment_value_spin = PreciseDoubleSpinBox()
         self.assignment_value_spin.setRange(-1.0e9, 1.0e9)
         self.assignment_value_spin.setDecimals(6)
         value = params.get("value", 0.0)
@@ -545,18 +546,27 @@ class MissionSequenceEditorWidget(QWidget):
         self.tree.setHeaderHidden(True)
         layout.addWidget(self.tree)
 
-        button_row = QHBoxLayout()
+        # Two rows, not one: all six buttons side by side needed ~575 px,
+        # wider than the left pane gets at the default 1400x850 window --
+        # which pushed the whole Scenario Editor into a horizontal
+        # scrollbar and clipped every field's right edge.
+        edit_row = QHBoxLayout()
         self.add_button = QPushButton("Add...")
         self.add_child_button = QPushButton("Add Child...")
         self.add_child_button.setToolTip("Adds a nested command inside the selected 'if'/'while' command.")
         self.edit_button = QPushButton("Edit...")
         self.remove_button = QPushButton("Remove")
+        for button in (self.add_button, self.add_child_button, self.edit_button, self.remove_button):
+            edit_row.addWidget(button)
+        layout.addLayout(edit_row)
+
+        order_row = QHBoxLayout()
         self.move_up_button = QPushButton("Move Up")
         self.move_down_button = QPushButton("Move Down")
-        for button in (self.add_button, self.add_child_button, self.edit_button, self.remove_button,
-                       self.move_up_button, self.move_down_button):
-            button_row.addWidget(button)
-        layout.addLayout(button_row)
+        order_row.addWidget(self.move_up_button)
+        order_row.addWidget(self.move_down_button)
+        order_row.addStretch(1)
+        layout.addLayout(order_row)
 
         self.add_button.clicked.connect(self._on_add)
         self.add_child_button.clicked.connect(self._on_add_child)

@@ -69,8 +69,7 @@ _R_PLANET_M = 6378137.0
 
 
 def _run_one_tick(include_fuel_tank: bool, dt_s: float = 1.0):
-    import numpy as np
-    from Basilisk.simulation import extForceTorque, fuelTank, spacecraft
+    from Basilisk.simulation import fuelTank, spacecraft
     from Basilisk.utilities import SimulationBaseClass, macros, simHelpers, simIncludeGravBody
 
     from spacemissionstudio.engine.orbit_maintenance import StationKeepingConfig, build_station_keeping

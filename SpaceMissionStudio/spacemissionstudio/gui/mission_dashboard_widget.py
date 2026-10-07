@@ -48,6 +48,7 @@ from __future__ import annotations
 import math
 from typing import Optional
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QFormLayout,
     QGroupBox,
@@ -133,6 +134,7 @@ class MissionDashboardWidget(QWidget):
             "'19 - Sun-pointing spacecraft with automatic ground-station comms link') to populate this tab."
         )
         self._placeholder.setWordWrap(True)
+        self._placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)  # same centered empty state as the Results tab
         self._placeholder.setStyleSheet(f"color: {PALETTE['text_muted']};")
         layout.addWidget(self._placeholder)
 

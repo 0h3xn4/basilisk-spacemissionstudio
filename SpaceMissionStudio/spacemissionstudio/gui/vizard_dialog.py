@@ -83,7 +83,13 @@ class VizardDialog(QDialog):
 
         view_form = QFormLayout()
         self.camera_target_edit = QLineEdit(current_camera_target or "")
-        self.camera_target_edit.setPlaceholderText("(default: central body -- Earth-centered view, like STK/GMAT/FreeFlyer)")
+        # Short placeholder (the full version was cut off mid-word at this
+        # dialog's width); the detail lives in the tooltip instead.
+        self.camera_target_edit.setPlaceholderText("central body (default)")
+        self.camera_target_edit.setToolTip(
+            "Name of the spacecraft or celestial body Vizard's camera starts locked on. Leave blank "
+            "for the central body -- an Earth-centered view, like STK/GMAT/FreeFlyer."
+        )
         view_form.addRow("Camera starts locked on", self.camera_target_edit)
         layout.addLayout(view_form)
 

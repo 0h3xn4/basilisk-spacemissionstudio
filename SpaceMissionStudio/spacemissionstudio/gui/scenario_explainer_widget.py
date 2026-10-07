@@ -36,6 +36,7 @@ from __future__ import annotations
 
 from typing import Optional
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -77,9 +78,13 @@ def _clear_layout(layout) -> None:
 
 def _stat_tile(label: str, value: str) -> QFrame:
     frame = QFrame()
+    frame.setObjectName("statTile")
     frame.setFrameShape(QFrame.Shape.NoFrame)
+    # "#statTile", not a bare "QFrame" selector: QLabel inherits QFrame,
+    # so an unscoped rule also drew a second bordered box around each
+    # tile's own value and caption labels.
     frame.setStyleSheet(
-        f"QFrame {{ background-color: {PALETTE['surface']}; border: 1px solid {PALETTE['border']}; "
+        f"QFrame#statTile {{ background-color: {PALETTE['surface']}; border: 1px solid {PALETTE['border']}; "
         "border-radius: 6px; }"
     )
     layout = QVBoxLayout(frame)
@@ -145,7 +150,12 @@ class ScenarioExplainerWidget(QWidget):
         self._content_layout.addLayout(self._sections_layout)
 
         self._table = QTableWidget()
-        self._table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        self._table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self._table.verticalHeader().setVisible(False)  # the Spacecraft column already names each row
+        self._table.horizontalHeader().setStretchLastSection(True)
+        self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self._table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
+        self._table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._content_layout.addWidget(self._table)
 
         self._content_layout.addStretch(1)
@@ -180,6 +190,10 @@ class ScenarioExplainerWidget(QWidget):
         _clear_layout(self._sections_layout)
         for section in explanation.sections:
             section_widget = QWidget()
+            # Transparent: the theme's base "QWidget" rule otherwise painted
+            # each section as a grey band across this tab's white pane.
+            section_widget.setObjectName("explainSection")
+            section_widget.setStyleSheet("QWidget#explainSection { background: transparent; }")
             section_layout = QVBoxLayout(section_widget)
             section_layout.setContentsMargins(0, 0, 0, 0)
             section_layout.setSpacing(4)
@@ -230,6 +244,11 @@ class ScenarioExplainerWidget(QWidget):
                 for col_index, column in enumerate(columns, start=1):
                     self._table.setItem(row_index, col_index, QTableWidgetItem(row.facts.get(column, "")))
             self._table.resizeColumnsToContents()
+            # Fit the table to its rows instead of leaving a tall, mostly
+            # empty grid below the last spacecraft.
+            height = self._table.horizontalHeader().height() + 2 * self._table.frameWidth() + 2
+            height += sum(self._table.rowHeight(r) for r in range(self._table.rowCount()))
+            self._table.setFixedHeight(height)
         else:
             self._table.setVisible(False)
             self._table.setRowCount(0)

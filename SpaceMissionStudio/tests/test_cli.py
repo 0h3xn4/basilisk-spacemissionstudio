@@ -452,3 +452,43 @@ def test_generate_phasing_formation_without_basilisk_reports_clear_error(tmp_pat
     ])
     assert rc == 2
     assert "Basilisk is not installed" in capsys.readouterr().err
+
+
+def test_generate_phasing_formation_passes_every_request_field_through(tmp_path, monkeypatch):
+    """Regression test: --eclipse-sunlit-threshold was missing from the CLI
+    even though PhasingFormationRequest (and the GUI's own phasing dialog)
+    support it. Captures the request instead of running the real
+    (Basilisk-backed) generator, so this runs anywhere.
+    """
+    import dataclasses
+
+    from spacemissionstudio.engine import formation
+
+    path = tmp_path / "chief.json"
+    _write_chief_scenario(path)
+    captured = {}
+
+    class _Captured(Exception):
+        pass
+
+    def fake_generate(request, chief, template, central_body):
+        captured["request"] = request
+        raise _Captured
+
+    monkeypatch.setattr(formation, "generate_phasing_follower", fake_generate)
+    with pytest.raises(_Captured):
+        cli.main([
+            "generate-phasing-formation", str(path), "--out", str(tmp_path / "out.json"),
+            "--chief", "chief-1", "--follower-name", "follower-1", "--along-track-km", "50",
+            "--eclipse-sunlit-threshold", "0.5", "--station-keeping-target-altitude-km", "540",
+        ])
+    request = captured["request"]
+    assert request.eclipse_sunlit_threshold == 0.5  # [-]
+    assert request.station_keeping_target_altitude_km == 540.0  # [km]
+
+    # Every request field must be reachable from the command line.
+    subparsers = next(action for action in cli.build_parser()._actions if action.dest == "command")
+    parser_dests = {action.dest for action in subparsers.choices["generate-phasing-formation"]._actions}
+    field_to_dest = {"chief_name": "chief"}
+    for field in dataclasses.fields(formation.PhasingFormationRequest):
+        assert field_to_dest.get(field.name, field.name) in parser_dests, field.name

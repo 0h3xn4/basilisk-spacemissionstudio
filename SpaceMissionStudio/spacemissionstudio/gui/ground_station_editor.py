@@ -46,10 +46,11 @@ from PySide6.QtWidgets import (
 
 from ..schema.scenario import GroundStationConfig, ScenarioValidationError
 from .feedback import clear_invalid, mark_invalid, show_toast
+from .widgets import PreciseDoubleSpinBox
 
 
 def _spin(minimum: float, maximum: float, decimals: int = 4, step: float = 1.0, value: float = 0.0) -> QDoubleSpinBox:
-    box = QDoubleSpinBox()
+    box = PreciseDoubleSpinBox()
     box.setRange(minimum, maximum)
     box.setDecimals(decimals)
     box.setSingleStep(step)

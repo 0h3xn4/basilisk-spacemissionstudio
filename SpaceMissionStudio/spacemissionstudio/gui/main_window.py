@@ -47,7 +47,6 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QProgressDialog,
     QSplitter,
-    QStyle,
     QTabWidget,
     QToolBar,
 )
@@ -56,6 +55,7 @@ from ..logging_setup import get_log_file_path
 from ..schema.scenario import Scenario, ScenarioValidationError, load_scenario
 from . import autosave
 from .feedback import show_toast
+from .icons import toolbar_icon
 from .kernel_status_widget import KernelStatusWidget
 from .load_scenario_widget import LoadScenarioWidget
 from .mission_dashboard_widget import MissionDashboardWidget
@@ -101,6 +101,22 @@ def _with_log_file_hint(message: str) -> str:
     if log_file is None:
         return message
     return f"{message}\n\nFull details logged to:\n{log_file}"
+
+
+def _join_finished_worker(worker) -> None:
+    """Waits out a previous run's QThread before its last reference is replaced.
+
+    A worker emits its terminal signal (finished_ok/failed/cancelled) from
+    INSIDE its own ``run()``, so the slot that re-enables Run can execute
+    while that thread is still returning. Dropping the last Python
+    reference to a still-running QThread makes Qt abort the whole process
+    ("QThread: Destroyed while thread is still running") -- found by
+    looping the test suite, where exactly that race aborted ~1 run in 3.
+    Here the thread is at most microseconds from done, so this never
+    blocks noticeably.
+    """
+    if worker is not None and worker.isRunning():
+        worker.wait()
 
 
 class MainWindow(QMainWindow):
@@ -261,10 +277,9 @@ class MainWindow(QMainWindow):
 
     # -- menu ---------------------------------------------------------------
     def _build_menu(self) -> None:
-        style = self.style()
         file_menu = self.menuBar().addMenu("&File")
 
-        new_action = QAction(style.standardIcon(QStyle.StandardPixmap.SP_FileIcon), "&New Scenario", self)
+        new_action = QAction(toolbar_icon("new"), "&New Scenario", self)
         new_action.setShortcut(QKeySequence.StandardKey.New)
         new_action.setToolTip(
             "New Scenario (Ctrl+N) -- discards the scenario currently open (you'll be prompted "
@@ -274,7 +289,7 @@ class MainWindow(QMainWindow):
         file_menu.addAction(new_action)
         self.new_action = new_action
 
-        open_action = QAction(style.standardIcon(QStyle.StandardPixmap.SP_DialogOpenButton), "&Open...", self)
+        open_action = QAction(toolbar_icon("open"), "&Open...", self)
         open_action.setShortcut(QKeySequence.StandardKey.Open)
         open_action.setToolTip(
             "Open a scenario file (Ctrl+O) -- loads a previously saved .json scenario, "
@@ -285,7 +300,7 @@ class MainWindow(QMainWindow):
         file_menu.addAction(open_action)
         self.open_action = open_action
 
-        save_action = QAction(style.standardIcon(QStyle.StandardPixmap.SP_DialogSaveButton), "&Save", self)
+        save_action = QAction(toolbar_icon("save"), "&Save", self)
         save_action.setShortcut(QKeySequence.StandardKey.Save)
         save_action.setToolTip(
             "Save (Ctrl+S) -- writes the current scenario to its file. If it has never been "
@@ -316,7 +331,7 @@ class MainWindow(QMainWindow):
         file_menu.addAction(quit_action)
 
         run_menu = self.menuBar().addMenu("&Run")
-        run_action = QAction(style.standardIcon(QStyle.StandardPixmap.SP_MediaPlay), "&Run Simulation", self)
+        run_action = QAction(toolbar_icon("run"), "&Run Simulation", self)
         run_action.setShortcut("Ctrl+R")
         run_action.setToolTip(
             "Run Simulation (Ctrl+R) -- builds the current scenario in Basilisk and propagates "
@@ -336,14 +351,14 @@ class MainWindow(QMainWindow):
         # only worker with a request_cancel() to call (see its module
         # docstring for the cooperative-cancellation design; Monte Carlo
         # batches have no equivalent hook and are out of scope here).
-        abort_action = QAction(style.standardIcon(QStyle.StandardPixmap.SP_MediaStop), "&Abort Run", self)
+        abort_action = QAction(toolbar_icon("abort"), "&Abort Run", self)
         abort_action.setToolTip("Abort the running simulation (takes effect at the next checkpoint, not instantly)")
         abort_action.setEnabled(False)
         abort_action.triggered.connect(self.on_abort_run)
         run_menu.addAction(abort_action)
         self.abort_action = abort_action
 
-        live_plot_action = QAction("&Live Plot", self)
+        live_plot_action = QAction(toolbar_icon("live-plot"), "&Live Plot", self)
         live_plot_action.setCheckable(True)
         live_plot_action.setChecked(True)
         live_plot_action.setToolTip(
@@ -352,7 +367,7 @@ class MainWindow(QMainWindow):
         run_menu.addAction(live_plot_action)
         self.live_plot_action = live_plot_action
 
-        check_kernels_action = QAction(style.standardIcon(QStyle.StandardPixmap.SP_BrowserReload),
+        check_kernels_action = QAction(toolbar_icon("check-kernels"),
                                         "&Check Kernels", self)
         check_kernels_action.setToolTip(
             "Checks whether the SPICE ephemeris kernels every run needs (for real Sun/Moon/"
@@ -363,7 +378,7 @@ class MainWindow(QMainWindow):
         run_menu.addAction(check_kernels_action)
         self.check_kernels_action = check_kernels_action
 
-        vizard_action = QAction(style.standardIcon(QStyle.StandardPixmap.SP_DesktopIcon),
+        vizard_action = QAction(toolbar_icon("vizard-config"),
                                  "Vizard &Configuration...", self)
         vizard_action.setToolTip("Configure Vizard visualization for the next run")
         vizard_action.triggered.connect(self.on_configure_vizard)
@@ -374,14 +389,14 @@ class MainWindow(QMainWindow):
         # decides how the NEXT run feeds Vizard, e.g. a live stream or a
         # playback file) -- this one actually starts the separate Vizard
         # application, so live-stream mode has something to connect to.
-        vizard_launch_action = QAction(style.standardIcon(QStyle.StandardPixmap.SP_ComputerIcon),
+        vizard_launch_action = QAction(toolbar_icon("vizard-launch"),
                                         "&Launch Vizard", self)
         vizard_launch_action.setToolTip("Start the external Vizard application")
         vizard_launch_action.triggered.connect(self.on_launch_vizard)
         run_menu.addAction(vizard_launch_action)
         self.vizard_launch_action = vizard_launch_action
 
-        monte_carlo_action = QAction(style.standardIcon(QStyle.StandardPixmap.SP_MediaSeekForward),
+        monte_carlo_action = QAction(toolbar_icon("monte-carlo"),
                                       "Run &Monte Carlo...", self)
         monte_carlo_action.setToolTip("Run a Monte Carlo batch")
         monte_carlo_action.triggered.connect(self.on_run_monte_carlo)
@@ -1085,6 +1100,7 @@ class MainWindow(QMainWindow):
         # needs to recompute a live link-budget breakdown.
         self._last_run_epoch_utc = scenario.epoch_utc
         self._last_run_scenario = scenario
+        _join_finished_worker(self._run_worker)
         self._run_worker = RunWorker(scenario, vizard_request=self._vizard_request, live=live)
         self._run_worker.progress.connect(self._on_run_progress)
         self._run_worker.finished_ok.connect(self._on_run_finished)
@@ -1220,6 +1236,7 @@ class MainWindow(QMainWindow):
         archive_dir = Path(archive_dir_str)
 
         self._start_busy(f"Running {scenario.monte_carlo.num_runs} Monte Carlo case(s)...")
+        _join_finished_worker(self._mc_worker)
         self._mc_worker = MonteCarloWorker(scenario, scenario.monte_carlo, archive_dir)
         self._mc_worker.finished_ok.connect(self._on_monte_carlo_finished)
         self._mc_worker.failed.connect(self._on_monte_carlo_failed)

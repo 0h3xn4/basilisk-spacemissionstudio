@@ -65,7 +65,7 @@ import json
 import math
 from typing import NamedTuple
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -80,12 +80,14 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
+    QScrollArea,
     QVBoxLayout,
     QWidget,
 )
 
 from ..engine.device_catalog import catalog_entries_for_kind
 from .feedback import clear_invalid, mark_invalid, show_toast
+from .widgets import PreciseDoubleSpinBox
 
 
 class _ParamSpec(NamedTuple):
@@ -308,8 +310,13 @@ _CONDITIONAL_ACTUATOR_NOTES = {
 }
 
 
+# Height cap for the per-kind parameter reference panel (see
+# _ItemEditorDialog's own comment where it's built).
+_MAX_HINT_HEIGHT_PX = 150
+
+
 def _spin_component(value: float = 0.0) -> QDoubleSpinBox:
-    box = QDoubleSpinBox()
+    box = PreciseDoubleSpinBox()
     box.setRange(-1.0e6, 1.0e6)
     box.setDecimals(6)
     box.setSingleStep(0.1)
@@ -399,7 +406,18 @@ class _ItemEditorDialog(QDialog):
         self.hint_label = QLabel(_hint_text(self.kind_combo.currentText()))
         self.hint_label.setWordWrap(True)
         self.hint_label.setStyleSheet("color: palette(mid);")
-        layout.addWidget(self.hint_label)
+        # A bordered, height-capped reference panel rather than a bare
+        # label: reaction_wheel alone documents 16 params, and inline
+        # that wall of bullets made this dialog ~900 px tall and pushed
+        # the actual fields (vector rows, params box) off a laptop
+        # screen. Any warning/note line comes first, so it's always in view.
+        self._hint_scroll = QScrollArea()
+        self._hint_scroll.setObjectName("paramReference")
+        self._hint_scroll.setWidgetResizable(True)
+        self._hint_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._hint_scroll.setWidget(self.hint_label)
+        self.hint_label.setContentsMargins(6, 4, 6, 4)
+        layout.addWidget(self._hint_scroll)
 
         # Direct user feedback: "the user should be able to either create
         # their own sensor/actuator or select from a range of commonly
@@ -439,6 +457,7 @@ class _ItemEditorDialog(QDialog):
         self.catalog_info_label = QLabel()
         self.catalog_info_label.setWordWrap(True)
         self.catalog_info_label.setStyleSheet("color: palette(mid);")
+        self.catalog_info_label.setVisible(False)  # only shown once a device is picked (see below)
         catalog_layout.addWidget(self.catalog_info_label)
         layout.addWidget(self._catalog_container)
         self._rebuild_catalog_row(self.kind_combo.currentText())
@@ -486,6 +505,7 @@ class _ItemEditorDialog(QDialog):
         # needed: Qt can size a freshly-constructed QDialog smaller than
         # its own sizeHint() on first show() on a real desktop, a gap
         # this project's own offscreen test rendering doesn't reproduce.
+        self._fit_hint_height()
         self.resize(self.sizeHint())
 
     def _rebuild_vector_rows(self, kind: str) -> None:
@@ -527,8 +547,21 @@ class _ItemEditorDialog(QDialog):
             self._vector_form.addRow(f"{spec.key}{required_tag}", row_widget)
             self._vector_boxes[spec.key] = (x, y, z)
 
+    def _fit_hint_height(self) -> None:
+        # Fits the panel to its text for a short hint, capped for a long one
+        # (which then scrolls inside the panel). Recomputed whenever the
+        # text or the available width changes.
+        width = max(self._hint_scroll.viewport().width(), 200)
+        frame = 2 * self._hint_scroll.frameWidth()
+        self._hint_scroll.setFixedHeight(min(self.hint_label.heightForWidth(width) + frame, _MAX_HINT_HEIGHT_PX))
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 -- Qt override
+        super().resizeEvent(event)
+        self._fit_hint_height()
+
     def _on_kind_changed(self, kind: str) -> None:
         self.hint_label.setText(_hint_text(kind))
+        self._fit_hint_height()
         self._rebuild_vector_rows(kind)
         self._rebuild_catalog_row(kind)
 
@@ -549,9 +582,13 @@ class _ItemEditorDialog(QDialog):
         entries = getattr(self, "_current_catalog_entries", [])
         if index <= 0 or index - 1 >= len(entries):
             self.catalog_info_label.setText("")
+            # Hidden, not just blank: an empty word-wrapped QLabel still
+            # reserved a blank ~40 px band between this row and the next.
+            self.catalog_info_label.setVisible(False)
             self.apply_catalog_button.setEnabled(False)
             return
         entry = entries[index - 1]
+        self.catalog_info_label.setVisible(True)
         self.apply_catalog_button.setEnabled(True)
         self.catalog_info_label.setText(
             f"{entry.description}\n\nSource: {entry.source_url}\n\nExport control: {entry.itar_free_note}"
