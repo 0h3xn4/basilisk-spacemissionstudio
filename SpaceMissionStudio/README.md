@@ -616,9 +616,9 @@ are skipped.
 With Basilisk installed (`pip install "bsk[all]"` -- see "Getting
 started" above), those tests run for real: 1500 pass and 11 skip (the
 ones whose premise is specifically "Basilisk is unavailable"). The
-first run needs internet access
-once, so Basilisk can download its SPICE ephemeris kernels; without
-them, the ~45 kernel-dependent tests fail with `KernelError`.
+first run needs internet access once, so Basilisk can download its
+SPICE ephemeris kernels; without them, the ~45 kernel-dependent tests
+fail with `KernelError`.
 `pip install pytest-xdist` and `pytest tests/ -n auto` runs the suite
 on all CPU cores.
 See "Verification status" above for how thoroughly that's actually been
