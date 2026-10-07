@@ -153,3 +153,27 @@ def test_set_scenario_none_after_rich_hides_everything(qtbot):
     assert widget._tiles_row.count() == 0
     assert widget._sections_layout.count() == 0
     assert widget._table.isHidden()
+
+
+def test_table_is_not_cut_off_in_a_narrow_pane(qtbot):
+    """In a narrow pane the table scrolls sideways; its height must then
+    include the scroll bar, or the last row is hidden behind it."""
+    from pathlib import Path
+
+    from spacemissionstudio.gui.scenario_explainer_widget import ScenarioExplainerWidget
+    from spacemissionstudio.schema import load_scenario
+
+    templates = Path(__file__).resolve().parents[2] / "spacemissionstudio" / "scenarios" / "templates"
+    widget = ScenarioExplainerWidget()
+    qtbot.addWidget(widget)
+    widget.setFixedSize(420, 760)  # [px] narrow pane, set before the scenario arrives (as in the app)
+    widget.show()
+    qtbot.waitExposed(widget)
+    widget.set_scenario(load_scenario(next(templates.glob("05_*.json"))))
+    qtbot.wait(50)  # [ms] let the layout settle
+    table = widget._table
+    assert table.horizontalScrollBar().isVisible(), "precondition: the pane should be narrower than the table"
+    rows_height = sum(table.rowHeight(r) for r in range(table.rowCount()))
+    visible = table.viewport().height()
+    assert visible >= rows_height, (visible, rows_height)
+    assert not table.verticalScrollBar().isVisible()

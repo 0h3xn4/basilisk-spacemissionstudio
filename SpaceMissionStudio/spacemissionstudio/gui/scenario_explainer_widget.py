@@ -36,7 +36,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEvent, Qt
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -153,14 +153,35 @@ class ScenarioExplainerWidget(QWidget):
         self._table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self._table.verticalHeader().setVisible(False)  # the Spacecraft column already names each row
         self._table.horizontalHeader().setStretchLastSection(True)
+        self._table.horizontalHeader().setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        self._table.installEventFilter(self)  # refit the height when the width changes
         self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self._table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
         self._table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        # Fitted to its rows (below), so it never scrolls vertically.
+        self._table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._content_layout.addWidget(self._table)
 
         self._content_layout.addStretch(1)
 
         self.set_scenario(None)
+
+    def _fit_table_height(self) -> None:
+        """Fit the table to its rows instead of leaving a tall, mostly
+        empty grid -- and, when it is wider than the pane, add room for its
+        horizontal scroll bar so the last row isn't cut off."""
+        table = self._table
+        height = table.horizontalHeader().height() + 2 * table.frameWidth() + 2
+        height += sum(table.rowHeight(r) for r in range(table.rowCount()))
+        if table.horizontalHeader().length() > table.width() - 2 * table.frameWidth():
+            height += table.horizontalScrollBar().sizeHint().height()
+        if table.height() != height:
+            table.setFixedHeight(height)
+
+    def eventFilter(self, watched, event):  # noqa: N802 -- Qt API name
+        if watched is self._table and event.type() == QEvent.Type.Resize and self._table.rowCount():
+            self._fit_table_height()
+        return super().eventFilter(watched, event)
 
     def set_scenario(self, scenario: Optional[Scenario]) -> None:
         if scenario is None:
@@ -244,11 +265,7 @@ class ScenarioExplainerWidget(QWidget):
                 for col_index, column in enumerate(columns, start=1):
                     self._table.setItem(row_index, col_index, QTableWidgetItem(row.facts.get(column, "")))
             self._table.resizeColumnsToContents()
-            # Fit the table to its rows instead of leaving a tall, mostly
-            # empty grid below the last spacecraft.
-            height = self._table.horizontalHeader().height() + 2 * self._table.frameWidth() + 2
-            height += sum(self._table.rowHeight(r) for r in range(self._table.rowCount()))
-            self._table.setFixedHeight(height)
+            self._fit_table_height()
         else:
             self._table.setVisible(False)
             self._table.setRowCount(0)

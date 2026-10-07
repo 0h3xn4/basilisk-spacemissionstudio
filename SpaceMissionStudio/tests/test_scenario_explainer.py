@@ -63,7 +63,7 @@ def test_degree_10_sun_moon_gravity_shows_up_as_a_tile():
     explanation = explain(scenario)
     gravity_tile = next(t for t in explanation.stat_tiles if t.label == "Gravity")
     assert "10" in gravity_tile.value
-    assert "sun" in gravity_tile.value and "moon" in gravity_tile.value
+    assert gravity_tile.value == "Degree-10 Earth + Sun/Moon"  # body names capitalised
 
 
 def test_sso_detection_fires_at_the_real_reference_point():
@@ -205,3 +205,34 @@ def test_explain_never_raises_even_on_a_scenario_missing_its_own_schema_defaults
 
 def test_badge_default_kind_is_neutral():
     assert Badge("x").kind == "neutral"
+
+
+def _template_scenario(prefix):
+    return load_scenario(next((Path(__file__).resolve().parent.parent / "spacemissionstudio" / "scenarios"
+                               / "templates").glob(f"{prefix}_*.json")))
+
+
+def test_identical_spacecraft_share_one_table_row():
+    """A 6-satellite constellation used to repeat the same row six times."""
+    rows = explain(_template_scenario("04")).spacecraft_table
+    assert len(rows) == 1
+    assert rows[0].name == "leo-01-01 ... leo-02-03 (6)"
+
+
+def test_badges_use_plain_names_and_reserve_status_colours():
+    """Real user feedback on clutter: Drag/SRP badges were in the warning
+    colour and power/RF in the success colour, though neither is a state;
+    attitude modes showed code names; stations were a count plus a list."""
+    every_badge = []
+    for path in sorted((Path(__file__).resolve().parent.parent / "spacemissionstudio" / "scenarios"
+                        / "templates").glob("*.json")):
+        for section in explain(load_scenario(path)).sections:
+            every_badge += section.badges
+            for note in section.notes:
+                assert "_" not in note, note  # no code names in notes either
+    assert {badge.kind for badge in every_badge} <= {"accent", "neutral"}
+    labels = {badge.label for badge in every_badge}
+    assert not labels & {"inertial3D", "hillPoint", "velocityPoint", "sunSafePoint", "locationPointing"}
+    assert "Sun pointing" in labels
+    stations = next(s for s in explain(_template_scenario("19")).sections if s.title == "Ground stations")
+    assert [b.label for b in stations.badges] == ["berlin-gs"] and stations.notes == []

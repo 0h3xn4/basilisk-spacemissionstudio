@@ -7085,3 +7085,25 @@ All displayed values and label texts the tests check are unchanged.
 * badges stay pills.
 
 The battery test also checks the new percentage label.
+
+## Explain tab: decluttered
+
+The user asked for the Explain tab to be checked for the same clutter. It was rendered for templates 04 (six-satellite constellation), 05 (formation) and 19 (comms) at 1000 px and 620 px. Problems found:
+* **Repeated rows.** Template 04's spacecraft table had six identical rows, one per satellite.
+* **Misused status colours.** Drag and SRP showed as orange "warning" badges, and Power/RF link budget as green "success" badges. They are model settings, not states, so the colours suggested a problem or a pass that wasn't there.
+* **Code names.** Attitude modes showed as `hillPoint`, `sunSafePoint` and so on, and gravity as "Degree-10 earth + sun/moon".
+* **Duplicated stations.** The Ground stations section showed a "1 station(s)" badge and then repeated the names as a text line.
+* **Clipped table.** In a narrow pane the table scrolled sideways, but its height did not allow for the scroll bar, so the last row was hidden behind it. A second, vertical scroll bar appeared as well.
+
+**Changes.**
+* **Table.** Spacecraft with identical facts share one row, labelled "leo-01-01 ... leo-02-03 (6)" (or both names when there are two).
+* **Badges.** Enabled models (Drag, Solar radiation pressure, Gravity gradient, Power budget, RF link budget, attitude modes) use the accent colour. Status colours stay reserved for states.
+* **Names.** Attitude modes use plain names (e.g. "Orbit-frame (nadir) pointing", "Sun pointing"), in the badges and in the table's Control column. Body names are capitalized.
+* **Stations.** One badge per station name, with no extra text line.
+* **Formation note.** Shortened to "phasing keeping needs station-keeping on the same spacecraft (User Manual Sec. 12)".
+* **Table height.** The table never scrolls vertically, and it reserves room for the horizontal scroll bar when it is wider than the pane. It refits on every resize.
+
+**Tests.**
+* Template 04 gives one table row covering all six satellites.
+* Badges use plain names and no status colours.
+* The table in a narrow pane shows every row with no vertical scroll bar. This test fails without the height fix.

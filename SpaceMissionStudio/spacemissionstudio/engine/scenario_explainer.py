@@ -156,20 +156,35 @@ def _orbit_summary(orbit) -> str:
     return "Orbit"
 
 
+# Plain names for the attitude modes (shown instead of their code names).
+_FSW_MODE_NAMES = {
+    "inertial3D": "Inertial hold",
+    "hillPoint": "Orbit-frame (nadir) pointing",
+    "velocityPoint": "Velocity pointing",
+    "sunSafePoint": "Sun pointing",
+    "locationPointing": "Target pointing",
+}
+
+
+def _mode_name(fsw_mode: str) -> str:
+    return _FSW_MODE_NAMES.get(fsw_mode, fsw_mode)
+
+
 def _gravity_summary(gravity) -> str:
+    body = gravity.central_body.capitalize()
     if gravity.central_body_degree <= 0:
-        body_part = f"Point-mass {gravity.central_body}"
+        body_part = f"Point-mass {body}"
     else:
-        body_part = f"Degree-{gravity.central_body_degree} {gravity.central_body}"
+        body_part = f"Degree-{gravity.central_body_degree} {body}"
     if gravity.third_body_perturbers:
-        return f"{body_part} + {'/'.join(gravity.third_body_perturbers)}"
+        return f"{body_part} + {'/'.join(b.capitalize() for b in gravity.third_body_perturbers)}"
     return body_part
 
 
 def _spacecraft_control_summary(sc) -> str:
     parts = []
     if sc.fsw_mode:
-        parts.append(sc.fsw_mode)
+        parts.append(_mode_name(sc.fsw_mode))
     if sc.station_keeping is not None:
         parts.append("station-keeping")
     if sc.phasing_keeping is not None:
@@ -210,8 +225,8 @@ def _formation_section(scenario) -> ExplanationSection | None:
     no_station_keeping = [sc.name for sc in scenario.spacecraft
                            if sc.phasing_keeping is not None and sc.station_keeping is None]
     if no_station_keeping:
-        notes.append(f"{', '.join(no_station_keeping)}: phasing_keeping with no station_keeping "
-                      "(needs it on the SAME spacecraft -- see User Manual Sec. 12, 'Station-keeping')")
+        notes.append(f"{', '.join(no_station_keeping)}: phasing keeping needs station-keeping on the same "
+                     "spacecraft (User Manual Sec. 12)")
     return ExplanationSection(title="Formation / orbit maintenance", badges=badges, notes=notes)
 
 
@@ -220,7 +235,7 @@ def _attitude_section(scenario) -> ExplanationSection | None:
     comms_pointing_count = sum(1 for sc in scenario.spacecraft if sc.comms_pointing is not None)
     if not modes and not comms_pointing_count:
         return None
-    badges = [Badge(mode, "neutral") for mode in modes]
+    badges = [Badge(_mode_name(mode), "accent") for mode in modes]
     if comms_pointing_count:
         badges.append(Badge("Comms pointing", "accent"))
     return ExplanationSection(title="Attitude control", badges=badges)
@@ -231,11 +246,11 @@ def _environment_section(scenario) -> ExplanationSection | None:
     if any(_is_sun_synchronous(sc.orbit) for sc in scenario.spacecraft):
         badges.append(Badge("Sun-synchronous", "accent"))
     if any(sc.enable_drag for sc in scenario.spacecraft):
-        badges.append(Badge("Drag ON", "warning"))
+        badges.append(Badge("Drag", "accent"))
     if any(sc.enable_srp for sc in scenario.spacecraft):
-        badges.append(Badge("SRP ON", "warning"))
+        badges.append(Badge("Solar radiation pressure", "accent"))
     if any(sc.enable_gravity_gradient for sc in scenario.spacecraft):
-        badges.append(Badge("Gravity gradient", "neutral"))
+        badges.append(Badge("Gravity gradient", "accent"))
     if not badges:
         return None
     return ExplanationSection(title="Environment", badges=badges)
@@ -244,9 +259,9 @@ def _environment_section(scenario) -> ExplanationSection | None:
 def _power_comms_section(scenario) -> ExplanationSection | None:
     badges: List[Badge] = []
     if any(sc.power is not None for sc in scenario.spacecraft):
-        badges.append(Badge("Power budget", "success"))
+        badges.append(Badge("Power budget", "accent"))
     if any(sc.rf_link is not None for sc in scenario.spacecraft):
-        badges.append(Badge("RF link budget", "success"))
+        badges.append(Badge("RF link budget", "accent"))
     if not badges:
         return None
     return ExplanationSection(title="Power & comms", badges=badges)
@@ -255,11 +270,9 @@ def _power_comms_section(scenario) -> ExplanationSection | None:
 def _ground_stations_section(scenario) -> ExplanationSection | None:
     if not scenario.ground_stations:
         return None
-    names = ", ".join(gs.name for gs in scenario.ground_stations)
     return ExplanationSection(
         title="Ground stations",
-        badges=[Badge(f"{len(scenario.ground_stations)} station(s)", "neutral")],
-        notes=[names],
+        badges=[Badge(gs.name, "neutral") for gs in scenario.ground_stations],
     )
 
 
@@ -323,16 +336,23 @@ def _explain(scenario) -> ScenarioExplanation:
 
     spacecraft_table: List[SpacecraftFactRow] = []
     if len(spacecraft) >= 2:
+        # Spacecraft with identical facts share one row (a 6-satellite
+        # constellation used to repeat the same row six times).
+        groups: dict = {}
         for sc in spacecraft:
             propellant_kg = _spacecraft_propellant_kg(sc)
-            spacecraft_table.append(SpacecraftFactRow(
-                name=sc.name,
-                facts={
-                    "Orbit": _orbit_summary(sc.orbit),
-                    "Control": _spacecraft_control_summary(sc),
-                    "Propellant": f"{propellant_kg:g} kg" if propellant_kg > 0 else "-",
-                },
-            ))
+            facts = {
+                "Orbit": _orbit_summary(sc.orbit),
+                "Control": _spacecraft_control_summary(sc),
+                "Propellant": f"{propellant_kg:g} kg" if propellant_kg > 0 else "-",
+            }
+            groups.setdefault(tuple(facts.items()), (facts, []))[1].append(sc.name)
+        for facts, names in groups.values():
+            if len(names) > 2:
+                label = f"{names[0]} ... {names[-1]} ({len(names)})"
+            else:
+                label = ", ".join(names)
+            spacecraft_table.append(SpacecraftFactRow(name=label, facts=facts))
 
     return ScenarioExplanation(
         headline=scenario.name or "(unnamed scenario)",
