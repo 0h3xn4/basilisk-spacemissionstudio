@@ -56,8 +56,7 @@ class VizardDialog(QDialog):
 
         layout = QVBoxLayout(self)
         description_label = QLabel(
-            "Vizard is a separate application and cannot be embedded here -- pick how this run "
-            "feeds it. See SpaceMissionStudio/README.md for how to open Vizard itself."
+            "Vizard runs as a separate app. Choose how this run sends it data."
         )
         # See phasing_formation_dialog.py's identical fix (same
         # copy-pasted top-description-QLabel shape, same missing

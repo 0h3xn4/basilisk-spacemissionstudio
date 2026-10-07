@@ -390,9 +390,8 @@ class _CommandEditorDialog(QDialog):
         form.addRow("New value", self.assignment_value_spin)
 
         hint = QLabel(
-            "Sets a live controller parameter mid-mission, e.g. reducing station-keeping thrust for a later "
-            "mission phase. thrust_n [N] applies to any controller kind above; isp_s [s] only affects propellant "
-            "bookkeeping, not the applied force."
+            "Changes a controller setting mid-mission, e.g. lower thrust for a later phase. "
+            "Specific impulse only changes the propellant used, not the force."
         )
         hint.setWordWrap(True)
         hint.setStyleSheet("color: palette(mid);")
@@ -479,9 +478,8 @@ class _CommandEditorDialog(QDialog):
         page = QWidget()
         layout = QVBoxLayout(page)
         hint = QLabel(
-            "Condition expression, evaluated against t_s (elapsed mission time [s]) and "
-            "spacecraft['<name>']['r_BN_N'|'v_BN_N'|'altitude_m'|'mass_kg'] -- "
-            "e.g. \"spacecraft['sat-1']['altitude_m'] < 400000\"."
+            "A Python condition, e.g.  spacecraft['sat-1']['altitude_m'] < 400000\n"
+            "Available: t_s (mission time, s) and, per spacecraft, r_BN_N, v_BN_N, altitude_m, mass_kg."
         )
         hint.setWordWrap(True)
         layout.addWidget(hint)
@@ -494,8 +492,7 @@ class _CommandEditorDialog(QDialog):
         page = QWidget()
         layout = QVBoxLayout(page)
         hint = QLabel(
-            "Arbitrary Python, run with no sandboxing (a plain exec()) -- see "
-            "engine.mission_engine.MissionEngine._run_script_block's docstring for the exact trust boundary."
+            "Python code, run without a sandbox. Only run scripts you trust."
         )
         hint.setWordWrap(True)
         layout.addWidget(hint)

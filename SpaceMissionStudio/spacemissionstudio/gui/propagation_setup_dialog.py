@@ -143,9 +143,7 @@ class PropagationSetupDialog(QDialog):
         layout.addWidget(scroll)
 
         intro_label = QLabel(
-            "Everything that governs how this scenario's orbits propagate: the gravity model, "
-            "which perturbations are active, the numerical integrator, and the space-weather data "
-            "atmospheric drag uses."
+            "Gravity, perturbations, integrator and space weather for every orbit in this scenario."
         )
         intro_label.setWordWrap(True)
         # A word-wrapped QLabel's sizeHint() reports the width needed to
@@ -355,9 +353,7 @@ class PropagationSetupDialog(QDialog):
         # top-level intro_label already uses successfully, doesn't have
         # that negotiation problem.
         srp_pointer = QLabel(
-            "Atmospheric drag and solar radiation pressure are set PER SPACECRAFT (each needs that "
-            "spacecraft's own cross-section/coefficient) -- open a spacecraft in the scenario's "
-            "spacecraft list and look at its \"Orbit / mass\" tab, not here."
+            "Drag and solar radiation pressure are set per spacecraft, on its Orbit / mass tab."
         )
         srp_pointer.setWordWrap(True)
         srp_pointer.setMaximumWidth(_CONTENT_WIDTH)

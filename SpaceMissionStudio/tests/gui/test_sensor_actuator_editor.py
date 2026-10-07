@@ -313,7 +313,7 @@ def test_magnetic_torque_rod_shows_a_conditional_requirement_note(qtbot):
     index = dialog.kind_combo.findText("magnetic_torque_rod")
     dialog.kind_combo.setCurrentIndex(index)
     assert "not simulated yet" not in dialog.hint_label.text()
-    assert "magnetic_momentum_management" in dialog.hint_label.text()
+    assert "Magnetic momentum management" in dialog.hint_label.text()
 
 
 def test_thruster_kind_is_implemented_and_round_trips(qtbot):

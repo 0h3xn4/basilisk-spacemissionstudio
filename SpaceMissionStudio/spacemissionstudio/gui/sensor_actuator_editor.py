@@ -66,6 +66,7 @@ kind's non-vector keys.
 from __future__ import annotations
 
 import html
+import re
 from typing import NamedTuple
 
 from PySide6.QtCore import QSize, Qt, Signal
@@ -381,10 +382,8 @@ _UNIMPLEMENTED_ACTUATOR_KINDS = ()
 # above the normal param hint, not a warning that it's unsimulated.
 _CONDITIONAL_ACTUATOR_NOTES = {
     "magnetic_torque_rod": (
-        "Only simulated for continuous reaction-wheel momentum management (this spacecraft also needs "
-        "magnetic_momentum_management set, and at least one 'reaction_wheel' actuator -- see the Power / "
-        "propulsion tab) -- there is no standalone attitude-control/detumble mode for magnetic torque "
-        "rods alone."
+        "Used only to unload reaction wheels: turn on Magnetic momentum management (Power / propulsion "
+        "tab) and add a reaction wheel."
     ),
 }
 
@@ -415,6 +414,16 @@ _STATUS_COLORS = {"RFI priority": "success", "RFI": "warning", "Candidate": "tex
                   "Check": "danger", "Development": "warning"}
 
 
+def _readable_param_names(kind: str, text: str) -> str:
+    """``text`` with this kind's parameter keys (``noise_arcsec``) replaced
+    by the form's own labels ("Attitude noise (1-sigma)"), so a device
+    card reads in the same words as the form beside it."""
+    for spec in sorted(_KIND_PARAM_SPECS.get(kind, []), key=lambda s: -len(s.key)):
+        if spec.label:
+            text = re.sub(rf"(?<![\w.]){re.escape(spec.key)}(?![\w])", spec.label, text)
+    return text
+
+
 def _device_card_html(entry) -> str:
     """A catalog device as a structured card: name, summary, labelled facts
     and small-print conversion notes (real user feedback: the old plain-text
@@ -434,8 +443,9 @@ def _device_card_html(entry) -> str:
         f"<tr><td style='color:{PALETTE['text_muted']}; padding:2px 10px 2px 0; white-space:nowrap;'"
         f" valign='top'>{label}</td><td style='padding:2px 0;'>{value}</td></tr>"
         for label, value in rows if value)
-    notes = (f"<p style='color:{PALETTE['text_muted']}; font-size:90%; margin-top:8px;'>"
-             f"<b>How the values were set:</b> {esc(entry.notes)}</p>" if entry.notes else "")
+    notes = (f"<p style='color:{PALETTE['text_muted']}; margin-top:8px;'>"
+             f"<b>How the values were set:</b> {esc(_readable_param_names(entry.kind, entry.notes))}</p>"
+             if entry.notes else "")
     return (f"<p style='font-size:115%; font-weight:600; margin:0;'>{esc(entry.manufacturer)} "
             f"{esc(entry.product_name)}</p>"
             f"<p style='color:{PALETTE['text_muted']}; margin:0 0 6px 0;'>{esc(entry.country)}</p>"

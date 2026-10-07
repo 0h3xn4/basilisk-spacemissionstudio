@@ -6952,3 +6952,33 @@ The user's screenshot showed the Target separation note: "The along-track distan
 * A new test checks every curated hint (present, at most 60 characters, no code names) and every intro (at most 90 characters).
 * It also checks that template 05's hint renders on one line with its full text as the tooltip.
 * The round-trip and coverage tests pass for all 20 templates.
+
+## Scroll wheel no longer changes values; cramped help text fixed in every dialog
+
+**Scroll wheel.** The user asked: "Don't allow scrolling to change the values in any boxes. That's annoying."
+* **Change.** A new app-wide guard (`gui/widgets.install_wheel_guard`, installed at startup in `gui/app.py`) stops the mouse wheel from changing any spin box or drop-down.
+* **The page still scrolls.** The wheel event is passed to the nearest scroll area, so scrolling over a box scrolls the page instead.
+* **Still works.** An open drop-down list still scrolls, and values still change by typing, the arrow buttons and the keyboard.
+* **Test.** A new test sends wheel events to several kinds of box (including the text field inside a spin box) and to a drop-down. None of the values change, and the page scrolls. Without the guard, the same events change both a spin box and a drop-down.
+
+**Cramped help text, checked in every dialog.** The same rendering approach as the border check was used: every dialog and tab, with each visible label's length, wrapped height and any code names measured. Fixed:
+* **Spacecraft editor.**
+  * The labels "Momentum threshold hs_max" and "Control gain c_gain" no longer show code names.
+  * The Vizard model note went from 234 characters to one line.
+* **Propagation setup.** The intro and the drag/SRP note are each one line (they were 188 and 230 characters).
+* **Walker constellation and Vizard dialogs.** The intros are shorter. The Vizard intro had pointed users to the README.
+* **Mission sequence commands.**
+  * Set parameter is no longer 230 characters naming `thrust_n`/`isp_s`.
+  * The if/while hint is now an example plus the available names.
+  * The script-block hint is one plain sentence instead of a pointer to an engine docstring.
+* **Sensor/actuator dialog.**
+  * The torque-rod note is one sentence (it was 295 characters and named `magnetic_momentum_management`).
+  * Device cards now show parameter names as the form's own labels.
+  * The 7 original catalog entries and the VRW-D-6 had notes of up to 1,076 characters; they were rewritten to the concise style of the supplier-database entries, with the same figures and derivations.
+  * The "How the values were set" note is no longer in small type.
+* **Load tab and Mission Dashboard.**
+  * The Load tab hint is shorter.
+  * The empty Mission Dashboard message is one sentence instead of naming `comms_pointing`.
+  * Template 15 is renamed from "(locationPointing + target_body)" to "(Moon)"; the generator and the JSON were regenerated together, and only the name changed.
+
+**New permanent test.** `tests/gui/test_label_text.py` renders the same 47 dialogs as the border test. Every visible plain-text label must be at most 160 characters with no code names. The exceptions are rich-text cards and the if/while hint, where Python syntax is the content. With the old `hs_max` label put back, the test fails.

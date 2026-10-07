@@ -1,5 +1,5 @@
 {
-  "name": "15 - Direct celestial-body pointing (locationPointing + target_body)",
+  "name": "15 - Direct celestial-body pointing (Moon)",
   "epoch_utc": "2030-01-01T00:00:00",
   "simulation_mode": "full_attitude",
   "gravity": {

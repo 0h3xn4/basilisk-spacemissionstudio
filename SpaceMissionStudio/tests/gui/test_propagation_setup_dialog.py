@@ -83,7 +83,7 @@ def test_srp_pointer_label_gets_its_full_wrapped_height_not_clipped(dialog):
 
         QApplication.processEvents()
 
-    srp_labels = [w for w in dialog.findChildren(QLabel) if "PER SPACECRAFT" in w.text()]
+    srp_labels = [w for w in dialog.findChildren(QLabel) if "set per spacecraft" in w.text()]
     assert srp_labels, "expected to find the SRP-pointer QLabel"
     label = srp_labels[0]
     needed_height = label.heightForWidth(label.geometry().width())

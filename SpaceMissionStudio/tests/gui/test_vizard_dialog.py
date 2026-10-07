@@ -21,7 +21,7 @@ def test_description_label_wraps_instead_of_blowing_up_dialog_width(qtbot):
     dialog.show()
     qtbot.wait(10)
 
-    description_labels = [w for w in dialog.findChildren(QLabel) if len(w.text()) > 100]
+    description_labels = [w for w in dialog.findChildren(QLabel) if w.text().startswith("Vizard runs as")]
     assert description_labels, "expected to find the long top description QLabel"
     assert all(w.wordWrap() for w in description_labels)
 

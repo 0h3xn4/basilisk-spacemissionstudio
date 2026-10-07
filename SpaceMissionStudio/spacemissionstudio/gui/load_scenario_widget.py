@@ -226,8 +226,7 @@ class LoadScenarioWidget(QWidget):
         button_row.addStretch(1)
         layout.addLayout(button_row)
 
-        hint = QLabel("Double-click a template to open it. Customize... lets you change any of its "
-                      "settings first.")
+        hint = QLabel("Double-click to open. Customize... changes settings first.")
         hint.setWordWrap(True)
         hint.setStyleSheet(f"color: {PALETTE['text_muted']};")
         layout.addWidget(hint)

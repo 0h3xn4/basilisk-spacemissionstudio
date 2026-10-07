@@ -854,7 +854,7 @@ def build_14_css_sun_heading_estimation() -> Scenario:
 
 def build_15_celestial_body_pointing() -> Scenario:
     return Scenario(
-        name="15 - Direct celestial-body pointing (locationPointing + target_body)",
+        name="15 - Direct celestial-body pointing (Moon)",
         description=(
             DESCRIPTIONS["15"]
         ),

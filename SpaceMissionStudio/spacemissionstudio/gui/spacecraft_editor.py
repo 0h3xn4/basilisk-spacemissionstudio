@@ -978,7 +978,7 @@ class SpacecraftEditorDialog(QDialog):
             "(their maxMomentum params on the Sensors/actuators tab), so desaturation fires "
             "before any wheel actually saturates, not after."
         )
-        md_form.addRow("Momentum threshold hs_max [N*m*s]", self.md_hs_max)
+        md_form.addRow("Momentum threshold [N*m*s]", self.md_hs_max)
         self.md_thr_min_fire_time = _spin(1.0e-4, 100.0, decimals=4, step=0.01,
                                            value=md0.thr_min_fire_time if md0 else 0.02)
         self.md_thr_min_fire_time.setToolTip(
@@ -1041,7 +1041,7 @@ class SpacecraftEditorDialog(QDialog):
             "magnetic torque. Higher = more aggressively pulls wheel speed toward the bias, at "
             "the cost of a more aggressive torque-rod command."
         )
-        mmm_form.addRow("Control gain c_gain [-]", self.mmm_c_gain)
+        mmm_form.addRow("Control gain [-]", self.mmm_c_gain)
         power_layout.addWidget(self.magnetic_momentum_management_group)
 
         # Requires a "thruster" actuator on this spacecraft (see
@@ -1189,9 +1189,8 @@ class SpacecraftEditorDialog(QDialog):
         viz_model_tab = QWidget()
         viz_model_layout = QVBoxLayout(viz_model_tab)
         viz_model_description_label = QLabel(
-            "Replaces this spacecraft's default cube icon in Vizard with a custom 3D model. "
-            "PURELY COSMETIC -- never affects simulated physics (mass, drag/SRP area, etc. are set "
-            "on the Orbit/mass and Power tabs and are unchanged by anything here)."
+            "A 3D model shown in Vizard instead of the default cube. Display only: it never "
+            "changes the simulation."
         )
         # See phasing_formation_dialog.py's identical fix (same
         # copy-pasted top-description-QLabel shape, same missing

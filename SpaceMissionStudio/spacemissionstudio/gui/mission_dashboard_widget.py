@@ -130,8 +130,7 @@ class MissionDashboardWidget(QWidget):
         layout = QVBoxLayout(self)
 
         self._placeholder = QLabel(
-            "No live telemetry yet -- run a scenario with comms_pointing configured (e.g. template "
-            "'19 - Sun-pointing spacecraft with automatic ground-station comms link') to populate this tab."
+            "No live telemetry yet. Run a scenario with Comms pointing (e.g. template 19) to see it here."
         )
         self._placeholder.setWordWrap(True)
         self._placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)  # same centered empty state as the Results tab

@@ -90,9 +90,8 @@ class WalkerConstellationDialog(QDialog):
 
         layout = QVBoxLayout(self)
         description_label = QLabel(
-            "Generates a full Walker-pattern constellation from a few high-level requirements -- "
-            "every satellite's mass/sensors/actuators/power/etc. are cloned from the template you pick below; "
-            "only orbit and name differ. Added to (not replacing) this scenario's spacecraft list."
+            "Adds a Walker constellation. Every satellite is a copy of the template spacecraft below; "
+            "only the orbit and name differ."
         )
         # See phasing_formation_dialog.py's identical fix (same
         # copy-pasted top-description-QLabel shape, same missing

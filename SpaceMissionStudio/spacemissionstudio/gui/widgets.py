@@ -37,8 +37,16 @@ from __future__ import annotations
 import math
 from decimal import Decimal
 
+from PySide6.QtCore import QCoreApplication, QEvent, QObject
 from PySide6.QtGui import QValidator
-from PySide6.QtWidgets import QDoubleSpinBox, QWidget
+from PySide6.QtWidgets import (
+    QAbstractScrollArea,
+    QAbstractSpinBox,
+    QApplication,
+    QComboBox,
+    QDoubleSpinBox,
+    QWidget,
+)
 
 # Qt rounds every value to decimals() as it is set. 40 decimal places
 # keep a double's full 17 significant digits for magnitudes down to
@@ -118,3 +126,43 @@ def exact_number_text(value: float) -> str:
     """
     text = repr(float(value))
     return text[:-2] if text.endswith(".0") else text
+
+
+def _wheel_owner(widget) -> QWidget | None:
+    """The spin box or drop-down a wheel event over ``widget`` would
+    change: the widget itself, or the line edit inside one. An open
+    drop-down's popup list is NOT matched, so it still scrolls."""
+    for candidate in (widget, widget.parent() if widget is not None else None):
+        if isinstance(candidate, (QAbstractSpinBox, QComboBox)):
+            return candidate
+    return None
+
+
+class _WheelGuard(QObject):
+    """App-wide: the mouse wheel never changes a spin box or drop-down
+    value (real user feedback: scrolling a form changed whichever value
+    passed under the pointer -- "that's annoying"). The wheel event goes
+    to the nearest scroll area instead, so the page scrolls as expected.
+    Values still change by typing, the arrow buttons and the keyboard."""
+
+    def eventFilter(self, watched, event):  # noqa: N802 -- Qt API name
+        if event.type() == QEvent.Type.Wheel and isinstance(watched, QWidget):
+            owner = _wheel_owner(watched)
+            if owner is not None:
+                area = owner.parent()
+                while area is not None and not isinstance(area, QAbstractScrollArea):
+                    area = area.parent()
+                if area is not None:
+                    QCoreApplication.sendEvent(area.verticalScrollBar(), event)
+                return True  # never let the box itself see the wheel
+        return False
+
+
+def install_wheel_guard(app: QApplication) -> QObject:
+    """Install :class:`_WheelGuard` on ``app`` (once). Returns it."""
+    guard = getattr(app, "_spacemissionstudio_wheel_guard", None)
+    if guard is None:
+        guard = _WheelGuard(app)
+        app.installEventFilter(guard)
+        app._spacemissionstudio_wheel_guard = guard
+    return guard
