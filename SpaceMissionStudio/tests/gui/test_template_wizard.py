@@ -170,13 +170,10 @@ def test_reaction_wheel_max_momentum_applies_to_every_wheel_uniformly(qtbot):
 
 @pytest.mark.parametrize("filename", _ALL_TEMPLATE_FILENAMES)
 def test_wizard_is_sized_to_fit_its_own_busiest_page_not_a_flat_default(qtbot, filename):
-    """Regression test for a real bug, found from a user screenshot:
-    QWizard.sizeHint() does NOT reflect its own pages' content at all --
-    it measures a flat 500x360 regardless of what spec/pages were given
-    (confirmed directly), so several pages' intro text and field rows
-    rendered clipped. TemplateCustomizeWizard.__init__ now explicitly
-    sizes itself from the widest/tallest page across the WHOLE wizard.
-    """
+    """Every section card fits the dialog's width (no sideways scrolling),
+    and the dialog stays a sensible size: sections scroll vertically on one
+    page. History: a flat QWizard default clipped pages; later one section
+    at a time left near-empty dialogs (real user feedback)."""
     from spacemissionstudio.gui.load_scenario_widget import TEMPLATES_DIR
     from spacemissionstudio.gui.template_wizard import TemplateCustomizeWizard, get_wizard_spec
     from spacemissionstudio.schema import load_scenario
@@ -184,11 +181,10 @@ def test_wizard_is_sized_to_fit_its_own_busiest_page_not_a_flat_default(qtbot, f
     scenario = load_scenario(TEMPLATES_DIR / filename)
     wizard = TemplateCustomizeWizard(scenario, get_wizard_spec(filename))
     qtbot.addWidget(wizard)
-
-    busiest_page_width = max(p.sizeHint().width() for p in wizard._field_pages)
-    busiest_page_height = max(p.sizeHint().height() for p in wizard._field_pages)
-    assert wizard.size().width() >= busiest_page_width
-    assert wizard.size().height() >= busiest_page_height + 100  # room for QWizard's own title/nav chrome
+    wizard.show()
+    widest_section = max(p.sizeHint().width() for p in wizard._field_pages)
+    assert wizard._scroll.viewport().width() >= widest_section
+    assert wizard.size().width() <= 1100 and wizard.size().height() <= 700
 
 
 @pytest.mark.parametrize("filename", _ALL_TEMPLATE_FILENAMES)

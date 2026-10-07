@@ -298,7 +298,7 @@ def _page_and_label(path: Path, scenario: Scenario) -> Tuple[str, str, str, str,
         elif part.startswith("vizard_model"):
             page = f"{craft.name}: Vizard model"
         else:
-            page = f"{craft.name}: mass, drag & radiation pressure"
+            page = f"{craft.name}: mass & environment"
     elif head == "ground_stations":
         page = "Ground stations"
         group = scenario.ground_stations[path[1]].name
