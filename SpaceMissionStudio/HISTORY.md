@@ -6794,3 +6794,16 @@ Two new fields, `heritage` and `procurement_status`, are shown in the editor's c
 * **Sizing called out by the database:** for example SteamJet, ThrustMe NPT30 and CubeSat-class wheels.
 
 **Real bug found while verifying.** Applying each preset through the real editor (a new test does this for all 38 entries, then validates the resulting spacecraft) showed that the existing MM200 magnetometer's 1.18e-9 T noise came back as 1.2e-9 T. `gui/widgets.PreciseDoubleSpinBox`, used in 18 places, kept values to 10 decimal places, so anything finer was silently rounded on open + OK. It now keeps values exactly (40-decimal internal storage, shortest-exact display text), with a parametrized round-trip test.
+
+## The template "Customize" wizards were very incomplete: every setting is now reachable
+
+The user found the wizards "very incomplete": template 05's offered no correction window and nothing for the chief, and they asked for an audit of all of them. A measured audit nudged each wizard field and recorded which scenario settings moved. Every wizard reached only 5–20% of its template's numeric and on/off settings, for example 6 of 71 for template 05 and 2 of 56 for template 17.
+
+**Fix.**
+* **Generated sections.** A new `gui/wizard_settings.py` builds sections for every remaining setting from the scenario itself, grouped by spacecraft and component: orbit; mass, drag & radiation pressure; attitude; station-keeping; phasing keeping; sensors & actuators; power; and so on. It then adds ground stations, the mission sequence, Monte Carlo and environment & simulation. Because the sections come from the scenario, nothing can be left out.
+* **Labels and units.** These come from a curated table. Sensor and actuator parameters use the device editor's own descriptions, with a sub-heading per device, and vectors are shown on one row.
+* **What isn't offered.** Text settings (names, epoch, mode names) need the full editor. Vizard model offset, rotation and scale are only offered when a model is set.
+* **No duplicates.** The curated "key settings" pages stay first, and the generated sections leave out anything they already offer.
+* **Two-pane dialog.** The wizard is now a dialog with a section list and a filter box (typing "correction" jumps to the correction window), instead of a 16-step Next/Next/Next flow. Only fields the user actually changed are written back.
+* **Tests.** New tests check that every template's wizard offers 100% of its settings with nothing twice, that template 05's wizard sets the correction window and the chief's orbit and station-keeping, and that the filter works. The existing round-trip tests (no edits reproduce the template exactly) pass for all 20 templates.
+* **Layout fix found while checking.** Each field reserved width for its ±1e15 range, and a 9-element inertia row made the dialog 3,454 px wide. Fields now have a modest minimum width, and the inertia tensor shows as three rows.

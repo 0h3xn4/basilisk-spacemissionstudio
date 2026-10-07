@@ -16,7 +16,7 @@
 #  OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 #
 
-"""A guided, multi-step ``QWizard`` for customizing a bundled template
+"""A "Customize" dialog for each bundled template
 mission (``spacemissionstudio/scenarios/templates/``) -- built in response to
 a direct request that a user be able to "recreate the desired scenario
 themselves or even tweak some parameters a little bit" from a template,
@@ -73,10 +73,15 @@ import math
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional
 
-from PySide6.QtWidgets import QDoubleSpinBox, QFormLayout, QLabel, QWizard, QWizardPage
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import (
+    QCheckBox, QDialog, QDialogButtonBox, QFormLayout, QFrame, QHBoxLayout, QLabel, QLineEdit, QListWidget,
+    QListWidgetItem, QScrollArea, QStackedWidget, QVBoxLayout, QWidget,
+)
 
 from ..schema.scenario import Scenario
 from .widgets import PreciseDoubleSpinBox
+from .wizard_settings import build_all_settings_pages, setting_paths, get_setting
 
 # SpacecraftConfig.orbit.semi_major_axis_km (OrbitIC, "classical_elements")
 # is measured from the central body's CENTER, while
@@ -117,6 +122,13 @@ class WizardField:
     decimals: int = 3
     step: float = 1.0
     suffix: str = ""
+    kind: str = "float"  # "float", "int" (whole number) or "bool" (a checkbox)
+    help_inline: bool = True  # show help_text under the field (always also its tooltip)
+    group: str = ""  # sub-heading shown above this field when it differs from the previous field's
+    # Consecutive fields with the same vector_key share one row (one box
+    # per component, each prefixed by its ``component`` name).
+    vector_key: str = ""
+    component: str = ""
 
 
 @dataclass(frozen=True)
@@ -1283,49 +1295,163 @@ def get_wizard_spec(template_filename: str) -> Optional[TemplateWizardSpec]:
     return _SPECS.get(template_filename)
 
 
-class _WizardFieldPage(QWizardPage):
+class _WizardFieldPage(QWidget):
+    """One section's fields (a curated page, or a generated one)."""
+
     def __init__(self, page_spec: WizardPageSpec, scenario: Scenario, parent=None):
         super().__init__(parent)
-        self.setTitle(page_spec.title)
+        self._title = page_spec.title
         self._scenario = scenario
         self._fields = page_spec.fields
-        self._boxes: List[QDoubleSpinBox] = []
+        self._boxes: list = []
+        self._initial: list = []
+        self._rows: list = []  # (field row index, help row index or None) per field
 
-        layout = QFormLayout(self)
-        intro = QLabel(page_spec.intro)
-        intro.setWordWrap(True)
-        layout.addRow(intro)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        heading = QLabel(page_spec.title)
+        heading.setStyleSheet("font-weight: 600; font-size: 115%;")
+        outer.addWidget(heading)
+        if page_spec.intro:
+            intro = QLabel(page_spec.intro)
+            intro.setWordWrap(True)
+            outer.addWidget(intro)
+        # A long section scrolls rather than growing the dialog past the screen.
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        content = QWidget()
+        self._form = QFormLayout(content)
+        scroll.setWidget(content)
+        outer.addWidget(scroll)
+        self._content = content
 
+        group = None
+        row_box_layout = None
+        previous_vector = None
         for field_spec in self._fields:
-            box = PreciseDoubleSpinBox()
-            box.setRange(field_spec.minimum, field_spec.maximum)
-            box.setDecimals(field_spec.decimals)
-            box.setSingleStep(field_spec.step)
-            box.setSuffix(field_spec.suffix)
-            box.setValue(field_spec.get(scenario))
+            if field_spec.group and field_spec.group != group:
+                group = field_spec.group
+                heading = QLabel(group)
+                heading.setStyleSheet("font-weight: 600; margin-top: 6px;")
+                self._form.addRow(heading)
+            value = field_spec.get(scenario)
+            if field_spec.kind == "bool":
+                box = QCheckBox()
+                box.setChecked(bool(value))
+            else:
+                box = PreciseDoubleSpinBox()
+                box.setRange(field_spec.minimum, field_spec.maximum)
+                box.setDecimals(0 if field_spec.kind == "int" else field_spec.decimals)
+                box.setSingleStep(field_spec.step)
+                box.setSuffix(field_spec.suffix)
+                if field_spec.component:
+                    box.setPrefix(f"{field_spec.component}  ")
+                box.setValue(value)
+                # The size hint is computed from the range (+/-1e15 for a
+                # generated field), which made every page scroll sideways.
+                box.setMinimumWidth(110)
             box.setToolTip(field_spec.help_text)
-            help_label = QLabel(field_spec.help_text)
-            help_label.setWordWrap(True)
-            help_label.setStyleSheet("color: palette(mid); font-size: 90%;")
-            layout.addRow(field_spec.label, box)
-            layout.addRow("", help_label)
+            help_row = None
+            if field_spec.vector_key and field_spec.vector_key == previous_vector:
+                row_box_layout.addWidget(box)  # same vector: one row
+                field_row = self._rows[-1][0]
+            else:
+                field_row = self._form.rowCount()
+                if field_spec.vector_key:
+                    holder = QWidget()
+                    row_box_layout = QHBoxLayout(holder)
+                    row_box_layout.setContentsMargins(0, 0, 0, 0)
+                    row_box_layout.addWidget(box)
+                    self._form.addRow(field_spec.label, holder)
+                else:
+                    self._form.addRow(field_spec.label, box)
+                if field_spec.help_inline:
+                    help_label = QLabel(field_spec.help_text)
+                    help_label.setWordWrap(True)
+                    help_label.setStyleSheet("color: palette(mid); font-size: 90%;")
+                    help_row = self._form.rowCount()
+                    self._form.addRow("", help_label)
+            previous_vector = field_spec.vector_key or None
+            self._rows.append((field_row, help_row))
             self._boxes.append(box)
+            self._initial.append(self._box_value(field_spec, box))
+
+    def title(self) -> str:
+        return self._title
+
+    def content_size_hint(self):
+        return self._content.sizeHint()
+
+    def filter(self, text: str) -> int:
+        """Show only fields whose label (or the section title) contains
+        ``text``; returns how many are shown."""
+        text = text.strip().lower()
+        section_match = not text or text in self._title.lower()
+        shown = 0
+        for field_spec, (field_row, help_row) in zip(self._fields, self._rows):
+            visible = (section_match or text in field_spec.label.lower()
+                       or text in field_spec.group.lower())
+            self._form.setRowVisible(field_row, visible)
+            if help_row is not None:
+                self._form.setRowVisible(help_row, visible)
+            shown += visible
+        return shown
+
+    @staticmethod
+    def _box_value(field_spec: WizardField, box):
+        if field_spec.kind == "bool":
+            return box.isChecked()
+        if field_spec.kind == "int":
+            return int(round(box.value()))
+        return box.value()
 
     def apply_to_scenario(self) -> None:
-        """Writes every spin box's current value back into the Scenario
-        this page was built from -- called on Finish (see
-        TemplateCustomizeWizard.accept()), not live on every edit, so an
-        in-progress Back/Next doesn't matter.
+        """Writes every field the user CHANGED back into the Scenario this
+        page was built from -- called on OK (see
+        TemplateCustomizeWizard.accept()), not live on every edit.
+        Unchanged fields are left alone, so a derived curated field (e.g.
+        '18's altitude, which moves two settings) can never be overwritten
+        by an untouched one.
         """
-        for field_spec, box in zip(self._fields, self._boxes):
-            field_spec.set(self._scenario, box.value())
+        for field_spec, box, initial in zip(self._fields, self._boxes, self._initial):
+            value = self._box_value(field_spec, box)
+            if value != initial:
+                field_spec.set(self._scenario, value)
 
 
-class TemplateCustomizeWizard(QWizard):
-    """One page per :class:`WizardPageSpec` in ``spec.pages``, built from
-    a COPY of ``base_scenario`` (see this module's own docstring for why
-    a copy) -- call :meth:`result_scenario` after ``exec()`` returns
-    ``QDialog.Accepted`` to get the customized ``Scenario``.
+def _paths_set_by(spec: TemplateWizardSpec, scenario: Scenario) -> set:
+    """Setting paths a curated field changes, found by nudging each field
+    on a copy -- these are left off the generated pages so no setting is
+    offered twice."""
+    paths = setting_paths(scenario)
+    base = {path: get_setting(scenario, path) for path in paths}
+    touched = set()
+    for page in spec.pages:
+        for field_spec in page.fields:
+            trial = Scenario.from_dict(scenario.to_dict())
+            value = field_spec.get(trial)
+            try:
+                field_spec.set(trial, (not value) if field_spec.kind == "bool" else value * 1.37 + 0.11)
+            except (ValueError, TypeError, ZeroDivisionError):
+                continue
+            touched |= {path for path in paths if get_setting(trial, path) != base[path]}
+    return touched
+
+
+class TemplateCustomizeWizard(QDialog):
+    """Customize a template before opening it: a section list on the
+    left (the template's curated key settings first, then every other
+    setting grouped by spacecraft and component -- see
+    gui.wizard_settings) and the selected section's fields on the right,
+    with a filter box. Built from a COPY of ``base_scenario`` (see this
+    module's own docstring for why) -- call :meth:`result_scenario` after
+    ``exec()`` returns ``Accepted`` to get the customized ``Scenario``.
+
+    Real UX feedback drove the two-pane layout: the curated pages alone
+    were "very incomplete", and stepping through every generated section
+    with Next (16 pages for template 05) was no better -- here any
+    section is one click away.
     """
 
     def __init__(self, base_scenario: Scenario, spec: TemplateWizardSpec, parent=None):
@@ -1333,26 +1459,108 @@ class TemplateCustomizeWizard(QWizard):
         self.setWindowTitle(f"Customize: {base_scenario.name}")
         self._scenario = Scenario.from_dict(base_scenario.to_dict())
         self._field_pages: List[_WizardFieldPage] = []
-        for page_spec in spec.pages:
+
+        generated = build_all_settings_pages(self._scenario, exclude=_paths_set_by(spec, self._scenario))
+        self._sections = QListWidget()
+        self._stack = QStackedWidget()
+        self._list_rows: List[int] = []  # list row of each page, in page order
+        self._groups: List[tuple] = []  # (heading row, [page indices]) for each heading
+
+        def add_heading(text: str) -> None:
+            self._groups.append((self._sections.count(), []))
+            item = QListWidgetItem(text)
+            item.setFlags(Qt.ItemFlag.NoItemFlags)
+            font = item.font()
+            font.setBold(True)
+            item.setFont(font)
+            self._sections.addItem(item)
+
+        def add_page(page_spec: WizardPageSpec, list_text: str) -> None:
             page = _WizardFieldPage(page_spec, self._scenario, self)
             self._field_pages.append(page)
-            self.addPage(page)
+            self._stack.addWidget(page)
+            self._list_rows.append(self._sections.count())
+            self._groups[-1][1].append(len(self._field_pages) - 1)
+            item = QListWidgetItem("    " + list_text)
+            item.setData(Qt.ItemDataRole.UserRole, len(self._field_pages) - 1)
+            self._sections.addItem(item)
 
-        # Real bug, found from a user screenshot: QWizard.sizeHint() does
-        # NOT reflect its own pages' content at all -- it measured a flat
-        # 500x360 here regardless of which spec/pages were given, while
-        # this wizard's own busiest page ("Station-keeping controller")
-        # needs 367x326 just for its fields, before QWizard's own
-        # title/intro banner and Back/Next/Cancel row are added on top --
-        # so several pages' intro text and field rows rendered clipped.
-        # Sized from the widest/tallest PAGE across the whole wizard (not
-        # just the one shown first), so paging through Back/Next never
-        # needs a mid-flow resize -- plus fixed padding for QWizard's own
-        # chrome, confirmed by actually rendering every page in this
-        # wizard and checking nothing clips.
-        widest_page = max((p.sizeHint().width() for p in self._field_pages), default=0)
-        tallest_page = max((p.sizeHint().height() for p in self._field_pages), default=0)
-        self.resize(max(500, widest_page + 60), max(420, tallest_page + 220))
+        add_heading("Key settings")
+        for page_spec in spec.pages:
+            add_page(page_spec, page_spec.title)
+        group = None
+        for page_spec in generated:
+            owner, _, section = page_spec.title.partition(": ")
+            heading, text = (owner, section) if section else ("Scenario", owner)
+            if heading != group:
+                add_heading(heading)
+                group = heading
+            add_page(page_spec, text[:1].upper() + text[1:])
+
+        self._filter = QLineEdit()
+        self._filter.setPlaceholderText("Filter settings, e.g. 'correction' or 'deadband'")
+        self._filter.setClearButtonEnabled(True)
+        self._filter.textChanged.connect(self._on_filter_changed)
+        self._sections.currentItemChanged.connect(self._on_section_changed)
+        self._sections.setCurrentRow(self._list_rows[0] if self._list_rows else -1)
+
+        hint = QLabel("Change any setting, then open the result in the editor. The template file itself "
+                      "is never changed.")
+        hint.setWordWrap(True)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setText("Open in editor")
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+
+        left = QVBoxLayout()
+        left.addWidget(self._filter)
+        left.addWidget(self._sections)
+        body = QHBoxLayout()
+        body.addLayout(left)
+        body.addWidget(self._stack, 1)
+        layout = QVBoxLayout(self)
+        layout.addWidget(hint)
+        layout.addLayout(body)
+        layout.addWidget(buttons)
+
+        list_width = min(self._sections.sizeHintForColumn(0) + 40, 300)
+        self._sections.setFixedWidth(list_width)
+        self._filter.setFixedWidth(list_width)
+        widest_page = max((p.content_size_hint().width() for p in self._field_pages), default=0)
+        self.resize(min(max(820, list_width + widest_page + 80), 1200), 640)
+
+    # -- page access (kept small and explicit for callers/tests) ----------
+    def pageIds(self) -> List[int]:  # noqa: N802 -- mirrors the old QWizard API
+        return list(range(len(self._field_pages)))
+
+    def page(self, page_id: int) -> _WizardFieldPage:
+        return self._field_pages[page_id]
+
+    def current_page(self) -> _WizardFieldPage:
+        return self._stack.currentWidget()
+
+    def show_page(self, page_id: int) -> None:
+        self._sections.setCurrentRow(self._list_rows[page_id])
+
+    def _on_section_changed(self, current, _previous) -> None:
+        if current is None:
+            return
+        index = current.data(Qt.ItemDataRole.UserRole)
+        if index is not None:
+            self._stack.setCurrentIndex(index)
+
+    def _on_filter_changed(self, text: str) -> None:
+        first_match = None
+        for index, page in enumerate(self._field_pages):
+            shown = page.filter(text)
+            self._sections.item(self._list_rows[index]).setHidden(shown == 0)
+            if shown and first_match is None:
+                first_match = index
+        for heading_row, page_indices in self._groups:
+            self._sections.item(heading_row).setHidden(
+                all(self._sections.item(self._list_rows[i]).isHidden() for i in page_indices))
+        if first_match is not None and self.current_page().filter(text) == 0:
+            self.show_page(first_match)
 
     def accept(self) -> None:
         for page in self._field_pages:

@@ -242,3 +242,86 @@ def test_every_spec_still_validates_after_nudging_every_field(qtbot, filename):
     wizard.accept()
     result = wizard.result_scenario()
     result.validate()  # must not raise
+
+
+@pytest.mark.parametrize("filename", sorted(p.name for p in __import__(
+    "spacemissionstudio.gui.load_scenario_widget", fromlist=["TEMPLATES_DIR"]).TEMPLATES_DIR.glob("*.json")))
+def test_every_wizard_offers_every_setting_of_its_template(qtbot, filename):
+    """A real user found the wizards "very incomplete" (each offered 5-20%
+    of its template's settings). Every numeric/on-off setting must now be
+    reachable: through a curated field, or on a generated page."""
+    from spacemissionstudio.gui.load_scenario_widget import TEMPLATES_DIR
+    from spacemissionstudio.gui.template_wizard import TemplateCustomizeWizard, _paths_set_by, get_wizard_spec
+    from spacemissionstudio.gui.wizard_settings import (
+        build_all_settings_pages, setting_paths, vizard_model_settings_hidden,
+    )
+    from spacemissionstudio.schema import load_scenario
+
+    scenario = load_scenario(TEMPLATES_DIR / filename)
+    spec = get_wizard_spec(filename)
+    curated = _paths_set_by(spec, scenario)
+    generated = set()
+    for page in build_all_settings_pages(scenario, exclude=curated):
+        for field in page.fields:
+            generated.add(field.get.__defaults__[0])
+    hidden = set(vizard_model_settings_hidden(scenario))  # no effect without a Vizard model
+    missing = [p for p in setting_paths(scenario) if p not in curated and p not in generated
+               and p[:-1] not in curated and p not in hidden]
+    assert not missing, missing
+    assert not (curated & generated)  # nothing offered twice
+
+    wizard = TemplateCustomizeWizard(scenario, spec)
+    qtbot.addWidget(wizard)
+    assert len(wizard.pageIds()) == len(spec.pages) + len(build_all_settings_pages(scenario, exclude=curated))
+
+
+def _set_field(wizard, label_fragment, page_fragment, value):
+    for page in wizard._field_pages:
+        if page_fragment in page.title():
+            for field_spec, box in zip(page._fields, page._boxes):
+                if label_fragment in field_spec.label:
+                    box.setChecked(value) if field_spec.kind == "bool" else box.setValue(value)
+                    return
+    raise AssertionError(f"no field {label_fragment!r} on a page {page_fragment!r}")
+
+
+def test_formation_wizard_sets_the_correction_window_and_the_chiefs_parameters(qtbot):
+    """The user's two examples: the correction window, and the chief's own
+    parameters (its orbit and station-keeping)."""
+    from spacemissionstudio.gui.load_scenario_widget import TEMPLATES_DIR
+    from spacemissionstudio.gui.template_wizard import TemplateCustomizeWizard, get_wizard_spec
+    from spacemissionstudio.schema import load_scenario
+
+    scenario = load_scenario(TEMPLATES_DIR / "05_formation_flying_phasing.json")
+    wizard = TemplateCustomizeWizard(scenario, get_wizard_spec("05_formation_flying_phasing.json"))
+    qtbot.addWidget(wizard)
+    _set_field(wizard, "Correction window", "follower-1: phasing keeping", 1.5)  # [day]
+    _set_field(wizard, "Deadband", "chief-1: station-keeping", 4.0)  # [km]
+    _set_field(wizard, "Inclination", "chief-1: orbit", 97.0)  # [deg]
+    _set_field(wizard, "Eccentricity-neutral burns", "chief-1: station-keeping", True)
+    wizard.accept()
+    result = wizard.result_scenario()
+    result.validate()
+    chief, follower = result.spacecraft
+    assert follower.phasing_keeping.correction_window_days == 1.5
+    assert chief.station_keeping.deadband_km == 4.0
+    assert chief.orbit.inclination_deg == 97.0
+    assert chief.station_keeping.eccentricity_neutral_burns is True
+    assert scenario.spacecraft[0].station_keeping.deadband_km != 4.0  # the template itself is untouched
+
+
+def test_filter_shows_only_matching_sections_and_jumps_to_the_first(qtbot):
+    from spacemissionstudio.gui.load_scenario_widget import TEMPLATES_DIR
+    from spacemissionstudio.gui.template_wizard import TemplateCustomizeWizard, get_wizard_spec
+    from spacemissionstudio.schema import load_scenario
+
+    scenario = load_scenario(TEMPLATES_DIR / "05_formation_flying_phasing.json")
+    wizard = TemplateCustomizeWizard(scenario, get_wizard_spec("05_formation_flying_phasing.json"))
+    qtbot.addWidget(wizard)
+    wizard._filter.setText("correction")
+    visible = [wizard._sections.item(row).text().strip() for row in range(wizard._sections.count())
+               if not wizard._sections.item(row).isHidden()]
+    assert visible == ["follower-1", "Phasing keeping"]
+    assert wizard.current_page().title() == "follower-1: phasing keeping"
+    wizard._filter.setText("")
+    assert all(not wizard._sections.item(row).isHidden() for row in range(wizard._sections.count()))
