@@ -63,16 +63,22 @@ Note:
 - Keep the 1 s time step: a coarser step adds error to the harmonics gravity.""",
 
     "03": """\
-A geostationary satellite holding its altitude against Sun and Moon gravity, solar radiation pressure and \
-Earth's gravity anomalies, with a simple deadband station-keeping thruster.
+A geostationary satellite with the same altitude-hold thruster as 18, under Sun and Moon gravity, solar \
+radiation pressure and Earth's gravity anomalies. The lesson: at GEO this controller has almost nothing to do.
 
 What to look at:
-- The propellant used over the 14 days (station-keeping results, or the CLI summary).
+- geo-sat-1.station_keeping.altitude (smoothed): it stays within about 1 km of target for all 14 days.
+- So the 5 km deadband never trips: no burns, no propellant used. Compare 18, where drag forces repeated burns.
+
+Why:
+- Sun and Moon gravity mainly tilt a GEO orbit and radiation pressure mainly stretches it; neither moves \
+its average altitude.
+- Real GEO station-keeping corrects east-west (longitude) and north-south (inclination) drift, which this \
+altitude-only controller does not model.
 
 Try changing:
-- Deadband: tighter means more frequent, smaller burns.
-- Thrust and specific impulse: a more efficient thruster uses less propellant.
-- Turn off the third bodies or radiation pressure: the drift slows and the thruster fires less.
+- Deadband: only below about 1 km does the thruster start firing at all.
+- Duration: even over months the average altitude moves only a few km, still inside the 5 km deadband.
 
 Note:
 - Drag is off: there is no atmosphere at GEO.""",
@@ -264,7 +270,7 @@ The LEO counterpart to 03: a 400 km satellite holding its altitude against atmos
 deadband. Radiation pressure is off, to isolate drag.
 
 What to look at:
-- The propellant used and the number of burns over 14 days; compare with 03's GEO case.
+- The propellant used and the number of burns over 14 days; compare 03, where at GEO the thruster never fires.
 
 Try changing:
 - Orbit altitude: lower decays much faster (try 350 or 300 km).

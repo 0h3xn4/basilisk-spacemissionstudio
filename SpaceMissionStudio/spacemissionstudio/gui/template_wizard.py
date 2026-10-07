@@ -374,7 +374,7 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
         pages=[
             WizardPageSpec(
                 title="Station-keeping controller",
-                intro="How aggressively the deadband thruster corrects GEO drift.",
+                intro="The altitude-hold thruster. At GEO it only fires with a deadband below about 1 km.",
                 fields=[
                     WizardField(
                         "Deadband", "How far the satellite may drift from target altitude before a "

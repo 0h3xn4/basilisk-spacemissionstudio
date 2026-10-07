@@ -7222,3 +7222,17 @@ Prompted by template 16, whose configuration had been verified only outside its 
 * For every Sun-pointing template, each thermal sensor and at least one sun sensor faces the commanded Sun axis (fails for the old 07 and 20).
 * 15's description no longer promises a whole orbit.
 * The Explain tab doesn't call a point-mass orbit Sun-synchronous.
+
+## Template 03: recast as "at GEO this controller has almost nothing to do"
+
+This follows up the 03 finding in the entry above. The user chose to recast the lesson rather than make the thruster fire. Only text changed; the scenario's physics is untouched.
+
+* **Description.** It now says what the run shows:
+  * the smoothed `station_keeping.altitude` stays within about 1 km of target for 14 days, so the 5 km deadband never trips and no propellant is used;
+  * compare 18, where drag forces repeated burns;
+  * why: lunisolar gravity and SRP tilt and stretch a GEO orbit but don't move its average altitude, and real GEO station-keeping corrects longitude and inclination, which this controller doesn't model.
+
+  "Try changing" now says that only a deadband below about 1 km makes it fire. It also says that even over months the average altitude moves only a few km. Near the 255 E stable point, J22 makes the longitude librate with a period of about 800 days; starting 4.3 deg away, that moves the mean semi-major axis by at most about 2.6 km. The old claim that turning off the third bodies or SRP "fires less" is gone.
+* **Template 18.** Its comparison line now reads "compare 03, where at GEO the thruster never fires".
+* **Customize wizard.** The 03 intro is now "The altitude-hold thruster. At GEO it only fires with a deadband below about 1 km."
+* **Catalog README.** The 03 and 18 rows now state the contrast, noting that it comes from the offline model and is not yet confirmed in a Basilisk run.
