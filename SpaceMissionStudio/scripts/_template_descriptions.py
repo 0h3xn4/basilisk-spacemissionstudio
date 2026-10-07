@@ -1,0 +1,309 @@
+#
+#  ISC License
+#
+#  Copyright (c) 2026, Autonomous Vehicle Systems Lab, University of Colorado at Boulder
+#
+#  Permission to use, copy, modify, and/or distribute this software for any
+#  purpose with or without fee is hereby granted, provided that the above
+#  copyright notice and this permission notice appear in all copies.
+#
+#  THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+#  WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+#  MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+#  ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+#  WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+#  ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+#  OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+#
+
+"""User-facing descriptions of the bundled templates, keyed by template
+number.
+
+A real user called the old ones "just awful UI/UX": up to 7,000
+characters of prose, mixing in development audit history, class names and
+verification notes. Each is now a short summary plus "What to look at" /
+"Try changing" bullets (and "Note" or "Limitations" where it matters),
+written for someone using the app. Development history lives in
+HISTORY.md and the generator's own comments, not here.
+
+Format, rendered by ``gui.load_scenario_widget``: paragraphs separated by
+a blank line; a paragraph whose first line ends with ":" is a heading,
+and lines starting with "- " are bullets.
+"""
+
+DESCRIPTIONS = {
+    "01": """\
+A single spacecraft in a circular, Sun-synchronous low-Earth orbit around a point-mass Earth: no \
+perturbations and no attitude. The "hello world" of orbital mechanics.
+
+What to look at:
+- sat-1.position_N traces a perfect circle.
+- The period matches Kepler's third law: about 92.6 minutes, so one day is ~15.5 orbits.
+
+Try changing:
+- Semi-major axis: higher means a slower orbit and a longer period.
+- Inclination: watch the ground track change in Vizard.
+- Eccentricity: see template 02 for an elliptical orbit.""",
+
+    "02": """\
+An eccentric (e = 0.7), transfer-like orbit with Earth's oblateness (degree-10 gravity) and Sun and Moon \
+gravity. Drag is off, so the gravity effects stand out.
+
+What to look at:
+- sat-1.position_N: the orbit visibly precesses over the 3 days.
+- sat-1.velocity_N: much faster at periapsis than at apoapsis.
+
+Try changing:
+- Spherical-harmonics degree 0, for the unperturbed orbit.
+- Only the Moon, or only the Sun, as third body, to isolate each effect.
+
+Note:
+- Keep the 1 s time step: a coarser step adds error to the harmonics gravity.""",
+
+    "03": """\
+A geostationary satellite holding its altitude against Sun and Moon gravity, solar radiation pressure and \
+Earth's gravity anomalies, with a simple deadband station-keeping thruster.
+
+What to look at:
+- The propellant used over the 14 days (station-keeping results, or the CLI summary).
+
+Try changing:
+- Deadband: tighter means more frequent, smaller burns.
+- Thrust and specific impulse: a more efficient thruster uses less propellant.
+- Turn off the third bodies or radiation pressure: the drift slows and the thruster fires less.
+
+Note:
+- Drag is off: there is no atmosphere at GEO.""",
+
+    "04": """\
+A 6-satellite Walker delta constellation (2 planes of 3, phasing factor 1) at 700 km and 53 deg, with full \
+perturbations: degree-10 gravity, Sun and Moon, drag and radiation pressure.
+
+What to look at:
+- Ground tracks in Vizard, or each satellite's position_N.
+- The planes are 180 deg apart in RAAN; satellites are evenly spaced in a plane, offset between planes by \
+the phasing factor.
+
+Try changing:
+- Satellite count, planes or phasing factor: regenerate with Spacecraft > Generate Walker constellation.
+
+Note:
+- Drag uses a synthetic, solar-cycle-shaped space-weather profile. For a conservative margin from real \
+data, load your own CelesTrak file in Propagation setup.""",
+
+    "05": """\
+Two spacecraft in Sun-synchronous orbits, with follower-1 holding 50 km ahead of chief-1 for 90 days. The \
+chief holds its altitude; the follower mirrors the chief's reboosts and fires small along-track burns when \
+the separation drifts out of tolerance.
+
+What to look at:
+- follower-1.phasing_keeping.separation_error and .relative_semi_major_axis.
+- The separation drifts slowly, leaves its 10% band around day 28, and one correction brings it back in \
+about 2.4 days. It stays within 45-52 km for ~0.014 m/s.
+
+Try changing:
+- Target separation (a list of values steps through a schedule).
+- Correction window: shorter is faster but costs more delta-V (roughly 1 / window).
+- Tolerance: tighter triggers corrections sooner.
+- follower-1's starting mean anomaly, to begin off target.
+- Duration: under ~35 days no correction fires; the maximum is 100 days.""",
+
+    "06": """\
+A spacecraft pointing at nadir, starting tipped away from it with a small body rate. There are no sensors \
+or actuators: the control torque is applied ideally, so this shows only the pointing concept. Template 07 \
+adds real hardware.
+
+What to look at:
+- Vizard's attitude view: the spacecraft swings onto nadir and holds it.
+
+Try changing:
+- Pointing mode: velocityPoint (along the velocity) or inertial3D (fixed in space).
+- The initial attitude tip.""",
+
+    "07": """\
+The realistic counterpart to 06: a star tracker, IMU and coarse sun sensor, three reaction wheels for \
+torque, and a solar array with a battery. Sun-safe pointing, with full perturbations.
+
+What to look at:
+- sat-1.rw_speeds as the wheels absorb the pointing manoeuvre.
+- sat-1.battery_charge and sat-1.battery_net_power through sunlight and eclipse.
+
+Try changing:
+- Reaction wheel limits, or pick real devices from the sensor/actuator catalog.
+- Pointing mode locationPointing at a ground station (add a station first).""",
+
+    "08": """\
+Introduces the Mission Sequence: coast, take a snapshot, burn +50 m/s prograde, coast, take another \
+snapshot -- instead of one plain propagation.
+
+What to look at:
+- The Mission Output tab: the snapshots before and after the burn.
+- The orbit turns into an ellipse: apoapsis raised opposite the burn, periapsis unchanged.
+
+Try changing:
+- Burn size (bigger raises apoapsis more) or sign (negative lowers it).
+- Add a second burn half an orbit later to circularize: a Hohmann transfer.""",
+
+    "09": """\
+Template 01's circular orbit as a 20-run Monte Carlo batch: each run's dry mass is drawn from a normal \
+distribution, 500 kg +/- 25 kg.
+
+What to look at:
+- Run it with Run Monte Carlo... and compare final positions across runs.
+- Mass barely matters here: with no drag, radiation pressure or burns, mass doesn't change the trajectory.
+
+Try changing:
+- Number of runs, or the standard deviation.
+- Turn on drag or radiation pressure to make mass matter.
+- Add an initial-attitude dispersion (needs full-attitude simulation).""",
+
+    "10": """\
+No attitude control, an elongated inertia (Ixx = Iyy = 12.5, Izz = 7.5 kg*m^2) and gravity-gradient torque \
+on. Without the torque the spacecraft would stay at its initial attitude; with it, it slowly turns.
+
+What to look at:
+- Vizard's attitude view: the spacecraft drifts away from its starting orientation.
+
+Try changing:
+- Inertia: make all three values equal and the torque vanishes.
+- Altitude: the torque falls off as 1/r^3.
+- Add inertial3D pointing with reaction wheels (see 07) to cancel it.""",
+
+    "11": """\
+Attitude control with eight thrusters (a corner-mounted cube layout) instead of reaction wheels, pointing \
+at a fixed inertial attitude from an initial tip.
+
+What to look at:
+- sat-1.thruster_on_time: which thrusters fire, and for how long.
+- Thruster plumes in Vizard.
+
+Try changing:
+- Thrust per thruster: weaker ones take longer to settle.
+- The layout: fewer than 6 well-placed thrusters can't produce torque about every axis.""",
+
+    "12": """\
+Reaction-wheel pointing whose four wheels start heavily spun up. A thruster cluster dumps the excess \
+momentum whenever it passes 80 N*m*s, while the wheels stay in control of the attitude.
+
+What to look at:
+- sat-1.rw_speeds dropping in sharp steps, one per dump.
+- sat-1.thruster_on_time: when the dump thrusters fire.
+
+Try changing:
+- Dump threshold: lower dumps sooner and more often.
+- Initial wheel speeds.
+- Remove momentum dumping: the wheel speeds never come down.""",
+
+    "13": """\
+The alternative to 12: four magnetic torque rods and Earth's magnetic field continuously steer four \
+reaction wheels toward target speeds (800, 600, 400 and 200 RPM) while the wheels point the spacecraft.
+
+What to look at:
+- sat-1.rw_speeds settling smoothly near the targets over ~2 hours (within ~0.5 RPM), not in steps.
+
+Try changing:
+- Wheel speed biases: the target speeds.
+- Gain: larger reacts faster but can overshoot.
+- Inclination: a near-equatorial orbit sees a weaker field and converges more slowly.""",
+
+    "14": """\
+Sun-safe pointing driven by an estimated Sun direction: eight coarse sun sensors feed a weighted \
+least-squares estimator, instead of using the true direction.
+
+What to look at:
+- sat-1.sun_heading_body_estimated settling near [0, 0, 1] as the +Z axis turns to the Sun.
+- Accuracy depends on how many sensors are lit, as on real hardware.
+
+Try changing:
+- The sensors' field of view: narrower means fewer lit sensors and a worse estimate.
+- Turn off "Estimate Sun heading from coarse sun sensors" to compare with the true direction.
+
+Note:
+- The control gains are scaled to this small spacecraft (5 kg*m^2); the defaults would oscillate.""",
+
+    "15": """\
+The spacecraft's +Z axis stays pointed at the Moon for the whole orbit (locationPointing with a celestial \
+target).
+
+What to look at:
+- Vizard's attitude view: the commanded attitude keeps changing as both the spacecraft and the Moon move.
+
+Try changing:
+- Target body: the Sun, a farther and slower target.
+- The pointing axis, to aim a different face.""",
+
+    "16": """\
+A Mission Sequence step that solves for the burn: lambert_transfer finds the delta-V that reaches a target \
+position after a set time of flight, then applies it.
+
+What to look at:
+- The Mission Output tab: after the time of flight, the position sits at the target [-6578000, 0, 0] m, \
+within millimetres.
+
+Try changing:
+- Target position or time of flight (too short a time is rejected with a clear error).
+- Minimum orbit radius: set it to Earth's radius to reject paths through the surface.""",
+
+    "17": """\
+Template 11's eight-thruster attitude control with a real fuel tank: propellant runs down as the \
+thrusters fire, and the centre of mass shifts with it.
+
+What to look at:
+- sat-1.fuel_mass_remaining with sat-1.thruster_on_time: about 0.185 of the 0.5 kg drains while the \
+attitude settles (100-150 s), then both go flat.
+
+Try changing:
+- Propellant below ~0.185 kg, to run dry mid-manoeuvre.
+- Thruster specific impulse: lower uses more propellant for the same correction.""",
+
+    "18": """\
+The LEO counterpart to 03: a 400 km satellite holding its altitude against atmospheric drag with a 1 km \
+deadband. Radiation pressure is off, to isolate drag.
+
+What to look at:
+- The propellant used and the number of burns over 14 days; compare with 03's GEO case.
+
+Try changing:
+- Orbit altitude: lower decays much faster (try 350 or 300 km).
+- Drag area or coefficient.
+- Deadband.
+
+Note:
+- Drag uses a synthetic, solar-cycle-shaped space-weather profile.""",
+
+    "19": """\
+leo-comms-1 points its solar panel at the Sun, and slews its antenna to the Berlin ground station whenever \
+the station is in view, then back. Power and the radio link follow what actually happens.
+
+What to look at, across one pass:
+- berlin-gs.access_to_leo-comms-1.has_access: the pass itself.
+- leo-comms-1.comms_pointing.active_mode: 1 during the pass.
+- leo-comms-1.comms_pointing.pointing_error_deg: large at the switch, then settling.
+- leo-comms-1.battery_charge: dips while transmitting.
+- berlin-gs.access_to_leo-comms-1.link_margin_db: poor during the slew, healthy once pointed, worse at low \
+elevation, empty outside passes.
+
+Try changing:
+- The station's minimum elevation.
+- Antenna beamwidth: narrower makes pointing error matter more.
+- Comms power, or the duration (more passes, larger results).
+
+Limitations:
+- The link budget uses a simplified antenna pattern, not Basilisk's antenna and link-budget modules.""",
+
+    "20": """\
+Template 07's hardware with thermal models: a thermal sensor on an exposed panel heats in sunlight and cools \
+in eclipse, and reaction wheel rw-1's motor warms from its own losses.
+
+What to look at:
+- sat-1.sensor.therm-1 (temperature) rising in sunlight and falling in each eclipse.
+- sat-1.actuator.rw-1.motor_temperature drifting toward its ambient temperature.
+
+Try changing:
+- therm-1's facing direction, area, absorptivity, emissivity, mass or specific heat (more heat capacity \
+responds more slowly).
+- rw-1's motor efficiency: closer to 1 means less heat (1 itself is rejected).
+
+Limitations:
+- The thermal sensor's power draw is constant (no on/off duty cycle yet).""",
+}

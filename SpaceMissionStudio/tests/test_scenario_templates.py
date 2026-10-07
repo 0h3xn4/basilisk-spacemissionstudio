@@ -187,3 +187,21 @@ def test_leo_station_keeping_template_is_drag_driven_not_srp_driven():
     assert leo.enable_srp is False
     assert leo.station_keeping.target_altitude_km < 1000.0  # genuinely LEO, not GEO-scale
     assert leo.station_keeping.deadband_km < geo.station_keeping.deadband_km
+
+
+@pytest.mark.parametrize("path", _TEMPLATE_PATHS, ids=lambda p: p.name)
+def test_template_descriptions_are_short_and_structured(path):
+    """Real user feedback on the Load tab ("just awful UI/UX"): the
+    descriptions were up to 7,000 characters of prose, including
+    development audit history. They are now a short summary plus "What to
+    look at" / "Try changing" bullets, written for the user."""
+    description = load_scenario(path).description
+    assert len(description) < 1400, len(description)
+    assert "What to look at" in description and "Try changing:" in description
+    for banned in ("Audit history", "docstring", "HISTORY.md", "confirmed directly", "real user"):
+        assert banned not in description, banned
+    summary = description.split("\n\n")[0]
+    assert len(summary) < 300, summary
+    for line in description.splitlines():
+        if line.startswith("- "):
+            assert len(line) < 200, line  # short bullets, not paragraphs

@@ -56,6 +56,8 @@ compact button per row keeps the discoverability without the clutter.
 
 from __future__ import annotations
 
+import html
+
 import functools
 import logging
 from pathlib import Path
@@ -73,6 +75,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSizePolicy,
+    QSplitter,
     QStyle,
     QStyledItemDelegate,
     QVBoxLayout,
@@ -96,6 +99,28 @@ TEMPLATES_DIR = Path(spacemissionstudio.__file__).resolve().parent / "scenarios"
 
 _FILE_FILTER = "SpaceMissionStudio scenario (*.json)"
 
+
+
+def description_html(text: str) -> str:
+    """A template description as rich text: paragraphs separated by a
+    blank line, a paragraph whose first line ends with ":" as a heading,
+    and "- " lines as a bullet list (see scripts/_template_descriptions.py).
+    A real user called the old plain-text block "just awful UI/UX"."""
+    parts = []
+    for paragraph in text.strip().split("\n\n"):
+        lines = paragraph.splitlines()
+        heading = lines[0] if lines and lines[0].endswith(":") and not lines[0].startswith("- ") else None
+        body = lines[1:] if heading else lines
+        if heading:
+            parts.append(f"<p style='margin: 10px 0 2px 0;'><b>{html.escape(heading[:-1])}</b></p>")
+        bullets = [line[2:] for line in body if line.startswith("- ")]
+        prose = [line for line in body if not line.startswith("- ")]
+        if prose:
+            parts.append(f"<p style='margin: 0 0 4px 0;'>{html.escape(' '.join(prose))}</p>")
+        if bullets:
+            parts.append("<ul style='margin: 0; -qt-list-indent: 1;'>"
+                         + "".join(f"<li>{html.escape(item)}</li>" for item in bullets) + "</ul>")
+    return "".join(parts)
 
 class _BackgroundOnlyDelegate(QStyledItemDelegate):
     """Paints each row's background/selection/hover exactly as the theme
@@ -176,46 +201,19 @@ class LoadScenarioWidget(QWidget):
         super().__init__(parent)
         self._template_paths: Dict[str, Path] = {}
 
-        # This tab's own natural content height (20 template rows plus
-        # a long, multi-paragraph description label) can exceed what fits
-        # in a real, non-maximized window on a modest display. Without this
-        # QScrollArea, squeezing this widget's content into less height
-        # than it needs doesn't just clip cleanly: QLabel does not clip
-        # wrapped text to its own allocated rect, so description_label
-        # (and the intro label above the list) paint their overflow text
-        # past their own boundary and visibly overlap the sibling widget
-        # above/below them -- confirmed from a real user screenshot taken
-        # while resizing/maximizing the main window, where this showed up
-        # as garbled, overlapping text right at the template list /
-        # description label boundary. A QScrollArea never squeezes its
-        # inner widget below its own size hint -- it scrolls instead --
-        # which is exactly what ScenarioEditorWidget's own top-level
-        # QScrollArea (scenario_editor.py) and spacecraft_editor.py's
-        # per-tab _scrollable() already do for this same reason; this
-        # widget is the one tab-page-sized widget in the app that was
-        # still missing it.
-        outer_layout = QVBoxLayout(self)
-        outer_layout.setContentsMargins(0, 0, 0, 0)
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-        outer_layout.addWidget(scroll)
-
-        content = QWidget()
-        scroll.setWidget(content)
-        layout = QVBoxLayout(content)
-        intro = QLabel(
-            "Start from one of SpaceMissionStudio's built-in template missions -- each demonstrates one "
-            "concept in isolation and is a good starting point for your own scenario (see the "
-            "description below once one is selected) -- or browse for any other scenario file."
-        )
+        # Layout: intro and buttons on top, then the template list and the
+        # selected template's description card, split by a draggable
+        # divider, each scrolling on its own. Real user feedback ("just
+        # awful UI/UX"): the description used to sit below the 20-row list,
+        # off-screen until the whole tab was scrolled, as one grey block of
+        # prose. Its own scroll area also keeps the wrapped text from ever
+        # being squeezed and painting over its neighbours (an earlier,
+        # real overlapping-text bug).
+        layout = QVBoxLayout(self)
+        intro = QLabel("Pick a built-in template mission, or open your own scenario file.")
         intro.setWordWrap(True)
         layout.addWidget(intro)
 
-        # Action row ABOVE the list, not below it: with 20 bundled
-        # templates the list alone fills most of a 1400x850 window's
-        # left pane, so buttons placed after it (or after a selected
-        # template's multi-paragraph description) ended up below the fold.
         button_row = QHBoxLayout()
         self.open_template_button = QPushButton("Open Template")
         self.open_template_button.setEnabled(False)
@@ -228,55 +226,46 @@ class LoadScenarioWidget(QWidget):
         button_row.addStretch(1)
         layout.addLayout(button_row)
 
-        # No stretch factor: with one, this list claims and keeps every
-        # pixel of extra vertical space the pane has, whether or not it
-        # has enough rows to use it -- 9 short rows in a tall pane left a
-        # few hundred pixels of visibly empty white box. Sized to its own
-        # content instead (see _size_list_to_contents(), called once
-        # populated below), with the leftover space collected in one
-        # addStretch(1) at the very bottom -- ordinary, expected blank
-        # space below a compact form, not an oversized near-empty widget.
+        hint = QLabel("Double-click a template to open it. Customize... lets you change any of its "
+                      "settings first.")
+        hint.setWordWrap(True)
+        hint.setStyleSheet(f"color: {PALETTE['text_muted']};")
+        layout.addWidget(hint)
+
         self.list_widget = QListWidget()
         self.list_widget.setItemDelegate(_BackgroundOnlyDelegate(self.list_widget))
         self.list_widget.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._rows: Dict[str, _TemplateRow] = {}
-        layout.addWidget(self.list_widget)
 
+        self.description_title = QLabel()
+        self.description_title.setStyleSheet("font-weight: 600; font-size: 115%;")
+        self.description_title.setWordWrap(True)
         self.description_label = QLabel()
         self.description_label.setWordWrap(True)
-        self.description_label.setStyleSheet("color: palette(mid);")
-        layout.addWidget(self.description_label)
+        self.description_label.setTextFormat(Qt.TextFormat.RichText)
+        self.description_label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+        card = QWidget()
+        card_layout = QVBoxLayout(card)
+        card_layout.addWidget(self.description_title)
+        card_layout.addWidget(self.description_label)
+        card_layout.addStretch(1)
+        self.description_scroll = QScrollArea()
+        self.description_scroll.setWidgetResizable(True)
+        self.description_scroll.setWidget(card)
+
+        splitter = QSplitter(Qt.Orientation.Vertical)
+        splitter.addWidget(self.list_widget)
+        splitter.addWidget(self.description_scroll)
+        splitter.setChildrenCollapsible(False)
+        splitter.setStretchFactor(0, 1)
+        splitter.setStretchFactor(1, 1)
+        splitter.setSizes([300, 360])  # roughly half each; the divider stays draggable
+        layout.addWidget(splitter, 1)
 
         self.list_widget.currentItemChanged.connect(self._on_selection_changed)
         self.list_widget.itemDoubleClicked.connect(lambda _item: self._on_open_template_clicked())
 
         self._populate_templates()
-        self._size_list_to_contents()
-
-        hint = QLabel("Double-click a template to open it, or use a row's Customize... button for a guided "
-                      "wizard over just that template's key parameters.")
-        hint.setWordWrap(True)
-        hint.setStyleSheet(f"color: {PALETTE['text_muted']};")
-        layout.insertWidget(layout.indexOf(self.list_widget) + 1, hint)
-        layout.addStretch(1)
-
-    def _size_list_to_contents(self) -> None:
-        count = self.list_widget.count()
-        if count == 0:
-            return
-        row_height = max(self.list_widget.sizeHintForRow(i) for i in range(count))
-        frame = 2 * self.list_widget.frameWidth()
-        # setFixedHeight(), not setMaximumHeight(): QListWidget's own
-        # sizeHint() is a generic Qt default, NOT based on its actual
-        # item count, and the layout's trailing addStretch(1) greedily
-        # claims every pixel beyond whatever sizeHint() this widget
-        # reports (stretch=0 items are pinned at their sizeHint, not
-        # grown toward their maximumHeight, when a sibling stretch item
-        # is competing for the same leftover space) -- so a maximum
-        # alone was silently never reached. Exactly as many rows as there
-        # are templates -- earlier "+2 rows of slack" just showed up as an
-        # empty white band at the bottom of the list.
-        self.list_widget.setFixedHeight(row_height * count + frame + 4)
 
     def _populate_templates(self) -> None:
         if not TEMPLATES_DIR.is_dir():
@@ -302,7 +291,9 @@ class LoadScenarioWidget(QWidget):
 
     def _on_selection_changed(self, current: Optional[QListWidgetItem], previous) -> None:
         self.open_template_button.setEnabled(current is not None)
-        self.description_label.setText(current.data(Qt.ItemDataRole.UserRole) if current is not None else "")
+        self.description_title.setText(current.text() if current is not None else "")
+        self.description_label.setText(
+            description_html(current.data(Qt.ItemDataRole.UserRole) or "") if current is not None else "")
         for item, selected in ((previous, False), (current, True)):
             row = self._rows.get(item.text()) if item is not None else None
             if row is not None:
