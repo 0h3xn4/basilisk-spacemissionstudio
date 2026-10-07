@@ -191,20 +191,16 @@ def conservation_drift_warnings(name: str, mu: float, r_m: np.ndarray, v_m: np.n
     energy_drift = float(np.max(np.abs(specific_energy - specific_energy[0]))) / energy_scale
     if energy_drift > energy_tol:
         warnings.append(
-            f"{name}: specific orbital energy drifted {energy_drift:.1%} from its initial value over "
-            f"this run (tolerance {energy_tol:.0%}) -- this spacecraft's gravity/perturbation config is "
-            "two-body-only, so energy should stay constant; a drift this large usually means a "
-            "numerical-integration problem (try a finer sim_settings.dynamics_task_rate_s or a "
-            "higher-order integrator), not real physics."
+            f"{name}: orbital energy drifted {energy_drift:.1%} (limit {energy_tol:.0%}) -- "
+            "try a smaller dynamics step or a higher-order integrator"
         )
 
     momentum_scale = max(float(h_mag[0]), 1e-12)
     momentum_drift = float(np.max(np.abs(h_mag - h_mag[0]))) / momentum_scale
     if momentum_drift > momentum_tol:
         warnings.append(
-            f"{name}: orbital angular momentum magnitude drifted {momentum_drift:.1%} from its initial "
-            f"value over this run (tolerance {momentum_tol:.0%}) -- same two-body-only reasoning as the "
-            "energy check above."
+            f"{name}: angular momentum drifted {momentum_drift:.1%} (limit {momentum_tol:.0%}) -- "
+            "try a smaller dynamics step or a higher-order integrator"
         )
     return warnings
 

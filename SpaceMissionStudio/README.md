@@ -606,7 +606,7 @@ python3 -m pip install -e ".[dev,gui]"
 python3 -m pytest tests/ -v
 ```
 
-The suite has 1819 tests. Without Basilisk on `PYTHONPATH`, 1584 of
+The suite has 1826 tests. Without Basilisk on `PYTHONPATH`, 1591 of
 them run and pass (schema, space weather, results, link budget,
 constellation generation, CLI, and the full PySide6 GUI, run headless),
 and the 235 that need a real Basilisk build (marked `requires_basilisk`,
@@ -771,7 +771,7 @@ label updates live as you type, including its Monte Carlo section
 by name). Run > Run Simulation runs `SimulationService` on a background
 thread (the UI stays responsive) and switches to the Results tab when
 done, with a plot per result series, a CSV export button (every series
-at once), and a "Save plot as PNG..." button (just the currently
+at once), and "Save PNG..."/"Save SVG..." buttons (just the currently
 displayed plot, to a user-chosen location via a native Save As dialog --
 rendered client-side through the same `plotly.js` already on the page,
 not a new `kaleido` dependency). A

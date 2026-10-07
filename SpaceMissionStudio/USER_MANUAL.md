@@ -125,7 +125,7 @@ up using a template as-is or editing it into something new.
    automatically. Pick a series from the **Series** dropdown (e.g. a
    spacecraft's position) to see it plotted. Hover over the plot to read
    exact values at any point.
-5. Done exploring? **Export all series to CSV...** saves every plotted
+5. Done exploring? **Export CSV...** saves every plotted
    quantity to a folder of `.csv` files you can open in a spreadsheet.
 
 That's the whole loop: **pick -> open -> run -> look at Results.**
@@ -212,14 +212,23 @@ or invalid) -- you don't have to guess why Run is unavailable.
 
 After a run finishes, the **Results** tab shows one plot at a time:
 
-* **Series** -- pick which quantity to look at (e.g.
-  `sat-1.position_N`, a spacecraft's position). Positions/velocities are
-  plotted in kilometers, not meters, to stay readable.
+* **Series** -- pick which quantity to look at, listed by plot title
+  (e.g. "sat-1: Inertial Position (ECI)"). Type to filter the list.
+  Hover an entry to see its code name (e.g. `sat-1.position_N`), which
+  is also its CSV file name.
 * **X-axis** -- toggle between elapsed simulation time and the real
   calendar epoch, whichever you find easier to read.
-* **Export all series to CSV...** -- saves everything plotted (not just
-  the current series) to `.csv` files for use in a spreadsheet or
-  another tool.
+* **Export CSV...** -- saves every series (not just the current one) to
+  `.csv` files in SI units, for a spreadsheet or another tool.
+  **Save PNG...** / **Save SVG...** save just the plot on screen.
+* **View** -- only shown when the scenario has ground stations:
+  "Access timeline" shows every station's passes over every spacecraft
+  in one chart.
+
+A line under the buttons names what produced the result (versions,
+integrator and step, run time). If an orbit-only run's energy or angular
+momentum drifts, an amber note appears there too: try a smaller
+dynamics step or a higher-order integrator.
 
 The plot is interactive: hover to see exact values, and use your
 scroll wheel/drag to zoom and pan.

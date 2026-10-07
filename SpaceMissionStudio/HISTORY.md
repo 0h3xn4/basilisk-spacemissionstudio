@@ -7107,3 +7107,35 @@ The user asked for the Explain tab to be checked for the same clutter. It was re
 * Template 04 gives one table row covering all six satellites.
 * Badges use plain names and no status colours.
 * The table in a narrow pane shows every row with no vertical scroll bar. This test fails without the height fix.
+
+## Results tab: decluttered
+
+The user asked for the Results tab to be checked for the same clutter. It was rendered from a real template-05 run (40 series, with provenance), with ground-station access series and drift warnings added, at 1000 px and 620 px. Problems found:
+* **Code names.** The Series list showed 40 dotted code names such as `follower-1.orbit_elements_mean.semi_major_axis`. In a narrow pane the box showed only their tail ("_keeping.separation_error").
+* **Too wide.** A one-line provenance label and a five-control toolbar forced the tab to about 780 px, wider than a typical right-hand pane.
+* **Scroll bar.** Every plot had a scroll bar beside it. Plotly's page kept the browser's default 8 px body margin under a 100%-height plot.
+* **Long warnings.** Each drift warning was a ~330-character paragraph, with up to two per spacecraft, all in the error red.
+* **Pointless control.** The View selector was shown even when the result had no ground stations, so there was nothing to choose.
+* **Invisible passes.** On a month-long run in a narrow pane, an access pass is narrower than a pixel, so the access timeline looked empty.
+* **Precise timestamp.** The provenance line ended "run started 2026-10-07T14:33:38.434854+00:00".
+
+**Changes.**
+* **Series list.** Entries read like their plot titles ("chief-1: Mean (first-order J2) Semi-Major Axis"). The code name, which is also the CSV file name, is the item's tooltip and data (`current_series_name()`). Typing a full code name still selects it. Two series that would share a label keep their code names.
+* **Toolbar.** Series and X-axis share the top row. The buttons are "Export CSV...", "Save PNG..." and "Save SVG...", with View at the right end of that row. View appears only when the result has access series, and its option is now "Access timeline". The provenance line wraps.
+* **Plot page.** No body margin and no overflow, so the plot fills the view exactly.
+* **Warnings.** One short line each, e.g. "chief-1: orbital energy drifted 5.1% (limit 1%) -- try a smaller dynamics step or a higher-order integrator". The two-body reasoning moved to the tooltip, and the colour is the palette's warning amber.
+* **Access timeline.** Each pass gets a 1 px tick at its start and end, on the same trace, so it stays visible at any zoom and hover shows the real times. The x-axis is fixed to the run, so the ticks don't pad it to before t = 0.
+* **Provenance.** Reads "... · RKF78, 30 s step · 2026-10-07 14:33 UTC".
+
+**Docs.** USER_MANUAL Section 7 describes the new list, buttons, View selector and warning line. It no longer claims that positions plot in km; they plot in metres.
+
+**Tests.** Seven new tests, each failing against the old code:
+* the list shows titles, with code names as tooltip and data;
+* typing a code name selects it;
+* View is hidden without access series;
+* the tab fits 620 px;
+* the plot page has no scroll bar (checked in the real web view);
+* passes carry end ticks and the axis starts at 0;
+* warnings stay at or under 120 characters.
+
+Tests that read the combo text as a code name now use `current_series_name()` and `findData()`.

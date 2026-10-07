@@ -123,7 +123,7 @@ if hasattr(os, "geteuid") and os.geteuid() == 0:
     os.environ.setdefault("QTWEBENGINE_CHROMIUM_FLAGS", "--no-sandbox")
 
 import tempfile
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -261,6 +261,45 @@ def _display_indices(values: np.ndarray, max_points: int = _MAX_PLOT_POINTS_PER_
     return np.unique(np.asarray(keep))
 
 
+def _series_label(name: str, series: TimeSeries) -> str:
+    """The name shown for a series in the Series list -- the same title
+    its plot gets (e.g. "chief-1: Mean Semi-Major Axis"), not the dotted
+    code name. Uncategorized series keep their code name."""
+    display = _categorize(name, series) or _legacy_display(name, series)
+    subject = name.split(".", 1)[0]
+    return display.title if display.standalone_title else f"{subject}: {display.title}"
+
+
+def _has_access_series(result: Optional[ResultSet]) -> bool:
+    return result is not None and any(
+        (parsed := _parse_access_pair(name)) is not None and parsed[2] == "has_access" for name in result.series
+    )
+
+
+_DRIFT_WARNING_TOOLTIP = (
+    "These spacecraft use two-body gravity only, so orbital energy and angular momentum should stay "
+    "constant. A drift this large usually means a numerical-integration problem, not real physics: try a "
+    "smaller dynamics step (Propagation Setup) or a higher-order integrator."
+)
+
+
+def _short_utc(timestamp: str) -> str:
+    """"2026-10-07T14:33:38.434854+00:00" -> "2026-10-07 14:33 UTC" (the
+    text unchanged if it doesn't parse)."""
+    try:
+        parsed = datetime.fromisoformat(timestamp)
+    except ValueError:
+        return timestamp
+    if parsed.tzinfo is not None:
+        parsed = parsed.astimezone(timezone.utc)
+    return parsed.strftime("%Y-%m-%d %H:%M UTC")
+
+
+# Plotly's full page keeps the browser's default 8 px body margin under a
+# 100%-height plot, which put a scroll bar beside every plot.
+_PAGE_STYLE = "<style>html, body { margin: 0; height: 100%; overflow: hidden; }</style>"
+
+
 def _plotlyjs_path() -> Path:
     """Absolute filesystem path to the ``plotly.min.js`` bundle already
     installed as part of the ``plotly`` PyPI package -- see module
@@ -310,16 +349,17 @@ class ResultsWidget(QWidget):
         # "Ground station access timeline" disables series_combo (it
         # has no effect in that view) and redraws; switching back
         # restores the single-series view exactly as it was.
-        top_row.addWidget(QLabel("View:"))
+        # Shown only for a result with ground-station access series --
+        # without them there is nothing to choose.
+        self.view_label = QLabel("View:")
+        self.view_label.setVisible(False)
         self.view_combo = ComboBox()
         self.view_combo.addItem("Single series", "single")
-        self.view_combo.addItem("Ground station access timeline", "access_timeline")
-        self.view_combo.setToolTip(
-            "\"Ground station access timeline\" shows every {station}.access_to_{spacecraft}.has_access "
-            "series in this result as one combined Gantt-style chart, instead of picking one series below."
-        )
+        self.view_combo.addItem("Access timeline", "access_timeline")
+        self.view_combo.setToolTip("\"Access timeline\" shows every ground station's passes over every "
+                                   "spacecraft in one chart.")
+        self.view_combo.setVisible(False)
         self.view_combo.currentIndexChanged.connect(self._on_view_changed)
-        top_row.addWidget(self.view_combo)
         top_row.addWidget(QLabel("Series:"))
         self.series_combo = ComboBox()
         # Editable + a substring-matching QCompleter -- a real scenario
@@ -403,13 +443,14 @@ class ResultsWidget(QWidget):
         # entirely rather than trying to tune individual widths against
         # an unbounded number of future buttons on the same row.
         button_row = QHBoxLayout()
-        self.export_button = QPushButton("Export all series to CSV...")
+        self.export_button = QPushButton("Export CSV...")
+        self.export_button.setToolTip("Export every series in this result as CSV files (SI units)")
         self.export_button.clicked.connect(self._on_export)
         self.export_button.setEnabled(False)
         button_row.addWidget(self.export_button)
-        self.save_png_button = QPushButton("Save plot as PNG...")
+        self.save_png_button = QPushButton("Save PNG...")
         self.save_png_button.setToolTip("Save the currently displayed plot (not every series -- see "
-                                         "\"Export all series to CSV...\" for that) as a PNG image")
+                                         "\"Export CSV...\" for that) as a PNG image")
         self.save_png_button.clicked.connect(self._on_save_plot_png)
         self.save_png_button.setEnabled(False)
         button_row.addWidget(self.save_png_button)
@@ -419,12 +460,14 @@ class ResultsWidget(QWidget):
         # blurry. Shares _on_save_plot_png's whole dialog/kickoff/poll
         # machinery via its ``fmt`` parameter -- see that method's own
         # docstring -- rather than duplicating it.
-        self.save_svg_button = QPushButton("Save plot as SVG...")
+        self.save_svg_button = QPushButton("Save SVG...")
         self.save_svg_button.setToolTip("Save the currently displayed plot as a scalable vector (SVG) image")
         self.save_svg_button.clicked.connect(self._on_save_plot_svg)
         self.save_svg_button.setEnabled(False)
         button_row.addWidget(self.save_svg_button)
         button_row.addStretch(1)
+        button_row.addWidget(self.view_label)
+        button_row.addWidget(self.view_combo)
         layout.addLayout(button_row)
 
         # Design-philosophy audit finding (docs/ux_audit.md, "no run
@@ -435,6 +478,7 @@ class ResultsWidget(QWidget):
         self.provenance_label = QLabel("")
         self.provenance_label.setStyleSheet("color: palette(mid); font-size: 90%;")
         self.provenance_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.provenance_label.setWordWrap(True)  # never forces the pane wider
         # Real UI bug, caught from a screenshot: this label and web_view
         # both default to QSizePolicy.Preferred vertically with 0
         # stretch, which Qt's QVBoxLayout resolved by handing almost ALL
@@ -463,7 +507,7 @@ class ResultsWidget(QWidget):
         # just the color) makes clear this is informational, not fatal.
         self.warnings_label = QLabel("")
         self.warnings_label.setWordWrap(True)
-        self.warnings_label.setStyleSheet(f"color: {PALETTE['danger']}; font-size: 90%;")
+        self.warnings_label.setStyleSheet(f"color: {PALETTE['warning']}; font-size: 90%;")
         self.warnings_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.warnings_label.setVisible(False)
         # Same fix as provenance_label just above, for the same reason --
@@ -487,16 +531,35 @@ class ResultsWidget(QWidget):
     def set_result(self, result: ResultSet | None, epoch_utc: Optional[str] = None) -> None:
         self._result = result
         self._epoch_utc = epoch_utc
-        self.series_combo.blockSignals(True)
-        self.series_combo.clear()
-        if result is not None:
-            for name in result.series:
-                self.series_combo.addItem(name)
-        self.series_combo.blockSignals(False)
+        self._fill_series_combo(result)
         self.export_button.setEnabled(result is not None and bool(result.series))
         self._update_provenance_label()
         self._update_warnings_label()
         self._redraw()
+
+    def _fill_series_combo(self, result: Optional[ResultSet]) -> None:
+        """One entry per series, shown by its plot title; the code name
+        (the CSV file name) is the item's data and tooltip."""
+        self.series_combo.blockSignals(True)
+        self.series_combo.clear()
+        if result is not None:
+            labels = {name: _series_label(name, series) for name, series in result.series.items()}
+            label_counts: dict = {}
+            for label in labels.values():
+                label_counts[label] = label_counts.get(label, 0) + 1
+            for name, label in labels.items():
+                self.series_combo.addItem(label if label_counts[label] == 1 else name, name)
+                self.series_combo.setItemData(self.series_combo.count() - 1, name, Qt.ItemDataRole.ToolTipRole)
+        self.series_combo.blockSignals(False)
+        has_access = _has_access_series(result)
+        if not has_access and self.view_combo.currentData() != "single":
+            self.view_combo.setCurrentIndex(self.view_combo.findData("single"))
+        self.view_label.setVisible(has_access)
+        self.view_combo.setVisible(has_access)
+
+    def current_series_name(self) -> str:
+        """Code name of the selected series ("" when there is none)."""
+        return self.series_combo.currentData() or ""
 
     def _update_warnings_label(self) -> None:
         warnings = self._result.warnings if self._result is not None else []
@@ -505,6 +568,7 @@ class ResultsWidget(QWidget):
             self.warnings_label.setText("")
             return
         self.warnings_label.setText("\n".join(f"⚠ {w}" for w in warnings))
+        self.warnings_label.setToolTip(_DRIFT_WARNING_TOOLTIP)
         self.warnings_label.setVisible(True)
 
     def _update_provenance_label(self) -> None:
@@ -515,8 +579,8 @@ class ResultsWidget(QWidget):
             return
         self.provenance_label.setText(
             f"SpaceMissionStudio {provenance.spacemissionstudio_version} · "
-            f"Basilisk {provenance.basilisk_version} · {provenance.integrator} @ "
-            f"{provenance.dynamics_task_rate_s:g} s · run started {provenance.run_started_utc}"
+            f"Basilisk {provenance.basilisk_version} · {provenance.integrator.upper()}, "
+            f"{provenance.dynamics_task_rate_s:g} s step · {_short_utc(provenance.run_started_utc)}"
         )
         self.provenance_label.setToolTip(provenance.rng_seed_note)
 
@@ -551,11 +615,7 @@ class ResultsWidget(QWidget):
         # page reload).
         self._update_warnings_label()
         if is_first_update:
-            self.series_combo.blockSignals(True)
-            self.series_combo.clear()
-            for name in result.series:
-                self.series_combo.addItem(name)
-            self.series_combo.blockSignals(False)
+            self._fill_series_combo(result)
             self.export_button.setEnabled(bool(result.series))
             self._update_provenance_label()
             self._redraw()
@@ -640,10 +700,8 @@ class ResultsWidget(QWidget):
             x_axis["exponentformat"] = "none"
             x_axis["separatethousands"] = True
 
-        subject = name.split(".", 1)[0]
-        title_text = display.title if display.standalone_title else f"{subject}: {display.title}"
         fig.update_layout(
-            title=dict(text=title_text, font=dict(size=16, color=_INK_PRIMARY, family=_FONT_FAMILY)),
+            title=dict(text=_series_label(name, series), font=dict(size=16, color=_INK_PRIMARY, family=_FONT_FAMILY)),
             xaxis=x_axis,
             yaxis=y_axis,
             font=dict(family=_FONT_FAMILY, color=_INK_PRIMARY),
@@ -687,7 +745,7 @@ class ResultsWidget(QWidget):
             self.figure = self._build_access_timeline_figure()
             return
         if self.series_combo.count() > 0:
-            name = self.series_combo.currentText()
+            name = self.current_series_name()
             series = self._result.series.get(name)
             if series is not None:
                 self.figure = self._build_figure(name, series)
@@ -727,6 +785,8 @@ class ResultsWidget(QWidget):
         pairs.sort(key=lambda item: item[0])
 
         fig = go.Figure()
+        t_end_hr = max((float(series.time_s[-1]) for _label, series in pairs if len(series.time_s)),
+                       default=0.0) / 3600.0
         if not pairs:
             fig.update_layout(
                 annotations=[dict(
@@ -757,8 +817,11 @@ class ResultsWidget(QWidget):
                 for start, end in zip(starts, ends):
                     xs += [t_hours[start], t_hours[end], None]
                     ys += [pair_label, pair_label, None]
+                # A tick at each end keeps a short pass visible on a long
+                # run, where its segment is narrower than a pixel.
                 fig.add_trace(go.Scatter(
-                    x=xs, y=ys, mode="lines", line=dict(color=color, width=16), connectgaps=False,
+                    x=xs, y=ys, mode="lines+markers", line=dict(color=color, width=16), connectgaps=False,
+                    marker=dict(symbol="line-ns", size=16, line=dict(color=color, width=1)),
                     name=pair_label, hovertemplate=f"{pair_label}<br>%{{x:.3f}} hr<extra></extra>",
                 ))
             else:
@@ -779,8 +842,10 @@ class ResultsWidget(QWidget):
         fig.update_layout(
             title=dict(text="Ground Station Access Timeline", font=dict(size=16, color=_INK_PRIMARY,
                                                                           family=_FONT_FAMILY)),
+            # Fixed to the run: the end-of-pass ticks would otherwise pad
+            # the axis to before t = 0.
             xaxis=dict(axis_common, title_text="Elapsed time [hr]", exponentformat="none",
-                       separatethousands=True),
+                       separatethousands=True, range=[0.0, t_end_hr]),
             yaxis=dict(axis_common, title_text=None, categoryorder="category descending"),
             font=dict(family=_FONT_FAMILY, color=_INK_PRIMARY),
             plot_bgcolor=_SURFACE, paper_bgcolor=_SURFACE,
@@ -803,6 +868,7 @@ class ResultsWidget(QWidget):
                 include_plotlyjs=QUrl.fromLocalFile(str(_plotlyjs_path())).toString(), full_html=True,
                 div_id=_PLOT_DIV_ID, config={"displaylogo": False, "responsive": True},
             )
+            html = html.replace("<head>", "<head>" + _PAGE_STYLE, 1)
             # Alternating file names, so a new page never overwrites one
             # that is still loading.
             self._page_counter += 1
@@ -832,10 +898,12 @@ class ResultsWidget(QWidget):
         the combo's real selected index to match the committed text
         (not just its displayed string) before redrawing, so
         ``_redraw()``/``_on_save_plot_png()`` -- both of which read
-        ``series_combo.currentText()`` -- agree with what's actually
+        ``current_series_name()`` -- agree with what's actually
         showing.
         """
         index = self.series_combo.findText(text)
+        if index < 0:
+            index = self.series_combo.findData(text)  # a code name typed in full
         if index >= 0:
             self.series_combo.setCurrentIndex(index)
         self._redraw()
@@ -930,7 +998,7 @@ class ResultsWidget(QWidget):
             # long after the user thinks they're done.
             return
         is_access_timeline = self.view_combo.currentData() == "access_timeline"
-        default_name = f"{'access_timeline' if is_access_timeline else self.series_combo.currentText()}.{fmt}"
+        default_name = f"{'access_timeline' if is_access_timeline else self.current_series_name()}.{fmt}"
         file_filter = "SVG images (*.svg)" if fmt == "svg" else "PNG images (*.png)"
         path, _ = QFileDialog.getSaveFileName(self, f"Save plot as {fmt.upper()}", default_name, file_filter)
         if not path:

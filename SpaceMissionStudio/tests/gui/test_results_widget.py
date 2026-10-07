@@ -59,8 +59,8 @@ def test_set_result_with_provenance_shows_version_and_run_time(widget):
     label = widget.provenance_label.text()
     assert "9.9.9" in label
     assert "2.12.0" in label
-    assert "rkf78" in label
-    assert "2030-01-01T00:00:00+00:00" in label
+    assert "RKF78, 10 s step" in label
+    assert "2030-01-01 00:00 UTC" in label
     assert "deterministic" in widget.provenance_label.toolTip()
 
 
@@ -603,7 +603,7 @@ def test_user_series_change_is_never_throttled_during_a_live_run(widget, monkeyp
     test_set_live_result_throttles_rapid_webview_redraws's own style.
     """
     widget.set_live_result(_sample_result_set(n=5))
-    first_series = widget.series_combo.currentText()
+    first_series = widget.current_series_name()
     other_series = next(name for name in widget._result.series if name != first_series)
 
     push_calls = []
@@ -612,9 +612,9 @@ def test_user_series_change_is_never_throttled_during_a_live_run(widget, monkeyp
     # setCurrentText only updates the line-edit's displayed text and
     # relies on editingFinished (Enter/focus-loss) to sync currentIndex
     # -- not what a real dropdown pick (this test's actual subject) does.
-    widget.series_combo.setCurrentIndex(widget.series_combo.findText(other_series))  # still inside the throttle window
+    widget.series_combo.setCurrentIndex(widget.series_combo.findData(other_series))  # still inside the throttle window
 
-    assert widget.series_combo.currentText() == other_series
+    assert widget.current_series_name() == other_series
     assert push_calls == [1]
 
 
@@ -634,13 +634,15 @@ def test_selecting_a_series_via_the_completer_popup_redraws_the_plot(widget):
     is deliberately the OTHER, dropdown-arrow pick path).
     """
     widget.set_result(_sample_result_set())
-    first_series = widget.series_combo.currentText()
+    first_series = widget.current_series_name()
     other_series = next(name for name in widget._result.series if name != first_series)
     original_y_title = widget.figure.layout.yaxis.title.text
 
-    widget.series_combo.completer().activated.emit(other_series)
+    # The popup offers the shown labels, so that is what it emits.
+    widget.series_combo.completer().activated.emit(
+        widget.series_combo.itemText(widget.series_combo.findData(other_series)))
 
-    assert widget.series_combo.currentText() == other_series
+    assert widget.current_series_name() == other_series
     assert widget.figure.layout.yaxis.title.text != original_y_title  # the plot actually rebuilt, not just the combo text
 
 
@@ -652,15 +654,15 @@ def test_typing_an_exact_series_name_and_pressing_enter_redraws_the_plot(widget,
     from PySide6.QtCore import Qt
 
     widget.set_result(_sample_result_set())
-    first_series = widget.series_combo.currentText()
+    first_series = widget.current_series_name()
     other_series = next(name for name in widget._result.series if name != first_series)
     original_y_title = widget.figure.layout.yaxis.title.text
 
     widget.series_combo.setFocus()
-    widget.series_combo.lineEdit().setText(other_series)
+    widget.series_combo.lineEdit().setText(widget.series_combo.itemText(widget.series_combo.findData(other_series)))
     qtbot.keyClick(widget.series_combo.lineEdit(), Qt.Key.Key_Return)
 
-    assert widget.series_combo.currentText() == other_series
+    assert widget.current_series_name() == other_series
     assert widget.figure.layout.yaxis.title.text != original_y_title  # the plot actually rebuilt, not just the combo text
 
 
@@ -875,7 +877,7 @@ def test_set_live_result_rebuilds_combo_if_series_names_change(widget):
     widget.set_live_result(other)
 
     assert widget.series_combo.count() == 1
-    assert widget.series_combo.currentText() == "sat-2.position_N"
+    assert widget.current_series_name() == "sat-2.position_N"
 
 
 def test_a_large_series_still_shows_when_selected(widget, qtbot):
@@ -896,7 +898,7 @@ def test_a_large_series_still_shows_when_selected(widget, qtbot):
     with qtbot.waitSignal(widget.web_view.loadFinished, timeout=20000):
         widget.set_result(result)
     with qtbot.waitSignal(widget.web_view.loadFinished, timeout=20000):
-        widget.series_combo.setCurrentIndex(widget.series_combo.findText("sat-1.position_N"))
+        widget.series_combo.setCurrentIndex(widget.series_combo.findData("sat-1.position_N"))
 
     shown = {}
     widget.web_view.page().runJavaScript(
@@ -924,3 +926,98 @@ def test_display_thinning_keeps_peaks_and_caps_points():
     assert len(keep) <= _MAX_PLOT_POINTS_PER_LINE
     assert 123457 in keep and 0 in keep and len(values) - 1 in keep
     assert np.all(np.diff(keep) > 0)  # in time order
+
+
+# -- decluttering (real user feedback: "check the Results tab for the same clutter") --
+
+def test_series_list_shows_plot_titles_with_the_code_name_as_tooltip(widget):
+    """The Series list used raw dotted code names; entries now read like
+    their plot titles, and the code name (the CSV file name) stays
+    available as the item's data and tooltip."""
+    from PySide6.QtCore import Qt
+
+    widget.set_result(_sample_result_set())
+    combo = widget.series_combo
+    labels = [combo.itemText(i) for i in range(combo.count())]
+    assert labels == ["sat-1: Inertial Position (ECI)", "sat-1: Inertial Velocity (ECI)"]
+    assert [combo.itemData(i) for i in range(combo.count())] == ["sat-1.position_N", "sat-1.velocity_N"]
+    assert combo.itemData(0, Qt.ItemDataRole.ToolTipRole) == "sat-1.position_N"
+    assert widget.figure.layout.title.text == labels[0]  # list entry == plot title
+
+
+def test_typing_a_full_code_name_still_selects_that_series(widget, qtbot):
+    from PySide6.QtCore import Qt
+
+    widget.set_result(_sample_result_set())
+    widget.series_combo.setFocus()
+    widget.series_combo.lineEdit().setText("sat-1.velocity_N")
+    qtbot.keyClick(widget.series_combo.lineEdit(), Qt.Key.Key_Return)
+
+    assert widget.current_series_name() == "sat-1.velocity_N"
+
+
+def test_view_selector_only_appears_when_there_are_access_series(widget):
+    """With no ground stations there is nothing to choose between."""
+    widget.show()
+    widget.set_result(_sample_result_set())
+    assert not widget.view_combo.isVisible() and not widget.view_label.isVisible()
+
+    widget.set_result(_access_result_set())
+    assert widget.view_combo.isVisible() and widget.view_label.isVisible()
+
+    widget.view_combo.setCurrentIndex(widget.view_combo.findData("access_timeline"))
+    widget.set_result(_sample_result_set())  # back to a result without stations
+    assert not widget.view_combo.isVisible()
+    assert widget.view_combo.currentData() == "single"
+    assert widget.figure.layout.title.text == "sat-1: Inertial Position (ECI)"
+
+
+def test_results_tab_fits_a_narrow_pane(widget):
+    """A one-line provenance label and a wide toolbar used to force the tab
+    to ~780 px, wider than a typical right-hand pane."""
+    from spacemissionstudio.engine.results import RunProvenance
+
+    rs = _access_result_set()
+    for name, series in _sample_result_set().series.items():
+        rs.add(series)
+    rs.provenance = RunProvenance(
+        spacemissionstudio_version="2.0.0", basilisk_version="2.12.0",
+        run_started_utc="2026-10-07T14:33:38.434854+00:00", integrator="rkf78", dynamics_task_rate_s=30.0,
+    )
+    rs.warnings = ["sat-1: orbital energy drifted 5.1% (limit 1%) -- try a smaller dynamics step or a "
+                   "higher-order integrator"]
+    widget.set_result(rs)
+    widget.show()
+    assert widget.minimumSizeHint().width() <= 620  # [px]
+    assert "14:33 UTC" in widget.provenance_label.text() and ".434854" not in widget.provenance_label.text()
+
+
+def test_plot_page_fills_the_view_without_a_scroll_bar(widget, qtbot):
+    """Plotly's page kept the browser's default body margin under a
+    100%-height plot, so every plot had a scroll bar beside it."""
+    widget.resize(800, 600)  # [px]
+    widget.show()
+    qtbot.waitExposed(widget)
+    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=20000):
+        widget.set_result(_sample_result_set())
+    sizes = {}
+    widget.web_view.page().runJavaScript(
+        "[document.documentElement.scrollHeight, window.innerHeight,"
+        " document.documentElement.scrollWidth, window.innerWidth].join(',')",
+        0, lambda value: sizes.setdefault("v", value))
+    qtbot.waitUntil(lambda: "v" in sizes, timeout=5000)
+    scroll_height, inner_height, scroll_width, inner_width = (int(v) for v in sizes["v"].split(","))
+    assert scroll_height <= inner_height and scroll_width <= inner_width, sizes["v"]
+
+
+def test_access_timeline_marks_each_pass_and_starts_at_zero(widget):
+    """On a long run a pass is narrower than a pixel, so its segment alone
+    vanished; fixed-size end ticks keep it visible. The ticks must not pad
+    the axis to before t = 0."""
+    widget.set_result(_access_result_set())
+    widget.view_combo.setCurrentIndex(widget.view_combo.findData("access_timeline"))
+
+    with_passes = [t for t in widget.figure.data if t.y[0] == "station-a -> sat-1"][0]
+    assert "markers" in with_passes.mode
+    assert with_passes.marker.symbol == "line-ns"
+    assert widget.figure.layout.xaxis.range == (0.0, 1.0)  # [hr] the whole 3600 s run
