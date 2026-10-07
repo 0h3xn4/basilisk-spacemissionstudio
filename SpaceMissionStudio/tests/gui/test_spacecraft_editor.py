@@ -286,6 +286,219 @@ def test_dialog_round_trips_power_and_rf_link(qtbot):
     assert got.rf_link == existing.rf_link
 
 
+def test_dialog_round_trips_rf_link_antenna_beamwidth_deg(qtbot):
+    """Regression test for a real data-loss bug found by audit:
+    antenna_beamwidth_deg had no editor at all, so opening then OK'ing a
+    spacecraft that already had it set (e.g. template 19's "leo-comms-1")
+    silently deleted it.
+    """
+    from spacemissionstudio.gui.spacecraft_editor import SpacecraftEditorDialog
+    from spacemissionstudio.schema.scenario import OrbitIC, RFLinkConfig, SpacecraftConfig
+
+    existing = SpacecraftConfig(
+        name="sat-beamwidth",
+        orbit=OrbitIC(type="cartesian", position_km=[7000, 0, 0], velocity_km_s=[0, 7.5, 0]),
+        rf_link=RFLinkConfig(tx_power_w=12.0, frequency_hz=8.4e9, data_rate_bps=2.0e6, antenna_beamwidth_deg=12.5),
+    )
+    dialog = SpacecraftEditorDialog(config=existing)
+    qtbot.addWidget(dialog)
+
+    assert dialog.rf_link_group.isChecked()
+    assert dialog.rf_beamwidth_check.isChecked()
+    assert dialog.rf_beamwidth_deg.value() == pytest.approx(12.5)
+
+    got = dialog.to_dataclass()
+    assert got.rf_link == existing.rf_link  # unedited round-trip, including antenna_beamwidth_deg
+
+
+def test_dialog_rf_link_antenna_beamwidth_deg_defaults_to_none_unchecked(qtbot):
+    from spacemissionstudio.gui.spacecraft_editor import SpacecraftEditorDialog
+
+    dialog = SpacecraftEditorDialog()
+    qtbot.addWidget(dialog)
+    dialog.rf_link_group.setChecked(True)
+    assert not dialog.rf_beamwidth_check.isChecked()
+
+    sc = dialog.to_dataclass()
+    assert sc.rf_link.antenna_beamwidth_deg is None
+
+
+def test_dialog_comms_pointing_defaults_to_none(qtbot):
+    from spacemissionstudio.gui.spacecraft_editor import SpacecraftEditorDialog
+
+    dialog = SpacecraftEditorDialog()
+    qtbot.addWidget(dialog)
+    assert not dialog.comms_pointing_group.isChecked()
+    sc = dialog.to_dataclass()
+    assert sc.comms_pointing is None
+
+
+def test_dialog_comms_pointing_ground_station_combo_lists_provided_names(qtbot):
+    from spacemissionstudio.gui.spacecraft_editor import SpacecraftEditorDialog
+
+    dialog = SpacecraftEditorDialog(ground_station_names=["berlin", "svalbard"])
+    qtbot.addWidget(dialog)
+    dialog.comms_pointing_group.setChecked(True)
+    assert dialog.cp_ground_station_combo.isEnabled()
+    names = {dialog.cp_ground_station_combo.itemData(i) for i in range(dialog.cp_ground_station_combo.count())}
+    assert names == {"berlin", "svalbard"}
+
+
+def test_dialog_comms_pointing_disabled_combo_with_no_ground_stations(qtbot):
+    from spacemissionstudio.gui.spacecraft_editor import SpacecraftEditorDialog
+
+    dialog = SpacecraftEditorDialog()
+    qtbot.addWidget(dialog)
+    dialog.comms_pointing_group.setChecked(True)
+    assert not dialog.cp_ground_station_combo.isEnabled()
+
+
+def test_dialog_comms_pointing_requires_a_selectable_ground_station(qtbot):
+    from spacemissionstudio.gui.spacecraft_editor import SpacecraftEditorDialog
+    from spacemissionstudio.schema.scenario import ScenarioValidationError
+
+    dialog = SpacecraftEditorDialog()
+    qtbot.addWidget(dialog)
+    dialog.comms_pointing_group.setChecked(True)
+    with pytest.raises(ScenarioValidationError, match="no ground station is selectable"):
+        dialog.to_dataclass()
+
+
+def test_dialog_builds_comms_pointing_config_when_group_checked(qtbot):
+    from spacemissionstudio.gui.spacecraft_editor import SpacecraftEditorDialog
+
+    dialog = SpacecraftEditorDialog(ground_station_names=["berlin"])
+    qtbot.addWidget(dialog)
+    dialog.comms_pointing_group.setChecked(True)
+    dialog.power_group.setChecked(True)  # comms_power_w > 0 requires power also configured
+    dialog.cp_boresight_x.setValue(1.0)
+    dialog.cp_boresight_y.setValue(0.0)
+    dialog.cp_boresight_z.setValue(0.0)
+    dialog.cp_comms_power_w.setValue(5.0)
+
+    sc = dialog.to_dataclass()
+    assert sc.comms_pointing is not None
+    assert sc.comms_pointing.target_ground_station == "berlin"
+    assert sc.comms_pointing.antenna_boresight_b == [1.0, 0.0, 0.0]
+    assert sc.comms_pointing.sun_pointing_axis_b is None  # default checkbox left checked
+    assert sc.comms_pointing.comms_power_w == 5.0
+
+
+def test_dialog_comms_pointing_sun_axis_override(qtbot):
+    from spacemissionstudio.gui.spacecraft_editor import SpacecraftEditorDialog
+
+    dialog = SpacecraftEditorDialog(ground_station_names=["berlin"])
+    qtbot.addWidget(dialog)
+    dialog.comms_pointing_group.setChecked(True)
+    dialog.cp_sun_axis_default_check.setChecked(False)
+    assert dialog.cp_sun_axis_x.isEnabled()
+    dialog.cp_sun_axis_x.setValue(0.0)
+    dialog.cp_sun_axis_y.setValue(1.0)
+    dialog.cp_sun_axis_z.setValue(0.0)
+
+    sc = dialog.to_dataclass()
+    assert sc.comms_pointing.sun_pointing_axis_b == [0.0, 1.0, 0.0]
+
+
+def test_dialog_round_trips_comms_pointing(qtbot):
+    """Regression test for a real data-loss bug found by audit:
+    comms_pointing had NO editor at all anywhere in this dialog, so
+    opening then OK'ing a spacecraft that already had it set (e.g.
+    template 19's "leo-comms-1") silently DELETED it -- to_dataclass()
+    always rebuilt a fresh SpacecraftConfig from widget state alone.
+    """
+    from spacemissionstudio.gui.spacecraft_editor import SpacecraftEditorDialog
+    from spacemissionstudio.schema.scenario import CommsPointingConfig, OrbitIC, PowerConfig, SpacecraftConfig
+
+    existing = SpacecraftConfig(
+        name="sat-comms",
+        orbit=OrbitIC(type="cartesian", position_km=[7000, 0, 0], velocity_km_s=[0, 7.5, 0]),
+        power=PowerConfig(panel_area_m2=1.5, panel_efficiency=0.28, panel_normal_b=[0.0, 0.0, 1.0],
+                           bus_idle_power_w=10.0, battery_capacity_wh=100.0, battery_initial_soc=1.0),
+        comms_pointing=CommsPointingConfig(
+            target_ground_station="berlin", antenna_boresight_b=[0.0, 1.0, 0.0],
+            sun_pointing_axis_b=[1.0, 0.0, 0.0], comms_power_w=8.0,
+        ),
+    )
+    dialog = SpacecraftEditorDialog(config=existing, ground_station_names=["berlin"])
+    qtbot.addWidget(dialog)
+
+    assert dialog.comms_pointing_group.isChecked()
+    assert not dialog.cp_sun_axis_default_check.isChecked()  # explicit override must survive, not get reset to default
+
+    got = dialog.to_dataclass()
+    assert got.comms_pointing == existing.comms_pointing
+
+
+def test_dialog_stale_comms_pointing_ground_station_is_preserved_not_silently_swapped(qtbot):
+    """Same stale-reference preservation as pk_chief_combo's own test
+    (test_dialog_stale_chief_spacecraft_is_preserved_not_silently_swapped)
+    -- a comms_pointing.target_ground_station that no longer matches any
+    current ground station (renamed/removed since save) must round-trip
+    unchanged, not silently swap to whichever station happens to be first.
+    """
+    from spacemissionstudio.gui.spacecraft_editor import SpacecraftEditorDialog
+    from spacemissionstudio.schema.scenario import CommsPointingConfig, OrbitIC, SpacecraftConfig
+
+    existing = SpacecraftConfig(
+        name="sat-comms",
+        orbit=OrbitIC(type="cartesian", position_km=[7000, 0, 0], velocity_km_s=[0, 7.5, 0]),
+        comms_pointing=CommsPointingConfig(target_ground_station="old-station"),
+    )
+    dialog = SpacecraftEditorDialog(config=existing, ground_station_names=["berlin", "svalbard"])
+    qtbot.addWidget(dialog)
+
+    assert dialog.cp_ground_station_combo.currentData() == "old-station"
+
+    got = dialog.to_dataclass()
+    assert got.comms_pointing.target_ground_station == "old-station"
+
+
+def test_dialog_template_19_leo_comms_1_survives_open_then_ok(qtbot):
+    """The exact real-world bug scenario this fix closes, checked
+    end-to-end against the real bundled template rather than only via the
+    dataclass-level round-trip tests above: load template 19, open its
+    "leo-comms-1" spacecraft (which has both comms_pointing and
+    rf_link.antenna_beamwidth_deg already set) in this dialog, accept with
+    NO edits, and confirm both fields are still populated afterward.
+    """
+    from spacemissionstudio.gui.load_scenario_widget import TEMPLATES_DIR
+    from spacemissionstudio.gui.spacecraft_editor import SpacecraftEditorDialog
+    from spacemissionstudio.schema import load_scenario
+
+    scenario = load_scenario(TEMPLATES_DIR / "19_sun_pointing_comms_link.json")
+    original = next(sc for sc in scenario.spacecraft if sc.name == "leo-comms-1")
+    assert original.comms_pointing is not None  # sanity check this template still exercises the bug
+    assert original.rf_link.antenna_beamwidth_deg is not None
+
+    dialog = SpacecraftEditorDialog(
+        config=original,
+        other_spacecraft_names=[sc.name for sc in scenario.spacecraft if sc.name != "leo-comms-1"],
+        ground_station_names=[gs.name for gs in scenario.ground_stations],
+    )
+    qtbot.addWidget(dialog)
+
+    got = dialog.to_dataclass()  # same call OK triggers, with zero edits made
+    assert got.comms_pointing == original.comms_pointing
+    assert got.rf_link == original.rf_link
+
+
+def test_dialog_orbit_only_mode_force_clears_comms_pointing(qtbot):
+    from spacemissionstudio.gui.spacecraft_editor import SpacecraftEditorDialog
+    from spacemissionstudio.schema.scenario import CommsPointingConfig, OrbitIC, SpacecraftConfig
+
+    existing = SpacecraftConfig(
+        name="sat-comms",
+        orbit=OrbitIC(type="cartesian", position_km=[7000, 0, 0], velocity_km_s=[0, 7.5, 0]),
+        comms_pointing=CommsPointingConfig(target_ground_station="berlin"),
+    )
+    dialog = SpacecraftEditorDialog(config=existing, ground_station_names=["berlin"], simulation_mode="orbit_only")
+    qtbot.addWidget(dialog)
+
+    sc = dialog.to_dataclass()
+    assert sc.comms_pointing is None
+
+
 def test_dialog_station_keeping_defaults_to_none(qtbot):
     from spacemissionstudio.gui.spacecraft_editor import SpacecraftEditorDialog
 

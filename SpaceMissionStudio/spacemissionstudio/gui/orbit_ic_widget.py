@@ -25,8 +25,20 @@ maps 1:1 onto an ``OrbitIC`` field -- no separate GUI-only representation.
 from __future__ import annotations
 
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QComboBox, QDoubleSpinBox, QFormLayout, QLineEdit, QStackedWidget, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QComboBox,
+    QDoubleSpinBox,
+    QFormLayout,
+    QHBoxLayout,
+    QLineEdit,
+    QMessageBox,
+    QPushButton,
+    QStackedWidget,
+    QVBoxLayout,
+    QWidget,
+)
 
+from ..engine.orbit_design import DEFAULT_LTAN_HOUR, raan_for_ltan_deg, sun_synchronous_inclination_deg
 from ..schema.scenario import ANOMALY_TYPES, ORBIT_IC_TYPES, OrbitIC
 
 _ANOMALY_TYPE_LABELS = {
@@ -59,6 +71,15 @@ class OrbitIcWidget(QWidget):
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
+        # Set by the owning dialog (see set_epoch_provider) so the
+        # "Compute RAAN for LTAN..." button below always uses this
+        # scenario's CURRENT epoch -- same provider pattern as
+        # gui.spacecraft_editor.SpacecraftListWidget's own
+        # set_central_body_provider/set_ground_station_names_provider.
+        # Falls back to a fixed placeholder epoch when unset (e.g. this
+        # widget used standalone in a test).
+        self._epoch_provider = None
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
@@ -85,6 +106,15 @@ class OrbitIcWidget(QWidget):
 
         self.type_combo.currentIndexChanged.connect(self.stack.setCurrentIndex)
         self.type_combo.currentIndexChanged.connect(self.changed)
+
+    def set_epoch_provider(self, provider) -> None:
+        """``provider`` is a zero-argument callable returning this
+        scenario's current ``epoch_utc`` string, e.g.
+        ``lambda: self.epoch_edit.text().strip()`` from
+        ``ScenarioEditorWidget`` (plumbed down through
+        ``SpacecraftEditorDialog``/``SpacecraftListWidget``).
+        """
+        self._epoch_provider = provider
 
     def _build_classical_elements_page(self) -> None:
         page = QWidget()
@@ -128,6 +158,45 @@ class OrbitIcWidget(QWidget):
         form.addRow("Semi-major axis [km]", self.sma_km)
         form.addRow("Eccentricity [-]", self.ecc)
         form.addRow("Inclination [deg]", self.inc_deg)
+
+        # Sun-synchronous helper (Phase 6 audit fix): previously, the only
+        # way to reproduce 12 of the 20 bundled templates' own
+        # Sun-synchronous orbit by hand was to read this project's own
+        # generator-script source -- sun_synchronous_inclination_deg()/
+        # raan_for_ltan_deg() (engine.orbit_design, Basilisk-free) were
+        # never exposed anywhere in the GUI. These buttons compute a
+        # value and WRITE it into the existing spin box above/below --
+        # still editable afterward, same "compute a sane starting point,
+        # let the user keep tweaking" spirit as this app's other
+        # generator dialogs (e.g. "Generate Walker constellation...").
+        sso_incl_button = QPushButton("Compute Sun-sync inclination for this altitude")
+        sso_incl_button.setToolTip(
+            "Overwrites Inclination above with the exact value whose J2 secular nodal "
+            "regression rate matches the Sun's own apparent motion, computed from the "
+            "Semi-major axis and Eccentricity above (engine.orbit_design"
+            ".sun_synchronous_inclination_deg())."
+        )
+        sso_incl_button.clicked.connect(self._on_compute_sso_inclination)
+        form.addRow(sso_incl_button)
+
+        raan_ltan_row = QHBoxLayout()
+        sso_raan_button = QPushButton("Compute RAAN for LTAN...")
+        sso_raan_button.setToolTip(
+            "Overwrites RAAN below with the value that puts this orbit's ascending node at "
+            "the local time of ascending node (LTAN) entered here, at this scenario's own "
+            "epoch (engine.orbit_design.raan_for_ltan_deg())."
+        )
+        sso_raan_button.clicked.connect(self._on_compute_sso_raan)
+        self.sso_ltan_hour = _spin(0.0, 24.0, decimals=2, step=0.5, value=DEFAULT_LTAN_HOUR)
+        self.sso_ltan_hour.setSuffix(" h LTAN")
+        self.sso_ltan_hour.setToolTip(
+            "Local time of ascending node (24h clock) -- 10.5 (10:30 AM) is the most common "
+            "real choice for an Earth-observation/commercial smallsat."
+        )
+        raan_ltan_row.addWidget(sso_raan_button)
+        raan_ltan_row.addWidget(self.sso_ltan_hour)
+        form.addRow(raan_ltan_row)
+
         form.addRow("RAAN [deg]", self.raan_deg)
         form.addRow("Argument of periapsis [deg]", self.aop_deg)
 
@@ -218,6 +287,26 @@ class OrbitIcWidget(QWidget):
         self.tle_line1.textChanged.connect(self.changed)
         self.tle_line2.textChanged.connect(self.changed)
         self.stack.addWidget(page)
+
+    def _on_compute_sso_inclination(self) -> None:
+        value = sun_synchronous_inclination_deg(self.sma_km.value(), self.ecc.value())
+        self.inc_deg.setValue(value)
+
+    def _on_compute_sso_raan(self) -> None:
+        epoch_utc = (self._epoch_provider() if self._epoch_provider else "").strip()
+        if not epoch_utc:
+            QMessageBox.warning(self, "No epoch set",
+                                 "This scenario's Epoch (UTC) field is empty -- set a valid "
+                                 "ISO 8601 epoch before computing a RAAN for LTAN.")
+            return
+        try:
+            value = raan_for_ltan_deg(epoch_utc, self.sso_ltan_hour.value())
+        except ValueError as exc:
+            QMessageBox.warning(self, "Invalid epoch",
+                                 f"Could not parse this scenario's Epoch (UTC) {epoch_utc!r} as a "
+                                 f"valid ISO 8601 date/time: {exc}")
+            return
+        self.raan_deg.setValue(value)
 
     def to_dataclass(self) -> OrbitIC:
         orbit_type = self.type_combo.currentData()

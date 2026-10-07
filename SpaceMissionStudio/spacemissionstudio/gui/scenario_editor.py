@@ -253,6 +253,10 @@ class ScenarioEditorWidget(QWidget):
         self.spacecraft_list = SpacecraftListWidget()
         self.spacecraft_list.set_central_body_provider(lambda: self._gravity.central_body)
         self.spacecraft_list.set_simulation_mode_provider(lambda: self.simulation_mode_combo.currentData())
+        self.spacecraft_list.set_ground_station_names_provider(
+            lambda: [gs.name for gs in self.ground_station_list.to_list()]
+        )
+        self.spacecraft_list.set_epoch_provider(lambda: self.epoch_edit.text().strip())
         self.spacecraft_list.changed.connect(self.changed)
         self.spacecraft_list.changed.connect(self._refresh_monte_carlo_spacecraft_names)
         layout.addWidget(self.spacecraft_list)

@@ -26,6 +26,37 @@ def test_editing_a_field_emits_changed_and_updates_value(widget, qtbot):
     assert widget.to_dataclass().semi_major_axis_km == 8000.0
 
 
+def test_compute_sso_inclination_button_writes_inc_deg(widget, qtbot):
+    from spacemissionstudio.engine.orbit_design import sun_synchronous_inclination_deg
+
+    widget.sma_km.setValue(6878.1366)
+    widget.ecc.setValue(0.0)
+    widget.inc_deg.setValue(0.0)
+    widget._on_compute_sso_inclination()
+    assert widget.inc_deg.value() == pytest.approx(sun_synchronous_inclination_deg(6878.1366), abs=1.0e-6)
+
+
+def test_compute_sso_raan_button_writes_raan_deg_using_epoch_provider(widget, qtbot):
+    from spacemissionstudio.engine.orbit_design import raan_for_ltan_deg
+
+    widget.set_epoch_provider(lambda: "2030-01-01T00:00:00")
+    widget.sso_ltan_hour.setValue(10.5)
+    widget.raan_deg.setValue(0.0)
+    widget._on_compute_sso_raan()
+    assert widget.raan_deg.value() == pytest.approx(raan_for_ltan_deg("2030-01-01T00:00:00", 10.5), abs=1.0e-6)
+
+
+def test_compute_sso_raan_button_warns_with_no_epoch_provider(widget, qtbot, monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+
+    warned = []
+    monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: warned.append(a))
+    widget.raan_deg.setValue(42.0)
+    widget._on_compute_sso_raan()
+    assert warned  # a warning dialog was shown
+    assert widget.raan_deg.value() == 42.0  # left untouched
+
+
 def test_switching_type_emits_changed_and_updates_dataclass(widget, qtbot):
     with qtbot.waitSignal(widget.changed, timeout=1000):
         widget.type_combo.setCurrentIndex(widget.type_combo.findData("cartesian"))
