@@ -6630,3 +6630,46 @@ A request for a complete audit of the whole codebase and GUI, covering stale cod
 * The test counts and the Basilisk-independence list were corrected; `time_system.py` is now Basilisk-free.
 
 **Verified**: full suite 1298 passed, 183 skipped (Basilisk-dependent), with nothing deselected (up from 1252 passed at the start of this audit). `scripts/_generate_templates.py` still regenerates all 20 templates byte-identically. A wheel built from a clean tree contains the SVG assets and no diagnostic scenarios. Every dialog and main-window state was re-rendered after the fixes and inspected.
+
+## Real failure analysis: a 90-day formation run where the follower lapped the chief
+
+A real user re-ran template 05 for 90 days and reported it "full of errors". They sent the run's log, both spacecraft's `position_N` CSVs, and the follower's `phasing_keeping.separation_error`/`state` CSVs.
+
+**What the data showed.** The run completed. Its only real warning came at day 46: the phasing controller "did not reduce its own tracking error (179.987 deg -> -2.006 deg)" and suspended itself. Rebuilding the true along-track separation from the two position files showed:
+* The follower started 50 km ahead, exactly as placed.
+* It then fell behind at ~780 km/day and lapped the chief.
+* It crossed through ±180° at day 28, crossed 0° at day 46, and kept lapping to day 90.
+
+**Root cause, confirmed by reproducing it exactly with Basilisk 2.12.0 (the user's version) and real J2/degree-10 gravity.**
+* **The scenario had been edited.** The error at t = 0 was −0.4127°, which is the true 0.4143° separation minus a 0.827° target, i.e. a 100 km target, not 50 km. The follower's station-keeping fired at t = 0.0667 d, the first tick with a full smoothing window, and stopped at a smoothed altitude of exactly 550.000 km. That means a deadband under ~5.1 km, not the template's 15 km.
+* **Independent station-keeping broke the formation.** The orbit's natural mean altitude is ~545 km, because template 05's a = 6928 km is osculating at the starting point (~6916 km mean). So the follower's 550 km target made it reboost alone to ~5.25 km above the chief, an along-track drift of ~6.2°/day, while the chief never reboosted.
+* **The phasing controller couldn't undo it.** Its burns were open-loop: its restore burn only replayed its own Δv backwards. It never measured the actual relative semi-major axis, so it could never remove a mismatch something else had created.
+* **A ±180° wrap counted as "target reached".** At day 28 the "overshoot" check, a bare sign comparison, fired on the error wrapping from −180° to +180°.
+* **The log file reached 116 MB.** Three controllers each DEBUG-logged their eclipse reading every 30 s tick.
+
+**Fixes** (`engine/orbit_maintenance.py`):
+* **Formation-follower station-keeping.** `build_phasing_keeping` switches the follower's controller into a mode where it mirrors the chief's station-keeping burns, rather than reboosting toward its own absolute target. It reboosts on its own only if it falls more than `deadband_km` below the chief's smoothed altitude, as a safety floor. The service passes in the chief's controller.
+* **Closed-loop relative SMA.** Every phasing burn is now sized from the *measured* one-orbit mean of (a_follower − a_chief), which is steady to ~0.1 m under J2 against ±135 m instantaneous. The measurement is trusted only after a full orbit with no thrust. The restore burn nulls the measured mismatch. A disturbed drift gets re-steered to its planned offset, and an idle mismatch is trimmed out even while suspended. The trim tolerance is 25 m, or 1.5× one thruster tick's semi-major-axis change if that's larger, so a strong thruster can't ping-pong. The value is exported as a new result series, `<follower>.phasing_keeping.relative_semi_major_axis`.
+* **Wrap-safe zero crossing** (`_crossed_zero`).
+* **Eclipse logging only on sunlit/eclipse transitions.**
+* **Docs:** schema `PhasingKeepingConfig`, the spacecraft editor's phasing tooltip, and template 05's description (regenerated) now explain the relative station-keeping.
+
+**Verified with real Basilisk dynamics over 90 days** (direct-builder harness: degree-10 gravity, no SPICE/eclipse, since the sandbox can't fetch SPICE kernels):
+
+| configuration | before | after |
+|---|---|---|
+| the user's configuration: placed 50 km ahead, 100 km target, 2 km follower deadband | laps the chief | closes to 98 km by day 15 and holds 91–98 km, no stray reboost, not suspended |
+| both spacecraft with a 2 km deadband, so the chief reboosts at t = 0.07 d | — | follower mirrors it, 286/286 burn ticks; separation holds 45–50 km |
+| stock template 05 | — | bit-identical to the old code (same 0.1143 m/s, same four correction cycles) |
+| the user's configuration with a 0.5 N thruster (~260 m of SMA per tick) | — | converges in ~10 days, holds 89–98 km, three cycles, no ping-pong |
+
+New `tests/test_formation_keeping_regression.py` covers:
+* the user's configuration;
+* the mirrored chief reboost;
+* the follower burn logic;
+* the wrap cases;
+* the tick-quantum trim tolerance.
+
+All orbit-maintenance/formation tests pass under Basilisk.
+
+**Known limitation, not changed here.** One 30 s tick of the 0.05 N thruster moves the semi-major axis by ~26 m, while a typical correction needs only ~2 m. So each correction overshoots and the separation saws between ~45 and 50 km (inside the 10% band). Partial-tick thrust would make corrections far more precise and cheaper.

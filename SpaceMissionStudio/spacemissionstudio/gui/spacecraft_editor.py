@@ -796,7 +796,10 @@ class SpacecraftEditorDialog(QDialog):
             "spreading satellites evenly around the SAME orbital plane, e.g. a Walker "
             "constellation. REQUIRES 'Station keeping' above to also be enabled: both share "
             "one physical thruster/propellant tank, with altitude-keeping taking priority if "
-            "both want to fire on the same tick. Needs a chief spacecraft in the same scenario "
+            "both want to fire on the same tick. While this is on, that station keeping holds "
+            "altitude RELATIVE TO THE CHIEF (it mirrors the chief's reboosts; its target "
+            "altitude is ignored and its deadband is measured below the chief), so give the "
+            "chief its own station keeping. Needs a chief spacecraft in the same scenario "
             "sharing this one's orbital plane and altitude."
         )
         self.phasing_keeping_group.setChecked(pk0 is not None)

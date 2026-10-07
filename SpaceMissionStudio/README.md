@@ -539,6 +539,7 @@ SpaceMissionStudio/
     test_autosave.py                 -- crash-recovery autosave (Qt-free half)
     test_conservation_check.py       -- when the two-body energy/momentum drift check applies
     test_orbit_maintenance_j2_regression.py -- phasing/station-keeping regressions under real J2 gravity, requires_basilisk
+    test_formation_keeping_regression.py -- follower mirrors the chief's reboosts; closed-loop relative SMA, requires_basilisk
     test_gravity_gradient.py         -- GravityGradientEffector wiring, requires_basilisk
     test_thruster_control.py         -- real "thruster" actuator control path, requires_basilisk
     test_momentum_dumping.py         -- RW momentum desaturation via thrusters, requires_basilisk

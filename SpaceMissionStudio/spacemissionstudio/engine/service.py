@@ -1414,6 +1414,7 @@ class SimulationService:
                 follower_eclipse_out_msg=follower_handle.eclipse_out_msg,
                 chief_semi_major_axis_km=chief_config.orbit.semi_major_axis_km,
                 config=sc_config.phasing_keeping,
+                chief_station_keeping_controller=chief_handle.station_keeping_controller,
             )
 
         # Phase 3: access analysis -- every ground station sees every
@@ -1846,6 +1847,13 @@ class SimulationService:
                 # {name}.station_keeping.delta_v's.
                 result.add(TimeSeries(f"{name}.phasing_keeping.delta_v", pk_t_s, ("cumulative_delta_v",),
                                        np.asarray(phase_controller.deltaVLog), units="m/s"))
+                # One-orbit-mean (follower - chief) semi-major axis -- the
+                # quantity that actually sets the formation's along-track
+                # drift rate (~0.14 km/day of drift per metre of mismatch
+                # at a ~550 km LEO altitude).
+                result.add(TimeSeries(f"{name}.phasing_keeping.relative_semi_major_axis", pk_t_s,
+                                       ("relative_semi_major_axis",),
+                                       np.asarray(phase_controller.relativeSmaLog), units="m"))
 
             if handle.constant_thrust_controller is not None:
                 ct_controller = handle.constant_thrust_controller

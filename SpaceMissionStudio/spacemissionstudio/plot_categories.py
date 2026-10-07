@@ -195,6 +195,9 @@ def _controller_display(name: str) -> Optional[SeriesDisplay]:
             return SeriesDisplay(f"{label} Separation Error", "Angle error", "deg")
         if field == "state":
             return SeriesDisplay(f"{label} Controller State", "State", "-")
+        if field == "relative_semi_major_axis":
+            return SeriesDisplay(f"{label} Relative Semi-Major Axis (follower - chief)",
+                                  "Relative semi-major axis", "m")
         return None
     return None
 

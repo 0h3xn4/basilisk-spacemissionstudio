@@ -535,6 +535,17 @@ class PhasingKeepingConfig:
     hardware), with altitude-keeping taking priority whenever both want to
     fire on the same tick -- see the controller's own docstring for why.
 
+    On a phasing follower, that ``station_keeping`` block holds altitude
+    RELATIVE TO THE CHIEF, not to its own ``target_altitude_km``: it
+    mirrors the chief's reboosts, and its ``deadband_km`` is how far below
+    the chief's (smoothed) altitude it may fall before a safety reboost.
+    Reboosting the two spacecraft independently was a real bug: one lone
+    reboost leaves a km-scale semi-major-axis mismatch, which drifts the
+    formation apart by degrees per day (see
+    ``engine.orbit_maintenance.StationKeepingController``'s
+    "Formation-follower mode" docstring). Give the chief its own
+    ``station_keeping`` to hold the formation's altitude.
+
     ``target_separation_km`` is one or more along-track distances [km]
     ahead of the chief; with more than one entry, the target steps through
     them every ``reconfiguration_interval_days`` (holding at the last one
