@@ -1092,13 +1092,16 @@ class PhasingKeepingController(sysModel.SysModel):
         vCirc = np.sqrt(self.mu / self.aNom)  # [m/s]
         dv = deltaA_needed_m / self.aNom * vCirc / 2.0  # [m/s]
         self._pendingLegDv = 0.0
-        bitDv = self._impulse_bit_delta_a_m() / self.aNom * vCirc / 2.0  # [m/s]
-        if 0.0 < abs(dv) < bitDv * (1.0 - 1e-6):
-            # Finer than one minimum firing: fly (one bit + dv) then one bit
-            # back, which nets exactly dv. Rounding to whole bits instead
-            # left up to half a bit (~130 m of semi-major axis for a 300 s
-            # firing of 0.05 N), which drifts the formation ~18 km/day, so a
-            # coarse thruster cycled a full correction every day.
+        bitA = self._impulse_bit_delta_a_m()  # [m]
+        bitDv = bitA / self.aNom * vCirc / 2.0  # [m/s]
+        roundingErrorA = min(abs(deltaA_needed_m), bitA - abs(deltaA_needed_m))  # [m] skip or one bit
+        if 0.0 < abs(dv) < bitDv * (1.0 - 1e-6) and roundingErrorA > _RELATIVE_SMA_TRIM_TOLERANCE_M:
+            # Finer than one minimum firing, and neither skipping it nor
+            # rounding it to one firing lands within tolerance: fly (one bit
+            # + dv) then one bit back, which nets exactly dv. Rounding
+            # instead left up to half a bit (~130 m of semi-major axis for a
+            # 300 s firing of 0.05 N), which drifts the formation ~18 km/day,
+            # so a coarse thruster cycled a full correction every day.
             self._pendingLegDv = -float(np.copysign(bitDv, dv))
             dv = float(np.copysign(bitDv + abs(dv), dv))
         self._targetDv = abs(dv)

@@ -316,10 +316,10 @@ def test_shared_thruster_firing_belongs_to_the_controller_that_started_it():
     assert model.command(want_firing=True, remaining_dv=None, **{**_KW, "owner": station_keeping})[0] > 0.0
 
 
-@pytest.mark.parametrize("delta_a_m", [30.0, -30.0, 100.0])  # [m] all finer than one 300 s firing (~240 m)
+@pytest.mark.parametrize("delta_a_m", [30.0, -30.0, 100.0])  # [m] all finer than one 300 s firing (~261 m)
 def test_a_trim_finer_than_one_impulse_bit_is_flown_as_an_exact_pair(delta_a_m):
     """Rounding a sub-bit trim to whole firings left up to half a bit of
-    semi-major-axis error (~120 m here), which drifts the formation by
+    semi-major-axis error (~130 m here), which drifts the formation by
     ~17 km/day, so a coarse thruster ran a full correction every day. A
     trim finer than one bit is flown as (one bit + dv), then one bit back.
     """
@@ -344,6 +344,22 @@ def test_a_trim_finer_than_one_impulse_bit_is_flown_as_an_exact_pair(delta_a_m):
     assert len(legs) == 2
     assert min(abs(leg) for leg in legs) >= bit_dv * (1.0 - 1e-9)  # both legs are flyable firings
     assert sum(legs) == pytest.approx(wanted_dv, rel=1e-9)  # [m/s] and they net exactly the trim
+
+
+@pytest.mark.parametrize("delta_a_m", [10.0, 250.0])  # [m] within 25 m of zero / of one ~261 m firing
+def test_a_trim_within_tolerance_of_whole_firings_is_not_split(delta_a_m):
+    """A restore that needs just under one firing is flown as ONE firing
+    (and a tiny one is skipped): a pair would cost three firings' worth
+    of delta-V for an error already within the 25 m tolerance."""
+    from spacemissionstudio.engine.orbit_maintenance import PhasingKeepingController, ThrusterOnTimeModel
+
+    controller = PhasingKeepingController.__new__(PhasingKeepingController)
+    controller.mu, controller.aNom = 3.986004418e14, _SMA_M  # [m^3/s^2], [m]
+    controller.thrustN, controller.dryMass, controller.propellant = 0.05, 100.0, 5.0  # [N], [kg], [kg]
+    controller.altitudeControllerB = None
+    controller.thruster = ThrusterOnTimeModel(min_on_time_s=300.0)  # [s]
+    controller._start_burn(delta_a_m)
+    assert controller._pendingLegDv == 0.0
 
 
 def test_eccentricity_neutral_split_never_leaves_a_piece_shorter_than_the_minimum_on_time():
