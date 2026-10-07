@@ -7060,3 +7060,28 @@ The user asked for the other Vizard views to be checked. Vizard itself can't be 
 **Tests.**
 * The slant-range geometry is checked at zenith, at the horizon, and with no orbit or one below the surface.
 * A Basilisk test builds a real ground station with two spacecraft and checks that the cone Vizard receives has the slant range to the higher orbit, a LEO-sized value rather than a planet-sized one.
+
+## Mission Dashboard: decluttered
+
+The user asked for the Mission Dashboard to be checked for clutter. It was rendered with template-19-style telemetry at a typical and a narrow pane width. The information was right, but the layout was cluttered:
+* **Empty cards.** The four cards sat in one row and each stretched to the full tab height, about 85% empty white.
+* **Stretched badges.** The status badges (Mode, Ground station, Tracking, Link status) stretched into full-width bars.
+* **Hard-to-read battery level.** The "67% SOC" text was drawn across the bar, grey on blue.
+* **Buried margin.** The RF card had ten equally weighted rows, so the one number that answers "is the link OK?" (the margin) was second from last.
+
+**Changes.**
+* **Card layout.** Cards keep their content height, in two independent columns (state and attitude, then power and RF), with spare height left below them. Below 760 px the cards stack in one column, so text is no longer clipped in a narrow pane.
+* **Badges.** They are compact pills at their natural width.
+* **Battery.** State of charge is a slim gauge with the percentage beside it (`battery_soc_label`).
+* **RF link.** The card leads with Link status, a bold Link margin, and Slant range. The link budget (EIRP, path loss, pointing loss, received power, N0, C/N0, Eb/N0) follows as a muted "Link budget" breakdown.
+* **Label.** "Ground-station visibility" is now "Ground station".
+
+All displayed values and label texts the tests check are unchanged.
+
+**Tests.** A new test checks the following, and fails against the old layout:
+* no card stretches to the pane;
+* Attitude keeps its own height instead of matching RF's;
+* the cards form two columns at 1000 px and one at 620 px;
+* badges stay pills.
+
+The battery test also checks the new percentage label.

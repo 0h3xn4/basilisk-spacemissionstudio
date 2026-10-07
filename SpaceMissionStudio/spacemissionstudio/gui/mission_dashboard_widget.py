@@ -51,6 +51,7 @@ from typing import Optional
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QFormLayout,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -121,6 +122,17 @@ def _latest(result: ResultSet, series_name: str) -> Optional[float]:
     return float(series.data[-1, 0])
 
 
+def _card_form(box: QGroupBox) -> QFormLayout:
+    """A card's form: values (and badges) at their natural width, not
+    stretched into full-width bars."""
+    form = QFormLayout(box)
+    form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.FieldsStayAtSizeHint)
+    form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+    form.setHorizontalSpacing(14)
+    form.setVerticalSpacing(6)
+    return form
+
+
 class MissionDashboardWidget(QWidget):
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
@@ -137,45 +149,59 @@ class MissionDashboardWidget(QWidget):
         self._placeholder.setStyleSheet(f"color: {PALETTE['text_muted']};")
         layout.addWidget(self._placeholder)
 
-        panels_row = QHBoxLayout()
-        layout.addLayout(panels_row)
+        # Cards sized to their content, in two columns (one when the pane
+        # is narrow -- see resizeEvent), with spare height left below them
+        # (real user feedback on clutter: the cards used to stretch to the
+        # full tab height, ~85% empty).
+        self._panels_grid = QGridLayout()
+        self._panels_grid.setHorizontalSpacing(12)
+        self._panels_grid.setVerticalSpacing(12)
+        layout.addLayout(self._panels_grid)
+        layout.addStretch(1)
+        self._columns = 0
 
         # -- Operating state --------------------------------------------
         self._state_box = QGroupBox("Operating state")
-        state_form = QFormLayout(self._state_box)
+        state_form = _card_form(self._state_box)
         self.sim_time_label = QLabel("--")
         self.mode_badge = QLabel("--")
         self.visibility_badge = QLabel("--")
         state_form.addRow("Sim time:", self.sim_time_label)
         state_form.addRow("Mode:", self.mode_badge)
-        state_form.addRow("Ground-station visibility:", self.visibility_badge)
-        panels_row.addWidget(self._state_box)
+        state_form.addRow("Ground station:", self.visibility_badge)
 
         # -- Attitude -----------------------------------------------------
         self._attitude_box = QGroupBox("Attitude")
-        attitude_form = QFormLayout(self._attitude_box)
+        attitude_form = _card_form(self._attitude_box)
         self.pointing_error_label = QLabel("--")
         self.tracking_badge = QLabel("--")
         attitude_form.addRow("Pointing error:", self.pointing_error_label)
         attitude_form.addRow("Tracking:", self.tracking_badge)
-        panels_row.addWidget(self._attitude_box)
 
         # -- Power ----------------------------------------------------------
         self._power_box = QGroupBox("Power")
-        power_form = QFormLayout(self._power_box)
+        power_form = _card_form(self._power_box)
         self.battery_charge_label = QLabel("--")
+        # A slim gauge with the percentage beside it: the old "67% SOC"
+        # text drawn across the bar was grey on blue and hard to read.
         self.battery_soc_bar = QProgressBar()
         self.battery_soc_bar.setRange(0, 100)
-        self.battery_soc_bar.setFormat("%p% SOC")
+        self.battery_soc_bar.setTextVisible(False)
+        self.battery_soc_bar.setFixedSize(140, 10)  # [px]
+        self.battery_soc_label = QLabel("--")
+        soc_row = QWidget()
+        soc_layout = QHBoxLayout(soc_row)
+        soc_layout.setContentsMargins(0, 0, 0, 0)
+        soc_layout.addWidget(self.battery_soc_bar)
+        soc_layout.addWidget(self.battery_soc_label)
         self.net_power_label = QLabel("--")
         power_form.addRow("Battery charge:", self.battery_charge_label)
-        power_form.addRow("Battery SOC:", self.battery_soc_bar)
+        power_form.addRow("State of charge:", soc_row)
         power_form.addRow("Net power:", self.net_power_label)
-        panels_row.addWidget(self._power_box)
 
         # -- RF link --------------------------------------------------------
         self._rf_box = QGroupBox("RF link")
-        rf_form = QFormLayout(self._rf_box)
+        rf_form = _card_form(self._rf_box)
         self.link_status_badge = QLabel("--")
         self.slant_range_label = QLabel("--")
         self.eirp_label = QLabel("--")
@@ -186,19 +212,58 @@ class MissionDashboardWidget(QWidget):
         self.cn0_label = QLabel("--")
         self.ebno_label = QLabel("--")
         self.margin_label = QLabel("--")
+        # The answer first (status, margin, range), then the link budget as
+        # a muted breakdown: ten equally weighted rows hid the margin.
+        self.margin_label.setStyleSheet("font-weight: 600;")
         rf_form.addRow("Link status:", self.link_status_badge)
-        rf_form.addRow("Slant range:", self.slant_range_label)
-        rf_form.addRow("EIRP:", self.eirp_label)
-        rf_form.addRow("Free-space path loss:", self.fspl_label)
-        rf_form.addRow("Antenna pointing loss:", self.pointing_loss_label)
-        rf_form.addRow("Received power:", self.received_power_label)
-        rf_form.addRow("Noise (N0):", self.noise_label)
-        rf_form.addRow("C/N0:", self.cn0_label)
-        rf_form.addRow("Eb/N0:", self.ebno_label)
         rf_form.addRow("Link margin:", self.margin_label)
-        panels_row.addWidget(self._rf_box)
+        rf_form.addRow("Slant range:", self.slant_range_label)
+        budget_heading = QLabel("Link budget")
+        budget_heading.setStyleSheet(f"color: {PALETTE['text_muted']}; font-weight: 600; margin-top: 6px;")
+        rf_form.addRow(budget_heading)
+        for text, value_label in (("EIRP", self.eirp_label), ("Free-space path loss", self.fspl_label),
+                                  ("Antenna pointing loss", self.pointing_loss_label),
+                                  ("Received power", self.received_power_label), ("Noise (N0)", self.noise_label),
+                                  ("C/N0", self.cn0_label), ("Eb/N0", self.ebno_label)):
+            row_label = QLabel(f"{text}:")
+            row_label.setStyleSheet(f"color: {PALETTE['text_muted']};")
+            value_label.setStyleSheet(f"color: {PALETTE['text_muted']};")
+            rf_form.addRow(row_label, value_label)
+        self._arrange_cards(2)
 
         self._set_panels_visible(False)
+
+    _ONE_COLUMN_BELOW_PX = 760  # [px] narrower than this, cards stack in one column
+
+    def _arrange_cards(self, columns: int) -> None:
+        """Place the cards in ``columns`` independent stacks (1 or 2): each
+        card keeps its own height instead of matching its row neighbour."""
+        if columns == self._columns:
+            return
+        self._columns = columns
+        while self._panels_grid.count():
+            old_stack = self._panels_grid.takeAt(0).widget()
+            for card in (self._state_box, self._attitude_box, self._power_box, self._rf_box):
+                card.setParent(self)  # keep the cards; only the empty stack goes
+            if old_stack is not None:
+                old_stack.deleteLater()
+        stacks = ([[self._state_box, self._attitude_box, self._power_box, self._rf_box]] if columns == 1
+                  else [[self._state_box, self._attitude_box], [self._power_box, self._rf_box]])
+        for column, cards in enumerate(stacks):
+            stack = QWidget()
+            stack_layout = QVBoxLayout(stack)
+            stack_layout.setContentsMargins(0, 0, 0, 0)
+            stack_layout.setSpacing(12)
+            for card in cards:
+                stack_layout.addWidget(card)
+            stack_layout.addStretch(1)
+            self._panels_grid.addWidget(stack, 0, column)
+        for column in range(2):
+            self._panels_grid.setColumnStretch(column, 1 if column < columns else 0)
+
+    def resizeEvent(self, event):  # noqa: N802 -- Qt API name
+        super().resizeEvent(event)
+        self._arrange_cards(1 if event.size().width() < self._ONE_COLUMN_BELOW_PX else 2)
 
     def _set_panels_visible(self, visible: bool) -> None:
         self._state_box.setVisible(visible)
@@ -297,9 +362,11 @@ class MissionDashboardWidget(QWidget):
             soc_pct = max(0.0, min(100.0, 100.0 * battery_charge_wh / battery_capacity_wh))
             self.battery_soc_bar.setValue(int(round(soc_pct)))
             self.battery_soc_bar.setEnabled(True)
+            self.battery_soc_label.setText(f"{soc_pct:.0f}%")
         else:
             self.battery_soc_bar.setValue(0)
             self.battery_soc_bar.setEnabled(False)
+            self.battery_soc_label.setText("--")
         if net_power_w is not None:
             sign = "+" if net_power_w >= 0 else ""
             self.net_power_label.setText(f"{sign}{net_power_w:.2f} W")
