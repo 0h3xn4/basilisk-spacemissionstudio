@@ -524,7 +524,9 @@ def build_07_attitude_pointing_with_adcs_hardware() -> Scenario:
                 sensors=[
                     SensorConfig(kind="star_tracker", name="st-1", params={"noise_arcsec": 5.0}),
                     SensorConfig(kind="imu", name="imu-1", params={"gyro_noise_rad_s": 1e-5}),
-                    SensorConfig(kind="coarse_sun_sensor", name="css-1", params={"nHat_B": [1.0, 0.0, 0.0]}),
+                    # +Z: the face sunSafePoint turns to the Sun (its default
+                    # sHatBdyCmd); a +X sensor would see it edge-on, i.e. never.
+                    SensorConfig(kind="coarse_sun_sensor", name="css-1", params={"nHat_B": [0.0, 0.0, 1.0]}),
                 ],
                 actuators=[
                     ActuatorConfig(kind="reaction_wheel", name="rw-1",
@@ -1138,13 +1140,17 @@ def build_20_thermal_simulation() -> Scenario:
                 sensors=[
                     SensorConfig(kind="star_tracker", name="st-1", params={"noise_arcsec": 5.0}),
                     SensorConfig(kind="imu", name="imu-1", params={"gyro_noise_rad_s": 1e-5}),
-                    SensorConfig(kind="coarse_sun_sensor", name="css-1", params={"nHat_B": [1.0, 0.0, 0.0]}),
+                    # +Z: the face sunSafePoint turns to the Sun (its default
+                    # sHatBdyCmd); a +X sensor would see it edge-on, i.e. never.
+                    SensorConfig(kind="coarse_sun_sensor", name="css-1", params={"nHat_B": [0.0, 0.0, 1.0]}),
                     # A small (0.05 m^2), externally-mounted panel sharing
-                    # the CSS's own sun-facing normal, so it genuinely
-                    # tracks this spacecraft's real sunlight/eclipse cycle
-                    # rather than always reading near-zero projected area.
+                    # the CSS's own sun-facing +Z normal, so it genuinely
+                    # tracks this spacecraft's real sunlight/eclipse cycle.
+                    # It used to face +X, which sunSafePoint holds edge-on
+                    # to the Sun: zero projected area, so no solar heating
+                    # at all once the attitude settled.
                     SensorConfig(kind="thermal", name="therm-1", params={
-                        "nHat_B": [1.0, 0.0, 0.0], "area_m2": 0.05, "absorptivity": 0.25, "emissivity": 0.34,
+                        "nHat_B": [0.0, 0.0, 1.0], "area_m2": 0.05, "absorptivity": 0.25, "emissivity": 0.34,
                         "mass_kg": 0.3, "specific_heat_j_kg_k": 890.0, "initial_temp_c": 0.0,
                         "power_draw_w": 0.5, "measurement_noise_std_c": 0.2,
                     }),

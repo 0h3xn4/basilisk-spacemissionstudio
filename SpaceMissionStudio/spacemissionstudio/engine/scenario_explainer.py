@@ -125,7 +125,16 @@ class ScenarioExplanation:
     formation_diagrams: List[FormationDiagram] = field(default_factory=list)  # one per phasing_keeping spacecraft
 
 
-def _is_sun_synchronous(orbit) -> bool:
+def _models_oblateness(gravity) -> bool:
+    """Sun-synchronous precession comes from Earth's J2, so it only exists
+    when the gravity model includes it (degree 2 or more)."""
+    return (gravity is not None and getattr(gravity, "central_body", "") == "earth"
+            and (getattr(gravity, "central_body_degree", 0) or 0) >= 2)
+
+
+def _is_sun_synchronous(orbit, gravity) -> bool:
+    if not _models_oblateness(gravity):
+        return False
     if getattr(orbit, "type", None) != "classical_elements":
         return False
     sma = orbit.semi_major_axis_km
@@ -139,14 +148,14 @@ def _is_sun_synchronous(orbit) -> bool:
     return abs(inc - target) <= _SSO_TOLERANCE_DEG
 
 
-def _orbit_summary(orbit) -> str:
+def _orbit_summary(orbit, gravity) -> str:
     orbit_type = getattr(orbit, "type", None)
     if orbit_type == "classical_elements":
         sma = orbit.semi_major_axis_km
         inc = orbit.inclination_deg
         if sma is None or inc is None:
             return "Classical elements"
-        label = "SSO" if _is_sun_synchronous(orbit) else "Classical"
+        label = "SSO" if _is_sun_synchronous(orbit, gravity) else "Classical"
         altitude_km = sma - _EARTH_REQUATOR_KM
         return f"{label} {inc:g} deg, {altitude_km:.0f} km alt"
     if orbit_type == "cartesian":
@@ -243,7 +252,7 @@ def _attitude_section(scenario) -> ExplanationSection | None:
 
 def _environment_section(scenario) -> ExplanationSection | None:
     badges: List[Badge] = []
-    if any(_is_sun_synchronous(sc.orbit) for sc in scenario.spacecraft):
+    if any(_is_sun_synchronous(sc.orbit, scenario.gravity) for sc in scenario.spacecraft):
         badges.append(Badge("Sun-synchronous", "accent"))
     if any(sc.enable_drag for sc in scenario.spacecraft):
         badges.append(Badge("Drag", "accent"))
@@ -321,7 +330,7 @@ def _explain(scenario) -> ScenarioExplanation:
         StatTile("Gravity", _gravity_summary(scenario.gravity)),
     ]
     if len(spacecraft) == 1:
-        stat_tiles.append(StatTile("Orbit", _orbit_summary(spacecraft[0].orbit)))
+        stat_tiles.append(StatTile("Orbit", _orbit_summary(spacecraft[0].orbit, scenario.gravity)))
     if scenario.simulation_mode != "full_attitude":
         stat_tiles.append(StatTile("Mode", "Orbit only"))
 
@@ -342,7 +351,7 @@ def _explain(scenario) -> ScenarioExplanation:
         for sc in spacecraft:
             propellant_kg = _spacecraft_propellant_kg(sc)
             facts = {
-                "Orbit": _orbit_summary(sc.orbit),
+                "Orbit": _orbit_summary(sc.orbit, scenario.gravity),
                 "Control": _spacecraft_control_summary(sc),
                 "Propellant": f"{propellant_kg:g} kg" if propellant_kg > 0 else "-",
             }

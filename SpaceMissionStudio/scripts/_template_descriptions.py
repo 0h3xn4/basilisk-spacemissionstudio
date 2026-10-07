@@ -33,8 +33,9 @@ and lines starting with "- " are bullets.
 
 DESCRIPTIONS = {
     "01": """\
-A single spacecraft in a circular, Sun-synchronous low-Earth orbit around a point-mass Earth: no \
-perturbations and no attitude. The "hello world" of orbital mechanics.
+A single spacecraft in a circular low-Earth orbit around a point-mass Earth: no perturbations and no \
+attitude. The "hello world" of orbital mechanics. (The inclination is a Sun-synchronous one, but without \
+Earth's oblateness the orbit plane does not actually turn to follow the Sun.)
 
 What to look at:
 - sat-1.position_N traces a perfect circle.
@@ -50,7 +51,8 @@ An eccentric (e = 0.7), transfer-like orbit with Earth's oblateness (degree-10 g
 gravity. Drag is off, so the gravity effects stand out.
 
 What to look at:
-- sat-1.position_N: the orbit visibly precesses over the 3 days.
+- sat-1.orbit_elements_mean.arg_periapsis and .raan: Earth's oblateness turns the perigee about \
++0.5 deg/day and the orbit plane about -0.3 deg/day (small next to the orbit itself in position_N).
 - sat-1.velocity_N: much faster at periapsis than at apoapsis.
 
 Try changing:
@@ -222,8 +224,8 @@ Note:
 - The control gains are scaled to this small spacecraft (5 kg*m^2); the defaults would oscillate.""",
 
     "15": """\
-The spacecraft's +Z axis stays pointed at the Moon for the whole orbit (locationPointing with a celestial \
-target).
+The spacecraft's +Z axis stays pointed at the Moon for the whole run, about three-quarters of an orbit \
+(locationPointing with a celestial target).
 
 What to look at:
 - Vizard's attitude view: the commanded attitude keeps changing as both the spacecraft and the Moon move.
@@ -293,12 +295,12 @@ Limitations:
 - The link budget uses a simplified antenna pattern, not Basilisk's antenna and link-budget modules.""",
 
     "20": """\
-Template 07's hardware with thermal models: a thermal sensor on an exposed panel heats in sunlight and cools \
-in eclipse, and reaction wheel rw-1's motor warms from its own losses.
+Template 07's hardware with thermal models: a thermal sensor on the Sun-facing +Z panel heats in sunlight \
+and cools in eclipse, and reaction wheel rw-1's motor warms from its own losses.
 
 What to look at:
 - sat-1.sensor.therm-1 (temperature) rising in sunlight and falling in each eclipse.
-- sat-1.actuator.rw-1.motor_temperature drifting toward its ambient temperature.
+- sat-1.actuator.rw-1.motor_temperature: it starts at its 20 C ambient and rises above it as the wheel works.
 
 Try changing:
 - therm-1's facing direction, area, absorptivity, emissivity, mass or specific heat (more heat capacity \

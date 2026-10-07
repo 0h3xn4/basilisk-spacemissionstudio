@@ -7187,3 +7187,38 @@ Both problems were found by reading the code and running that offline check. Nei
 * the wizard's time of flight moves the arrival coast, not the pre-burn coast.
 
 Against the old template, every template-16 test fails, since the new rule rejects it at load time.
+
+## Templates: claims checked against what each template actually does
+
+Prompted by template 16, whose configuration had been verified only outside its own Mission Sequence. The only Basilisk test covering every template (`test_prediction_matches_a_real_run`) strips the Mission Sequence and runs two minutes, so a template's "What to look at" claims are only verified where a dedicated test exists. Every template's description and catalog entry was checked against its JSON, the engine code, Basilisk's module source, and offline numpy models where geometry or dynamics decide the claim. None of this could be run in Basilisk here: there are no SPICE kernels in this environment.
+
+**Fixed.**
+* **20 (thermal).** Sun-safe pointing turns its default `sHatBdyCmd` (+Z) to the Sun (`engine/fsw.py`), but therm-1 faced +X. Basilisk's `sensorThermal` uses `A * max(0, s.n)` for solar input, so once the attitude settled the sensor got zero solar input: it would only have cooled, with no sunlight/eclipse cycle at all. That cycle was the template's headline lesson. therm-1 now faces +Z, the panel's Sun-facing side. The motor-temperature line now says what can actually happen (it starts at its 20 C ambient and rises above it), instead of "drifting toward" a temperature it starts at.
+* **07 and 20 (sun sensor).** The single sun sensor css-1 faced +X too, so it would never see the Sun. It now faces +Z.
+* **02 (precession).** It promised the orbit "visibly precesses" in position_N over 3 days. J2 turns the perigee about 1.5 deg in that time (about +0.5 deg/day; RAAN about -0.3 deg/day), which is invisible in the position plot. It now points at the mean argument of periapsis and RAAN, with those rates.
+* **15 (Moon pointing).** It promised Moon pointing "for the whole orbit" over a 72-minute run of a 95.6-minute orbit. It now says the whole run, about three-quarters of an orbit.
+* **01 (Sun-synchronous).** It called its point-mass orbit "Sun-synchronous". It now says the inclination is a Sun-synchronous one, but without oblateness the plane doesn't follow the Sun.
+* **Explain tab.** It badged templates 01/09/10/12 "Sun-synchronous" from inclination alone. That now requires the gravity model to include J2 (Earth, degree 2 or more).
+* **Catalog README** (`scenarios/templates/README.md`):
+  * 05 said the follower holds "behind" the chief; it is 50 km ahead.
+  * 04/05/07/08/18 described drag as a CelesTrak historical margin needing network access; all of them use the offline synthetic profile.
+  * 16's "this exact configuration was confirmed" claim is replaced with what was actually verified.
+  * 20's thermal wording is updated.
+
+**Checked and consistent** (offline numpy where noted):
+* 01: 92.6 min period, 15.6 orbits/day (numpy).
+* 04: plane and phasing spacing.
+* 07/19/20: eclipses fall inside each run (numpy).
+* 12: the initial wheel momentum (~115 N*m*s) exceeds the 80 N*m*s dump threshold, so dumps happen.
+* 13: the bias targets are 800/600/400/200 RPM, and the run is 2 h.
+* 14: eight sun sensors, four of them facing the +Z Sun axis.
+* 17: the run covers the claimed 100-150 s window.
+* 19: two Berlin passes above 10 deg, at about 8.2 h and 9.7 h, inside the 12 h run (numpy).
+* 09/10/11/18: sensor/actuator counts and enabled effects match the text.
+
+**Found, not fixed (needs a decision).** 03 (GEO station-keeping): a 14-day offline model (J2, J22, Sun, Moon, SRP) gives a one-orbit-averaged altitude that stays 0.26-0.65 km below target. The ±5 km deadband never trips, so the thruster never fires. The starting longitude, 259 E, sits near the 255 E stable point, so even the tesseral drift is tiny. The template's lesson ("propellant used", "turn off third bodies or SRP and it fires less") therefore can't happen. Lunisolar gravity and SRP mainly change a GEO orbit's inclination and eccentricity, not its mean altitude, which is all this controller holds.
+
+**Tests.**
+* For every Sun-pointing template, each thermal sensor and at least one sun sensor faces the commanded Sun axis (fails for the old 07 and 20).
+* 15's description no longer promises a whole orbit.
+* The Explain tab doesn't call a point-mass orbit Sun-synchronous.

@@ -70,7 +70,11 @@ def test_sso_detection_fires_at_the_real_reference_point():
     # 97.40 deg at 6878.1366 km altitude -- the same reference value
     # engine.orbit_design.sun_synchronous_inclination_deg's own docstring
     # verifies against.
-    explanation = explain(_single_spacecraft_scenario(semi_major_axis_km=6878.1366, inclination_deg=97.40))
+    from spacemissionstudio.schema.scenario import GravityConfig
+
+    scenario = _single_spacecraft_scenario(semi_major_axis_km=6878.1366, inclination_deg=97.40)
+    scenario.gravity = GravityConfig(central_body="earth", central_body_degree=2)
+    explanation = explain(scenario)
     orbit_tile = next(t for t in explanation.stat_tiles if t.label == "Orbit")
     assert "SSO" in orbit_tile.value
     env_section = next((s for s in explanation.sections if s.title == "Environment"), None)
@@ -236,3 +240,14 @@ def test_badges_use_plain_names_and_reserve_status_colours():
     assert "Sun pointing" in labels
     stations = next(s for s in explain(_template_scenario("19")).sections if s.title == "Ground stations")
     assert [b.label for b in stations.badges] == ["berlin-gs"] and stations.notes == []
+
+
+def test_sso_inclination_without_oblateness_is_not_called_sun_synchronous():
+    """The precession that makes an orbit Sun-synchronous comes from J2;
+    templates 01/09/10/12 use a Sun-synchronous inclination with point-mass
+    gravity, where the plane never turns -- the badge would be a false claim."""
+    explanation = explain(_single_spacecraft_scenario(semi_major_axis_km=6878.1366, inclination_deg=97.40))
+    orbit_tile = next(t for t in explanation.stat_tiles if t.label == "Orbit")
+    assert orbit_tile.value.startswith("Classical")
+    env_section = next((s for s in explanation.sections if s.title == "Environment"), None)
+    assert env_section is None or not any(b.label == "Sun-synchronous" for b in env_section.badges)

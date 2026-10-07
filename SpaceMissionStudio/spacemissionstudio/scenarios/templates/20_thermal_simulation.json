@@ -77,9 +77,9 @@
           "name": "css-1",
           "params": {
             "nHat_B": [
-              1.0,
               0.0,
-              0.0
+              0.0,
+              1.0
             ]
           }
         },
@@ -88,9 +88,9 @@
           "name": "therm-1",
           "params": {
             "nHat_B": [
-              1.0,
               0.0,
-              0.0
+              0.0,
+              1.0
             ],
             "area_m2": 0.05,
             "absorptivity": 0.25,
@@ -215,6 +215,6 @@
     "dispersions": []
   },
   "mission_sequence": [],
-  "description": "Template 07's hardware with thermal models: a thermal sensor on an exposed panel heats in sunlight and cools in eclipse, and reaction wheel rw-1's motor warms from its own losses.\n\nWhat to look at:\n- sat-1.sensor.therm-1 (temperature) rising in sunlight and falling in each eclipse.\n- sat-1.actuator.rw-1.motor_temperature drifting toward its ambient temperature.\n\nTry changing:\n- therm-1's facing direction, area, absorptivity, emissivity, mass or specific heat (more heat capacity responds more slowly).\n- rw-1's motor efficiency: closer to 1 means less heat (1 itself is rejected).\n\nLimitations:\n- The thermal sensor's power draw is constant (no on/off duty cycle yet).",
+  "description": "Template 07's hardware with thermal models: a thermal sensor on the Sun-facing +Z panel heats in sunlight and cools in eclipse, and reaction wheel rw-1's motor warms from its own losses.\n\nWhat to look at:\n- sat-1.sensor.therm-1 (temperature) rising in sunlight and falling in each eclipse.\n- sat-1.actuator.rw-1.motor_temperature: it starts at its 20 C ambient and rises above it as the wheel works.\n\nTry changing:\n- therm-1's facing direction, area, absorptivity, emissivity, mass or specific heat (more heat capacity responds more slowly).\n- rw-1's motor efficiency: closer to 1 means less heat (1 itself is rejected).\n\nLimitations:\n- The thermal sensor's power draw is constant (no on/off duty cycle yet).",
   "schema_version": 2
 }

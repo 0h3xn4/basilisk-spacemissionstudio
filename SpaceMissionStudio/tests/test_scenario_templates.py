@@ -224,3 +224,35 @@ def test_lambert_template_burns_a_quarter_orbit_in_like_basilisks_example():
     lambert = scenario.mission_sequence[2]
     arrival_coast_s = scenario.mission_sequence[3].params["duration_days"] * 86400.0
     assert arrival_coast_s == pytest.approx(lambert.params["time_of_flight_s"])
+
+
+@pytest.mark.parametrize("path", sorted(_TEMPLATES_DIR.glob("*.json")), ids=lambda p: p.name)
+def test_sun_pointing_templates_put_their_sun_sensors_on_the_sun_face(path):
+    """sunSafePoint turns sHatBdyCmd (default +Z) to the Sun. Template 20's
+    thermal sensor (and 07/20's single sun sensor) faced +X, i.e. edge-on to
+    the Sun: zero projected area, so no solar heating and no CSS signal,
+    contradicting the template's own "heats in sunlight" lesson."""
+    import numpy as np
+
+    for sc in load_scenario(path).spacecraft:
+        if sc.fsw_mode != "sunSafePoint":
+            continue
+        sun_axis = np.array(sc.fsw_params.get("sHatBdyCmd", [0.0, 0.0, 1.0]))
+        facing = {s.name: float(np.dot(s.params["nHat_B"], sun_axis)) for s in sc.sensors
+                  if s.kind in ("thermal", "coarse_sun_sensor")}
+        thermal = [s.name for s in sc.sensors if s.kind == "thermal"]
+        assert all(facing[name] > 0.5 for name in thermal), facing
+        css = [s.name for s in sc.sensors if s.kind == "coarse_sun_sensor"]
+        assert not css or any(facing[name] > 0.5 for name in css), facing
+
+
+def test_template_descriptions_match_the_run_length():
+    """Template 15 promised Moon pointing "for the whole orbit" over a run
+    shorter than one orbit."""
+    import math
+
+    scenario = load_scenario(_TEMPLATES_DIR / "15_celestial_body_pointing.json")
+    a_m = scenario.spacecraft[0].orbit.semi_major_axis_km * 1e3
+    period_days = 2 * math.pi * math.sqrt(a_m ** 3 / 3.986004415e14) / 86400.0  # [day]
+    if scenario.sim_settings.duration_days < period_days:
+        assert "whole orbit" not in scenario.description
