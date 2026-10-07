@@ -139,9 +139,9 @@
           0.0,
           1.0
         ],
-        "bus_idle_power_w": 0.0,
+        "bus_idle_power_w": 12.0,
         "battery_capacity_wh": 80.0,
-        "battery_initial_soc": 1.0
+        "battery_initial_soc": 0.8
       },
       "rf_link": null,
       "comms_pointing": null,
@@ -191,6 +191,6 @@
     "dispersions": []
   },
   "mission_sequence": [],
-  "description": "The realistic counterpart to 06: a star tracker, IMU and coarse sun sensor, three reaction wheels for torque, and a solar array with a battery. Sun-safe pointing, with full perturbations.\n\nWhat to look at:\n- sat-1.rw_speeds as the wheels absorb the pointing manoeuvre.\n- sat-1.battery_charge and sat-1.battery_net_power through sunlight and eclipse.\n\nTry changing:\n- Reaction wheel limits, or pick real devices from the sensor/actuator catalog.\n- Pointing mode locationPointing at a ground station (add a station first).",
+  "description": "The realistic counterpart to 06: a star tracker, IMU and coarse sun sensor, three reaction wheels for torque, and a solar array with a battery. Sun-safe pointing, with full perturbations.\n\nWhat to look at:\n- sat-1.rw_speeds as the wheels absorb the pointing manoeuvre.\n- sat-1.battery_charge and sat-1.battery_net_power: charging to full in sunlight, then draining at the 12 W bus load in eclipse.\n\nTry changing:\n- Reaction wheel limits, or pick real devices from the sensor/actuator catalog.\n- Pointing mode locationPointing at a ground station (add a station first).",
   "schema_version": 2
 }

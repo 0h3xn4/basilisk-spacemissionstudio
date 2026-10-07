@@ -7351,3 +7351,17 @@ Fixed: `sun_heading_body` is back in the navigation branch, and template 10 now 
 **Found, still open:**
 * **20's motor temperature** moves only 0.0002 C: the wheel starts at rest and makes one gentle slew.
 * **07's battery** stays at 80 Wh: it starts full with a 0 W bus load. Its "through sunlight and eclipse" lesson shows nothing.
+
+## Real runs of the remaining templates: three more fixed, and a test per headline claim
+
+All remaining templates were run in Basilisk and checked against their descriptions. Fixed:
+* **07's battery** now starts at 80% charge with a 12 W bus load (`battery_initial_soc=0.8`, `bus_idle_power_w=12.0`). It charges in sunlight and drains in eclipse: 64 -> 80 -> 73.8 -> 80 Wh over the first orbits.
+* **11 and 17's thrusters** barely fired. The default MRP-feedback gains are scaled to the spacecraft's inertia (reference 900 kg*m^2). At these templates' 10 kg*m^2 that gave on-times under 2.8 ms, below the thrusters' 20 ms minimum on-time, so most pulses were dropped. Template 17 used no propellant at all. Both templates now set explicit gains (`K=3.5`, `P=30`):
+  * 11 settles to a ~0.015 limit cycle within about 2 minutes;
+  * 17 drains about 0.013 kg and is settled by ~300-400 s.
+  Their descriptions and the catalog README now give those figures.
+* **20's motor** honestly moves only ~0.0002 C (the wheel starts at rest and makes one gentle slew). Spinning the wheel up to heat it broke Sun pointing, so the description now says the motor stays within 0.001 C, rather than promising a visible rise.
+
+**Not changed, open:** the same inertia scaling can starve thruster-only attitude control in any small user scenario. The engine docstring warns that unscaled gains can diverge on large spacecraft, so the default is left as it is.
+
+**Tests.** New `tests/test_template_claims.py` (12 tests, `requires_basilisk`) runs templates 03, 07, 08, 10, 11, 12, 13, 14, 16, 17, 19 and 20 as shipped, shortened only where the claim allows, and checks each headline claim. All pass. Full suite with Basilisk: 1901 pass, 11 skip.

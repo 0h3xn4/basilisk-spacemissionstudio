@@ -559,7 +559,12 @@ def build_07_attitude_pointing_with_adcs_hardware() -> Scenario:
                 # risk for ANY small-sat-scale spacecraft left on
                 # DEFAULT_MRP_GAINS, not specific to this template.
                 control_params={"K": 0.0194, "P": 0.167},
-                power=PowerConfig(panel_area_m2=0.3, panel_efficiency=0.28, battery_capacity_wh=80.0),
+                # A 12 W bus load and a battery starting at 80%: with the old
+                # 0 W load and a full battery, charge sat flat at 80 Wh for
+                # the whole run (confirmed in a real Basilisk run). Now it
+                # charges to full in sunlight and drains ~6 Wh per eclipse.
+                power=PowerConfig(panel_area_m2=0.3, panel_efficiency=0.28, battery_capacity_wh=80.0,
+                                  bus_idle_power_w=12.0, battery_initial_soc=0.8),
             ),
         ],
     )
@@ -685,6 +690,13 @@ def build_11_thruster_attitude_control() -> Scenario:
                 omega_bn_b_init_rad_s=[0.0, 0.0, 0.0],
                 fsw_mode="inertial3D",
                 fsw_params={"sigma_R0N": [0.0, 0.0, 0.0]},
+                # Explicit reference gains: the inertia-scaled default
+                # (K 0.039, P 0.33 at 10 kg*m^2) suits wheels, but here it
+                # asks for <1% of the thrusters' torque. On-times stay under
+                # the thrusters' 20 ms minimum, so they barely fire and the
+                # attitude never settles (real Basilisk run). With these the
+                # thrusters fire up to 0.25 s and it settles in ~5 min.
+                control_params={"K": 3.5, "P": 30.0},
                 actuators=[
                     ActuatorConfig(kind="thruster", name=f"thr-{i + 1}",
                                      params={"r_B": pos, "tHat_B": direction, "MaxThrust": 1.0})
@@ -956,6 +968,13 @@ def build_17_fuel_tank_depletion() -> Scenario:
                 omega_bn_b_init_rad_s=[0.0, 0.0, 0.0],
                 fsw_mode="inertial3D",
                 fsw_params={"sigma_R0N": [0.0, 0.0, 0.0]},
+                # Explicit reference gains: the inertia-scaled default
+                # (K 0.039, P 0.33 at 10 kg*m^2) suits wheels, but here it
+                # asks for <1% of the thrusters' torque. On-times stay under
+                # the thrusters' 20 ms minimum, so they barely fire and the
+                # attitude never settles (real Basilisk run). With these the
+                # thrusters fire up to 0.25 s and it settles in ~5 min.
+                control_params={"K": 3.5, "P": 30.0},
                 actuators=[
                     ActuatorConfig(kind="thruster", name=f"thr-{i + 1}",
                                      params={"r_B": pos, "tHat_B": direction, "MaxThrust": 1.0})

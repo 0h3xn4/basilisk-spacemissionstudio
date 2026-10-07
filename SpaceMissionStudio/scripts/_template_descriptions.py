@@ -134,7 +134,8 @@ torque, and a solar array with a battery. Sun-safe pointing, with full perturbat
 
 What to look at:
 - sat-1.rw_speeds as the wheels absorb the pointing manoeuvre.
-- sat-1.battery_charge and sat-1.battery_net_power through sunlight and eclipse.
+- sat-1.battery_charge and sat-1.battery_net_power: charging to full in sunlight, then draining at the \
+12 W bus load in eclipse.
 
 Try changing:
 - Reaction wheel limits, or pick real devices from the sensor/actuator catalog.
@@ -184,6 +185,8 @@ at a fixed inertial attitude from an initial tip.
 
 What to look at:
 - sat-1.thruster_on_time: which thrusters fire, and for how long.
+- sat-1.attitude_sigma_BN: from the initial tip to within a few degrees in about 2 minutes, then a small \
+limit cycle as the thrusters pulse.
 - Thruster plumes in Vizard.
 
 Try changing:
@@ -259,11 +262,11 @@ Template 11's eight-thruster attitude control with a real fuel tank: propellant 
 thrusters fire, and the centre of mass shifts with it.
 
 What to look at:
-- sat-1.fuel_mass_remaining with sat-1.thruster_on_time: about 0.185 of the 0.5 kg drains while the \
-attitude settles (100-150 s), then both go flat.
+- sat-1.fuel_mass_remaining with sat-1.thruster_on_time: about 0.013 kg of the 0.5 kg drains while the \
+attitude settles; after ~400 s the pulses are too short to fire and it goes flat.
 
 Try changing:
-- Propellant below ~0.185 kg, to run dry mid-manoeuvre.
+- Propellant below ~0.013 kg, to run dry mid-manoeuvre.
 - Thruster specific impulse: lower uses more propellant for the same correction.""",
 
     "18": """\
@@ -307,16 +310,18 @@ Limitations:
 
     "20": """\
 Template 07's hardware with thermal models: a thermal sensor on the Sun-facing +Z panel heats in sunlight \
-and cools in eclipse, and reaction wheel rw-1's motor warms from its own losses.
+and cools in eclipse, and reaction wheel rw-1 carries a motor-thermal model.
 
 What to look at:
 - sat-1.sensor.therm-1 (temperature) rising in sunlight and falling in each eclipse.
-- sat-1.actuator.rw-1.motor_temperature: it starts at its 20 C ambient and rises above it as the wheel works.
+- sat-1.actuator.rw-1.motor_temperature: it stays at its 20 C ambient (within 0.001 C). The motor heats from \
+wheel power and friction, and this gentle slew uses almost none.
 
 Try changing:
 - therm-1's facing direction, area, absorptivity, emissivity, mass or specific heat (more heat capacity \
 responds more slowly).
-- rw-1's motor efficiency: closer to 1 means less heat (1 itself is rejected).
+- rw-1's motor efficiency (closer to 1 means less heat; 1 itself is rejected) -- it only shows on a wheel \
+that works hard.
 
 Limitations:
 - The thermal sensor's power draw is constant (no on/off duty cycle yet).""",
