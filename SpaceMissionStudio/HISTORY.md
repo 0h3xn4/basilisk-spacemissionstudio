@@ -6706,3 +6706,21 @@ The user asked whether finite burns had been considered. Burns already were fini
 **Why Basilisk's `thrusterDynamicEffector` was NOT used.** Its thrusters are fixed in the body frame, so an along-track burn would need the spacecraft to point along its velocity. An orbit-only scenario has no attitude control at all. The model keeps the ideal inertial force but gives it real firing constraints. A firing shorter than a tick is applied as its average force over that tick, which delivers the same impulse.
 
 **Wiring.** Schema validation (`min_on_time_s` must be finite and in [0, 86400] s). The Spacecraft editor's station-keeping group, the Phasing Formation dialog's propulsion group, and the CLI (`--min-on-time-s`, `--eccentricity-neutral-burns`) all expose both fields. Old scenario files without them load with the defaults, and the defaults reproduce the previous behaviour bit-for-bit.
+
+**Three more real bugs, found by the 90-day verification runs and fixed.** One run had both deadbands at 2 km (so the chief reboosts), a 300 s minimum on-time and eccentricity-neutral burns. It used 33.6 m/s over 115 phasing cycles. A per-tick diagnosis showed:
+* **The follower overshot after the chief's reboost.** The follower carried its *mirrored* reboost on as if it were a safety-floor burn, until its one-orbit smoothed altitude caught up with the chief's. That average lags a burn, so the follower overshot by ~730 m of semi-major axis. A mirrored burn now ends with the chief's.
+* **A coarse thruster ran a correction every day.** A trim finer than one impulse bit was rounded to whole firings. That left up to half a bit (~130 m of semi-major axis, ~18 km/day of drift), so a full correction ran every day. Such a trim is now flown as an exact pair of opposite firings, but only when neither skipping it nor rounding it to one firing lands within the 25 m tolerance. (Splitting every sub-bit trim doubled the stock formation's cost, because a typical restore needs just under one bit.)
+* **Eccentricity-neutral splitting left too-short pieces.** It could leave a remainder shorter than one minimum firing. It no longer does.
+
+**Verified over 90 days with Basilisk:** degree-2 gravity, a real `eclipse` module with a static Sun, a 50 mN thruster and 105 kg spacecraft. "300 s" means a 300 s minimum on-time with eccentricity-neutral burns.
+
+| configuration | thruster | phasing Δv | separation, last 30 days | corrections |
+|---|---|---|---|---|
+| the user's case (100 km target, placed 50 km, deadbands 2/15 km) | ideal | 0.017 m/s | 104–109 km | the initial one |
+| same | 1 s on-time + e-neutral | 0.017 m/s (identical) | 104–109 km | the initial one |
+| same | 300 s | 0.29 m/s (1.43 before the fixes) | 90–94 km | the initial one |
+| stock 50 km formation (deadbands 15/15 km) | 300 s | 0.29 m/s (0.86 before) | 49.9–51.2 km | 1 (day 35) |
+| chief reboosting (deadbands 2/2 km) | ideal | 0.014 m/s; station-keeping 276/275 burn ticks | 46.2–47.9 km | none |
+| same | 300 s | 0.59 m/s (33.6 at worst before); 205/204 burn ticks | 45.8–47.0 km | 1 |
+
+No run suspended. A 300 s firing of 50 mN is ~260 m of semi-major axis, so a coarse thruster costs real Δv: it is roughly one impulse bit (0.14 m/s) per firing the formation needs. A realistic on-time for this thruster class (well under one 30 s tick) costs nothing. Template 05 keeps both settings off, so its published numbers are unchanged. New unit tests cover firing ownership, the mirror end, the exact pair, the no-split cases and the chunking rule.
