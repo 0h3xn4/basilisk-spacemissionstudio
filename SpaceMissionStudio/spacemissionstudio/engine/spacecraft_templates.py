@@ -62,6 +62,7 @@ from typing import Callable, List
 
 from ..schema.scenario import (
     ActuatorConfig,
+    MagneticMomentumManagementConfig,
     OrbitIC,
     PowerConfig,
     SensorConfig,
@@ -105,11 +106,15 @@ def _box_inertia(mass_kg: float, x_m: float, y_m: float, z_m: float) -> List[flo
             0.0, 0.0, round(mass_kg * (x_m ** 2 + y_m ** 2) / 12.0, 1)]
 
 
-def _sun_safe_bus(mass_kg: float, size_m: tuple, wheel_params: dict, drag_area_m2: float,
-                  srp_area_m2: float, power: PowerConfig) -> SpacecraftConfig:
+def _sun_safe_bus(mass_kg: float, size_m: tuple, wheel_params: dict, rod_dipole_a_m2: float,
+                  drag_area_m2: float, srp_area_m2: float, power: PowerConfig) -> SpacecraftConfig:
     """A three-axis-stabilized bus in Sun-safe pointing: star tracker, IMU,
     a coarse sun sensor and the solar array all on +Z, the axis
-    ``sunSafePoint`` turns to the Sun, and three orthogonal wheels."""
+    ``sunSafePoint`` turns to the Sun, and three orthogonal wheels. Three
+    orthogonal torque rods continuously steer the wheels back toward rest
+    against Earth's field (``mtbMomentumManagement``), as on most LEO
+    spacecraft of this class, so their momentum never builds up."""
+    axes = (("x", [1.0, 0.0, 0.0]), ("y", [0.0, 1.0, 0.0]), ("z", [0.0, 0.0, 1.0]))
     return SpacecraftConfig(
         name="template",
         orbit=_placeholder_orbit(),
@@ -127,9 +132,14 @@ def _sun_safe_bus(mass_kg: float, size_m: tuple, wheel_params: dict, drag_area_m
             SensorConfig(kind="coarse_sun_sensor", name="css-1", params={"nHat_B": [0.0, 0.0, 1.0]}),
         ],
         actuators=[
-            ActuatorConfig(kind="reaction_wheel", name=f"rw-{axis_name}", params={"gsHat_B": axis, **wheel_params})
-            for axis_name, axis in (("x", [1.0, 0.0, 0.0]), ("y", [0.0, 1.0, 0.0]), ("z", [0.0, 0.0, 1.0]))
+            *[ActuatorConfig(kind="reaction_wheel", name=f"rw-{axis_name}", params={"gsHat_B": axis, **wheel_params})
+              for axis_name, axis in axes],
+            *[ActuatorConfig(kind="magnetic_torque_rod", name=f"mtb-{axis_name}",
+                             params={"gtHat_B": axis, "max_dipole_a_m2": rod_dipole_a_m2})
+              for axis_name, axis in axes],
         ],
+        magnetic_momentum_management=MagneticMomentumManagementConfig(
+            wheel_speed_biases_rad_s=[0.0, 0.0, 0.0]),  # [rad/s] steer every wheel toward rest
         power=power,
         fsw_mode="sunSafePoint",
         fsw_params={"sHatBdyCmd": [0.0, 0.0, 1.0]},
@@ -143,6 +153,7 @@ def _build_microsat_150() -> SpacecraftConfig:
     return _sun_safe_bus(
         150.0, (0.8, 0.8, 1.0),  # [kg], [m]
         {"rw_type": "custom", "maxMomentum": 6.0, "Omega_max": 6000.0, "u_max": 0.05},  # [N*m*s], [RPM], [N*m]
+        rod_dipole_a_m2=15.0,  # [A*m^2] the catalog's MTQ800 class
         drag_area_m2=0.8, srp_area_m2=1.5,
         power=PowerConfig(panel_area_m2=1.0, panel_efficiency=0.29, panel_normal_b=[0.0, 0.0, 1.0],
                           bus_idle_power_w=60.0, battery_capacity_wh=300.0, battery_initial_soc=0.9),
@@ -154,6 +165,7 @@ def _build_smallsat_300() -> SpacecraftConfig:
     return _sun_safe_bus(
         300.0, (1.2, 1.2, 1.5),  # [kg], [m]
         {"rw_type": "Honeywell_HR12", "maxMomentum": 12.0},  # [N*m*s]
+        rod_dipole_a_m2=30.0,  # [A*m^2]
         drag_area_m2=1.8, srp_area_m2=4.0,
         power=PowerConfig(panel_area_m2=2.5, panel_efficiency=0.29, panel_normal_b=[0.0, 0.0, 1.0],
                           bus_idle_power_w=150.0, battery_capacity_wh=700.0, battery_initial_soc=0.9),
@@ -165,6 +177,7 @@ def _build_smallsat_500() -> SpacecraftConfig:
     return _sun_safe_bus(
         500.0, (1.2, 1.2, 1.6),  # [kg], [m]
         {"rw_type": "Honeywell_HR12", "maxMomentum": 25.0},  # [N*m*s]
+        rod_dipole_a_m2=50.0,  # [A*m^2]
         drag_area_m2=2.0, srp_area_m2=6.0,
         power=PowerConfig(panel_area_m2=4.0, panel_efficiency=0.29, panel_normal_b=[0.0, 0.0, 1.0],
                           bus_idle_power_w=250.0, battery_capacity_wh=1200.0, battery_initial_soc=0.9),
@@ -216,19 +229,19 @@ SPACECRAFT_TEMPLATES: List[SpacecraftTemplate] = [
     ),
     SpacecraftTemplate(
         "Microsatellite (150 kg)",
-        "150 kg, 0.8 x 0.8 x 1.0 m. Star tracker, IMU, sun sensor, three 6 N*m*s wheels, a 1 m^2 array "
+        "150 kg, 0.8 x 0.8 x 1.0 m. Star tracker, IMU, sun sensor, three 6 N*m*s wheels unloaded by 15 A*m^2 torque rods, a 1 m^2 array "
         "and 300 Wh battery. Starts Sun-safe pointing. Drag+SRP enabled.",
         _build_microsat_150,
     ),
     SpacecraftTemplate(
         "Small satellite (300 kg)",
-        "300 kg, 1.2 x 1.2 x 1.5 m. Star tracker, IMU, sun sensor, three 12 N*m*s wheels, a 2.5 m^2 array "
+        "300 kg, 1.2 x 1.2 x 1.5 m. Star tracker, IMU, sun sensor, three 12 N*m*s wheels unloaded by 30 A*m^2 torque rods, a 2.5 m^2 array "
         "and 700 Wh battery. Starts Sun-safe pointing. Drag+SRP enabled.",
         _build_smallsat_300,
     ),
     SpacecraftTemplate(
         "Small satellite (500 kg)",
-        "500 kg, 1.2 x 1.2 x 1.6 m. Star tracker, IMU, sun sensor, three 25 N*m*s wheels, a 4 m^2 array "
+        "500 kg, 1.2 x 1.2 x 1.6 m. Star tracker, IMU, sun sensor, three 25 N*m*s wheels unloaded by 50 A*m^2 torque rods, a 4 m^2 array "
         "and 1.2 kWh battery. Starts Sun-safe pointing. Drag+SRP enabled.",
         _build_smallsat_500,
     ),

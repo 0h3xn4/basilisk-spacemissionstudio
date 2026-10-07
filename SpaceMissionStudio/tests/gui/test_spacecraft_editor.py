@@ -1196,7 +1196,8 @@ def test_list_widget_new_from_template(qtbot, monkeypatch):
 
     assert lw.list_widget.count() == 1
     added = lw.to_list()[0]
-    assert len(added.actuators) == 3
+    assert [a.kind for a in added.actuators] == ["reaction_wheel"] * 3 + ["magnetic_torque_rod"] * 3
+    assert added.magnetic_momentum_management is not None  # survives the editor's OK
     assert added.fsw_mode == "sunSafePoint"
     assert changed_count == [1]
 

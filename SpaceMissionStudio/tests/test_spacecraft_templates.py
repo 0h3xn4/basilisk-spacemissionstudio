@@ -58,7 +58,8 @@ def test_sun_safe_presets_put_array_sensor_and_sun_axis_on_the_same_face():
         sun_axis = config.fsw_params["sHatBdyCmd"]
         assert config.power.panel_normal_b == sun_axis
         assert any(s.kind == "coarse_sun_sensor" and s.params["nHat_B"] == sun_axis for s in config.sensors)
-        assert [a.kind for a in config.actuators] == ["reaction_wheel"] * 3
+        assert [a.kind for a in config.actuators] == ["reaction_wheel"] * 3 + ["magnetic_torque_rod"] * 3
+        assert config.magnetic_momentum_management.wheel_speed_biases_rad_s == [0.0, 0.0, 0.0]
         assert config.enable_drag and config.enable_srp
 
 
@@ -79,3 +80,32 @@ def test_sun_safe_preset_points_at_the_sun_at_the_default_step(template):
                         sim_settings=SimSettings(duration_days=20.0 / 1440.0), spacecraft=[spacecraft])  # [day]
     sun = SimulationService(scenario).run().series["sat-1.sun_heading_body"]
     assert sun.data[sun.time_s >= 300.0, 2].min() > 0.99  # [-] +Z on the Sun from 5 minutes on
+
+
+@pytest.mark.requires_basilisk
+@pytest.mark.parametrize("template", [t for t in SPACECRAFT_TEMPLATES if t.build().magnetic_momentum_management],
+                         ids=lambda t: t.name)
+def test_torque_rods_unload_spun_up_wheels_within_an_orbit(template):
+    """Wheels spun to 1500/-1000/800 RPM are back under 10 RPM after one
+    ~95 min orbit (under 2 RPM in a real run), while +Z stays on the Sun."""
+    import numpy as np
+
+    from spacemissionstudio.engine.orbit_design import raan_for_ltan_deg
+    from spacemissionstudio.engine.service import SimulationService
+    from spacemissionstudio.schema.scenario import GravityConfig, Scenario, SimSettings
+
+    spacecraft = template.build()
+    spacecraft.name = "sat-1"
+    spacecraft.orbit.raan_deg = raan_for_ltan_deg("2030-01-01T00:00:00")  # [deg] 10:30 LTAN
+    wheels = [a for a in spacecraft.actuators if a.kind == "reaction_wheel"]
+    for wheel, rpm in zip(wheels, (1500.0, -1000.0, 800.0)):  # [RPM]
+        wheel.params["Omega"] = rpm
+    scenario = Scenario(name=template.name, epoch_utc="2030-01-01T00:00:00", simulation_mode="full_attitude",
+                        gravity=GravityConfig(central_body="earth", central_body_degree=2,
+                                              third_body_perturbers=["sun"]),
+                        sim_settings=SimSettings(duration_days=100.0 / 1440.0), spacecraft=[spacecraft])  # [day]
+    result = SimulationService(scenario).run()
+    final_rpm = result.series["sat-1.rw_speeds"].data[-1] * 30.0 / np.pi  # [RPM]
+    assert np.abs(final_rpm).max() < 10.0  # [RPM]
+    sun = result.series["sat-1.sun_heading_body"]
+    assert sun.data[sun.time_s >= 600.0, 2].min() > 0.99  # [-]

@@ -7456,3 +7456,13 @@ RAAN, argument of periapsis and true anomaly (osculating and mean) run over [0, 
 **Thinning.** Long wrapping series are thinned evenly rather than by min-max: min-max would pick ~0 and ~360 deg from every stretch and paint a solid band. Unwrapping was rejected because true anomaly would climb to thousands of degrees.
 
 Mission Output's Change column already took the short way round for degree values, so it needed no change.
+
+## Spacecraft presets unload their wheels with torque rods
+
+The 150, 300 and 500 kg presets now carry three orthogonal magnetic torque rods (15, 30 and 50 A*m^2) and `magnetic_momentum_management`. That steers every wheel toward rest against Earth's field, as on most LEO spacecraft of this class. Without it, momentum from any disturbance would build up in the wheels until they saturate.
+
+**Confirmed in Basilisk** in a 10:30-LTAN orbit at the default 10 s step: wheels spun to 1500/-1000/800 RPM are back under 2 RPM within one ~95 min orbit on all three buses. +Z stays on the Sun the whole time (>= 0.9988). The rods run at full dipole while unloading.
+
+A new Basilisk test checks this for each preset.
+
+`test_set_live_result_throttles_rapid_webview_redraws` failed once under an 8-worker run with Basilisk jobs alongside. Its four "rapid" redraws took longer than the 300 ms throttle window, so one push was legitimate. The test now freezes the throttle clock, so "rapid" no longer depends on machine load.

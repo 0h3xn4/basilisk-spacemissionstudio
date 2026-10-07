@@ -575,6 +575,14 @@ def test_set_live_result_throttles_rapid_webview_redraws(widget, monkeypatch):
     widget.set_live_result(_sample_result_set(n=5))
     assert push_calls == [1]  # the first chunk always pushes immediately
 
+    class _FrozenClock:  # "rapid" must not depend on machine load: no time passes
+        def elapsed(self):
+            return 0
+
+        def restart(self):
+            return 0
+
+    monkeypatch.setattr(widget, "_live_redraw_elapsed", _FrozenClock())
     for n in (10, 15, 20, 25):
         widget.set_live_result(_sample_result_set(n=n))
 
