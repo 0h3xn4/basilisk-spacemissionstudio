@@ -26,7 +26,6 @@ from __future__ import annotations
 
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
-    QComboBox,
     QDoubleSpinBox,
     QFormLayout,
     QHBoxLayout,
@@ -40,7 +39,7 @@ from PySide6.QtWidgets import (
 
 from ..engine.orbit_design import DEFAULT_LTAN_HOUR, raan_for_ltan_deg, sun_synchronous_inclination_deg
 from ..schema.scenario import ANOMALY_TYPES, ORBIT_IC_TYPES, OrbitIC
-from .widgets import PreciseDoubleSpinBox
+from .widgets import ComboBox, PreciseDoubleSpinBox
 
 _ANOMALY_TYPE_LABELS = {
     "true": "True anomaly [deg]",
@@ -84,7 +83,7 @@ class OrbitIcWidget(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        self.type_combo = QComboBox()
+        self.type_combo = ComboBox()
         for orbit_type in ORBIT_IC_TYPES:
             self.type_combo.addItem(_TYPE_LABELS[orbit_type], userData=orbit_type)
         self.type_combo.setToolTip(
@@ -207,7 +206,7 @@ class OrbitIcWidget(QWidget):
         # convert the displayed value, since true and mean anomaly aren't
         # numerically close in general and silently reinterpreting a typed
         # number would be more confusing than resetting it to 0.
-        self.anomaly_type_combo = QComboBox()
+        self.anomaly_type_combo = ComboBox()
         for anomaly_type in ANOMALY_TYPES:
             self.anomaly_type_combo.addItem(_ANOMALY_TYPE_LABELS[anomaly_type], userData=anomaly_type)
         self.anomaly_type_combo.setToolTip(

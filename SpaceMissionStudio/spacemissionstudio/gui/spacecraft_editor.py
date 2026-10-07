@@ -49,7 +49,6 @@ from typing import NamedTuple
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QCheckBox,
-    QComboBox,
     QDialog,
     QDialogButtonBox,
     QDoubleSpinBox,
@@ -65,7 +64,6 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QScrollArea,
-    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -96,7 +94,7 @@ from .orbit_ic_widget import OrbitIcWidget
 from .param_form import ParamForm
 from .sensor_actuator_editor import SensorActuatorListWidget
 from .theme import PALETTE
-from .widgets import PreciseDoubleSpinBox
+from .widgets import ComboBox, PreciseDoubleSpinBox, TabWidget
 
 _FSW_MODE_NONE_LABEL = "(none -- no attitude control)"
 
@@ -255,7 +253,7 @@ class SpacecraftEditorDialog(QDialog):
         self._orbit_only = simulation_mode == "orbit_only"
 
         outer_layout = QVBoxLayout(self)
-        tabs = QTabWidget()
+        tabs = TabWidget()
         self.tabs = tabs
         outer_layout.addWidget(tabs)
 
@@ -431,7 +429,7 @@ class SpacecraftEditorDialog(QDialog):
         fsw_tab = QWidget()
         fsw_layout = QVBoxLayout(fsw_tab)
         fsw_form = QFormLayout()
-        self.fsw_mode_combo = QComboBox()
+        self.fsw_mode_combo = ComboBox()
         self.fsw_mode_combo.setToolTip(
             "Which attitude-control GUIDANCE law this spacecraft runs -- what direction it "
             "tries to point, computed fresh every tick from the real simulated state (never a "
@@ -527,7 +525,7 @@ class SpacecraftEditorDialog(QDialog):
         self.comms_pointing_group.toggled.connect(self._cp_body.setVisible)
         self._cp_body.setVisible(cp0 is not None)
 
-        self.cp_ground_station_combo = QComboBox()
+        self.cp_ground_station_combo = ComboBox()
         self.cp_ground_station_combo.setToolTip(
             "The ground station this spacecraft points its antenna at whenever it has real, "
             "simulated access to it (engine.service's own groundLocation.GroundLocation access "
@@ -788,7 +786,7 @@ class SpacecraftEditorDialog(QDialog):
         )
         self.constant_thrust_group.setChecked(ct0 is not None)
         ct_form = QFormLayout(self.constant_thrust_group)
-        self.ct_frame_combo = QComboBox()
+        self.ct_frame_combo = ComboBox()
         self.ct_frame_combo.addItems(list(SUPPORTED_THRUST_FRAMES))
         self.ct_frame_combo.setToolTip(
             "VNB: V=velocity direction, N=orbit normal, B=V x N.\n"
@@ -854,7 +852,7 @@ class SpacecraftEditorDialog(QDialog):
         self.phasing_keeping_group.setChecked(pk0 is not None)
         pk_form = QFormLayout(self.phasing_keeping_group)
 
-        self.pk_chief_combo = QComboBox()
+        self.pk_chief_combo = ComboBox()
         self.pk_chief_combo.setToolTip(
             "The reference spacecraft this one's along-track spacing is measured and held "
             "relative to. Must share this spacecraft's orbital plane and altitude for the "

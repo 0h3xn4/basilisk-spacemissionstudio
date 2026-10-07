@@ -37,16 +37,8 @@ from __future__ import annotations
 import math
 from decimal import Decimal
 
-from PySide6.QtCore import QCoreApplication, QEvent, QObject
 from PySide6.QtGui import QValidator
-from PySide6.QtWidgets import (
-    QAbstractScrollArea,
-    QAbstractSpinBox,
-    QApplication,
-    QComboBox,
-    QDoubleSpinBox,
-    QWidget,
-)
+from PySide6.QtWidgets import QComboBox, QDoubleSpinBox, QSpinBox, QTabBar, QTabWidget, QWidget
 
 # Qt rounds every value to decimals() as it is set. 40 decimal places
 # keep a double's full 17 significant digits for magnitudes down to
@@ -58,7 +50,46 @@ _STORAGE_DECIMALS = 40
 _PARTIAL_NUMBERS = {"", "-", "+", ".", "-.", "+."}
 
 
-class PreciseDoubleSpinBox(QDoubleSpinBox):
+class _IgnoreWheel:
+    """The mouse wheel never changes this widget's value (real user
+    feedback: scrolling a form changed whichever value passed under the
+    pointer -- "that's annoying"). The ignored event goes on to the
+    parent, so the surrounding page scrolls instead. Values still change
+    by typing, the arrow buttons and the keyboard.
+
+    Per-class rather than an app-wide event filter: a Python filter on
+    the whole application is called for every event on every object, and
+    PySide crashed doing that for objects Qt creates internally."""
+
+    def wheelEvent(self, event):  # noqa: N802 -- Qt API name
+        event.ignore()
+
+
+class SpinBox(_IgnoreWheel, QSpinBox):
+    """A QSpinBox the mouse wheel doesn't change."""
+
+
+class DoubleSpinBox(_IgnoreWheel, QDoubleSpinBox):
+    """A QDoubleSpinBox the mouse wheel doesn't change."""
+
+
+class ComboBox(_IgnoreWheel, QComboBox):
+    """A QComboBox the mouse wheel doesn't change (its open list still scrolls)."""
+
+
+class _TabBar(_IgnoreWheel, QTabBar):
+    pass
+
+
+class TabWidget(QTabWidget):
+    """A QTabWidget whose tab bar the mouse wheel doesn't switch."""
+
+    def __init__(self, parent: QWidget | None = None):
+        super().__init__(parent)
+        self.setTabBar(_TabBar(self))
+
+
+class PreciseDoubleSpinBox(_IgnoreWheel, QDoubleSpinBox):
     """A ``QDoubleSpinBox`` that stores values at full precision.
 
     :meth:`setDecimals` sets the MINIMUM number of decimals shown (e.g.
@@ -126,43 +157,3 @@ def exact_number_text(value: float) -> str:
     """
     text = repr(float(value))
     return text[:-2] if text.endswith(".0") else text
-
-
-def _wheel_owner(widget) -> QWidget | None:
-    """The spin box or drop-down a wheel event over ``widget`` would
-    change: the widget itself, or the line edit inside one. An open
-    drop-down's popup list is NOT matched, so it still scrolls."""
-    for candidate in (widget, widget.parent() if widget is not None else None):
-        if isinstance(candidate, (QAbstractSpinBox, QComboBox)):
-            return candidate
-    return None
-
-
-class _WheelGuard(QObject):
-    """App-wide: the mouse wheel never changes a spin box or drop-down
-    value (real user feedback: scrolling a form changed whichever value
-    passed under the pointer -- "that's annoying"). The wheel event goes
-    to the nearest scroll area instead, so the page scrolls as expected.
-    Values still change by typing, the arrow buttons and the keyboard."""
-
-    def eventFilter(self, watched, event):  # noqa: N802 -- Qt API name
-        if event.type() == QEvent.Type.Wheel and isinstance(watched, QWidget):
-            owner = _wheel_owner(watched)
-            if owner is not None:
-                area = owner.parent()
-                while area is not None and not isinstance(area, QAbstractScrollArea):
-                    area = area.parent()
-                if area is not None:
-                    QCoreApplication.sendEvent(area.verticalScrollBar(), event)
-                return True  # never let the box itself see the wheel
-        return False
-
-
-def install_wheel_guard(app: QApplication) -> QObject:
-    """Install :class:`_WheelGuard` on ``app`` (once). Returns it."""
-    guard = getattr(app, "_spacemissionstudio_wheel_guard", None)
-    if guard is None:
-        guard = _WheelGuard(app)
-        app.installEventFilter(guard)
-        app._spacemissionstudio_wheel_guard = guard
-    return guard

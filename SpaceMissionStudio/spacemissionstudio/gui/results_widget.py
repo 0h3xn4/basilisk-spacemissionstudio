@@ -147,6 +147,7 @@ from ..plot_categories import categorize as _categorize
 from ..plot_categories import legacy_display as _legacy_display
 from ..plot_categories import parse_access_pair as _parse_access_pair
 from .theme import PALETTE
+from .widgets import ComboBox
 
 # Categorical series colors -- the first three slots of an 8-hue
 # palette (Claude's dataviz skill, references/palette.md). Three is
@@ -274,7 +275,7 @@ class ResultsWidget(QWidget):
         # has no effect in that view) and redraws; switching back
         # restores the single-series view exactly as it was.
         top_row.addWidget(QLabel("View:"))
-        self.view_combo = QComboBox()
+        self.view_combo = ComboBox()
         self.view_combo.addItem("Single series", "single")
         self.view_combo.addItem("Ground station access timeline", "access_timeline")
         self.view_combo.setToolTip(
@@ -284,7 +285,7 @@ class ResultsWidget(QWidget):
         self.view_combo.currentIndexChanged.connect(self._on_view_changed)
         top_row.addWidget(self.view_combo)
         top_row.addWidget(QLabel("Series:"))
-        self.series_combo = QComboBox()
+        self.series_combo = ComboBox()
         # Editable + a substring-matching QCompleter -- a real scenario
         # (e.g. the built-in 6-satellite Walker constellation template)
         # produces 30-40+ series, all named after the dotted scheme
@@ -339,7 +340,7 @@ class ResultsWidget(QWidget):
         )
         top_row.addWidget(self.series_combo, stretch=1)
         top_row.addWidget(QLabel("X-axis:"))
-        self.x_axis_combo = QComboBox()
+        self.x_axis_combo = ComboBox()
         self.x_axis_combo.addItem("Elapsed time", "elapsed")
         self.x_axis_combo.addItem("Epoch (UTC)", "epoch")
         self.x_axis_combo.setToolTip(

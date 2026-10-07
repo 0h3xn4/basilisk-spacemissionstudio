@@ -30,7 +30,6 @@ know engine/ imports Basilisk" split used elsewhere, e.g. vizard_dialog.py).
 from __future__ import annotations
 
 from PySide6.QtWidgets import (
-    QComboBox,
     QDialog,
     QDialogButtonBox,
     QDoubleSpinBox,
@@ -47,7 +46,7 @@ from PySide6.QtWidgets import (
 from ..engine.constellation import CENTRAL_BODY_EQUATORIAL_RADIUS_KM, WALKER_PATTERNS, WalkerConstellationRequest
 from ..engine.orbit_design import sun_synchronous_inclination_deg
 from ..schema.scenario import ScenarioValidationError
-from .widgets import PreciseDoubleSpinBox
+from .widgets import ComboBox, PreciseDoubleSpinBox, SpinBox
 
 _PATTERN_LABELS = {
     "delta": "Walker-Delta (planes spread over 360°, e.g. GPS)",
@@ -56,7 +55,7 @@ _PATTERN_LABELS = {
 
 
 def _int_spin(minimum: int, maximum: int, value: int) -> QSpinBox:
-    box = QSpinBox()
+    box = SpinBox()
     box.setRange(minimum, maximum)
     box.setValue(value)
     return box
@@ -102,7 +101,7 @@ class WalkerConstellationDialog(QDialog):
         form = QFormLayout()
         form.addRow("Central body (from this scenario)", QLabel(central_body))
 
-        self.template_combo = QComboBox()
+        self.template_combo = ComboBox()
         if template_names:
             for name in template_names:
                 self.template_combo.addItem(name, userData=name)
@@ -118,7 +117,7 @@ class WalkerConstellationDialog(QDialog):
         self.inclination_deg = _double_spin(0.0, 180.0, 4, 1.0, 86.4)
         self.eccentricity = _double_spin(0.0, 0.999999, 6, 0.001, 0.0)
         self.arg_periapsis_deg = _double_spin(0.0, 360.0, 4, 1.0, 0.0)
-        self.pattern_combo = QComboBox()
+        self.pattern_combo = ComboBox()
         for pattern in WALKER_PATTERNS:
             self.pattern_combo.addItem(_PATTERN_LABELS[pattern], userData=pattern)
         self.raan_offset_deg = _double_spin(0.0, 360.0, 4, 1.0, 0.0)

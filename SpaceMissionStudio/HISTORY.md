@@ -6982,3 +6982,21 @@ The user's screenshot showed the Target separation note: "The along-track distan
   * Template 15 is renamed from "(locationPointing + target_body)" to "(Moon)"; the generator and the JSON were regenerated together, and only the name changed.
 
 **New permanent test.** `tests/gui/test_label_text.py` renders the same 47 dialogs as the border test. Every visible plain-text label must be at most 160 characters with no code names. The exceptions are rich-text cards and the if/while hint, where Python syntax is the content. With the old `hs_max` label put back, the test fails.
+
+## Scroll wheel, every dialog: tab bars too, and a crash in the first fix
+
+The user asked for every dialog to be checked for the scroll-wheel issue. A new rendered test, `tests/gui/test_wheel_in_dialogs.py`, does that for 46 dialogs: it visits every tab with every optional group switched on and wheels over every visible spin box, drop-down and tab bar. No value, selection or tab may change, and the state is checked after every single wheel step. The Vizard dialog is not included, because it has only text fields.
+
+**What it found.**
+* **Tab bars.** Spin boxes and drop-downs were already safe, but tab bars switched tabs when scrolled over; in the spacecraft editor the wheel jumped from "Orbit / mass" to "Attitude control". Tab bars now ignore the wheel too.
+* **A crash in the first fix.** The previous commit's app-wide guard was a Python event filter on the whole application, so Python was called for every event on every object. Under gdb, PySide crashed inside `getWrapperForQObject` (re-entering itself through a dynamic-property event) while wrapping an object Qt had created internally. It reproduced intermittently by wheeling over the main window's Scenario Editor; moving the scroll bar directly instead of re-sending the event did not remove the crash.
+
+**Fix: per-class instead of app-wide.**
+* **New widget classes.** `gui/widgets.py` adds `SpinBox`, `DoubleSpinBox`, `ComboBox` and `TabWidget` (with a no-wheel tab bar), and `PreciseDoubleSpinBox` now ignores the wheel as well. They are used at all 44 creation sites in 12 GUI modules.
+* **How the page scrolls.** Each ignores the wheel event. Qt then passes real input on to the parent, so the page scrolls, with no event filter and no re-sent events.
+* **Removed.** The app-wide filter (`install_wheel_guard`) is gone.
+
+**Checks.**
+* The dialog test passed in repeated runs, with no crash.
+* The unit test checks that every kind of box and tab bar leaves the wheel event unaccepted (so real scrolling reaches the page) and that its value does not change.
+* Putting a plain `QComboBox` back in the propagation dialog makes the dialog test fail. That needed the per-step check: wheeling up then down on a drop-down's last item lands back where it started.

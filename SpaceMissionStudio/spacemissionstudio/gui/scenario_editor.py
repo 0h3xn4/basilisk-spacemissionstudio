@@ -31,7 +31,6 @@ from __future__ import annotations
 
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
-    QComboBox,
     QDialog,
     QFormLayout,
     QGroupBox,
@@ -57,6 +56,7 @@ from .mission_sequence_editor import MissionSequenceEditorWidget
 from .monte_carlo_editor import MonteCarloGroupWidget
 from .spacecraft_editor import SpacecraftListWidget
 from .theme import PALETTE
+from .widgets import ComboBox
 
 
 class ScenarioEditorWidget(QWidget):
@@ -113,7 +113,7 @@ class ScenarioEditorWidget(QWidget):
         # set will make Save/Run fail with a specific error naming what to
         # remove, same "surface it, don't silently drop it" discipline as
         # everywhere else in this app.
-        self.simulation_mode_combo = QComboBox()
+        self.simulation_mode_combo = ComboBox()
         self.simulation_mode_combo.addItem("Full attitude (sensors, actuators, FSW, power)",
                                             userData="full_attitude")
         self.simulation_mode_combo.addItem("Orbit only (cannonball -- no attitude features)",

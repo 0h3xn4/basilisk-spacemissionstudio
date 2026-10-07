@@ -103,48 +103,52 @@ def test_exact_number_text_round_trips_exactly(value, text):
 
 def test_mouse_wheel_never_changes_a_value_and_scrolls_the_page(qtbot, qapp):
     """Real user feedback: "Don't allow scrolling to change the values in
-    any boxes". The app-wide guard sends the wheel to the page instead."""
+    any boxes". The app's spin boxes, drop-downs and tab bars ignore the
+    wheel, so it goes on to the page, which scrolls instead."""
     from PySide6.QtCore import QPoint, QPointF, Qt
     from PySide6.QtGui import QWheelEvent
-    from PySide6.QtWidgets import QComboBox, QDoubleSpinBox, QScrollArea, QSpinBox, QVBoxLayout, QWidget
+    from PySide6.QtWidgets import QScrollArea, QVBoxLayout, QWidget
 
-    from spacemissionstudio.gui.widgets import PreciseDoubleSpinBox, install_wheel_guard
+    from spacemissionstudio.gui.widgets import ComboBox, DoubleSpinBox, PreciseDoubleSpinBox, SpinBox, TabWidget
 
-    guard = install_wheel_guard(qapp)
-    try:
-        area = QScrollArea()
-        content = QWidget()
-        layout = QVBoxLayout(content)
-        boxes = [PreciseDoubleSpinBox(), QDoubleSpinBox(), QSpinBox(), QComboBox()]
-        boxes[0].setValue(5.0)
-        boxes[1].setValue(5.0)
-        boxes[2].setValue(5)
-        boxes[3].addItems(["a", "b", "c"])
-        for box in boxes:
-            layout.addWidget(box)
-        layout.addSpacing(3000)  # [px] tall enough to scroll
-        area.setWidget(content)
-        area.resize(300, 200)
-        qtbot.addWidget(area)
-        area.show()
-        qtbot.waitExposed(area)
+    area = QScrollArea()
+    content = QWidget()
+    layout = QVBoxLayout(content)
+    boxes = [PreciseDoubleSpinBox(), DoubleSpinBox(), SpinBox(), ComboBox()]
+    boxes[0].setValue(5.0)
+    boxes[1].setValue(5.0)
+    boxes[2].setValue(5)
+    boxes[3].addItems(["a", "b", "c"])
+    tabs = TabWidget()
+    for name in ("one", "two", "three"):
+        tabs.addTab(QWidget(), name)
+    for widget in boxes + [tabs]:
+        layout.addWidget(widget)
+    layout.addSpacing(3000)  # [px] tall enough to scroll
+    area.setWidget(content)
+    area.resize(300, 200)
+    qtbot.addWidget(area)
+    area.show()
+    qtbot.waitExposed(area)
 
-        def wheel(target):
-            event = QWheelEvent(QPointF(5, 5), QPointF(target.mapToGlobal(QPoint(5, 5))), QPoint(0, 0),
-                                QPoint(0, -120), Qt.MouseButton.NoButton, Qt.KeyboardModifier.NoModifier,
-                                Qt.ScrollPhase.NoScrollPhase, False)
-            qapp.sendEvent(target, event)
+    def wheel(target):
+        event = QWheelEvent(QPointF(5, 5), QPointF(target.mapToGlobal(QPoint(5, 5))), QPoint(0, 0),
+                            QPoint(0, -120), Qt.MouseButton.NoButton, Qt.KeyboardModifier.NoModifier,
+                            Qt.ScrollPhase.NoScrollPhase, False)
+        qapp.sendEvent(target, event)
+        return event
 
-        before = area.verticalScrollBar().value()
-        for box in boxes:
-            wheel(box)
-            if not isinstance(box, QComboBox):
-                wheel(box.lineEdit())  # the text field inside a spin box
-        assert [boxes[0].value(), boxes[1].value(), boxes[2].value()] == [5.0, 5.0, 5]
-        assert boxes[3].currentIndex() == 0
-        assert area.verticalScrollBar().value() > before  # the page scrolled instead
-        boxes[0].stepUp()  # arrows and keyboard still work
-        assert boxes[0].value() == 6.0
-    finally:
-        qapp.removeEventFilter(guard)
-        del qapp._spacemissionstudio_wheel_guard
+    for widget in boxes + [tabs.tabBar()]:
+        # Ignored, so for real (spontaneous) input Qt passes it on to the
+        # parent and the page scrolls; a synthetic event is not passed on.
+        assert not wheel(widget).isAccepted(), type(widget).__name__
+        if not isinstance(widget, ComboBox) and hasattr(widget, "lineEdit"):
+            wheel(widget.lineEdit())  # the text field inside a spin box
+    assert [boxes[0].value(), boxes[1].value(), boxes[2].value()] == [5.0, 5.0, 5]
+    assert boxes[3].currentIndex() == 0
+    assert tabs.currentIndex() == 0
+    before = area.verticalScrollBar().value()
+    wheel(area.viewport())  # where an ignored event ends up
+    assert area.verticalScrollBar().value() > before
+    boxes[0].stepUp()  # arrows and keyboard still work
+    assert boxes[0].value() == 6.0

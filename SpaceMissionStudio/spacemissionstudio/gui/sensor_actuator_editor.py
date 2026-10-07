@@ -71,7 +71,6 @@ from typing import NamedTuple
 
 from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtWidgets import (
-    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
@@ -93,6 +92,7 @@ from ..engine.device_catalog import catalog_entries_for_kind
 from .feedback import clear_invalid, mark_invalid, show_toast
 from .param_form import ParamForm
 from .theme import PALETTE
+from .widgets import ComboBox
 
 
 class _ParamSpec(NamedTuple):
@@ -483,7 +483,7 @@ class _ItemEditorDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.setSpacing(10)
         top = QFormLayout()
-        self.kind_combo = QComboBox()
+        self.kind_combo = ComboBox()
         self.kind_combo.setToolTip("Which kind of hardware this is: it sets the parameters below.")
         self.kind_combo.addItems(list(kind_choices))
         if item is not None:
@@ -511,7 +511,7 @@ class _ItemEditorDialog(QDialog):
         catalog_title = QLabel("Start from a real device")
         catalog_title.setStyleSheet("font-weight: 600;")
         catalog_layout.addWidget(catalog_title)
-        self.catalog_combo = QComboBox()
+        self.catalog_combo = ComboBox()
         self.catalog_combo.setToolTip("A real, commercially available device for this kind. Its card "
                                       "appears below; Apply fills the parameters with its values.")
         self.catalog_combo.currentIndexChanged.connect(self._on_catalog_selection_changed)

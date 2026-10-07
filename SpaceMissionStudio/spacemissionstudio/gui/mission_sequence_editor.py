@@ -51,7 +51,6 @@ from __future__ import annotations
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
-    QComboBox,
     QDialog,
     QDialogButtonBox,
     QDoubleSpinBox,
@@ -64,7 +63,6 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
-    QSpinBox,
     QStackedWidget,
     QTreeWidget,
     QTreeWidgetItem,
@@ -81,7 +79,7 @@ from ..schema.command import (
 )
 from .feedback import show_toast
 from .theme import PALETTE
-from .widgets import PreciseDoubleSpinBox
+from .widgets import ComboBox, PreciseDoubleSpinBox, SpinBox
 
 # Mirrors engine.mission_engine._ASSIGNMENT_CONTROLLERS/_ASSIGNMENT_ATTRIBUTES
 # -- duplicated here (not imported) because engine.mission_engine imports
@@ -118,7 +116,7 @@ class _CommandEditorDialog(QDialog):
 
         layout = QVBoxLayout(self)
         form = QFormLayout()
-        self.kind_combo = QComboBox()
+        self.kind_combo = ComboBox()
         self.kind_combo.setToolTip(
             "What this step in the mission sequence actually does, run in order (top to bottom "
             "in the tree) starting from the scenario's own initial conditions -- each command "
@@ -183,7 +181,7 @@ class _CommandEditorDialog(QDialog):
         page = QWidget()
         form = QFormLayout(page)
 
-        self.stop_condition_combo = QComboBox()
+        self.stop_condition_combo = ComboBox()
         self.stop_condition_combo.setToolTip(
             "When this propagate step stops and moves on to the next command:\n"
             "duration: after a fixed number of days (below).\n"
@@ -221,7 +219,7 @@ class _CommandEditorDialog(QDialog):
         event_page = QWidget()
         event_form = QFormLayout(event_page)
         event_form.setContentsMargins(0, 0, 0, 0)
-        self.event_kind_combo = QComboBox()
+        self.event_kind_combo = ComboBox()
         self.event_kind_combo.setToolTip(
             "periapsis: stop at the next closest approach to the central body.\n"
             "apoapsis: stop at the next farthest point from the central body."
@@ -231,7 +229,7 @@ class _CommandEditorDialog(QDialog):
         if event_index >= 0:
             self.event_kind_combo.setCurrentIndex(event_index)
         event_form.addRow("Event", self.event_kind_combo)
-        self.propagate_event_spacecraft_combo = QComboBox()
+        self.propagate_event_spacecraft_combo = ComboBox()
         self.propagate_event_spacecraft_combo.addItems(self._spacecraft_names)
         sc_index = self.propagate_event_spacecraft_combo.findText(params.get("spacecraft", ""))
         if sc_index >= 0:
@@ -252,7 +250,7 @@ class _CommandEditorDialog(QDialog):
         page = QWidget()
         form = QFormLayout(page)
 
-        self.maneuver_spacecraft_combo = QComboBox()
+        self.maneuver_spacecraft_combo = ComboBox()
         self.maneuver_spacecraft_combo.addItems(self._spacecraft_names)
         index = self.maneuver_spacecraft_combo.findText(params.get("spacecraft", ""))
         if index >= 0:
@@ -278,7 +276,7 @@ class _CommandEditorDialog(QDialog):
         row_widget.setLayout(row)
         form.addRow("Delta-V [m/s]", row_widget)
 
-        self.maneuver_frame_combo = QComboBox()
+        self.maneuver_frame_combo = ComboBox()
         self.maneuver_frame_combo.addItems(list(SUPPORTED_MANEUVER_FRAMES))
         frame_index = self.maneuver_frame_combo.findText(params.get("frame", "inertial"))
         if frame_index >= 0:
@@ -296,7 +294,7 @@ class _CommandEditorDialog(QDialog):
         page = QWidget()
         form = QFormLayout(page)
 
-        self.lambert_spacecraft_combo = QComboBox()
+        self.lambert_spacecraft_combo = ComboBox()
         self.lambert_spacecraft_combo.addItems(self._spacecraft_names)
         index = self.lambert_spacecraft_combo.findText(params.get("spacecraft", ""))
         if index >= 0:
@@ -326,7 +324,7 @@ class _CommandEditorDialog(QDialog):
         )
         form.addRow("Time of flight [s]", self.lambert_tof_spin)
 
-        self.lambert_num_rev_spin = QSpinBox()
+        self.lambert_num_rev_spin = SpinBox()
         self.lambert_num_rev_spin.setRange(0, 20)
         self.lambert_num_rev_spin.setValue(int(params.get("num_revolutions", 0)))
         form.addRow("Number of revolutions", self.lambert_num_rev_spin)
@@ -358,11 +356,11 @@ class _CommandEditorDialog(QDialog):
         page = QWidget()
         form = QFormLayout(page)
 
-        self.assignment_spacecraft_combo = QComboBox()
+        self.assignment_spacecraft_combo = ComboBox()
         self.assignment_spacecraft_combo.addItems(self._spacecraft_names)
-        self.assignment_controller_combo = QComboBox()
+        self.assignment_controller_combo = ComboBox()
         self.assignment_controller_combo.addItems(list(_ASSIGNMENT_CONTROLLER_CHOICES))
-        self.assignment_parameter_combo = QComboBox()
+        self.assignment_parameter_combo = ComboBox()
         self.assignment_parameter_combo.addItems(list(_ASSIGNMENT_PARAMETER_CHOICES))
 
         target = params.get("target", "")

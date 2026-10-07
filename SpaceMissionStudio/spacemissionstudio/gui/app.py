@@ -30,7 +30,6 @@ from ..logging_setup import configure_logging
 from .icons import app_icon
 from .main_window import MainWindow
 from .theme import apply_theme
-from .widgets import install_wheel_guard
 
 
 def main(argv: list | None = None) -> int:
@@ -66,7 +65,6 @@ def main(argv: list | None = None) -> int:
     # regardless of this call, which this alone can't fix.
     app.setDesktopFileName("spacemissionstudio")
     apply_theme(app)
-    install_wheel_guard(app)
     icon = app_icon()
     app.setWindowIcon(icon)
     window = MainWindow()

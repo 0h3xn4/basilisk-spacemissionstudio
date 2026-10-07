@@ -47,7 +47,6 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QProgressDialog,
     QSplitter,
-    QTabWidget,
     QToolBar,
 )
 
@@ -73,6 +72,7 @@ from .vizard_launcher import (
     launch_vizard,
     remember_vizard_executable,
 )
+from .widgets import TabWidget
 
 _FILE_FILTER = "SpaceMissionStudio scenario (*.json)"
 
@@ -174,7 +174,7 @@ class MainWindow(QMainWindow):
         self.kernel_status_widget = KernelStatusWidget()
         self.scenario_explainer_widget = ScenarioExplainerWidget()
 
-        self.right_tabs = QTabWidget()
+        self.right_tabs = TabWidget()
         self.right_tabs.addTab(self.results_widget, "Results")
         self.right_tabs.addTab(self.mission_dashboard_widget, "Mission Dashboard")
         self.right_tabs.addTab(self.mission_output_widget, "Mission Output")
@@ -189,7 +189,7 @@ class MainWindow(QMainWindow):
         # switches to "Scenario Editor" the moment anything actually
         # loads, whichever of the two ways (this tab, or File > Open) got
         # it there.
-        self.left_tabs = QTabWidget()
+        self.left_tabs = TabWidget()
         self.left_tabs.addTab(self.load_scenario_widget, "Load Scenario")
         self.left_tabs.addTab(self.scenario_editor, "Scenario Editor")
 

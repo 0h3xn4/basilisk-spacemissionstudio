@@ -36,7 +36,6 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import (
     QCheckBox,
-    QComboBox,
     QDialog,
     QDialogButtonBox,
     QDoubleSpinBox,
@@ -52,7 +51,7 @@ from PySide6.QtWidgets import (
 from ..engine.constellation import CENTRAL_BODY_EQUATORIAL_RADIUS_KM
 from ..engine.formation import PhasingFormationRequest
 from ..schema.scenario import ScenarioValidationError, SpacecraftConfig, StationKeepingConfig
-from .widgets import PreciseDoubleSpinBox
+from .widgets import ComboBox, PreciseDoubleSpinBox
 
 
 def _form_group(title: str) -> tuple[QGroupBox, QFormLayout]:
@@ -141,8 +140,8 @@ class PhasingFormationDialog(QDialog):
 
         spacecraft_form.addRow("Central body", QLabel(central_body))
 
-        self.chief_combo = QComboBox()
-        self.template_combo = QComboBox()
+        self.chief_combo = ComboBox()
+        self.template_combo = ComboBox()
         if spacecraft_names:
             for name in spacecraft_names:
                 self.chief_combo.addItem(name, userData=name)

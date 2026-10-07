@@ -76,7 +76,6 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
-    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
@@ -90,7 +89,6 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QScrollArea,
-    QSpinBox,
     QVBoxLayout,
     QWidget,
 )
@@ -103,7 +101,7 @@ from ..schema.scenario import (
     SimSettings,
     SpaceWeatherConfig,
 )
-from .widgets import PreciseDoubleSpinBox
+from .widgets import ComboBox, PreciseDoubleSpinBox, SpinBox
 
 # The minimum spherical-harmonics degree/order that's actually meaningful
 # ("spherical harmonics" starting below this is just point-mass again) --
@@ -181,7 +179,7 @@ class PropagationSetupDialog(QDialog):
         group = QGroupBox("Gravity")
         form = QFormLayout(group)
 
-        self.central_body_combo = QComboBox()
+        self.central_body_combo = ComboBox()
         self.central_body_combo.addItems(SUPPORTED_CENTRAL_BODIES)
         self.central_body_combo.setCurrentText(gravity.central_body)
         self.central_body_combo.setToolTip(
@@ -205,7 +203,7 @@ class PropagationSetupDialog(QDialog):
         self.enable_harmonics_check.toggled.connect(self._on_harmonics_toggled)
         form.addRow(self.enable_harmonics_check)
 
-        self.central_body_degree_spin = QSpinBox()
+        self.central_body_degree_spin = SpinBox()
         self.central_body_degree_spin.setRange(0, 360)
         self.central_body_degree_spin.setValue(
             gravity.central_body_degree if gravity.central_body_degree > 0 else _DEFAULT_HARMONICS_DEGREE
@@ -311,7 +309,7 @@ class PropagationSetupDialog(QDialog):
         )
         form.addRow("Dynamics task rate [s]", self.task_rate_spin)
 
-        self.integrator_combo = QComboBox()
+        self.integrator_combo = ComboBox()
         self.integrator_combo.addItems(SUPPORTED_INTEGRATORS)
         self.integrator_combo.setCurrentText(sim_settings.integrator)
         self.integrator_combo.setToolTip(
@@ -362,7 +360,7 @@ class PropagationSetupDialog(QDialog):
         form = QFormLayout()
         group_layout.addLayout(form)
 
-        self.atmosphere_model_combo = QComboBox()
+        self.atmosphere_model_combo = ComboBox()
         # (display text, schema value) -- SpaceWeatherConfig.atmosphere_model's
         # own docstring explains why these two and not, say, Jacchia-Roberts
         # (Basilisk has no such model at all).
@@ -384,7 +382,7 @@ class PropagationSetupDialog(QDialog):
         self.atmosphere_model_combo.currentIndexChanged.connect(self._on_atmosphere_model_changed)
         form.addRow("Atmosphere model", self.atmosphere_model_combo)
 
-        self.space_weather_source_combo = QComboBox()
+        self.space_weather_source_combo = ComboBox()
         self.space_weather_source_combo.addItems(["synthetic", "local_file"])
         self.space_weather_source_combo.setCurrentText(space_weather.source)
         self.space_weather_source_combo.setToolTip(
@@ -411,7 +409,7 @@ class PropagationSetupDialog(QDialog):
         local_file_row.addWidget(self.local_file_browse_button)
         form.addRow("Local CSV file", local_file_row)
 
-        self.activity_level_combo = QComboBox()
+        self.activity_level_combo = ComboBox()
         # (display text, schema value)
         self._activity_level_items = [("Nominal (ordinary resolved space weather)", "nominal"),
                                        ("Conservative (historical-percentile worst-case margin)", "conservative")]

@@ -44,7 +44,6 @@ import re
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
-    QComboBox,
     QDoubleSpinBox,
     QFormLayout,
     QHBoxLayout,
@@ -57,7 +56,7 @@ from PySide6.QtWidgets import (
 )
 
 from .theme import PALETTE
-from .widgets import PreciseDoubleSpinBox
+from .widgets import ComboBox, PreciseDoubleSpinBox
 
 
 def is_vector(spec) -> bool:
@@ -207,7 +206,7 @@ class ParamForm(QWidget):
             return box
         if isinstance(example, str):
             names, editable = option if option is not None else (choices(spec), not choices(spec))
-            combo = QComboBox()
+            combo = ComboBox()
             combo.setEditable(editable)
             combo.addItems(list(names))
             combo.setMinimumWidth(220)
