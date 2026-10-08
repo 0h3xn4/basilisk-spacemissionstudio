@@ -388,9 +388,12 @@ elements are those of the dataclasses named.
 - **Backward (component → requirements):** the "SRS" column of RD1. The
   modules that trace to no requirement are listed there; they are support
   code.
-- **Critical software:** the tool is category C (decision 1). No specific
-  design measures for critical software are taken. The measures taken for
-  accuracy are:
+- **Critical software:** category C is critical software (ECSS-Q-ST-80C
+  3.2.8), and the whole tool is category C (decisions 1 and 10). The
+  measures applied are in `dependability_safety_analysis.md` section 4.
+  In the design they are:
   - the isolated workarounds (4.5);
   - the start-up version check;
-  - the provenance record.
+  - the provenance record;
+  - the warnings and plausibility checks;
+  - the containment of runs in workers (4.2).

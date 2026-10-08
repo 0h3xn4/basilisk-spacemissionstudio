@@ -247,9 +247,7 @@ SOFTWARE_RULES = [
     ("Q-ST-80C", "5.4.*", _H, "-", "Supplier selection/control not applicable as such (no subcontractor); "
      "reused OSS suppliers (Basilisk) not assessed.", "Record OSS dependencies and their status in the SRF.",
      "S", "yes", "H07"),
-    ("Q-ST-80C", "5.4.4a", "P", "compliance/phase0_tailoring.md (category C, user-approved 2026-10-08)",
-     "Category set by the user without the system-level analysis of ECSS-Q-ST-30/-40 (not supplied).",
-     "User records the justification and signs off.", "S", "no", "H04"),
+    ("Q-ST-80C", "5.4.4a", "P", "compliance/docs/dependability_safety_analysis.md section 1 (category C signed off by the user, decision 10)", "Not derived from a system-level analysis: ECSS-Q-ST-30/-40 not supplied (H12); no lower-level suppliers to inform.", "-", "S", "no", "H04,H12"),
     ("Q-ST-80C", "5.5.*", _H, "pyproject.toml dependencies", "No procurement documents for the reused/"
      "procured components (Basilisk, PySide6, numpy, sgp4, ...).", "Component list with versions and "
      "licences in the SRF; user reviews.", "S", "yes", "H07,R01"),
@@ -258,11 +256,9 @@ SOFTWARE_RULES = [
     ("Q-ST-80C", "5.7.*", "N", "-", "No process assessment or improvement process: waived by the user (decision 8).", "-", "S", "no", "H02,D-09"),
     ("Q-ST-80C", "6.1.*", "N", "-", "No documented life cycle.", "SDP (Phase 4).", "S", "no", "R14"),
     ("Q-ST-80C", "6.2.1*", "N", "-", "Processes not documented.", "SDP/SPAP (Phase 4).", "M", "no", "R14"),
-    ("Q-ST-80C", "6.2.2.1a", "P", "compliance/phase0_tailoring.md", "As 5.4.4a.", "As 5.4.4a.", "S", "no", "H04"),
-    ("Q-ST-80C", "6.2.2.*", _H, "-", "No software dependability and safety analysis.", "User performs it "
-     "(e.g. a light SFMEA on budget/lifetime outputs); draft template in Phase 4.", "M", "no", "H04"),
-    ("Q-ST-80C", "6.2.3.*", _H, "-", "Critical software components not identified.", "Identify (e.g. budget, "
-     "lifetime, frame/time layer) in the dependability analysis.", "S", "no", "H04"),
+    ("Q-ST-80C", "6.2.2.1a", "P", "compliance/docs/dependability_safety_analysis.md section 1", "Classification by the user's judgement; the ECSS-Q-ST-40 6.5.6.3 analysis is not available (H12).", "-", "S", "no", "H04,H12"),
+    ("Q-ST-80C", "6.2.2.*", "P", "compliance/docs/dependability_safety_analysis.md (functional FMEA, FM-01 to FM-12, safeguards with evidence)", "Drafted by the supplier, waiting for the user's approval; methods not agreed with a separate customer; no system-level analysis to start from.", "User approves the analysis (H04).", "S", "no", "H04"),
+    ("Q-ST-80C", "6.2.3.*", "P", "compliance/docs/dependability_safety_analysis.md section 4 (measures for critical software: the whole tool, category C)", "Measures applied and verified by the supplier; unreachable-code analysis (6.2.3.6a) open; no independent verification (H06).", "Analyse the uncovered branches; H06.", "S", "no", "H04,H06"),
     ("Q-ST-80C", "6.2.4.*", "P", "git; version 2.0.0 (pyproject.toml); schema_version + migrations; "
      "R01 (Phase 2): spacemissionstudio/dependencies.py QUALIFIED_BASILISK_VERSION = 2.12.0, installers pin "
      "bsk[all]==2.12.0, start-up check (GUI status bar, CLI run), RunProvenance/provenance.json records "

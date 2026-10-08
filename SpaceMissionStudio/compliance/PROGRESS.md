@@ -61,6 +61,10 @@ Result: **2055 passed, 11 skipped, 0 failed** (245 s, 3 workers). Every later ph
 9. 2026-10-08, user (H03): no customer baseline (SSS, IRD), deviation
    D-11; a default CCSDS file naming and exchange method is defined in the
    ICD, to be agreed with each exchange partner.
+10. 2026-10-08, user (H04): category C signed off; the supplier drafts the
+    dependability and safety analysis for approval
+    (`docs/dependability_safety_analysis.md`). Category C is critical
+    software (Q-ST-80C 3.2.8), so 6.2.3 applies to the whole tool.
 
 ## Phase 1 test run
 

@@ -153,11 +153,14 @@ All plans are updated at each release (SDP 5.5.2).
 
 ### 6.3 Dependability and safety (B.2.1<6.3>)
 
-**Gap: H04.**
-- No dependability or safety analysis exists.
-- The tool is category C by the user's decision. The criticality
-  classification is to be signed off with an analysis.
-- No measures for critical software are applied (SDD 6).
+- **Classification:** category C, signed off by the user (decision 10).
+  It is critical software in the sense of ECSS-Q-ST-80C 3.2.8.
+- **Analysis and measures:** `dependability_safety_analysis.md`:
+  - failure modes FM-01 to FM-12, with their safeguards;
+  - the 6.2.3 measures for critical software.
+- **Open:**
+  - the unreachable-code analysis (6.2.3.6a);
+  - independent verification of the measures (H06).
 
 ### 6.4 Security (B.2.1<6.4>)
 

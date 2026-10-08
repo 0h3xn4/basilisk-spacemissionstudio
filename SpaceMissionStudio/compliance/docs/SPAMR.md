@@ -44,8 +44,11 @@ As in the SPAP.
 | Audits | This ECSS/CCSDS audit (by the supplier, not independent) | `compliance/` |
 | Testing | Full suite and validation | RD1 4.6 |
 
-**Critical software:** none is designated (category C, H04). No measures for
-critical software were applied or verified.
+**Critical software:** the whole tool, being category C (Q-ST-80C 3.2.8;
+decision 10). The measures and their verification status are in
+`dependability_safety_analysis.md` section 4. The supplier verified them;
+there is no independent verification (H06). The unreachable-code analysis
+is open.
 
 ## 5 Methods and tools (C.2.1<5>)
 
