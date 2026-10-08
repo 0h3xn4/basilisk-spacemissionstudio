@@ -7691,4 +7691,14 @@ Propellant per contributor is the phase's starting mass times exp(dV/Ve) - 1, it
 
 **Re-measured on MSFC's 50th percentile:** template 21 rods-off 1.77 N*m*s (rw-x -843 RPM), rods-on under ~20 RPM; template 05 recovers by day 23 and holds 48-55 km for 0.013 m/s; 300 km lifetime 25.66 vs 25.43 days in Basilisk (+0.9%).
 
+**Five years on MSFC** (template 18's spacecraft, 2030-2035, 5 kg at Isp 1500 s, recorded every 600 s):
+
+| Delta-V [m/s] | Year 1 | Year 2 | Year 3 | Year 4 | Year 5 | Total |
+|---|---|---|---|---|---|---|
+| 50th percentile, Cd 2.2 (nominal) | 25.7 | 23.0 | 39.7 | 77.5 | 109.1 | 274.9 |
+| 95th percentile, Cd 3.0 (AD10 operations) | 39.3 | 41.7 | 121.8 | 263.4 | 134.4* | 600.5* |
+
+* Nominal: 2.31 kg in 364 burns, 2.69 kg left; within 0.1 m/s of the CelesTrak/NOAA run above. Semi-major axis held 394.4-397.2 km above the equatorial radius. 54 min wall time, 459 MB peak.
+* AD10 operations: 5 kg is not enough. The tank ran dry at day 1595.8 after 676 burns; the spacecraft then decayed and re-entered at day 1633.3, and the run stopped there with a warning (49 min, 434 MB). The figures marked * are therefore cut short.
+
 **Not covered yet:** the launch-delay sweep (AD10 Sec. 5.5), the number of collision avoidances (DRAMA), Cd 3.0 in the templates (they keep 2.2).
