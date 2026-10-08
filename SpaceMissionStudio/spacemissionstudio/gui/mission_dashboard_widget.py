@@ -294,7 +294,7 @@ class MissionDashboardWidget(QWidget):
             return
         self._set_panels_visible(True)
         result = self._result
-        assert result is not None
+        assert result is not None  # noqa: S101 -- type narrowing; _result is set when sc_name is
 
         sc_config = None
         if self._scenario is not None:

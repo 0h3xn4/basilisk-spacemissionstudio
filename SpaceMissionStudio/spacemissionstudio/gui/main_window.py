@@ -54,6 +54,7 @@ from PySide6.QtWidgets import (
 from .. import dependencies
 from ..engine.series_names import featured_series
 from ..logging_setup import get_log_file_path
+from ..schema.command import script_blocks
 from ..schema.scenario import Scenario, ScenarioValidationError, load_scenario
 from . import autosave
 from .feedback import show_toast
@@ -1045,11 +1046,29 @@ class MainWindow(QMainWindow):
         self._vizard_process = None
         self._vizard_direct_comm_address = None
 
+    def _confirm_script_blocks(self, blocks) -> bool:
+        """Ask before running ``script_block`` code (SRS-S-03): it is
+        unrestricted Python from the scenario file. Shows the code; the
+        default answer is No."""
+        listing = "\n\n".join(f"{path}" + (f" ({command.label})" if command.label else "") + ":\n"
+                               + str(command.params.get("code", ""))[:600] for path, command in blocks)
+        box = QMessageBox(QMessageBox.Icon.Warning, "Run script blocks?",
+                          f"This scenario has {len(blocks)} script block(s). They run as unrestricted Python, "
+                          "with your user's access to files and the network. Run them only if you trust the "
+                          "scenario and have read the code.",
+                          QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, self)
+        box.setDetailedText(listing)
+        box.setDefaultButton(QMessageBox.StandardButton.No)
+        return box.exec() == QMessageBox.StandardButton.Yes
+
     def on_run(self) -> None:
         try:
             scenario = self.scenario_editor.to_scenario()
         except ScenarioValidationError as exc:
             QMessageBox.critical(self, "Cannot run invalid scenario", str(exc))
+            return
+        blocks = script_blocks(scenario.mission_sequence)
+        if blocks and not self._confirm_script_blocks(blocks):
             return
 
         if self._vizard_request is not None and self._vizard_request.live_stream:
@@ -1133,7 +1152,8 @@ class MainWindow(QMainWindow):
         self._last_run_scenario = scenario
         self.results_widget.set_featured_series(featured_series(scenario))
         _join_finished_worker(self._run_worker)
-        self._run_worker = RunWorker(scenario, vizard_request=self._vizard_request, live=live)
+        self._run_worker = RunWorker(scenario, vizard_request=self._vizard_request, live=live,
+                                     allow_scripts=bool(blocks))
         self._run_worker.progress.connect(self._on_run_progress)
         self._run_worker.finished_ok.connect(self._on_run_finished)
         self._run_worker.failed.connect(self._on_run_failed)

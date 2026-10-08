@@ -89,5 +89,16 @@ line-length = 120
 target-version = "py39"
 
 [tool.ruff.lint]
-select = ["E4", "E7", "E9", "F", "W", "B"]
+# S (flake8-bandit): security rules, added by the R15 security analysis
+# (compliance/docs/security_analysis.md). Each remaining finding in the
+# package carries a noqa with its justification.
+select = ["E4", "E7", "E9", "F", "W", "B", "S"]
 ignore = ["B007", "B023"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests assert (S101) and use temporary paths (S108); the scripts and the
+# compliance tools run git and parse their own JUnit XML: trusted local
+# input, not the shipped tool.
+"tests/**" = ["S"]
+"scripts/**" = ["S"]
+"compliance/**" = ["S"]

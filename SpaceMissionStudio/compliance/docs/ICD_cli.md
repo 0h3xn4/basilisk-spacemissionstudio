@@ -27,6 +27,7 @@ run a scenario headlessly and export results to CSV
 | `--vizard-no-orbit-lines` | don't draw each spacecraft's orbit in Vizard (on by default) |
 | `--vizard-trail` | also draw the flown path in Vizard (builds up into a band over long runs) |
 | `--vizard-ground-tracks` | also draw ground tracks in Vizard |
+| `--allow-scripts` | run the scenario's script_block commands (unrestricted Python: only for files you trust and have read) |
 
 ## `monte-carlo`
 

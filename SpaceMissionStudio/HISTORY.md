@@ -7791,3 +7791,17 @@ The ECSS/CCSDS audit's validation phase (`compliance/phase3_log.md`, tests in `t
 **Also:** the Earth GM the simulation uses is 398600.436 km^3/s^2 (Basilisk's, deviation D-07); OPM export now states that value. A run with a gravity field and no IERS Earth orientation files warns of the ~160 m/day it costs at 400 km. `spacemissionstudio run --oem-interpolation lagrange` writes OEMs GMAT can read (GMAT reads only Lagrange, and only version 1.0 messages).
 
 **Validated (all within stated tolerances):** time scales (TAI/TT to 0.2 us, TDB to GMAT's two-term series), Earth frame vs IERS C04 (0.43 m at the surface, 1990-2026), propagation vs GMAT (two-body 4 mm/day, 20x20 field 0.12 m/day, Sun/Moon 9 mm and SRP 1.1 m over 7 days at GEO, drag 2.4 %), ground-station passes (0.08 s), OEM exchange both ways (8 mm).
+
+## Script blocks ask first; conditions no longer use eval()
+
+The audit's security analysis (`compliance/docs/security_analysis.md`, R15) found two ways a scenario file from someone else could run code on your computer:
+
+* **`script_block`** runs Python with your rights, and pressing Run was enough to run it. Now a run with script blocks asks first. The GUI shows each block's code and defaults to No. The CLI refuses with exit code 1 unless you pass `spacemissionstudio run --allow-scripts`, and `validate` lists the blocks. Nothing in the scenario file can give this consent.
+* **`if`/`while` conditions** went through Python's `eval()`. Even without builtins, that lets a crafted condition reach any Python object. Conditions are now evaluated over a fixed set of expressions: names, numbers, `[ ]` indexing, arithmetic, comparisons, `and`/`or`/`not`. Every condition in the templates and tests still works. One that used attribute access or a call (for example `.max()` on a vector) is now refused, with the reason shown at the field.
+
+**Also:**
+* The Vizard download records its URL, size and SHA-256 (`download.json`, next to it), and shows the hash.
+* The build scripts write `SHA256SUMS` and `<package>.sha256`.
+* ruff's security rules (S) now run in CI over the package; each remaining finding carries its reason.
+
+**Not changed:** Vizard live streaming still listens on all network interfaces, as Basilisk sets it. Binding it to this computer only needs checking against a real Vizard first (human action H11).

@@ -245,12 +245,12 @@ def scenario_warnings(scenario) -> List[str]:
     for check in (_pass_warnings, _recording_warnings, _tle_warnings, _gravity_warnings):
         try:
             warnings += check(scenario)
-        except Exception:  # noqa: BLE001 -- a half-edited scenario must never break the Explain tab
+        except Exception:  # noqa: BLE001, S110 -- a half-edited scenario must never break the Explain tab
             pass
     for sc in scenario.spacecraft:
         try:
             warnings += _spacecraft_warnings(sc)
-        except Exception:  # noqa: BLE001 -- same reason
+        except Exception:  # noqa: BLE001, S110 -- same reason
             pass
     return warnings
 

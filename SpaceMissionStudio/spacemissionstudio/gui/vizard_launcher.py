@@ -68,6 +68,8 @@ an explicit click) or a manual browse prompt.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import shutil
 import stat
 import subprocess
@@ -76,6 +78,7 @@ import threading
 import urllib.error
 import urllib.request
 import zipfile
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, List, Optional
 
@@ -248,9 +251,9 @@ def fetch_vizard(dest_dir: Optional[Path] = None, timeout_s: float = 30.0,
 
     if on_status:
         on_status(f"Downloading {url} ...")
-    request = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
+    request = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})  # noqa: S310 -- constant https URL
     try:
-        with urllib.request.urlopen(request, timeout=timeout_s) as response:
+        with urllib.request.urlopen(request, timeout=timeout_s) as response:  # noqa: S310 -- constant https URL
             chunks = []
             total = 0
             while True:
@@ -273,6 +276,15 @@ def fetch_vizard(dest_dir: Optional[Path] = None, timeout_s: float = 30.0,
     tmp = zip_path.with_suffix(zip_path.suffix + ".part")
     tmp.write_bytes(data)
     tmp.replace(zip_path)  # atomic-ish: never leave a half-written file at zip_path
+    # AVS publishes no checksum to verify against, so the download is at
+    # least recorded: source, size and SHA-256 (security_analysis.md S-05).
+    sha256 = hashlib.sha256(data).hexdigest()
+    (dest_dir / "download.json").write_text(json.dumps({
+        "url": url, "file": zip_name, "size_bytes": len(data), "sha256": sha256,
+        "downloaded_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    }, indent=2), encoding="utf-8")
+    if on_status:
+        on_status(f"Downloaded {zip_name}: {len(data)} bytes, SHA-256 {sha256}")
 
     # A plain "extracted" staging name, not one derived from the zip's own
     # filename: AVS's own Vizard_<platform>.zip already wraps its contents
@@ -381,7 +393,7 @@ def launch_vizard(executable_path: Path, direct_comm_address: Optional[str] = No
     args = [str(executable_path)]
     if direct_comm_address:
         args += ["-directComm", direct_comm_address]
-    return subprocess.Popen(args)
+    return subprocess.Popen(args)  # noqa: S603 -- argument list, no shell; the user's chosen Vizard executable
 
 
 class VizardFetchWorker(QThread):

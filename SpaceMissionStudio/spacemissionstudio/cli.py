@@ -63,6 +63,7 @@ from pathlib import Path
 from . import dependencies
 from .logging_setup import configure_logging
 from .schema import ScenarioValidationError, load_scenario
+from .schema.command import script_blocks
 
 
 def cmd_validate(args: argparse.Namespace) -> int:
@@ -73,6 +74,10 @@ def cmd_validate(args: argparse.Namespace) -> int:
         return 1
     print(f"OK: {scenario.name!r} -- {len(scenario.spacecraft)} spacecraft, "
           f"schema version {scenario.schema_version}, epoch {scenario.epoch_utc}")
+    blocks = script_blocks(scenario.mission_sequence)
+    if blocks:
+        print(f"NOTE: {len(blocks)} script_block(s) ({', '.join(path for path, _ in blocks)}) run unrestricted "
+              "Python; 'run' needs --allow-scripts to run them")
     return 0
 
 
@@ -85,6 +90,13 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     if args.vizard_save_file and args.vizard_live_stream:
         print("ERROR: pass at most one of --vizard-save-file / --vizard-live-stream", file=sys.stderr)
+        return 1
+    blocks = script_blocks(scenario.mission_sequence)
+    if blocks and not args.allow_scripts:
+        # SRS-S-03: a scenario file must not run code without the user knowing.
+        print(f"ERROR: {len(blocks)} script_block(s) ({', '.join(path for path, _ in blocks)}) run unrestricted "
+              "Python from the scenario file. Read the code first, then pass --allow-scripts to run it.",
+              file=sys.stderr)
         return 1
 
     try:
@@ -122,7 +134,8 @@ def cmd_run(args: argparse.Namespace) -> int:
             from .engine.mission_engine import MissionEngine
 
             print(f"Executing mission_sequence ({len(scenario.mission_sequence)} top-level command(s))...")
-            result, command_summary = MissionEngine(scenario, service=service).run()
+            result, command_summary = MissionEngine(scenario, service=service,
+                                                    allow_scripts=args.allow_scripts).run()
         else:
             result = service.run()
     except Exception as exc:  # noqa: BLE001 -- report ANY run failure with a specific message, not a bare traceback
@@ -729,6 +742,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_run.add_argument("--vizard-trail", action="store_true",
                         help="also draw the flown path in Vizard (builds up into a band over long runs)")
     p_run.add_argument("--vizard-ground-tracks", action="store_true", help="also draw ground tracks in Vizard")
+    p_run.add_argument("--allow-scripts", action="store_true",
+                       help="run the scenario's script_block commands (unrestricted Python: only for files you "
+                            "trust and have read)")
     p_run.set_defaults(func=cmd_run)
 
     p_mc = subparsers.add_parser("monte-carlo", help="run a Monte Carlo batch and archive retained results")

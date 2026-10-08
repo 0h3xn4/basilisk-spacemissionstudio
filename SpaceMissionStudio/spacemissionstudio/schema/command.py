@@ -78,9 +78,11 @@ the full spacecraft/ground-station name list to check against.
 
 from __future__ import annotations
 
+import ast
+import operator
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 SUPPORTED_COMMAND_KINDS = (
     "propagate", "maneuver", "lambert_transfer", "assignment", "report", "if", "while", "script_block",
@@ -271,6 +273,11 @@ class Command:
         condition = self.params.get("condition")
         _collect(errors, path, isinstance(condition, str) and bool(condition.strip()),
                   f"{self.kind}.condition must be a non-empty expression string")
+        if isinstance(condition, str) and condition.strip():
+            try:
+                parse_condition(condition)
+            except ConditionError as exc:
+                errors.append(f"{path}: {self.kind}.condition: {exc}")
 
     def _validate_script_block(self, path: str, errors: List[str]) -> None:
         code = self.params.get("code")
@@ -314,3 +321,108 @@ def report_before_propagate_errors(commands: List[Command], path: str = "mission
             return [f"{path}[{i}]: this report runs before any propagate, so nothing has been recorded yet -- "
                     "add a propagate command before it"]
     return []
+
+
+def script_blocks(commands: List[Command], path: str = "mission_sequence") -> List[Tuple[str, Command]]:
+    """Every ``script_block`` in ``commands`` and their children, as
+    ``(item path, command)`` in execution order. A ``script_block`` runs
+    unrestricted Python, so the engine runs one only with the user's
+    explicit consent (SRS-S-03; ``compliance/docs/security_analysis.md``):
+    the CLI's ``--allow-scripts``, or the GUI's confirmation, which shows
+    the code this function finds."""
+    found: List[Tuple[str, Command]] = []
+    for i, command in enumerate(commands):
+        item = f"{path}[{i}]"
+        if command.kind == "script_block":
+            found.append((item, command))
+        found += script_blocks(command.children, f"{item}.children")
+    return found
+
+
+# -- if/while conditions ---------------------------------------------------
+#
+# A condition comes from the scenario file, so it is evaluated by a small
+# interpreter over a whitelist of expression nodes, not by eval(): eval()
+# with empty builtins still lets a crafted condition reach any Python
+# object through attribute access (security_analysis.md, finding S-02).
+# Allowed: numbers, strings, True/False/None, the context's names (t_s,
+# duration_days, spacecraft), subscripts (spacecraft['sat-1']['altitude_m'],
+# r_BN_N[0]), arithmetic, comparisons, and/or/not, conditional expressions
+# and tuple/list literals. Not allowed: attribute access, calls, lambdas,
+# comprehensions -- nothing that can reach beyond the values given.
+
+class ConditionError(ValueError):
+    """A condition uses a construct outside the allowed set, or fails."""
+
+
+_BINARY = {ast.Add: operator.add, ast.Sub: operator.sub, ast.Mult: operator.mul, ast.Div: operator.truediv,
+           ast.FloorDiv: operator.floordiv, ast.Mod: operator.mod, ast.Pow: operator.pow}
+_UNARY = {ast.UAdd: operator.pos, ast.USub: operator.neg, ast.Not: operator.not_}
+_COMPARE = {ast.Eq: operator.eq, ast.NotEq: operator.ne, ast.Lt: operator.lt, ast.LtE: operator.le,
+            ast.Gt: operator.gt, ast.GtE: operator.ge, ast.In: lambda a, b: a in b,
+            ast.NotIn: lambda a, b: a not in b}
+_ALLOWED_NODES = (ast.Expression, ast.Constant, ast.Name, ast.Load, ast.Subscript, ast.Slice, ast.Tuple,
+                  ast.List, ast.BinOp, ast.UnaryOp, ast.BoolOp, ast.And, ast.Or, ast.Compare, ast.IfExp,
+                  *_BINARY, *_UNARY, *_COMPARE)
+_MAX_POWER_EXPONENT = 1000  # [-] keeps a crafted ``10 ** 10 ** 10`` from hanging the run
+
+
+def parse_condition(expression: str) -> ast.Expression:
+    """Parse ``expression`` and check every node is allowed."""
+    try:
+        tree = ast.parse(expression.strip(), mode="eval")
+    except SyntaxError as exc:
+        raise ConditionError(f"not a valid expression ({exc.msg})") from exc
+    for node in ast.walk(tree):
+        if not isinstance(node, _ALLOWED_NODES):
+            raise ConditionError(f"{type(node).__name__} is not allowed in a condition (only names, numbers, "
+                                 "subscripts, arithmetic, comparisons and and/or/not)")
+    return tree
+
+
+def evaluate_condition(expression: str, context: Dict[str, Any]) -> Any:
+    """Value of ``expression`` with the names in ``context``."""
+    return _evaluate(parse_condition(expression).body, context)
+
+
+def _evaluate(node: ast.AST, context: Dict[str, Any]) -> Any:
+    if isinstance(node, ast.Constant):
+        return node.value
+    if isinstance(node, ast.Name):
+        if node.id not in context:
+            raise ConditionError(f"unknown name {node.id!r} (available: {', '.join(sorted(context))})")
+        return context[node.id]
+    if isinstance(node, ast.Subscript):
+        return _evaluate(node.value, context)[_evaluate(node.slice, context)]
+    if isinstance(node, ast.Slice):
+        return slice(*(None if part is None else _evaluate(part, context)
+                       for part in (node.lower, node.upper, node.step)))
+    if isinstance(node, (ast.Tuple, ast.List)):
+        values = [_evaluate(element, context) for element in node.elts]
+        return tuple(values) if isinstance(node, ast.Tuple) else values
+    if isinstance(node, ast.BinOp):
+        left, right = _evaluate(node.left, context), _evaluate(node.right, context)
+        if isinstance(node.op, ast.Pow) and abs(right) > _MAX_POWER_EXPONENT:
+            raise ConditionError(f"exponent {right} is too large")
+        return _BINARY[type(node.op)](left, right)
+    if isinstance(node, ast.UnaryOp):
+        return _UNARY[type(node.op)](_evaluate(node.operand, context))
+    if isinstance(node, ast.BoolOp):
+        is_and = isinstance(node.op, ast.And)
+        value = None
+        for operand in node.values:
+            value = _evaluate(operand, context)
+            if bool(value) != is_and:
+                return value
+        return value
+    if isinstance(node, ast.Compare):
+        left = _evaluate(node.left, context)
+        for op, comparator in zip(node.ops, node.comparators):
+            right = _evaluate(comparator, context)
+            if not _COMPARE[type(op)](left, right):
+                return False
+            left = right
+        return True
+    if isinstance(node, ast.IfExp):
+        return _evaluate(node.body if _evaluate(node.test, context) else node.orelse, context)
+    raise ConditionError(f"{type(node).__name__} is not allowed in a condition")  # unreachable after parse

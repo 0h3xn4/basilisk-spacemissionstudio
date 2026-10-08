@@ -401,7 +401,7 @@ def test_if_true_branch_runs_children():
             Command(kind="script_block", params={"code": "summary.reports.append('ran')"}),
         ]),
     ])
-    _, summary = MissionEngine(scenario).run()
+    _, summary = MissionEngine(scenario, allow_scripts=True).run()
     assert summary.reports == ["ran"]
 
 
@@ -428,7 +428,7 @@ def test_if_condition_can_read_spacecraft_state():
             Command(kind="script_block", params={"code": "summary.reports.append('above surface')"}),
         ]),
     ])
-    _, summary = MissionEngine(scenario).run()
+    _, summary = MissionEngine(scenario, allow_scripts=True).run()
     assert summary.reports == ["above surface"]
 
 
@@ -470,7 +470,7 @@ def test_while_loop_exceeding_iteration_cap_raises_clear_error():
         ]),
     ])
     with pytest.raises(MissionEngineError, match="exceeded .* iterations"):
-        MissionEngine(scenario).run()
+        MissionEngine(scenario, allow_scripts=True).run()
 
 
 def test_script_block_can_write_to_summary():
@@ -479,7 +479,7 @@ def test_script_block_can_write_to_summary():
     scenario = _scenario(mission_sequence=[
         Command(kind="script_block", params={"code": "summary.reports.append(None)"}),
     ])
-    _, summary = MissionEngine(scenario).run()
+    _, summary = MissionEngine(scenario, allow_scripts=True).run()
     assert summary.reports == [None]
 
 
@@ -490,7 +490,42 @@ def test_script_block_exception_is_wrapped_in_mission_engine_error():
         Command(kind="script_block", params={"code": "raise ValueError('boom')"}),
     ])
     with pytest.raises(MissionEngineError, match="boom"):
-        MissionEngine(scenario).run()
+        MissionEngine(scenario, allow_scripts=True).run()
+
+
+def test_script_block_does_not_run_without_consent():
+    """SRS-S-03: a scenario's script_block is refused before anything is
+    built unless the caller passes the user's consent (allow_scripts),
+    and the error names the command."""
+    from spacemissionstudio.engine.mission_engine import MissionEngine, ScriptsNotAllowedError
+
+    scenario = _scenario(mission_sequence=[
+        Command(kind="if", params={"condition": "True"}, children=[
+            Command(kind="script_block", params={"code": "summary.reports.append('ran')"}),
+        ]),
+    ])
+    engine = MissionEngine(scenario)
+    with pytest.raises(ScriptsNotAllowedError, match=r"mission_sequence\[0\]\.children\[0\]"):
+        engine.run()
+    assert engine.service.scSim is None
+
+
+def test_condition_cannot_reach_python_objects():
+    """A condition is evaluated over a whitelist, not by eval(): attribute
+    access (the way out of eval's empty builtins) and calls are refused
+    (security analysis S-02)."""
+    from spacemissionstudio.engine.mission_engine import MissionEngine, MissionEngineError
+    from spacemissionstudio.schema.scenario import ScenarioValidationError
+
+    escape = "().__class__.__base__.__subclasses__()"
+    scenario = _scenario(mission_sequence=[Command(kind="if", params={"condition": escape}, children=[])])
+    with pytest.raises(ScenarioValidationError, match="is not allowed in a condition"):
+        scenario.validate()
+    # The engine refuses it too, for a scenario that skipped validation.
+    engine = object.__new__(MissionEngine)
+    engine._script_context = lambda: {"t_s": 0.0}
+    with pytest.raises(MissionEngineError, match="is not allowed in a condition"):
+        engine._evaluate_condition(escape, "mission_sequence[0]")
 
 
 def test_nested_if_inside_while_shares_one_command_summary():

@@ -38,7 +38,7 @@ _MAX_LABEL_CHARS = 160
 _CODE_NAME = re.compile(r"\b[a-z]+_[a-z_]+\b|docstring|\w+\(\)|\bengine\.|\bschema\.")
 # Where code syntax IS the content: the if/while condition is typed as a
 # Python expression, so its hint has to show the names it can use.
-_SYNTAX_HINTS = ("A Python condition", "Available: t_s")
+_SYNTAX_HINTS = ("A condition, e.g.", "Available: t_s")
 
 
 @pytest.fixture

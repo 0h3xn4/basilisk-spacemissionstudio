@@ -366,6 +366,30 @@ def test_fetch_vizard_reports_progress_status(tmp_path, monkeypatch):
     assert any("Extracting" in s for s in statuses)
 
 
+def test_fetch_vizard_records_the_download_with_its_sha256(tmp_path, monkeypatch):
+    """No checksum is published for Vizard, so the download is recorded
+    (source, size, SHA-256) and the hash is shown to the user
+    (security analysis S-05)."""
+    import hashlib
+    import json
+
+    from spacemissionstudio.gui import vizard_launcher
+
+    monkeypatch.setattr(vizard_launcher.sys, "platform", "linux")
+    zip_name = tmp_path / "staging.zip"
+    _make_vizard_zip(zip_name, executable_name="Vizard.x86_64")
+    data = zip_name.read_bytes()
+    monkeypatch.setattr(vizard_launcher.urllib.request, "urlopen", lambda *a, **k: _FakeUrlResponse(data))
+
+    statuses = []
+    vizard_launcher.fetch_vizard(dest_dir=tmp_path, on_status=statuses.append)
+
+    record = json.loads((tmp_path / "download.json").read_text())
+    assert record["sha256"] == hashlib.sha256(data).hexdigest()
+    assert record["size_bytes"] == len(data) and record["url"].startswith("https://")
+    assert any(record["sha256"] in s for s in statuses)
+
+
 def test_fetch_vizard_finds_the_executable_inside_a_same_named_wrapper_folder(tmp_path, monkeypatch):
     """Matches AVS's own real .zip layout -- Vizard_<platform>.zip wraps
     its contents in a same-named top-level folder.

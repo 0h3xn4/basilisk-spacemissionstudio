@@ -501,8 +501,9 @@ class _CommandEditorDialog(QDialog):
         page = QWidget()
         layout = QVBoxLayout(page)
         hint = QLabel(
-            "A Python condition, e.g.  spacecraft['sat-1']['altitude_m'] < 400000\n"
-            "Available: t_s (mission time, s) and, per spacecraft, r_BN_N, v_BN_N, altitude_m, mass_kg."
+            "A condition, e.g.  spacecraft['sat-1']['altitude_m'] < 400000\n"
+            "Available: t_s (mission time, s), duration_days and, per spacecraft, r_BN_N, v_BN_N, altitude_m, "
+            "mass_kg. Allowed: numbers, names, [ ] indexing, arithmetic, comparisons, and/or/not."
         )
         hint.setWordWrap(True)
         layout.addWidget(hint)
@@ -515,7 +516,7 @@ class _CommandEditorDialog(QDialog):
         page = QWidget()
         layout = QVBoxLayout(page)
         hint = QLabel(
-            "Python code, run without a sandbox. Only run scripts you trust."
+            "Python code, run without a sandbox. Only run scripts you trust: Run asks before it runs them."
         )
         hint.setWordWrap(True)
         layout.addWidget(hint)

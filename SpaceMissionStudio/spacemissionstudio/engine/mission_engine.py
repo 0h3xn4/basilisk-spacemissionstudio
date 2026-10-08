@@ -81,7 +81,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 
-from ..schema.command import PASS_EVENT_KINDS, Command
+from ..schema.command import PASS_EVENT_KINDS, Command, evaluate_condition, script_blocks
 from ..schema.scenario import Scenario
 from .orbit_maintenance import _rtn_basis, _vnb_basis
 from .results import CommandSummary, ReportEntry, ResultSet
@@ -151,6 +151,11 @@ class MissionEngineError(Exception):
     """
 
 
+class ScriptsNotAllowedError(MissionEngineError):
+    """The mission sequence has ``script_block`` commands and the user has
+    not consented to running them (``MissionEngine(allow_scripts=False)``)."""
+
+
 class MissionEngineCancelled(Exception):
     """Raised by :meth:`MissionEngine.run` when the ``should_cancel``
     callback it was given starts returning ``True`` between commands (see
@@ -185,8 +190,12 @@ class MissionEngine:
     """
 
     def __init__(self, scenario: Scenario, service: Optional[SimulationService] = None,
-                 should_cancel: Optional[Callable[[], bool]] = None):
+                 should_cancel: Optional[Callable[[], bool]] = None, allow_scripts: bool = False):
         self.scenario = scenario
+        # script_block runs unrestricted Python from the scenario file: it
+        # runs only when the caller has the user's explicit consent
+        # (SRS-S-03; CLI --allow-scripts, GUI confirmation).
+        self.allow_scripts = allow_scripts
         self.service = service or SimulationService(scenario)
         self._should_cancel = should_cancel
         self._event_counter = 0
@@ -240,6 +249,12 @@ class MissionEngine:
         run_live``'s own ``should_cancel`` already has for the
         non-mission_sequence path.
         """
+        blocks = script_blocks(self.scenario.mission_sequence)
+        if blocks and not self.allow_scripts:
+            raise ScriptsNotAllowedError(
+                f"{', '.join(path for path, _ in blocks)}: script_block runs unrestricted Python from the "
+                "scenario file, so it runs only with your explicit consent -- check the code, then use "
+                "--allow-scripts (CLI) or confirm when asked (GUI)")
         if self.service.scSim is None:
             self.service.build()
         summary = CommandSummary()
@@ -769,8 +784,9 @@ class MissionEngine:
                 )
 
     def _evaluate_condition(self, expression: str, path: str) -> bool:
+        # Not eval(): see schema.command.evaluate_condition (finding S-02).
         try:
-            return bool(eval(expression, {"__builtins__": {}}, self._script_context()))
+            return bool(evaluate_condition(expression, self._script_context()))
         except MissionEngineError:
             raise
         except Exception as exc:
@@ -824,13 +840,16 @@ class MissionEngine:
         (or, for that matter, the Python scenario scripts this whole
         checkout's ``examples/`` directory already consists of) -- only
         run a scenario file you trust, the same rule that already applies
-        to running any Python script at all.
+        to running any Python script at all. :meth:`run` refuses to start
+        a sequence containing one unless ``allow_scripts`` is set, so a
+        scenario from someone else cannot run code without the user
+        knowing (SRS-S-03).
         """
         context: Dict[str, Any] = dict(self._script_context())
         context["service"] = self.service
         context["scenario"] = self.scenario
         context["summary"] = summary
         try:
-            exec(command.params["code"], {"__builtins__": __builtins__}, context)
+            exec(command.params["code"], {"__builtins__": __builtins__}, context)  # noqa: S102 -- by design, after consent (run())
         except Exception as exc:
             raise MissionEngineError(f"{path}: script_block raised {type(exc).__name__}: {exc}") from exc

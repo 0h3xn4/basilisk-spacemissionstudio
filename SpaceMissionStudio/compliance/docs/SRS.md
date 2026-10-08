@@ -240,6 +240,7 @@ the results so far.
 | SRS-S-01 | No network access unless the user starts it. Each download states what it fetches and from where. |
 | SRS-S-02 | Downloaded files shall be checked before use (format, coverage) and recorded with their SHA-256. |
 | SRS-S-03 | Scenario files that run Python code (`script_block`) shall not run without the user knowing; see the security analysis (`security_analysis.md`, R15). |
+| SRS-S-04 | `if`/`while` conditions from a scenario file shall be evaluated without executing code: only names, numbers, subscripts, arithmetic, comparisons and logical operators (security analysis S-02). |
 
 The security assurance level is low (UD-4, D8).
 
@@ -341,7 +342,7 @@ Methods: T = test, A = analysis, I = inspection, R = review of design.
 | SRS-P-09, SRS-R-02 | A | not yet done (open item in SVR) |
 | SRS-I-01 to I-08 | T | see the ICD validation matrix |
 | SRS-O-01, O-02 | T | `tests/gui/test_run_worker*.py`, `tests/test_service_run_live.py` |
-| SRS-S-01 to S-03 | T, R | `tests/test_spaceweather.py` (fetch never called by `resolve`), `tests/gui/test_startup_fetch_dialog.py`; security analysis |
+| SRS-S-01 to S-04 | T, R | `tests/test_spaceweather.py` (fetch never called by `resolve`), `tests/gui/test_startup_fetch_dialog.py`; S-03: `tests/test_mission_engine.py`, `tests/test_cli.py`, `tests/gui/test_main_window.py` (script consent); S-04: `tests/test_command.py` (condition evaluator); security analysis |
 | SRS-Q-01 to Q-03 | A | CI metrics (`compliance/metrics.md`) |
 | SRS-RE-01, RE-02 | T | `tests/test_service_execution_errors.py`, `tests/test_lifetime.py::test_a_run_stops_cleanly_when_its_spacecraft_reenters`, `tests/test_autosave.py` |
 | SRS-M-01, M-02 | I | CI workflow; module structure |

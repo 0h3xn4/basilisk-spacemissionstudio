@@ -70,3 +70,7 @@ python3 -m build --wheel --sdist --outdir "$dist_dir"
 echo
 echo "Built:"
 ls -1 "$dist_dir"/spacemissionstudio-*
+# Release checksums (security_analysis.md S-07): publish SHA256SUMS with
+# the files so a user can check what they downloaded.
+(cd "$dist_dir" && sha256sum spacemissionstudio-* > SHA256SUMS)
+echo "Checksums: $dist_dir/SHA256SUMS"

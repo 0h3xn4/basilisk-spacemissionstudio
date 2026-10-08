@@ -4,6 +4,8 @@ runs anywhere.
 
 from dataclasses import asdict
 
+import pytest
+
 from spacemissionstudio.schema.command import Command
 
 
@@ -317,3 +319,83 @@ def test_scenario_validation_reports_it(tmp_path):
     with pytest.raises(ScenarioValidationError, match="before any propagate"):
         scenario.validate()
     assert any("before any propagate" in error for error in validate_all(scenario))
+
+
+# -- if/while conditions and script blocks (R15, security_analysis.md) ------
+
+_CONTEXT = {"t_s": 120.0, "duration_days": 1.0,
+            "spacecraft": {"sat-1": {"altitude_m": 400e3, "r_BN_N": [6778e3, 0.0, 0.0]}}}
+
+
+@pytest.mark.parametrize("expression, expected", [
+    ("t_s > 60", True),
+    ("t_s < 60 or duration_days == 1", True),
+    ("not (t_s >= 60 and t_s <= 180)", False),
+    ("spacecraft['sat-1']['altitude_m'] < 500e3", True),
+    ("spacecraft['sat-1']['r_BN_N'][0] / 1e3 > 6000", True),
+    ("-t_s + 2 ** 3 * 15", 0.0),
+    ("0 < t_s < 100", False),
+    ("'sat-1' in spacecraft", True),
+    ("1 if t_s > 100 else 2", 1),
+    ("True", True),
+])
+def test_conditions_evaluate_like_python(expression, expected):
+    """The allowed subset gives Python's own value for each expression."""
+    from spacemissionstudio.schema.command import evaluate_condition
+
+    assert evaluate_condition(expression, _CONTEXT) == expected
+
+
+@pytest.mark.parametrize("expression", [
+    "().__class__.__base__.__subclasses__()",
+    "t_s.real",
+    "__import__('os')",
+    "open('/etc/passwd')",
+    "(lambda: 1)()",
+    "[x for x in spacecraft]",
+])
+def test_conditions_cannot_reach_beyond_their_values(expression):
+    """Attribute access, calls, lambdas and comprehensions are refused, so
+    a condition from a scenario file cannot reach any Python object
+    (finding S-02)."""
+    from spacemissionstudio.schema.command import ConditionError, evaluate_condition
+
+    with pytest.raises(ConditionError, match="is not allowed in a condition"):
+        evaluate_condition(expression, _CONTEXT)
+
+
+def test_condition_errors_name_the_problem():
+    """Unknown names list the available ones; a syntax error and a huge
+    exponent are refused with a message."""
+    from spacemissionstudio.schema.command import ConditionError, evaluate_condition
+
+    with pytest.raises(ConditionError, match="unknown name 'alt'.*spacecraft"):
+        evaluate_condition("alt < 500", _CONTEXT)
+    with pytest.raises(ConditionError, match="not a valid expression"):
+        evaluate_condition("t_s >", _CONTEXT)
+    with pytest.raises(ConditionError, match="exponent"):
+        evaluate_condition("10 ** 10 ** 10", _CONTEXT)
+
+
+def test_validation_reports_a_condition_outside_the_allowed_set():
+    """The editor shows a disallowed condition before the run, with the
+    command's path."""
+    command = Command(kind="if", params={"condition": "t_s.real > 0"})
+    assert any("if.condition: Attribute is not allowed" in error for error in command.validate("mission_sequence[0]"))
+
+
+def test_script_blocks_are_found_at_any_depth():
+    """script_blocks() lists every script_block with its item path, so the
+    CLI and the GUI can ask for consent naming each one (SRS-S-03)."""
+    from spacemissionstudio.schema.command import script_blocks
+
+    commands = [
+        Command(kind="script_block", params={"code": "pass"}),
+        Command(kind="while", params={"condition": "t_s < 10"}, children=[
+            Command(kind="if", params={"condition": "True"}, children=[
+                Command(kind="script_block", params={"code": "pass"}),
+            ]),
+        ]),
+    ]
+    assert [path for path, _ in script_blocks(commands)] == [
+        "mission_sequence[0]", "mission_sequence[1].children[0].children[0]"]

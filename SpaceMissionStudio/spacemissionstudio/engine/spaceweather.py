@@ -275,9 +275,9 @@ def fetch(dataset: str = "SW-All", cache_dir: Optional[Path] = None, force: bool
         return dest
 
     url = CELESTRAK_URLS[dataset]
-    request = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
+    request = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})  # noqa: S310 -- constant https URL
     try:
-        with urllib.request.urlopen(request, timeout=timeout_s) as response:
+        with urllib.request.urlopen(request, timeout=timeout_s) as response:  # noqa: S310 -- constant https URL
             # Read one byte past the cap rather than response.read() with no
             # bound: an unbounded read would buffer however much data the
             # server sends (or never sends, tying up memory/the connection)

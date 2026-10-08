@@ -404,9 +404,10 @@ def test_run_passes_vizard_request_to_worker(window, monkeypatch):
     captured = {}
     original_init = RunWorker.__init__
 
-    def spy_init(self, scenario, vizard_request=None, live=False, parent=None):
+    def spy_init(self, scenario, vizard_request=None, live=False, parent=None, allow_scripts=False):
         captured["vizard_request"] = vizard_request
-        original_init(self, scenario, vizard_request=vizard_request, live=live, parent=parent)
+        original_init(self, scenario, vizard_request=vizard_request, live=live, parent=parent,
+                      allow_scripts=allow_scripts)
 
     monkeypatch.setattr(RunWorker, "__init__", spy_init)
     monkeypatch.setattr(RunWorker, "start", lambda self: None)  # don't actually spin up the thread
@@ -440,12 +441,15 @@ def test_run_passes_live_flag_from_action_to_worker(window, monkeypatch):
     captured = {}
     original_init = RunWorker.__init__
 
-    def spy_init(self, scenario, vizard_request=None, live=False, parent=None):
+    def spy_init(self, scenario, vizard_request=None, live=False, parent=None, allow_scripts=False):
         captured["live"] = live
-        original_init(self, scenario, vizard_request=vizard_request, live=live, parent=parent)
+        captured["allow_scripts"] = allow_scripts
+        original_init(self, scenario, vizard_request=vizard_request, live=live, parent=parent,
+                      allow_scripts=allow_scripts)
 
     monkeypatch.setattr(RunWorker, "__init__", spy_init)
     monkeypatch.setattr(RunWorker, "start", lambda self: None)
+    monkeypatch.setattr(type(window), "_confirm_script_blocks", lambda self, blocks: True)
 
     window.live_plot_action.setChecked(True)
     window.on_run()
@@ -877,12 +881,15 @@ def test_run_with_mission_sequence_ignores_live_flag_and_shows_mission_output(wi
     captured = {}
     original_init = RunWorker.__init__
 
-    def spy_init(self, scenario, vizard_request=None, live=False, parent=None):
+    def spy_init(self, scenario, vizard_request=None, live=False, parent=None, allow_scripts=False):
         captured["live"] = live
-        original_init(self, scenario, vizard_request=vizard_request, live=live, parent=parent)
+        captured["allow_scripts"] = allow_scripts
+        original_init(self, scenario, vizard_request=vizard_request, live=live, parent=parent,
+                      allow_scripts=allow_scripts)
 
     monkeypatch.setattr(RunWorker, "__init__", spy_init)
     monkeypatch.setattr(RunWorker, "start", lambda self: None)
+    monkeypatch.setattr(type(window), "_confirm_script_blocks", lambda self, blocks: True)
 
     window.live_plot_action.setChecked(True)
     window.on_run()
@@ -890,6 +897,51 @@ def test_run_with_mission_sequence_ignores_live_flag_and_shows_mission_output(wi
     # MissionEngine has no run_live() equivalent (see RunWorker.run()) --
     # a mission_sequence run always ignores the live-plot toggle.
     assert captured["live"] is False
+
+
+def test_script_blocks_run_only_after_the_user_confirms(window, monkeypatch):
+    """SRS-S-03: a scenario with a script_block asks first. Declining
+    starts nothing; confirming starts the run with the consent passed on."""
+    from spacemissionstudio.gui.run_worker import RunWorker
+    from spacemissionstudio.schema.command import Command
+
+    _add_valid_spacecraft(window)
+    window.scenario_editor.mission_sequence_editor.from_command_list([
+        Command(kind="script_block", label="mine", params={"code": "print('hello')"}),
+    ])
+    window.scenario_editor.changed.emit()
+    started, asked = [], []
+    monkeypatch.setattr(RunWorker, "start", lambda self: started.append(self.allow_scripts))
+
+    monkeypatch.setattr(type(window), "_confirm_script_blocks", lambda self, blocks: asked.append(blocks) or False)
+    window.on_run()
+    assert started == []
+    assert [path for path, _ in asked[0]] == ["mission_sequence[0]"]
+
+    monkeypatch.setattr(type(window), "_confirm_script_blocks", lambda self, blocks: True)
+    window.on_run()
+    assert started == [True]
+
+
+def test_script_block_confirmation_shows_the_code_and_defaults_to_no(window, monkeypatch):
+    """The confirmation lists each block's path and code, and No is the
+    default button."""
+    from PySide6.QtWidgets import QMessageBox
+
+    from spacemissionstudio.schema.command import Command
+
+    seen = {}
+
+    def fake_exec(box):
+        seen["details"] = box.detailedText()
+        seen["default"] = box.defaultButton() is box.button(QMessageBox.StandardButton.No)
+        return QMessageBox.StandardButton.No
+
+    monkeypatch.setattr(QMessageBox, "exec", fake_exec)
+    block = Command(kind="script_block", label="mine", params={"code": "print('hello')"})
+    assert window._confirm_script_blocks([("mission_sequence[0]", block)]) is False
+    assert "mission_sequence[0] (mine):" in seen["details"] and "print('hello')" in seen["details"]
+    assert seen["default"]
 
 
 def test_run_finished_with_command_summary_shows_mission_output_tab(window):

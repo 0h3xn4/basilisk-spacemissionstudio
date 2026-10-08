@@ -608,7 +608,7 @@ def _highest_initial_orbit_radius_m(sc_objects) -> Optional[float]:
     for sc_object in sc_objects:
         try:
             r = simHelpers.EigenVector3d2list(sc_object.hub.r_CN_NInit)
-        except Exception:  # noqa: BLE001 -- a missing/odd initial state just means "unknown"
+        except Exception:  # noqa: BLE001, S112 -- a missing/odd initial state just means "unknown"
             continue
         radius = math.sqrt(sum(float(c) ** 2 for c in r))
         if radius > 0.0:

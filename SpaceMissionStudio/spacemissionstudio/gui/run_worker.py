@@ -81,9 +81,13 @@ class RunWorker(QThread):
     progress = Signal(object, float)  # engine.results.ResultSet (partial), fraction_complete in [0, 1]
     cancelled = Signal(object, object)  # engine.results.ResultSet (partial), Optional[engine.results.CommandSummary]
 
-    def __init__(self, scenario: Scenario, vizard_request: Optional[object] = None, live: bool = False, parent=None):
+    def __init__(self, scenario: Scenario, vizard_request: Optional[object] = None, live: bool = False,
+                 parent=None, allow_scripts: bool = False):
         super().__init__(parent)
         self.scenario = scenario
+        # True only after the user confirmed the scenario's script_block
+        # code (MainWindow.on_run; SRS-S-03).
+        self.allow_scripts = allow_scripts
         self.vizard_request = vizard_request  # engine.vizard.VizardRequest, or None
         # Whether `progress` is actually emitted as the run goes (driving
         # a live-updating plot -- see MainWindow.on_run()/the "Live plot"
@@ -124,7 +128,8 @@ class RunWorker(QThread):
 
                 try:
                     result, command_summary = MissionEngine(
-                        self.scenario, service=service, should_cancel=self._should_cancel
+                        self.scenario, service=service, should_cancel=self._should_cancel,
+                        allow_scripts=self.allow_scripts,
                     ).run()
                 except MissionEngineCancelled as exc:
                     self.cancelled.emit(exc.partial_result, exc.summary)

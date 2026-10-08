@@ -222,6 +222,43 @@ def test_kernels_status_without_basilisk_reports_clear_error(capsys):
     assert "Basilisk is not installed" in capsys.readouterr().err
 
 
+def _script_sequence(marker="unused"):
+    from spacemissionstudio.schema.command import Command
+
+    return [Command(kind="propagate", params={"stop_condition": "duration", "duration_days": 0.001}),
+            Command(kind="script_block", params={"code": f"open({str(marker)!r}, 'w').write('ran')"})]
+
+
+def test_validate_notes_script_blocks(tmp_path, capsys):
+    """validate says a scenario has script blocks and that run needs
+    --allow-scripts for them (SRS-S-03)."""
+    path = tmp_path / "scenario.json"
+    _write_scenario(path, mission_sequence=_script_sequence())
+    assert cli.main(["validate", str(path)]) == 0
+    assert "NOTE: 1 script_block(s) (mission_sequence[1])" in capsys.readouterr().out
+
+
+def test_run_refuses_script_blocks_without_allow_scripts(tmp_path, capsys):
+    """Without --allow-scripts, run stops before building anything, with
+    exit code 1 and the block's path (SRS-S-03)."""
+    path, marker = tmp_path / "scenario.json", tmp_path / "marker.txt"
+    _write_scenario(path, mission_sequence=_script_sequence(marker))
+    assert cli.main(["run", str(path), "--out-dir", str(tmp_path / "out")]) == 1
+    assert not marker.exists()
+    err = capsys.readouterr().err
+    assert "mission_sequence[1]" in err and "--allow-scripts" in err
+    assert not (tmp_path / "out").exists()
+
+
+@pytest.mark.requires_basilisk
+def test_run_with_allow_scripts_runs_them(tmp_path, capsys):
+    """With --allow-scripts the script block runs."""
+    path, marker = tmp_path / "scenario.json", tmp_path / "marker.txt"
+    _write_scenario(path, mission_sequence=_script_sequence(marker))
+    assert cli.main(["run", str(path), "--out-dir", str(tmp_path / "out"), "--allow-scripts"]) == 0
+    assert marker.read_text() == "ran"
+
+
 def test_run_rejects_both_vizard_flags_at_once(tmp_path, capsys):
     path = tmp_path / "scenario.json"
     _write_scenario(path)

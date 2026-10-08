@@ -181,9 +181,9 @@ def _install(directory: Path, sources: Iterable[tuple]) -> List[EOPKernel]:
 
 
 def _get(url: str, timeout_s: float) -> bytes:
-    request = urllib.request.Request(url, headers={"User-Agent": "SpaceMissionStudio"})
+    request = urllib.request.Request(url, headers={"User-Agent": "SpaceMissionStudio"})  # noqa: S310 -- NAIF_PCK_URL + a name matched by a fixed pattern
     try:
-        with urllib.request.urlopen(request, timeout=timeout_s) as response:
+        with urllib.request.urlopen(request, timeout=timeout_s) as response:  # noqa: S310 -- constant https NAIF URL
             data = response.read(_MAX_DOWNLOAD_BYTES + 1)
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
         raise EarthOrientationError(f"could not fetch {url}: {exc}") from exc
