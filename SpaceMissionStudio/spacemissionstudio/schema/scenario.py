@@ -776,6 +776,42 @@ class FuelTankConfig:
 
 
 @dataclass
+class FacetConfig:
+    """One flat plate of the spacecraft's outer surface, for attitude
+    -dependent drag and solar radiation pressure -- Basilisk's
+    ``facetDragDynamicEffector``/``facetSRPDynamicEffector``. Each plate
+    pushes only on its lit (or wind-facing) side, at its own centre of
+    pressure, so the force depends on attitude and an offset between that
+    centre and the centre of mass gives a disturbance torque. A two-sided
+    panel (a solar array) is two facets with opposite normals.
+    """
+
+    name: str
+    area_m2: float  # [m^2]
+    normal_b: list  # [-] outward normal, body frame (normalized when built)
+    location_b: list = field(default_factory=lambda: [0.0, 0.0, 0.0])  # [m] centre of pressure from point B
+    drag_coeff: float = 2.2  # [-]
+    specular_coeff: float = 0.3  # [-] fraction of sunlight reflected mirror-like
+    diffuse_coeff: float = 0.1  # [-] fraction reflected diffusely; the rest is absorbed
+
+    def validate(self, spacecraft_name: str) -> None:
+        where = f"{spacecraft_name}: facet {self.name!r}"
+        _require(bool(self.name), f"{spacecraft_name}: every facet needs a name")
+        _require(isinstance(self.area_m2, (int, float)) and 0.0 < self.area_m2 <= 1.0e4,
+                  f"{where}: area_m2 must be in (0, 1e4] m^2")
+        _require(_is_direction_vector(self.normal_b),
+                  f"{where}: normal_b must be a non-zero, finite 3-element body-frame vector")
+        _require(isinstance(self.location_b, list) and len(self.location_b) == 3
+                  and all(isinstance(v, (int, float)) and math.isfinite(v) for v in self.location_b),
+                  f"{where}: location_b must be a finite 3-element [x, y, z] in m")
+        _require(isinstance(self.drag_coeff, (int, float)) and 0.0 <= self.drag_coeff <= 10.0,
+                  f"{where}: drag_coeff must be in [0, 10]")
+        _require(0.0 <= self.specular_coeff <= 1.0 and 0.0 <= self.diffuse_coeff <= 1.0
+                  and self.specular_coeff + self.diffuse_coeff <= 1.0,
+                  f"{where}: specular_coeff and diffuse_coeff must each be in [0, 1] and sum to at most 1")
+
+
+@dataclass
 class SpacecraftConfig:
     name: str
     orbit: OrbitIC
@@ -800,6 +836,11 @@ class SpacecraftConfig:
     enable_srp: bool = False
     srp_coeff: float = 1.3
     srp_area_m2: float = 1.0
+    # Optional flat-plate model of the outer surface (list[FacetConfig]).
+    # When set, enabled drag and SRP use it (attitude-dependent forces plus
+    # their torques) instead of the sphere-like drag_area_m2/drag_coeff and
+    # srp_area_m2/srp_coeff above. Needs simulation_mode 'full_attitude'.
+    facets: list = field(default_factory=list)
 
     # Torque from the central body's (and, if present, any third-body
     # perturber's) gravity gradient across the spacecraft's own mass
@@ -1002,6 +1043,11 @@ class SpacecraftConfig:
                           f"params['measurement_fault_mode'] {measurement_fault_mode!r} -- must be one of "
                           f"{_THERMAL_FAULT_MODES}")
 
+        facet_names = [f.name for f in self.facets]
+        _require(len(facet_names) == len(set(facet_names)),
+                  f"{self.name}: facet names must be unique, got {facet_names}")
+        for facet in self.facets:
+            facet.validate(self.name)
         actuator_names = [a.name for a in self.actuators]
         _require(len(actuator_names) == len(set(actuator_names)),
                   f"{self.name}: actuator names must be unique, got {actuator_names}")
@@ -1524,6 +1570,9 @@ class Scenario:
                 _require(not sc.actuators,
                           f"{sc.name}: actuators are set but scenario.simulation_mode is 'orbit_only' -- "
                           "actuators need 'full_attitude' mode, or remove them from this spacecraft")
+                _require(not sc.facets,
+                          f"{sc.name}: facets are set but scenario.simulation_mode is 'orbit_only' -- their "
+                          "drag and SRP depend on the attitude 'full_attitude' mode simulates, or remove them")
                 _require(sc.power is None,
                           f"{sc.name}: power is set but scenario.simulation_mode is 'orbit_only' -- a real solar"
                           "-panel power budget needs the simulated attitude 'full_attitude' mode provides, or "
@@ -1663,6 +1712,7 @@ class Scenario:
             sc = dict(sc)
             orbit = OrbitIC(**sc.pop("orbit"))
             sensors = [SensorConfig(**s) for s in sc.pop("sensors", [])]
+            facets = [FacetConfig(**f) for f in sc.pop("facets", [])]
             actuators = [ActuatorConfig(**a) for a in sc.pop("actuators", [])]
             power_data = sc.pop("power", None)
             power = PowerConfig(**power_data) if power_data is not None else None
@@ -1693,7 +1743,7 @@ class Scenario:
                                                 phasing_keeping=phasing_keeping, constant_thrust=constant_thrust,
                                                 momentum_dumping=momentum_dumping,
                                                 magnetic_momentum_management=magnetic_momentum_management,
-                                                fuel_tank=fuel_tank,
+                                                fuel_tank=fuel_tank, facets=facets,
                                                 **sc))
 
         mission_sequence = [Command.from_dict(c) for c in data.pop("mission_sequence", [])]

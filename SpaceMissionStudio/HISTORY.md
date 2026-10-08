@@ -7466,3 +7466,44 @@ The 150, 300 and 500 kg presets now carry three orthogonal magnetic torque rods 
 A new Basilisk test checks this for each preset.
 
 `test_set_live_result_throttles_rapid_webview_redraws` failed once under an 8-worker run with Basilisk jobs alongside. Its four "rapid" redraws took longer than the 300 ms throttle window, so one push was legitimate. The test now freezes the throttle clock, so "rapid" no longer depends on machine load.
+
+## Facet models: attitude-dependent drag and solar pressure, with their torques
+
+Drag and SRP used to treat every spacecraft as a sphere (`dragDynamicEffector`, `radiationPressure`): a force with no dependence on attitude, and no torque. For a 100-500 kg spacecraft with a large solar array, the array's off-centre pressure is a steady disturbance torque that the wheels must absorb and something must unload.
+
+**New: `SpacecraftConfig.facets`** (`FacetConfig`). Each facet is a flat plate with:
+* area;
+* outward normal;
+* centre of pressure;
+* drag coefficient;
+* specular and diffuse reflection fractions.
+
+When facets are present, enabled drag and SRP use Basilisk's `facetDragDynamicEffector` and `facetSRPDynamicEffector` instead of the sphere model. Each plate facing the flow or the Sun pushes at its own centre of pressure. Facets need `full_attitude` mode. Every facet field is validated, since Basilisk's `bskError` would exit the app.
+
+**`engine.facets.box_facets()`** builds the usual first model: a box bus centred on the body origin plus a two-sided solar array. It uses the optical coefficients of Basilisk's `examples/scenarioSepMomentumManagement.py`.
+
+**GUI:**
+* The spacecraft editor's orbit & mass tab gains a "Surface facets" table with Add / Remove / "Box + solar array...".
+* The Explain tab shows a "Facet model" badge.
+* A warning flags facets left unused (drag and SRP both off).
+* Template wizards give facets their own labelled page.
+
+**Presets.** The 150, 300 and 500 kg presets now carry a facet model: their box plus the array on the +Z face. Centred there it adds no torque until moved.
+
+**New template 21, "Disturbance torques from a facet model".** Two copies of one 300 kg Sun-pointing spacecraft with the 2.5 m^2 array on a boom 1.5 m off to +Y; `rods-off` has only wheels, `rods-on` adds 30 A*m^2 torque rods.
+
+**Confirmed in Basilisk:**
+* **Template 21** (one simulated day, 5 s wall time): rods-off's stored momentum climbs steadily, 0.14 -> 0.85 -> 1.56 -> 3.17 N*m*s at 1/6/12/24 h. rods-on stays between 0.08 and 0.22 N*m*s, ending under 80 RPM. Both stay Sun-pointed.
+* **Facet SRP vs the sphere model.** An absorbing plate held facing the Sun moves the spacecraft like the sphere model with the same area and Cr = 1. They agree to 1.5% of the SRP displacement (0.016 m against 1.09 m after 1.6 h).
+* **Sunlit torque from the offset array:** 2.24e-5 N*m. The hand estimate is (1 + s + 2d/3) P A arm = 1.267 * 4.73e-6 N/m^2 * 2.5 m^2 * 1.5 m = 2.25e-5 N*m, with P scaled to Earth's 0.983 AU in January. Centred on +Z, the array gives ~1e-7 N*m.
+
+The wizard field "Array offset" moves the arrays of both spacecraft, so the comparison stays fair.
+
+**Tests:**
+* New `tests/test_facets.py`: the generator, validation, round-trip, warning and Explain badge, plus two Basilisk physics checks.
+* New `tests/gui/test_facet_editor.py`.
+* Template 21's claim in `test_template_claims.py`.
+
+All twenty existing template files gained an empty `"facets": []`, nothing else.
+
+Full suite with Basilisk: 1977 pass, 11 skip; without it, 1730 pass and 258 skip.

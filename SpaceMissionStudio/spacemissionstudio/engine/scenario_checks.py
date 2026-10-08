@@ -279,6 +279,8 @@ def _spacecraft_warnings(sc) -> List[str]:
         if not any(facing(s) for s in css):
             warnings.append(f"{sc.name}: no sun sensor faces the Sun-pointing axis, so none sees the Sun "
                             "once pointed")
+    if sc.facets and not (sc.enable_drag or sc.enable_srp):
+        warnings.append(f"{sc.name}: its facets are unused -- they only shape drag and SRP, and both are off")
     sk = sc.station_keeping
     if sk is not None and not sc.enable_drag and sc.phasing_keeping is None:
         warnings.append(f"{sc.name}: with drag off its average altitude barely drifts, so the "

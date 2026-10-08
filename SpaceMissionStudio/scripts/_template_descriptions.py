@@ -322,4 +322,24 @@ that works hard.
 
 Limitations:
 - The thermal sensor's power draw is constant (no on/off duty cycle yet).""",
+
+    "21": """\
+Two copies of one 300 kg Sun-pointing spacecraft, each built from flat plates (facets): its box and a \
+2.5 m^2 solar array on a boom 1.5 m off to +Y. Sunlight and drag push on that array off-centre, a small \
+steady torque. rods-off has only reaction wheels; rods-on also has torque rods.
+
+What to look at:
+- rods-off.rw_speeds: after the first turn to the Sun, the wheels soak up the torque all day -- about \
+3.2 N*m*s stored by the end, rw-x near -1300 RPM.
+- rods-on.rw_speeds: the torque rods hand that momentum to Earth's magnetic field; the wheels stay under \
+~80 RPM.
+- rods-on.mtb_dipole_commanded: the rods working against the torque.
+
+Try changing:
+- The array's centre of pressure (rods-off: surface facets): back to y = 0 and the torque disappears.
+- Its area or reflection coefficients: torque scales with both.
+- Altitude: lower adds drag torque on the array.
+
+Limitations:
+- Facets are fixed to the body: the array does not rotate to track the Sun.""",
 }

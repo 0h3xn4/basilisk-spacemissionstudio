@@ -55,6 +55,7 @@
       "enable_srp": false,
       "srp_coeff": 1.3,
       "srp_area_m2": 1.0,
+      "facets": [],
       "enable_gravity_gradient": false,
       "sensors": [
         {
@@ -260,6 +261,6 @@
     "dispersions": []
   },
   "mission_sequence": [],
-  "description": "Sun-safe pointing driven by an estimated Sun direction: eight coarse sun sensors feed a weighted least-squares estimator, instead of using the true direction.\n\nWhat to look at:\n- sat-1.sun_heading_body_estimated settling near [0, 0, 1] as the +Z axis turns to the Sun.\n- Accuracy depends on how many sensors are lit, as on real hardware.\n\nTry changing:\n- The sensors' field of view: narrower means fewer lit sensors and a worse estimate.\n- Turn off \"Estimate Sun heading from coarse sun sensors\" to compare with the true direction.\n\nNote:\n- The control gains are scaled to this small spacecraft (5 kg*m^2); the defaults would oscillate.",
+  "description": "Sun-safe pointing driven by an estimated Sun direction: eight coarse sun sensors feed a weighted least-squares estimator, instead of using the true direction.\n\nWhat to look at:\n- sat-1.sun_heading_body_estimated settling near [0, 0, 1] as the +Z axis turns to the Sun.\n- Accuracy depends on how many sensors are lit, as on real hardware.\n\nTry changing:\n- The sensors' field of view: narrower means fewer lit sensors and a worse estimate.\n- Turn off \"Estimate Sun heading from coarse sun sensors\" to compare with the true direction.",
   "schema_version": 2
 }

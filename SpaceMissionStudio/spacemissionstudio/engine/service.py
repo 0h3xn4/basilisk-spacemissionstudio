@@ -281,6 +281,12 @@ class SimulationCancelled(Exception):
         self.partial_result = partial_result
 
 
+def _unit_vector(values) -> List[float]:
+    """``values`` normalized (schema validation guarantees non-zero and finite)."""
+    vector = np.asarray(values, dtype=float)
+    return list(vector / np.linalg.norm(vector))
+
+
 def _is_two_body_only(scenario: Scenario, sc_config) -> bool:
     """``True`` only when NOTHING in this scenario/spacecraft can
     legitimately change this spacecraft's own orbital energy/angular
@@ -1067,12 +1073,22 @@ class SimulationService:
             # called for spacecraft that enable it, so drag_index stays in
             # lockstep with atmo_module.envOutMsgs/wind_model.envOutMsgs.
             if sc_config.enable_drag:
-                from Basilisk.simulation import dragDynamicEffector
+                if sc_config.facets:
+                    # Attitude-dependent drag and its torque: each facet
+                    # facing the flow pushes at its own centre of pressure.
+                    from Basilisk.simulation import facetDragDynamicEffector
 
-                drag_effector = dragDynamicEffector.DragDynamicEffector()
+                    drag_effector = facetDragDynamicEffector.FacetDragDynamicEffector()
+                    for facet in sc_config.facets:
+                        drag_effector.addFacet(float(facet.area_m2), float(facet.drag_coeff),
+                                               _unit_vector(facet.normal_b), [float(v) for v in facet.location_b])
+                else:
+                    from Basilisk.simulation import dragDynamicEffector
+
+                    drag_effector = dragDynamicEffector.DragDynamicEffector()
+                    drag_effector.coreParams.projectedArea = sc_config.drag_area_m2  # [m^2]
+                    drag_effector.coreParams.dragCoeff = sc_config.drag_coeff  # [-]
                 drag_effector.ModelTag = f"{sc_config.name}Drag"
-                drag_effector.coreParams.projectedArea = sc_config.drag_area_m2  # [m^2]
-                drag_effector.coreParams.dragCoeff = sc_config.drag_coeff  # [-]
                 sc_object.addDynamicEffector(drag_effector)
                 atmo_module.addSpacecraftToModel(sc_object.scStateOutMsg)
                 wind_model.addSpacecraftToModel(sc_object.scStateOutMsg)
@@ -1087,14 +1103,29 @@ class SimulationService:
             # above this loop already includes enable_srp, so
             # sc_eclipse_out_msg is non-None whenever this branch runs).
             if sc_config.enable_srp:
-                from Basilisk.simulation import radiationPressure
+                if sc_config.facets:
+                    # Attitude-dependent SRP and its torque, from each lit
+                    # facet's own reflection fractions. Fixed facets: no
+                    # articulation, so each facet frame is the body frame.
+                    from Basilisk.simulation import facetSRPDynamicEffector
 
-                srp_effector = radiationPressure.RadiationPressure()
+                    srp_effector = facetSRPDynamicEffector.FacetSRPDynamicEffector()
+                    srp_effector.setNumFacets(len(sc_config.facets))
+                    srp_effector.setNumArticulatedFacets(0)
+                    for facet in sc_config.facets:
+                        srp_effector.addFacet(float(facet.area_m2), np.eye(3), _unit_vector(facet.normal_b),
+                                              [0.0, 0.0, 0.0], [float(v) for v in facet.location_b],
+                                              float(facet.diffuse_coeff), float(facet.specular_coeff))
+                    srp_effector.sunInMsg.subscribeTo(self._sun_state_out_msg)
+                else:
+                    from Basilisk.simulation import radiationPressure
+
+                    srp_effector = radiationPressure.RadiationPressure()
+                    srp_effector.area = sc_config.srp_area_m2  # [m^2]
+                    srp_effector.coefficientReflection = sc_config.srp_coeff  # [-]
+                    srp_effector.sunEphmInMsg.subscribeTo(self._sun_state_out_msg)
                 srp_effector.ModelTag = f"{sc_config.name}Srp"
-                srp_effector.area = sc_config.srp_area_m2  # [m^2]
-                srp_effector.coefficientReflection = sc_config.srp_coeff  # [-]
                 sc_object.addDynamicEffector(srp_effector)
-                srp_effector.sunEphmInMsg.subscribeTo(self._sun_state_out_msg)
                 srp_effector.sunEclipseInMsg.subscribeTo(sc_eclipse_out_msg)
                 self.scSim.AddModelToTask(dyn_task_name, srp_effector, 100)
 

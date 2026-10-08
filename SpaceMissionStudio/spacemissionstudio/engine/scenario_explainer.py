@@ -261,6 +261,8 @@ def _environment_section(scenario) -> ExplanationSection | None:
         badges.append(Badge("Solar radiation pressure", "accent"))
     if any(sc.enable_gravity_gradient for sc in scenario.spacecraft):
         badges.append(Badge("Gravity gradient", "accent"))
+    if any(sc.facets and (sc.enable_drag or sc.enable_srp) for sc in scenario.spacecraft):
+        badges.append(Badge("Facet model (drag/SRP torques)", "accent"))
     if not badges:
         return None
     return ExplanationSection(title="Environment", badges=badges)

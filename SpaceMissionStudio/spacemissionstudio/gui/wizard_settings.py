@@ -69,6 +69,11 @@ _META: Dict[str, SettingMeta] = {
     "drag_coeff": SettingMeta("Drag coefficient"),
     "srp_area_m2": SettingMeta("Solar radiation pressure area", " m^2"),
     "srp_coeff": SettingMeta("Solar radiation pressure coefficient"),
+    # Facets (FacetConfig)
+    "normal_b": SettingMeta("Outward normal", "", "Body-frame direction the facet faces (normalized)."),
+    "location_b": SettingMeta("Centre of pressure", " m", "Where the facet's force acts, from the body origin."),
+    "specular_coeff": SettingMeta("Specular reflection", "", "Fraction of sunlight reflected mirror-like."),
+    "diffuse_coeff": SettingMeta("Diffuse reflection", "", "Fraction of sunlight reflected diffusely."),
     "enable_drag": SettingMeta("Atmospheric drag"),
     "enable_srp": SettingMeta("Solar radiation pressure"),
     "enable_gravity_gradient": SettingMeta("Gravity-gradient torque"),
@@ -291,6 +296,12 @@ def _page_and_label(path: Path, scenario: Scenario) -> Tuple[str, str, str, str,
             label, suffix, help_text = _device_param_label(device.kind, name)
             group = f"{device.name} ({device.kind.replace('_', ' ')})"
             page = f"{craft.name}: sensors & actuators"
+        elif part == "facets":
+            facet = craft.facets[path[3]]
+            group = facet.name
+            if name == "area_m2":
+                label, suffix = "Area", " m^2"
+            page = f"{craft.name}: surface facets"
         elif part in _ATTITUDE_KEYS:
             page = f"{craft.name}: attitude"
         elif part in _BLOCK_TITLES:

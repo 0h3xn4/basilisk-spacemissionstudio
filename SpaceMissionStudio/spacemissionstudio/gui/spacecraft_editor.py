@@ -88,6 +88,7 @@ from ..schema.scenario import (
     SUPPORTED_SENSOR_KINDS,
     SUPPORTED_THRUST_FRAMES,
 )
+from .facet_editor import FacetTableWidget
 from .feedback import clear_invalid, mark_invalid, show_toast
 from .number_list import NumberListEditor
 from .orbit_ic_widget import OrbitIcWidget
@@ -366,6 +367,18 @@ class SpacecraftEditorDialog(QDialog):
         )
         drag_srp_form.addRow("SRP cross-section area [m^2]", self.srp_area_m2)
         layout.addWidget(drag_srp_group)
+
+        facet_group = QGroupBox("Surface facets (attitude-dependent drag / SRP)")
+        facet_group.setToolTip("When facets are listed, enabled drag and SRP use them instead of the areas "
+                               "above. Needs full-attitude mode.")
+        facet_layout = QVBoxLayout(facet_group)
+        facet_hint = QLabel("Optional: drag and SRP then use these plates, follow the attitude and add torque.")
+        facet_hint.setWordWrap(True)
+        facet_layout.addWidget(facet_hint)
+        self.facet_table = FacetTableWidget()
+        self.facet_table.from_list(config.facets if config else [])
+        facet_layout.addWidget(self.facet_table)
+        layout.addWidget(facet_group)
 
         attitude_group = QGroupBox("Initial attitude / body rate")
         attitude_group.setToolTip(
@@ -1488,6 +1501,7 @@ class SpacecraftEditorDialog(QDialog):
             enable_srp=self.enable_srp_check.isChecked(),
             srp_coeff=self.srp_coeff.value(),
             srp_area_m2=self.srp_area_m2.value(),
+            facets=self.facet_table.to_list(),
             enable_gravity_gradient=self.gravity_gradient_check.isChecked(),
             vizard_model_path=self._viz_model_to_dataclass_path(),
             vizard_model_offset_m=[self.viz_offset_x.value(), self.viz_offset_y.value(), self.viz_offset_z.value()],

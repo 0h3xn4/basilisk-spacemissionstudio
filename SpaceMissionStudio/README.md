@@ -377,8 +377,8 @@ it.
 **Reusable starting points** -- four spacecraft "bus" templates
 (100 kg ESPA-class, 150 kg microsatellite, 300 kg and 500 kg small
 satellites) and
-twenty complete example scenarios, eighteen covering one major concept
-each in isolation plus two integrated demonstrations (see "Template
+twenty-one complete example scenarios, nineteen covering one major
+concept each in isolation plus two integrated demonstrations (see "Template
 missions" below).
 
 **Safe cancellation** -- **Abort Simulation** cooperatively cancels an
@@ -444,6 +444,7 @@ SpaceMissionStudio/
       constellation.py               -- Phase 4: Walker-pattern constellation generator + SeparationSchedule (no Basilisk needed)
       formation.py                   -- phasing-formation generator: chief + Hill-frame (R/T/N) offset -> follower spacecraft (needs Basilisk)
       spacecraft_templates.py        -- Phase 5: reusable spacecraft "bus" templates (no Basilisk needed)
+      facets.py                      -- flat-plate facet models (box + solar array) for attitude-dependent drag/SRP (no Basilisk needed)
       mission_engine.py              -- Phase 6: MissionEngine -- walks mission_sequence against a SimulationService (needs Basilisk)
       orbit_design.py                -- Sun-synchronous orbit design helpers (sun_synchronous_inclination_deg/raan_for_ltan_deg) -- Basilisk-free
       scenario_explainer.py          -- explain(scenario) -> a structured, always-current "recipe" summary (stat tiles/badges/table) -- Basilisk-free
@@ -560,6 +561,7 @@ SpaceMissionStudio/
     test_orbit_maintenance.py        -- station-keeping/phasing-keeping/constant-frame-thrust VNB/RTN math, requires_basilisk
     test_orbit_maintenance_true_mass.py -- delta-V estimate accounts for fuel-tank mass too
     test_spacecraft_templates.py     -- reusable spacecraft "bus" templates
+    test_facets.py                   -- facet models: schema, box generator, facet drag/SRP physics in Basilisk
     test_formation.py                -- phasing-formation generator (chief + R/T/N offset), requires_basilisk
     test_monte_carlo.py              -- Basilisk.utilities.MonteCarlo bridge, requires_basilisk
     test_service_execution_errors.py -- clear error message for a real ExecuteSimulation() crash class
@@ -611,15 +613,15 @@ python3 -m pip install -e ".[dev,gui]"
 python3 -m pytest tests/ -v
 ```
 
-The suite has 1948 tests. Without Basilisk on `PYTHONPATH`, 1694 of
+The suite has 1988 tests. Without Basilisk on `PYTHONPATH`, 1730 of
 them run and pass (schema, space weather, results, link budget,
 constellation generation, CLI, and the full PySide6 GUI, run headless),
-and the 254 that need a real Basilisk build (marked `requires_basilisk`,
+and the 258 that need a real Basilisk build (marked `requires_basilisk`,
 or skipped on a Basilisk-availability check, per `tests/conftest.py`)
 are skipped.
 
 With Basilisk installed (`pip install "bsk[all]"` -- see "Getting
-started" above), those tests run for real: 1937 pass and 11 skip (the
+started" above), those tests run for real: 1977 pass and 11 skip (the
 ones whose premise is specifically "Basilisk is unavailable"). The
 first run needs internet access once, so Basilisk can download its
 SPICE ephemeris kernels; without them, the ~45 kernel-dependent tests
@@ -755,7 +757,7 @@ spacemissionstudio gui
 ```
 
 The GUI opens on its **Load Scenario** tab (left pane) -- pick one of the
-twenty built-in template missions (see "Template missions" below) or
+twenty-one built-in template missions (see "Template missions" below) or
 browse for any other scenario file; either one switches you to the
 **Scenario Editor** tab next to it with that scenario loaded and ready to
 edit. Every row of the template list carries its own **Customize...**
@@ -791,7 +793,7 @@ clear error (not a crash) if Basilisk isn't installed/built.
 
 ## Template missions for learning and for starting your own
 
-`spacemissionstudio/scenarios/templates/` has twenty ready-to-run scenario
+`spacemissionstudio/scenarios/templates/` has twenty-one ready-to-run scenario
 files, each demonstrating one SpaceMissionStudio concept in isolation (except
 the last two, which deliberately integrate several) --
 two-body orbits, J2/third-body perturbations, GEO station-keeping,
@@ -835,7 +837,7 @@ and hasn't been run for real.
 
 **Built into the GUI itself** (not just files you'd have to know the path
 to): the GUI's **Load Scenario** tab (`gui/load_scenario_widget.py`,
-see "Running the GUI" above) lists all twenty by name with their
+see "Running the GUI" above) lists all twenty-one by name with their
 description shown on selection, no file-browsing needed -- "Open
 Template" or a double-click loads one and switches straight to the
 Scenario Editor tab. The same tab's "Browse for a file..." button covers

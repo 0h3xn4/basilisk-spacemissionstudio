@@ -84,7 +84,7 @@ and is written for someone comfortable typing commands, not a programmer.
 
 The window that opens looks like this:
 
-![The Load Scenario tab, listing all twenty built-in templates](docs/images/load_scenario_tab.png)
+![The Load Scenario tab, listing all twenty-one built-in templates](docs/images/load_scenario_tab.png)
 
 A few things to notice right away:
 
@@ -108,7 +108,7 @@ up using a template as-is or editing it into something new.
 
 ## 4. Your first simulation, in five minutes
 
-1. **Pick a template.** The list on the left shows all twenty
+1. **Pick a template.** The list on the left shows all twenty-one
    built-in example missions, numbered roughly from simplest to most
    advanced -- "01 - Two-body circular orbit" is the simplest possible
    case (one satellite, one orbit, nothing else going on) and a good
@@ -196,6 +196,10 @@ out for a brand-new scenario:
   **Generate Walker constellation...** and **Generate phasing
   formation...** buttons here for building multi-satellite setups
   automatically instead of adding spacecraft one at a time.
+  On the orbit & mass tab, **Surface facets** describes the spacecraft as
+  flat plates (**Box + solar array...** fills in a bus and an array).
+  Drag and solar pressure then follow the attitude, and an off-centre
+  plate adds a torque the wheels must absorb (template 21).
 * **Ground stations** -- optional stations on the ground to check
   visibility/communication with (each spacecraft's contact windows,
   signal link margin, etc.).
@@ -392,6 +396,10 @@ anyone who hasn't worked with spacecraft before:
   (star trackers, sun sensors, ...) measure where it's pointing;
   actuators (reaction wheels, thrusters, magnetic torque rods) change
   where it's pointing or correct its orbit.
+* **Facet model** -- the spacecraft described as flat plates, each with
+  its own area, facing direction and centre of pressure. Drag and solar
+  pressure push on each plate that faces the flow or the Sun, so both
+  depend on the attitude and can twist the spacecraft.
 * **Station-keeping** -- firing small thruster burns periodically to
   correct a satellite's orbit as it naturally drifts (from gravity
   irregularities, drag, etc.), so it stays where it's supposed to be.
@@ -432,7 +440,7 @@ anyone who hasn't worked with spacecraft before:
 
 * **More templates to learn from:**
   [`spacemissionstudio/scenarios/templates/README.md`](spacemissionstudio/scenarios/templates/README.md)
-  describes what each of the twenty built-in templates teaches, in
+  describes what each of the twenty-one built-in templates teaches, in
   more depth than the in-app description box.
 * **The full feature list and technical details:** [`README.md`](README.md)'s
   "Capabilities" section.

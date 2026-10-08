@@ -165,3 +165,18 @@ def test_14_css_estimate_settles_on_the_sun_axis():
     result = _run(_template("14"))
     estimate = result.series["sat-1.sun_heading_body_estimated"].data[-1]
     assert estimate[2] / np.linalg.norm(estimate) > 0.98  # near [0, 0, 1]
+
+
+def test_21_off_centre_array_loads_the_wheels_unless_torque_rods_unload_them():
+    """A real run: rods-off stores ~3.2 N*m*s by the end of the day,
+    rods-on keeps its wheels under ~80 RPM."""
+    result = _run(_template("21"))
+    js = 12.0 / (6000.0 * np.pi / 30.0)  # [kg*m^2] HR12 12 N*m*s at 6000 RPM
+    stored = {name: np.linalg.norm(result.series[f"{name}.rw_speeds"].data[-1]) * js  # [N*m*s]
+              for name in ("rods-off", "rods-on")}
+    assert 2.5 < stored["rods-off"] < 4.0  # [N*m*s] "about 3.2 N*m*s stored by the end"
+    rods_on_rpm = result.series["rods-on.rw_speeds"].data[-1] * 30.0 / np.pi  # [RPM]
+    assert np.abs(rods_on_rpm).max() < 150.0  # [RPM] "stay under ~80 RPM"
+    for name in ("rods-off", "rods-on"):
+        sun = result.series[f"{name}.sun_heading_body"]
+        assert sun.data[sun.time_s > 600.0, 2].min() > 0.99  # still Sun-pointed

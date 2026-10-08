@@ -37,6 +37,7 @@ from spacemissionstudio.engine.constellation import WalkerConstellationRequest, 
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _template_descriptions import DESCRIPTIONS  # noqa: E402 -- short, user-facing; see that module
+from spacemissionstudio.engine.facets import box_facets
 from spacemissionstudio.engine.orbit_design import raan_for_ltan_deg, sun_synchronous_inclination_deg
 from spacemissionstudio.schema.scenario import (
     CommsPointingConfig,
@@ -1205,6 +1206,54 @@ def build_20_thermal_simulation() -> Scenario:
     )
 
 
+def build_21_disturbance_torques() -> Scenario:
+    # Two copies of one 300 kg Sun-pointing spacecraft, flown side by side:
+    # a facet model with the 2.5 m^2 array on a boom 1.5 m off to +Y, so
+    # solar pressure (and drag) push off-centre. "rods-off" has only its
+    # wheels, which soak up that torque all day; "rods-on" also has torque
+    # rods steering its wheels back to rest. Confirmed in a real Basilisk
+    # run (see tests/test_template_claims.py).
+    epoch = "2030-01-01T00:00:00"
+    semi_major_axis_km = 6378.0 + 450.0  # [km] low enough for drag torque to matter too
+
+    def spacecraft(name: str, with_rods: bool) -> SpacecraftConfig:
+        axes = (("x", [1.0, 0.0, 0.0]), ("y", [0.0, 1.0, 0.0]), ("z", [0.0, 0.0, 1.0]))
+        actuators = [ActuatorConfig(kind="reaction_wheel", name=f"rw-{axis_name}",
+                                    params={"gsHat_B": axis, "rw_type": "Honeywell_HR12", "maxMomentum": 12.0})
+                     for axis_name, axis in axes]
+        if with_rods:
+            actuators += [ActuatorConfig(kind="magnetic_torque_rod", name=f"mtb-{axis_name}",
+                                         params={"gtHat_B": axis, "max_dipole_a_m2": 30.0})  # [A*m^2]
+                          for axis_name, axis in axes]
+        return SpacecraftConfig(
+            name=name,
+            orbit=OrbitIC(type="classical_elements", semi_major_axis_km=semi_major_axis_km, eccentricity=0.0,
+                          inclination_deg=sun_synchronous_inclination_deg(semi_major_axis_km),
+                          raan_deg=raan_for_ltan_deg(epoch), arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
+            dry_mass_kg=_SMALLSAT_MASS_KG,
+            inertia_kg_m2=_box_inertia(_SMALLSAT_MASS_KG, _SMALLSAT_SIZE_M),
+            enable_drag=True, enable_srp=True,
+            facets=box_facets(_SMALLSAT_SIZE_M, 2.5, (0.0, 0.0, 1.0), (0.0, 1.5, 0.75)),  # [m], [m^2]
+            sensors=[SensorConfig(kind="coarse_sun_sensor", name="css-1", params={"nHat_B": [0.0, 0.0, 1.0]})],
+            actuators=actuators,
+            magnetic_momentum_management=(MagneticMomentumManagementConfig(wheel_speed_biases_rad_s=[0.0] * 3)
+                                          if with_rods else None),
+            fsw_mode="sunSafePoint",
+            fsw_params={"sHatBdyCmd": [0.0, 0.0, 1.0]},
+        )
+
+    return Scenario(
+        name="21 - Disturbance torques from a facet model",
+        description=DESCRIPTIONS["21"],
+        epoch_utc=epoch,
+        simulation_mode="full_attitude",
+        gravity=GravityConfig(central_body="earth", central_body_degree=2, third_body_perturbers=["sun"]),
+        sim_settings=SimSettings(duration_days=1.0, dynamics_task_rate_s=10.0, integrator="rkf78"),
+        space_weather=_conservative_drag_margin(),
+        spacecraft=[spacecraft("rods-off", False), spacecraft("rods-on", True)],
+    )
+
+
 def main() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     _save(build_01_two_body_circular_orbit(), "01_two_body_circular_orbit.json")
@@ -1228,6 +1277,7 @@ def main() -> None:
     _save(build_18_leo_station_keeping(), "18_leo_station_keeping.json")
     _save(build_19_sun_pointing_comms_link(), "19_sun_pointing_comms_link.json")
     _save(build_20_thermal_simulation(), "20_thermal_simulation.json")
+    _save(build_21_disturbance_torques(), "21_disturbance_torques.json")
 
 
 if __name__ == "__main__":

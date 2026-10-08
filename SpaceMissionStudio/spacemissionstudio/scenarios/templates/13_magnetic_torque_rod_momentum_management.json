@@ -53,6 +53,7 @@
       "enable_srp": false,
       "srp_coeff": 1.3,
       "srp_area_m2": 1.0,
+      "facets": [],
       "enable_gravity_gradient": false,
       "sensors": [],
       "actuators": [
@@ -231,6 +232,6 @@
     "dispersions": []
   },
   "mission_sequence": [],
-  "description": "The alternative to 12: four magnetic torque rods and Earth's magnetic field continuously steer four reaction wheels toward target speeds (800, 600, 400 and 200 RPM) while the wheels point the spacecraft.\n\nWhat to look at:\n- sat-1.rw_speeds settling smoothly near the targets over ~2 hours (within ~0.5 RPM), not in steps.\n\nTry changing:\n- Wheel speed biases: the target speeds.\n- Gain: larger reacts faster but can overshoot.\n- Inclination: a near-equatorial orbit sees a weaker field and converges more slowly.",
+  "description": "The alternative to 12, on a 150 kg microsatellite: four 15 A*m^2 magnetic torque rods and Earth's magnetic field continuously steer four reaction wheels toward target speeds (800, 600, 400 and 200 RPM) while the wheels point the spacecraft.\n\nWhat to look at:\n- sat-1.rw_speeds settling smoothly near the targets over ~2 hours (within ~0.5 RPM), not in steps.\n\nTry changing:\n- Wheel speed biases: the target speeds.\n- Gain: larger reacts faster but can overshoot.\n- Inclination: a near-equatorial orbit sees a weaker field and converges more slowly.",
   "schema_version": 2
 }

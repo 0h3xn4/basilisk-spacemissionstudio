@@ -60,6 +60,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable, List
 
+from .facets import box_facets
 from ..schema.scenario import (
     ActuatorConfig,
     MagneticMomentumManagementConfig,
@@ -141,6 +142,10 @@ def _sun_safe_bus(mass_kg: float, size_m: tuple, wheel_params: dict, rod_dipole_
         magnetic_momentum_management=MagneticMomentumManagementConfig(
             wheel_speed_biases_rad_s=[0.0, 0.0, 0.0]),  # [rad/s] steer every wheel toward rest
         power=power,
+        # The bus and its +Z array as flat plates: drag and SRP follow the
+        # attitude. The array sits on the +Z face, so it adds no torque
+        # until it is moved off to one side.
+        facets=box_facets(size_m, power.panel_area_m2, power.panel_normal_b),
         fsw_mode="sunSafePoint",
         fsw_params={"sHatBdyCmd": [0.0, 0.0, 1.0]},
     )

@@ -53,6 +53,7 @@
       "enable_srp": false,
       "srp_coeff": 1.3,
       "srp_area_m2": 1.0,
+      "facets": [],
       "enable_gravity_gradient": false,
       "sensors": [],
       "actuators": [
@@ -251,6 +252,6 @@
     "dispersions": []
   },
   "mission_sequence": [],
-  "description": "Attitude control with eight thrusters (a corner-mounted cube layout) instead of reaction wheels, pointing at a fixed inertial attitude from an initial tip.\n\nWhat to look at:\n- sat-1.thruster_on_time: which thrusters fire, and for how long.\n- sat-1.attitude_sigma_BN: from the initial tip to within a few degrees in about 2 minutes, then a small limit cycle as the thrusters pulse.\n- Thruster plumes in Vizard.\n\nTry changing:\n- Thrust per thruster: weaker ones take longer to settle.\n- The layout: fewer than 6 well-placed thrusters can't produce torque about every axis.",
+  "description": "Attitude control with eight 1 N thrusters on the corners of a 300 kg bus, instead of reaction wheels, pointing at a fixed inertial attitude from an initial tip.\n\nWhat to look at:\n- sat-1.thruster_on_time: which thrusters fire, and for how long.\n- sat-1.attitude_sigma_BN: from the initial tip to within a few degrees in about 2 minutes, then a small limit cycle as the thrusters pulse.\n- Thruster plumes in Vizard.\n\nTry changing:\n- Thrust per thruster: weaker ones take longer to settle.\n- The layout: fewer than 6 well-placed thrusters can't produce torque about every axis.",
   "schema_version": 2
 }

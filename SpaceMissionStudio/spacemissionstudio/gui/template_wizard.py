@@ -308,6 +308,34 @@ def _wheel_bias_rpm(index: int):
     return get, set_
 
 
+def _array_facets(scenario: Scenario):
+    """'21's solar-array facets (front and back) on BOTH spacecraft: the
+    two are copies, so an array change keeps the comparison fair."""
+    return [f for sc in scenario.spacecraft for f in sc.facets if f.name.startswith("array")]
+
+
+def _set_array_offset_y(scenario: Scenario, value: float) -> None:
+    for facet in _array_facets(scenario):
+        facet.location_b[1] = value
+
+
+def _set_array_area(scenario: Scenario, value: float) -> None:
+    for facet in _array_facets(scenario):
+        facet.area_m2 = value
+
+
+def _set_rod_dipole(scenario: Scenario, value: float) -> None:
+    for sc in scenario.spacecraft:
+        for actuator in sc.actuators:
+            if actuator.kind == "magnetic_torque_rod":
+                actuator.params["max_dipole_a_m2"] = value
+
+
+def _rod_dipole(scenario: Scenario) -> float:
+    return float(next(a.params["max_dipole_a_m2"] for sc in scenario.spacecraft for a in sc.actuators
+                      if a.kind == "magnetic_torque_rod"))
+
+
 def _wheel_omega_rpm(index: int):
     """One of '12's 4 reaction wheels' own initial Omega (RPM, matching
     simIncludeRW.py's own units for this parameter directly, unlike '13's
@@ -1302,6 +1330,42 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
                             "motor_thermal_ambient_resistance_w_c", v),
                         0.1, 100.0, decimals=2, step=0.5, suffix=" C/W",
                         hint="Lower = settles closer to ambient",
+                    ),
+                ],
+            ),
+        ],
+    ),
+    "21_disturbance_torques.json": TemplateWizardSpec(
+        template_filename="21_disturbance_torques.json",
+        pages=[
+            WizardPageSpec(
+                title="Solar array",
+                intro="Applied to both spacecraft, so they stay identical apart from the rods.",
+                fields=[
+                    WizardField(
+                        "Array offset (body y)", "How far the array's centre of pressure sits to one side "
+                        "of the centre of mass. 0 removes the solar-pressure torque.",
+                        lambda s: _array_facets(s)[0].location_b[1], _set_array_offset_y,
+                        -10.0, 10.0, decimals=2, step=0.25, suffix=" m",
+                        hint="0 = no torque from the array",
+                    ),
+                    WizardField(
+                        "Array area", "Area of the array's front (and back) facet.",
+                        lambda s: _array_facets(s)[0].area_m2, _set_array_area,
+                        0.1, 50.0, decimals=2, step=0.5, suffix=" m^2",
+                        hint="Torque grows with area",
+                    ),
+                ],
+            ),
+            WizardPageSpec(
+                title="Torque rods",
+                intro="rods-on's three torque rods.",
+                fields=[
+                    WizardField(
+                        "Rod strength", "Each rod's largest magnetic dipole.",
+                        _rod_dipole, _set_rod_dipole,
+                        0.5, 500.0, decimals=1, step=5.0, suffix=" A*m^2",
+                        hint="Weaker rods let more momentum build up",
                     ),
                 ],
             ),

@@ -53,6 +53,7 @@
       "enable_srp": false,
       "srp_coeff": 1.3,
       "srp_area_m2": 1.0,
+      "facets": [],
       "enable_gravity_gradient": true,
       "sensors": [],
       "actuators": [],
@@ -108,6 +109,6 @@
     "dispersions": []
   },
   "mission_sequence": [],
-  "description": "No attitude control, an elongated inertia (Ixx = Iyy = 12.5, Izz = 7.5 kg*m^2) and gravity-gradient torque on. Without the torque the spacecraft would stay at its initial attitude; with it, it slowly turns.\n\nWhat to look at:\n- Vizard's attitude view: the spacecraft drifts away from its starting orientation.\n- sat-1.attitude_sigma_BN: moving away from zero, its starting value.\n\nTry changing:\n- Inertia: make all three values equal and the torque vanishes.\n- Altitude: the torque falls off as 1/r^3.\n- Add inertial3D pointing with reaction wheels (see 07) to cancel it.",
+  "description": "No attitude control, an elongated 500 kg bus (1 x 1 x 2 m: Ixx = Iyy = 208, Izz = 83 kg*m^2) and gravity-gradient torque on. Without the torque the spacecraft would stay at its initial attitude; with it, it slowly turns.\n\nWhat to look at:\n- Vizard's attitude view: the spacecraft drifts away from its starting orientation.\n- sat-1.attitude_sigma_BN: moving away from zero, its starting value.\n\nTry changing:\n- Inertia: make all three values equal and the torque vanishes.\n- Altitude: the torque falls off as 1/r^3.\n- Add inertial3D pointing with reaction wheels (see 07) to cancel it.",
   "schema_version": 2
 }
