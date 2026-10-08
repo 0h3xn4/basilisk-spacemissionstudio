@@ -23,11 +23,12 @@ supplied document and must be confirmed by the signatory.
 | D-08 | ECSS-E-ST-40C 5.2.5a, 5.3.3, 5.3.4, 5.3.5, 5.4.2.4a, 5.4.4a, 5.5.2.10a, 5.6.3.4a, 5.6.4.4a, 5.7.3, 5.11.5 (the review requirements of H01) | No reviews (SRR, PDR, CDR, TRR, QR, AR) are held. The documents in `docs/` stay drafts, accepted by no review. | The user's decision for this single-person tool (2026-10-08, decision 7). The reviews' purpose, an independent check of requirements, design and results, is not replaced: the requirements stay open, and the independent code review (H06) is a separate item. A reviewer may be named later. | User, 2026-10-08 |
 | D-09 | ECSS-Q-ST-80C 5.1.5 (training plan, training records, security training) and 5.7 (process assessment and improvement) | No training plan or records are kept, and no process assessment is made. | The user's decision for this single-person tool (2026-10-08, decision 8). | User, 2026-10-08 |
 | D-10 | ECSS-E-ST-40C 5.11.2a, 5.11.2b (software security management plan) | No security management plan is written. The security analysis (`docs/security_analysis.md`) and its treatments stand without one. | The user's decision at security assurance level low (D8; 2026-10-08, decision 8). The security manager (5.11.2c) is not waived: the role is open (H02). | User, 2026-10-08 |
+| D-11 | ECSS-E-ST-40C 5.2 (customer requirements: SSS, IRD, installation, acceptance and validation requirements), 5.6.4 (validation against the requirements baseline), 5.8.3.1a, Annexes B and C; ECSS-Q-ST-80C 6.3.1 | No customer requirements baseline exists. The SRS, derived from the tool as built, is the only specification; validation is against it (5.6.3) only. | The user's decision (2026-10-08, decision 9): the user is customer and supplier of this tool. | User, 2026-10-08 |
 
 The other process items not executed (deviation candidate D-08 of
 `gap_analysis.md`) are human actions in `human_actions.md`; the reviews,
-training, process assessment and the security management plan have been
-waived so far. Waiving any other item is the customer's
+training, process assessment, the security management plan and the customer
+baseline have been waived so far. Waiving any other item is the customer's
 decision.
 
 ## Signature

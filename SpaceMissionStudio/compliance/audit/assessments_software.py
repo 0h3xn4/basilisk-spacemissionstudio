@@ -44,9 +44,7 @@ _NO_SDP = "No software development plan; life cycle and standards are implicit."
 SOFTWARE_RULES = [
     # ======================= ECSS-E-ST-40C Rev.1 =================================
     # 5.2 software related system requirements: customer side
-    ("E-ST-40C", "5.2.*", _H, "-", "Customer-side system requirements (SSS/IRD) do not exist; the user, as "
-     "customer, has not specified them.", "Customer writes the SSS/IRD; a draft can be derived from the SRS "
-     "(Phase 4).", "M", "no", "H03,R14"),
+    ("E-ST-40C", "5.2.*", "N", "-", "No customer requirements baseline: waived by the user (decision 9, 2026-10-08); the SRS is derived from the tool, not from a baseline.", "-", "M", "no", "H03,D-11"),
     ("E-ST-40C", "5.2.2.4a", "NA", "-", "No hardware/software co-engineering: the tool runs on COTS desktops.",
      "-", "S", "no", ""),
     ("E-ST-40C", "5.2.4.4*", "NA", "-", "No system database.", "-", "S", "no", ""),
@@ -123,7 +121,7 @@ SOFTWARE_RULES = [
      "SValP (Phase 4), Phase 3 validation campaign.", "M", "no", "R13,R14"),
     ("E-ST-40C", "5.6.3.*", "P", "compliance/docs/SValP.md, SVS.md, SVR.md; tests/validation (V-01, V-02, V-04 to V-08 within tolerance)", "Validation against the TS is specified, done and reported; not reviewed (CDR, H01); SRS-P-09/R-02 not measured (H13).", "Review (H01); measure (H13).", "M", "no", "R13,R14,H01,H13"),
     ("E-ST-40C", "5.6.3.4a", "N", "-", "No CDR.", _REVIEW_FIX, "S", "no", "H01,D-08"),
-    ("E-ST-40C", "5.6.4.*", "H", "compliance/docs/SValP.md 4.1", "Validation against the requirements baseline is not possible: no baseline exists (H03).", "Customer provides the baseline (H03); then validate against it.", "M", "no", "H03,H01"),
+    ("E-ST-40C", "5.6.4.*", "N", "compliance/docs/SValP.md 4.1", "Validation against a requirements baseline is not possible: the baseline is waived (decision 9). Validation against the technical specification (5.6.3) is done.", "-", "M", "no", "H03,D-11"),
     ("E-ST-40C", "5.6.4.4a", "N", "-", "No QR.", _REVIEW_FIX, "S", "no", "H01,D-08"),
     ("E-ST-40C", "5.6.5a", "P", "compliance/docs/SVR.md 4.6 (validation status per case)", "Status reported by the supplier; not reviewed.", "Review (H01).", "S", "no", "R14,H01"),
     # 5.7 delivery and acceptance
@@ -137,8 +135,7 @@ SOFTWARE_RULES = [
      "acceptance tests (a draft can be derived from the SVS).", "M", "no", "H01,H03"),
     # 5.8 verification
     ("E-ST-40C", "5.8.2.1*", "N", "-", "No verification process/plan.", "SVerP (Phase 4).", "M", "no", "R14"),
-    ("E-ST-40C", "5.8.3.1a", _H, "-", "The customer has not verified a requirements baseline (none exists).",
-     "After the SRS: customer verification.", "S", "no", "H03"),
+    ("E-ST-40C", "5.8.3.1a", "N", "-", "No customer requirements baseline: waived by the user (decision 9, 2026-10-08); the SRS is derived from the tool, not from a baseline.", "-", "S", "no", "H03,D-11"),
     ("E-ST-40C", "5.8.3.*", "N", "-", "No verification of TS/architecture/design/documentation recorded.",
      "SVR (Phase 3-4).", "M", "no", "R14"),
     ("E-ST-40C", "5.8.3.5a", "P", "R10 (Phase 2): ruff rule set configured in pyproject.toml, zero findings, run "
@@ -173,9 +170,8 @@ SOFTWARE_RULES = [
     ("E-ST-40C", "5.11.2*", "N", "-", "No software security management plan: waived by the user (decision 8); no security manager named (roles open, H02).", "-", "S", "no", "H02,D-10"),
     ("E-ST-40C", "5.11.*", "P", "compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI", "Analysis by the supplier at security level low (D8); not reviewed at the milestones (H01); open items S-05, S-06 (H11), S-08.", "Review (H01); close H11, S-08.", "M", "no", "R15,H01,H11"),
     # Annexes: DRDs
-    ("E-ST-40C", "B.*", "N", "-", "No SSS (customer document).", "Customer SSS; draft from the SRS.", "M", "no",
-     "H03,R14"),
-    ("E-ST-40C", "C.*", "N", "-", "No IRD.", "Customer IRD; draft from the ICD.", "S", "no", "H03,R14"),
+    ("E-ST-40C", "B.*", "N", "-", "No SSS: the customer baseline is waived (decision 9).", "-", "M", "no", "H03,D-11"),
+    ("E-ST-40C", "C.*", "N", "-", "No IRD: the customer baseline is waived (decision 9).", "-", "S", "no", "H03,D-11"),
     ("E-ST-40C", "D.*", "P", "compliance/docs/SRS.md", "Draft per the DRD: every DRD section present and not empty (compliance/tools/check_drds.py); not reviewed (H01); sections that depend on people state the gap and name the human action.", "Review and approve at the reviews of H01; close the human actions named in the document.", "M", "no", "R14,H01"),
     ("E-ST-40C", "D.2.1<1>*", "C", "compliance/docs/SRS.md section 1 (introduction)", "-", "-", "S", "no", "R14"),
     ("E-ST-40C", "D.2.1<2>*", "C", "compliance/docs/SRS.md section 2 (applicable and reference documents)", "-", "-", "S", "no", "R14"),
@@ -290,8 +286,7 @@ SOFTWARE_RULES = [
      "covered by review, H06.)", "-", "S", "no", "H06"),
     ("Q-ST-80C", "6.2.9.*", "P", "compliance/docs/security_analysis.md; security level low (decision D8)", "Analysis done and reported by the supplier; methods not agreed with the customer; no security manager (H02).", "Agree methods; name the security manager (H02).", "S", "no", "R15,H02"),
     ("Q-ST-80C", "6.2.10.*", _H, "-", "As 6.2.9.", "As 6.2.9.", "S", "no", "R15"),
-    ("Q-ST-80C", "6.3.1*", _H, "-", "Customer-side system requirements process (see ECSS-E-ST-40C 5.2).",
-     "As ECSS-E-ST-40C 5.2.", "S", "no", "H03"),
+    ("Q-ST-80C", "6.3.1*", "N", "-", "No customer requirements baseline: waived by the user (decision 9, 2026-10-08); the SRS is derived from the tool, not from a baseline.", "-", "S", "no", "H03,D-11"),
     ("Q-ST-80C", "6.3.2*", "N", "-", "No SRS.", "SRS (Phase 4).", "M", "no", "R14"),
     ("Q-ST-80C", "6.3.3*", "P", "README.md, docstrings", "No SDD.", "SDD (Phase 4).", "M", "no", "R14"),
     ("Q-ST-80C", "6.3.4*", "P", "R10 (Phase 2): compliance/docs/coding_standard.md (naming, comment, security rules C-1 to C-15; tools; "

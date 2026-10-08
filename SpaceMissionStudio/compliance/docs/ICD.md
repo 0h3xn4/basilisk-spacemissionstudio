@@ -4,7 +4,7 @@ DRD: ECSS-E-ST-40C Annex E
 Document: SMS-ICD, issue 1 (draft), 2026-10-08. Remediation R14.
 
 **Status:** draft, derived from the implemented interfaces (version 2.0.0).
-It has not been reviewed (H01), and no IRD exists (H03).
+It has not been reviewed (H01), and no IRD exists (waived, D-11).
 
 ## 1 Introduction (E.2.1<1>)
 
@@ -118,6 +118,8 @@ codes are those of ICD-02.
 | Write: OEM | From a run: EME2000; UTC epochs converted from TDB; position in km to 1 mm; velocity in km/s to 1 um/s; Hermite (default) or Lagrange interpolation of degree 7. |
 | Conversion | TLE ↔ OMM; an OPM or a TLE-based OMM becomes a scenario orbit. |
 | Interoperability | GMAT R2026a reads only version 1.0 OEMs with Lagrange interpolation. See finding F-08 in `compliance/phase3_log.md` and the SUM. |
+| File naming (default, AD2 3.1.6, 4.1.6, 5.1.4) | One message per spacecraft, named `<spacecraft name>.opm`, `.omm` or `.oem`, in the output directory the user chooses; this is what `ccsds-export` and `run --oem` write. The message's `CREATION_DATE` and `ORIGINATOR` identify its version and source. To be adjusted with each exchange partner (decision 9). |
+| Exchange method (default, AD2 3.1.7, 4.1.7, 5.1.5) | Plain KVN text files, exchanged by whatever file transfer the partners use; the tool has no network interface for them. To be agreed with each exchange partner. |
 
 #### 5.3.5 Space-weather files (ICD-05)
 

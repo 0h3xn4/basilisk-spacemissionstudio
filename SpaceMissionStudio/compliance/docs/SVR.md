@@ -39,7 +39,7 @@ report on separately (SVerP 6.1).
 ### 4.2 Verification of the requirements baseline (M.2.1<4.2>)
 
 - **Requirements baseline:** not verified, because no requirements
-  baseline (SSS, IRD) exists (H03). E-ST-40C 5.8.3.1 is a customer
+  baseline (SSS, IRD) exists (waived, D-11). E-ST-40C 5.8.3.1 is a customer
   activity.
 - **Model checking:** no system models exist, so there is no
   model-checking report.
@@ -50,7 +50,7 @@ report on separately (SVerP 6.1).
 
 | Matrix | Where | Result |
 |---|---|---|
-| Software requirements → system requirements | SRS section 7: each requirement's source (standard clause, user decision or tool) | No system requirements exist (H03); traced to the standards instead |
+| Software requirements → system requirements | SRS section 7: each requirement's source (standard clause, user decision or tool) | No system requirements exist (waived, D-11); traced to the standards instead |
 | Architectural design → requirements | `SDD_components.md`, forward and backward | 63 SRS requirements, each allocated to components or to a process (CI, packaging); the build fails otherwise. 10 of 80 components are support code with no direct requirement. |
 | Standards' requirements → code and tests | `traceability_matrix.csv` (RD2) | Built by CI; figures in section 8 |
 
@@ -85,7 +85,7 @@ separately; it is implemented and tested.
 | Complexity | 19 functions above 15 (all pre-existing, listed in `metrics.md`); no new function above 15 |
 | Structural coverage | Statement **91.5 %**, branch **81.7 %** (gate: statements ≥ 90 %, met) |
 | Code review | **Not done** by anyone other than the supplier (H06) |
-| Acceptance testing → requirements baseline | Not applicable: no baseline (H03) |
+| Acceptance testing → requirements baseline | Not applicable: no baseline (waived, D-11) |
 
 ### 4.6 Verification of software unit testing, integration and validation (M.2.1<4.6>)
 
@@ -138,7 +138,7 @@ SUITP, run on 2026-10-08 on the audit's container (Python 3.11, Basilisk
 
 **Traceability:**
 - Validation specification → technical specification: SVS section 11.
-- Validation specification → requirements baseline: none (H03).
+- Validation specification → requirements baseline: none (waived, D-11).
 
 ### 4.7 Software quality requirements verification (M.2.1<4.7>)
 

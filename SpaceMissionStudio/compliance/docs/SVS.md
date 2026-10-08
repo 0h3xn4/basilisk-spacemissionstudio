@@ -9,7 +9,7 @@ Document: SMS-SVS, issue 1 (draft), 2026-10-08. Remediation R14.
   (`tests/validation/validation_cases.py`) are the reference; this
   document restates them.
 - There is no SVS with respect to a requirements baseline: no baseline
-  exists (H03).
+  exists (waived, D-11).
 
 ## 1 Introduction (L.2.1<1>)
 

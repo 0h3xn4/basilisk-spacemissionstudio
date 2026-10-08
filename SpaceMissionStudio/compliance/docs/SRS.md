@@ -8,8 +8,9 @@ Document: SMS-SRS, issue 1 (draft), 2026-10-08. Remediation R14.
   this SRS is derived from the software as implemented (version 2.0.0 on
   branch `compliance/ecss-ccsds-audit`) and from the user's recorded
   decisions (`compliance/PROGRESS.md`).
-- Whether it states what the customer needs is for the customer to decide:
-  H03 (requirements baseline) and H01 (SRR/PDR reviews).
+- No requirements baseline will be written: the user waived it
+  (decision 9, deviation D-11), and reviews are waived too (D-08). The SRS
+  is the only specification of the tool.
 
 ## 1 Introduction (D.2.1<1>)
 
@@ -362,7 +363,7 @@ Methods: T = test, A = analysis, I = inspection, R = review of design.
   - its code evidence;
   - its tests;
   - its verification method.
-- No SSS exists to trace from (H03).
+- No SSS exists to trace from: the customer baseline is waived (deviation D-11).
 
 ## 8 Logical model description (D.2.1<8>)
 

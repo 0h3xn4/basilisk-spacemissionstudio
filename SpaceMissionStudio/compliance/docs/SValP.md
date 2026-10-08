@@ -44,8 +44,8 @@ Validation is done by comparing the tool with independent references:
 ### 4.1 General (J.2.1<4.1>)
 
 - **Approach:** validation against the technical specification (the SRS).
-  No requirements baseline exists (H03), so validation against it is not
-  possible. The acceptance against a customer baseline is H03 and H01.
+  No requirements baseline exists (waived, D-11), so validation against it is not
+  possible. The customer baseline (D-11) and the reviews (D-08) are waived.
 - **Method:**
   - Each SRS performance requirement (SRS-P-01 to SRS-P-08) has a
     validation case with a reference and a tolerance, fixed before the

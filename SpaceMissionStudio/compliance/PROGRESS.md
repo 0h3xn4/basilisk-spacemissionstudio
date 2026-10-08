@@ -58,6 +58,9 @@ Result: **2055 passed, 11 skipped, 0 failed** (245 s, 3 workers). Every later ph
    left open; the software security management plan is waived (D-10);
    training records and process assessment are waived (D-09); PA reports
    only on request.
+9. 2026-10-08, user (H03): no customer baseline (SSS, IRD), deviation
+   D-11; a default CCSDS file naming and exchange method is defined in the
+   ICD, to be agreed with each exchange partner.
 
 ## Phase 1 test run
 
