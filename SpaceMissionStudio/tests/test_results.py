@@ -121,6 +121,11 @@ def test_result_set_export_csv_with_provenance_writes_sidecar_json(tmp_path):
         "dependency_versions": {},
         "scenario_sha256": "",
         "data_files": {},
+        # frames and time scales (R02), empty when not filled by engine.service
+        "time_system": {},
+        "frames": {},
+        "transformations": {},
+        "series_frames": {},
     }
 
 

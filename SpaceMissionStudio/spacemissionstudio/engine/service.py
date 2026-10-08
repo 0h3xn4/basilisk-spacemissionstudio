@@ -149,6 +149,7 @@ installed version happens to add.
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import json
 import logging
@@ -169,7 +170,7 @@ from Basilisk.utilities.supportDataTools.dataFetcher import DataFile, get_path
 from .. import __version__ as _SPACEMISSIONSTUDIO_VERSION
 from .. import dependencies
 from ..schema.scenario import OrbitIC, Scenario
-from . import earth_orientation, environment_models, fsw, geodesy, kernels, link_budget, long_run, orbit_maintenance, time_system, tle, vizard
+from . import earth_orientation, environment_models, frames, fsw, geodesy, kernels, link_budget, long_run, orbit_maintenance, time_system, tle, vizard
 from .results import ResultSet, RunProvenance, TimeSeries, conservation_drift_warnings
 from .vizard import VizardRequest
 
@@ -1930,6 +1931,9 @@ class SimulationService:
                 dependency_versions=self._dependency_versions,
                 scenario_sha256=self._scenario_sha256,
                 data_files=dict(self._data_files),
+                time_system=time_system.time_scales(self.scenario.epoch_utc),
+                frames=frames.definitions(self.scenario.gravity.central_body, self.earth_frame),
+                transformations=dict(frames.TRANSFORMATIONS),
             )
         result.warnings.extend(self._space_weather_warnings)
         result.warnings.extend(note for note in self._earth_orientation_notes if "no IERS data" in note)
@@ -2174,6 +2178,9 @@ class SimulationService:
                     result, gs_config.name, sc_config.name, sc_config.rf_link, gs_config,
                     comms_pointing_target_ground_station=comms_target,
                 ))
+        if result.provenance is not None:
+            result.provenance = dataclasses.replace(result.provenance,
+                                                    series_frames=frames.series_frames(result.series))
         return result
 
     def log_last_known_state(self) -> None:

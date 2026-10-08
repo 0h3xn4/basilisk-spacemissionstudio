@@ -56,6 +56,7 @@ from typing import Callable, Dict, List, Optional
 import numpy as np
 
 from ..schema.scenario import OrbitIC, Scenario, SimSettings, SpaceWeatherConfig
+from . import time_system
 from .results import ResultSet, TimeSeries
 
 SEGMENT_DAYS = 90.0  # [day] safely under Basilisk's ~104.25-day nanoToSec() limit
@@ -203,7 +204,9 @@ def run_segmented(scenario: Scenario, on_progress: Optional[Callable[[ResultSet,
     dv_offsets: Dict[str, float] = {}
     offset_s = 0.0  # [s]
     for index, length_s in enumerate(lengths):
-        segment.epoch_utc = (epoch + timedelta(seconds=offset_s)).isoformat()
+        # The simulation counts TDB seconds (engine.time_system): the next
+        # segment starts at the UTC of ET(epoch) + offset, not epoch + offset.
+        segment.epoch_utc = time_system.elapsed_to_utc(epoch, [offset_s])[0].isoformat()
         segment.sim_settings.duration_days = length_s / 86400.0  # [day]
         service = SimulationService(segment)
         if on_progress is None and should_cancel is None:

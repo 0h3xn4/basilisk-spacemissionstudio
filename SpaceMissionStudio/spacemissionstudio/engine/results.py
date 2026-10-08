@@ -94,6 +94,14 @@ class RunProvenance:
     dependency_versions: Dict[str, str] = field(default_factory=dict)
     scenario_sha256: str = ""
     data_files: Dict[str, Dict[str, object]] = field(default_factory=dict)
+    # Frames and time scales (ECSS-E-ST-10-09C 5.4.1, 5.4.2a, 5.4.4;
+    # remediation R02): engine.time_system.time_scales(),
+    # engine.frames.definitions()/TRANSFORMATIONS and the frame of each
+    # series that has one.
+    time_system: Dict[str, object] = field(default_factory=dict)
+    frames: Dict[str, Dict[str, str]] = field(default_factory=dict)
+    transformations: Dict[str, str] = field(default_factory=dict)
+    series_frames: Dict[str, str] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return asdict(self)

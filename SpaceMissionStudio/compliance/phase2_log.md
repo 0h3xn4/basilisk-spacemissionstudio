@@ -11,6 +11,7 @@ done. "Suite" is the full test suite on the commit (baseline: 2055 passed,
 | R01 | Q-ST-80C 6.2.4, 6.2.7 (and input to 5.5, H07) | `spacemissionstudio/dependencies.py` (qualified Basilisk 2.12.0, check, dependency versions, data-file records); installers pin `bsk[all]==2.12.0`; GUI status bar and CLI `run` warn on another version; `provenance.json` gains qualification, dependency versions, scenario SHA-256 and data files | `tests/test_dependencies.py` (check, installer pins = qualified version, file records, real run's provenance) | 2089 passed, 11 skipped, 0 failed |
 | R06 | E-ST-10-04C 4.2.1b, 4.2.2a, 4.2.2d, 6.2.1a, 6.3 | `engine/environment_models.py` (TSI 1361 W/m^2 with 1/r^2, Earth-Sun distance, sensorThermal input correction, Kaula truncation estimate); thermal sensors use the corrected inputs; warning for drag around a point-mass Earth; Explain-tab note when truncation exceeds SRP; schema caps the gravity degree at 180 (GGM03S); GUI 70 x 70 guidance; 4.2.2d -> deviation D-07 (TN36 unreachable) | `tests/test_environment_models.py`: Table 6-2 aphelion/perihelion, DE430 distance to 2e-4 AU, Basilisk 2.12 sensorThermal constants measured, corrected sensorThermal equilibrium = standard equilibrium to 0.01 K, truncation estimate, checks, degree cap | 2097 passed, 11 skipped, 0 failed |
 | R04 | E-ST-10-09C 5.4.9f; E-ST-10-04C 4.2.1c, 4.2.2b | `engine/earth_orientation.py` (NAIF ITRF93 Earth PCKs: consented fetch, file import, manifest with SHA-256, rollback, install-wide directory, coverage notes); service loads them and sets Earth's frame to ITRF93; startup prompt item; `spacemissionstudio earth-orientation`; installers prefetch; Explain-tab and run notes | `tests/test_earth_orientation.py` (offline: import, refusal of non-PCK, rollback, changed files, stubbed fetch, precedence, notes; with the real NAIF files: run frame == SPICE ITRF93 to 1e-12, differs from IAU_EARTH); GUI dialog tests | 2108 passed, 11 skipped, 0 failed |
+| R02 | E-ST-10-09C 5.2.3, 5.3.2, 5.4.1a/h, 5.4.2a, 5.4.3a/b, 5.4.4a/b | `engine/frames.py` (frame definitions, named transformations, per-series frames); `engine/time_system.py` (UTC/TAI/TT/TDB via ERFA, `elapsed_to_utc`, metadata); provenance.json carries both; GUI UTC axis and long-run segment epochs convert TDB elapsed time correctly; frame labels on orbit inputs | `tests/test_time_system.py` (leap-second values, J2000.0, TDB vs SPICE str2et to 50 us, leap-second crossing, round trip), `tests/test_frames.py` (definitions, series frames, real run metadata, units on every series) | 2121 passed, 11 skipped, 0 failed |
 
 ## Result differences against the baseline
 
@@ -43,3 +44,8 @@ done. "Suite" is the full test suite on the commit (baseline: 2055 passed,
   gives passes at 10.4-18.2 min (peak 62.1 deg) and 106.8-111.8 min
   (16.0 deg) against 61.6 / 16.1 deg with IAU_EARTH; ITRF93 and IAU_EARTH
   differ by 1.5 mrad in 2026.
+* R02: the GUI's UTC axis and long-run segment epochs now subtract the
+  change of TDB - UTC (microseconds to milliseconds; a leap second when one
+  falls inside a run). One GUI test expecting epoch + t exactly now allows
+  1 ms; the exact-keys provenance test gained the four R02 fields. Units audit (templates 19, 07, 21, 05): every series has units,
+  '-' for dimensionless.

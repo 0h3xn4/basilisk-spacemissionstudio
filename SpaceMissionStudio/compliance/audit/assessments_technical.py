@@ -48,12 +48,8 @@ TECHNICAL_RULES = [
      "Baseline the CSD with the tool release (git tag) and record it in the project CM.", "S", "no", "H05"),
     ("E-ST-10-09C", "5.2.2e", "H", "-", "Re-examination at each phase is a project/process action.",
      "Add a CSD review item to each tool release checklist.", "S", "no", "H01"),
-    ("E-ST-10-09C", "5.2.3*", "P", _FRAMES_IN_CODE,
-     "Elements needing frames (spacecraft B, inertial N, planet-fixed, Hill/orbit, sensor and actuator "
-     "axes, facets, ground-station topocentric) are defined in code but not identified in one place, and "
-     "no transformation chain is drawn.",
-     "Frame inventory and transformation tree in the CSD (gap_analysis.md 3.1).", "M", "yes (documents Basilisk frames)",
-     "R02,R14"),
+    ('E-ST-10-09C', '5.2.3*', 'P', "R02 (Phase 2): engine/frames.py (definitions: name, mnemonic, origin, axes, epoch, time scale; named transformations; per-series frames) and engine/time_system.py (UTC/TAI/TT/TDB via ERFA), written to every run's provenance.json; tests/test_frames.py, tests/test_time_system.py",
+     'Frames and transformations are inventoried in code and output metadata; the CSD (R14) has to present them and the transformation tree.', 'CSD frame inventory and tree (R14).', 'S', 'yes (documents Basilisk frames)', 'R02,R14'),
     ("E-ST-10-09C", "5.3.1a", "N", "-", _NO_CSD, "List the conventions applied (IERS 2010, IAU 2006/2000A where "
      "used, SPICE J2000=ICRF alignment, WGS-84) in the CSD.", "S", "no", "R14"),
     ("E-ST-10-09C", "5.3.1b", "C", "R03 (Phase 2): engine/tle.py checks the TLE (length, line numbers, catalogue "
@@ -72,20 +68,19 @@ TECHNICAL_RULES = [
      "frames, time scales); engine/time_system.py the UTC-offset conversion.",
      "Specified in code documentation; the CSD (R14) has to carry it.",
      "Copy the conversion specification into the CSD.", "S", "no", "R03,R14"),
-    ("E-ST-10-09C", "5.3.2*", "P", "Basilisk naming convention used throughout (r_BN_N, sigma_BN, dcm_BN; "
-     "series names engine/series_names.py)",
-     "A consistent naming/notation exists (Basilisk's) but is not specified as the tool's convention; "
-     "outputs name frames only by suffix (_N, _B).",
-     "Specify naming, mnemonics, notation and sign conventions in the CSD; add frame metadata to outputs.",
-     "S", "yes (adopts Basilisk notation)", "R02,R14"),
-    ("E-ST-10-09C", "5.3.2b", "P", "docstrings and USER_MANUAL.md",
-     "The inertial frame is called 'inertial'/'N' (SPICE J2000) and the Earth-fixed frame is IAU_EARTH; no "
-     "recognised name is misused, but the docs do not state which is meant.",
-     "Use the exact names (SPICE J2000/ICRF-aligned, IAU_EARTH) in docs and output metadata.", "S", "no", "R02"),
+    ('E-ST-10-09C', '5.3.2*', 'P', "R02 (Phase 2): engine/frames.py (definitions: name, mnemonic, origin, axes, epoch, time scale; named transformations; per-series frames) and engine/time_system.py (UTC/TAI/TT/TDB via ERFA), written to every run's provenance.json; tests/test_frames.py, tests/test_time_system.py; naming, notation and sign conventions in the engine/frames.py docstring",
+     'Conventions are specified in code documentation and metadata; the CSD (R14) has to carry them.', 'Copy the conventions into the CSD.', 'S', 'yes (adopts Basilisk notation)', 'R02,R14'),
+    ('E-ST-10-09C', '5.3.2a', 'C', "R02 (Phase 2): engine/frames.py (definitions: name, mnemonic, origin, axes, epoch, time scale; named transformations; per-series frames) and engine/time_system.py (UTC/TAI/TT/TDB via ERFA), written to every run's provenance.json; tests/test_frames.py, tests/test_time_system.py: every frame has a unique descriptive name",
+     '-', '-', 'S', 'yes', 'R02'),
+    ('E-ST-10-09C', '5.3.2c', 'C', "R02 (Phase 2): engine/frames.py (definitions: name, mnemonic, origin, axes, epoch, time scale; named transformations; per-series frames) and engine/time_system.py (UTC/TAI/TT/TDB via ERFA), written to every run's provenance.json; tests/test_frames.py, tests/test_time_system.py: unique one-letter mnemonics (N, P, B, H, L) plus TEME",
+     '-', '-', 'S', 'yes', 'R02'),
+    ('E-ST-10-09C', '5.3.2d', 'C', "R02 (Phase 2): engine/frames.py (definitions: name, mnemonic, origin, axes, epoch, time scale; named transformations; per-series frames) and engine/time_system.py (UTC/TAI/TT/TDB via ERFA), written to every run's provenance.json; tests/test_frames.py, tests/test_time_system.py: transformations named 'Y -> X' with their direction (frames.TRANSFORMATIONS)",
+     '-', '-', 'S', 'yes', 'R02'),
+    ('E-ST-10-09C', '5.3.2b', 'C', "R02 (Phase 2): engine/frames.py (definitions: name, mnemonic, origin, axes, epoch, time scale; named transformations; per-series frames) and engine/time_system.py (UTC/TAI/TT/TDB via ERFA), written to every run's provenance.json; tests/test_frames.py, tests/test_time_system.py: recognised names used only where the definition is followed (EME2000 = SPICE J2000, ITRF93 from IERS-based PCKs, WGS-84); IAU_EARTH named as SPICE's model",
+     '-', '-', 'S', 'no', 'R02'),
     ("E-ST-10-09C", "5.3.3*", "N", "-", "No frame figures exist.", "Frame figures in the CSD.", "M", "no", "R14"),
-    ("E-ST-10-09C", "5.4.1a", "P", _FRAMES_IN_CODE, "Origins are set in code (N: central body via "
-     "zeroBase; B: spacecraft centre of mass per Basilisk) but not specified in a document or in outputs.",
-     "Specify origins in the CSD and in output metadata.", "S", "yes", "R02,R14"),
+    ('E-ST-10-09C', '5.4.1a', 'C', "R02 (Phase 2): engine/frames.py (definitions: name, mnemonic, origin, axes, epoch, time scale; named transformations; per-series frames) and engine/time_system.py (UTC/TAI/TT/TDB via ERFA), written to every run's provenance.json; tests/test_frames.py, tests/test_time_system.py: origin of every frame",
+     '-', '-', 'S', 'yes', 'R02'),
     ("E-ST-10-09C", "5.4.1b", "P", _FRAMES_IN_CODE, "Derivation of origins from reference points is implicit.",
      "Document in the CSD.", "S", "yes", "R14"),
     ("E-ST-10-09C", "5.4.1c", "P", _FRAMES_IN_CODE, "Derivation of axes from reference directions is implicit "
@@ -98,29 +93,19 @@ TECHNICAL_RULES = [
     ("E-ST-10-09C", "5.4.1f", "C", "No left-handed frame is imported (inputs: classical elements, cartesian "
      "J2000 state, TLE)", "-", "-", "S", "no", ""),
     ("E-ST-10-09C", "5.4.1g", "NA", "No left-handed frame exists", "-", "-", "S", "no", ""),
-    ("E-ST-10-09C", "5.4.1h", "P", "engine/kernels.py: SPICE J2000 (epoch J2000.0)",
-     "The inertial frame's epoch is fixed by SPICE (J2000) but stated neither in docs nor in outputs.",
-     "Frame metadata on every state vector (frame name, epoch, origin).", "S", "yes", "R02"),
-    ("E-ST-10-09C", "5.4.2a", "N", _FRAMES_IN_CODE, _TIME_GAP,
-     "Time-system layer: every time tag carries its scale; document TDB as the propagation scale.", "M",
-     "yes (wraps SPICE/Basilisk time)", "R02"),
+    ('E-ST-10-09C', '5.4.1h', 'C', "R02 (Phase 2): engine/frames.py (definitions: name, mnemonic, origin, axes, epoch, time scale; named transformations; per-series frames) and engine/time_system.py (UTC/TAI/TT/TDB via ERFA), written to every run's provenance.json; tests/test_frames.py, tests/test_time_system.py: N epoch J2000.0 = 2000-01-01T12:00:00 TT",
+     '-', '-', 'S', 'yes', 'R02'),
+    ('E-ST-10-09C', '5.4.2a', 'C', "R02 (Phase 2): engine/frames.py (definitions: name, mnemonic, origin, axes, epoch, time scale; named transformations; per-series frames) and engine/time_system.py (UTC/TAI/TT/TDB via ERFA), written to every run's provenance.json; tests/test_frames.py, tests/test_time_system.py: time-dependent frames (P, H, L) evaluated in TDB, the simulation time variable; results' time_s = TDB seconds since the scenario epoch; GUI UTC axis converts it",
+     '-', '-', 'M', 'yes', 'R02'),
     ("E-ST-10-09C", "5.4.2b", "C", "position_N series (engine/results.py, CSV export)", "-", "-", "S", "no", ""),
-    ("E-ST-10-09C", "5.4.3a", "P", "engine/results.py TimeSeries.units",
-     "Most series carry units in their CSV column names; dimensionless quantities are not marked "
-     "consistently ([-] in some, nothing in others).", "Mark dimensionless series explicitly; check all series.",
-     "S", "no", "R02"),
-    ("E-ST-10-09C", "5.4.3b", "P", "engine/results.py TimeSeries.units; schema field names carry units "
-     "(_km, _deg, _s)", "Angles and some derived series lack units in exports.",
-     "Unit audit of every series and schema field; add missing units.", "S", "no", "R02"),
-    ("E-ST-10-09C", "5.4.4a", "P", "CSV header time_s", "The time unit (s) is given, but not its scale or origin.",
-     "Time column states scale and epoch (e.g. 'TDB seconds since <epoch>' or UTC ISO time tags).", "S", "yes",
-     "R02"),
-    ("E-ST-10-09C", "5.4.4b", "N", "-", _TIME_GAP + " Leap seconds: naif0012 (last leap second 2017-01-01); a "
-     "later leap second would need a newer LSK and nothing checks LSK validity. lifetime.py uses its own "
-     "GMST with UT1 = UTC.",
-     "Time-system layer with explicit UTC/TAI/TT/TDB conversions (SPICE-backed), LSK validity check, "
-     "documented relationships in the CSD; validate against SOFA/IERS reference values.", "M",
-     "yes (wraps SPICE time)", "R02,R13"),
+    ('E-ST-10-09C', '5.4.3a', 'C', "engine/results.py TimeSeries.units ('-' for dimensionless); tests/test_frames.py checks every series of a real run has units",
+     '-', '-', 'S', 'no', 'R02'),
+    ('E-ST-10-09C', '5.4.3b', 'C', "TimeSeries.units on every series (angles 'rad' or 'deg'); CSV column names carry them; schema fields carry unit comments; units audit of four templates (phase2_log.md)",
+     '-', '-', 'S', 'no', 'R02'),
+    ('E-ST-10-09C', '5.4.4a', 'C', "R02 (Phase 2): engine/frames.py (definitions: name, mnemonic, origin, axes, epoch, time scale; named transformations; per-series frames) and engine/time_system.py (UTC/TAI/TT/TDB via ERFA), written to every run's provenance.json; tests/test_frames.py, tests/test_time_system.py: unit of time s; time variable TDB seconds since the scenario epoch",
+     "The CSV header stays 'time_s' (format unchanged); its scale is in provenance.json.", '-', 'S', 'no', 'R02'),
+    ('E-ST-10-09C', '5.4.4b', 'C', "R02 (Phase 2): engine/frames.py (definitions: name, mnemonic, origin, axes, epoch, time scale; named transformations; per-series frames) and engine/time_system.py (UTC/TAI/TT/TDB via ERFA), written to every run's provenance.json; tests/test_frames.py, tests/test_time_system.py: UTC -> TAI (leap seconds, last 2017-01-01) -> TT (+32.184 s) -> TDB (ERFA dtdb) defined and validated against SPICE str2et to 50 us and the IERS leap-second values; elapsed_to_utc handles leap seconds; long-run segment epochs use it",
+     "Leap seconds announced after naif0012/ERFA's table are not modelled (stated in the metadata).", '-', 'M', 'yes', 'R02'),
     ("E-ST-10-09C", "5.4.5a", "P", "SpacecraftConfig facets/sensors/actuators defined in B",
      "B is the Basilisk body frame (origin at the spacecraft point B); its relation to a material structure is "
      "not defined (the tool has no structural model).",

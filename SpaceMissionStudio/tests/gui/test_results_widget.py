@@ -865,7 +865,10 @@ def test_epoch_x_axis_converts_time_s_to_datetimes(widget):
     plotted_x = list(widget.figure.data[0].x)
     base = datetime.fromisoformat("2030-01-01T00:00:00")
     expected = [base + timedelta(seconds=float(t)) for t in rs.series["sat-1.position_N"].time_s]
-    assert plotted_x == expected
+    # time_s is TDB seconds (engine.time_system): UTC = epoch + t minus the
+    # change of TDB - UTC, here microseconds (no leap second in between).
+    assert all(abs((got - want).total_seconds()) < 1e-3 for got, want in zip(plotted_x, expected))
+    assert plotted_x[0] == base
     assert widget.figure.layout.xaxis.title.text == "Epoch (UTC)"
 
 

@@ -37,8 +37,11 @@ tool's convention (EME2000, i.e. SPICE ``J2000``, at the scenario epoch) is:
    matrix and ``Eq = dpsi cos(eps_mean)`` the equation of the equinoxes
    without the 1994 kinematic terms (Vallado et al. 2006, AIAA 2006-6753),
    all evaluated in TT at the scenario epoch with ERFA (the SOFA library).
-   No ICRS frame bias is applied: the simulation frame is EME2000, not
-   GCRF. Velocity is rotated by the same matrix (the frame's rotation rate,
+   No ICRS frame bias is applied: this is the same IAU 1976/1980 relation
+   SPICE uses between J2000 and its true-of-date frames (checked in the
+   tests), so the result is in the simulation's SPICE J2000 frame. (NAIF
+   treats J2000 and ICRF as the same frame; the ~23 mas frame bias, about
+   0.8 m in LEO, is below what SPICE distinguishes.) Velocity is rotated by the same matrix (the frame's rotation rate,
    ~1e-11 rad/s, is neglected).
 
 Basilisk 2.12's ``tleHandling.satTle2elem`` evaluates SGP4 only at the TLE

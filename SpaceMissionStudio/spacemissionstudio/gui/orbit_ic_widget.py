@@ -64,6 +64,14 @@ def _spin(minimum: float, maximum: float, decimals: int = 6, step: float = 1.0, 
     return box
 
 
+def _frame_label(kind: str) -> QLabel:
+    """Frame and time scale of an orbit input (ECSS-E-ST-10-09C 5.4.1)."""
+    label = QLabel("EME2000 (SPICE J2000), central body, at the scenario epoch (UTC)")
+    label.setToolTip(f"The {kind} are given in the inertial frame N: Earth mean equator and equinox of "
+                     "J2000 (SPICE J2000), centred on the scenario's central body, at the scenario epoch.")
+    return label
+
+
 class OrbitIcWidget(QWidget):
     """Emits :attr:`changed` on any edit (type switch or field value), so
     a containing form can re-validate live.
@@ -157,6 +165,7 @@ class OrbitIcWidget(QWidget):
             "relative to the ascending node. Has no effect for a circular orbit (eccentricity "
             "0), since a circle has no distinct closest point."
         )
+        form.addRow("Frame", _frame_label("osculating Keplerian elements"))
         form.addRow("Semi-major axis [km]", self.sma_km)
         form.addRow("Eccentricity [-]", self.ecc)
         form.addRow("Inclination [deg]", self.inc_deg)
@@ -256,6 +265,7 @@ class OrbitIcWidget(QWidget):
                 "you intended (e.g. a mismatched speed turns a circular orbit into a highly "
                 "elliptical, or escaping, one)."
             )
+        form.addRow("Frame", _frame_label("position and velocity"))
         form.addRow("Position X [km]", self.pos_x_km)
         form.addRow("Position Y [km]", self.pos_y_km)
         form.addRow("Position Z [km]", self.pos_z_km)

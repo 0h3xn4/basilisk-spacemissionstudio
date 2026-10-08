@@ -123,7 +123,7 @@ if hasattr(os, "geteuid") and os.geteuid() == 0:
     os.environ.setdefault("QTWEBENGINE_CHROMIUM_FLAGS", "--no-sandbox")
 
 import tempfile
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -145,6 +145,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ..engine import time_system
 from ..engine.results import ResultSet, TimeSeries
 from ..plot_categories import categorize as _categorize
 from ..plot_categories import legacy_display as _legacy_display
@@ -757,11 +758,10 @@ class ResultsWidget(QWidget):
         """
         if self.x_axis_combo.currentData() == "epoch" and self._epoch_utc:
             try:
-                base = datetime.fromisoformat(self._epoch_utc)
+                # time_s is TDB seconds since the epoch (engine.time_system).
+                return list(time_system.elapsed_to_utc(self._epoch_utc, time_s)), "Epoch (UTC)"
             except ValueError:
                 pass
-            else:
-                return [base + timedelta(seconds=float(t)) for t in time_s], "Epoch (UTC)"
         return time_s / 3600.0, "Elapsed time [hr]"
 
     def _build_figure(self, name: str, series: TimeSeries) -> go.Figure:
