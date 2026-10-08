@@ -418,3 +418,21 @@ def test_the_written_gm_is_the_gm_the_propagation_uses():
     service = SimulationService(load_scenario(source))
     service.build()
     assert service.grav_factory.gravBodies["earth"].mu == odm.EARTH_GM_KM3_S2 * 1e9
+
+
+def test_oem_interpolation_can_be_lagrange_for_gmat():
+    """GMAT R2026a reads only Lagrange OEMs (Phase 3 F-08): the writer can
+    declare LAGRANGE degree 7, and refuses other methods."""
+    from types import SimpleNamespace
+
+    from spacemissionstudio.engine.results import TimeSeries
+
+    t_s = np.arange(10) * 60.0  # [s]
+    r_m = np.column_stack([7e6 * np.cos(t_s / 900.0), 7e6 * np.sin(t_s / 900.0), np.zeros(10)])  # [m]
+    v_m_s = np.gradient(r_m, t_s, axis=0)  # [m/s]
+    result = SimpleNamespace(series={"a.position_N": TimeSeries("a.position_N", t_s, ("x", "y", "z"), r_m, "m"),
+                                     "a.velocity_N": TimeSeries("a.velocity_N", t_s, ("x", "y", "z"), v_m_s, "m/s")})
+    text = odm.oem_from_result(result, "2024-06-01T00:00:00", "earth", ["a"], interpolation="lagrange")["a"]
+    assert "INTERPOLATION        = LAGRANGE" in text and _errors(text) == []
+    with pytest.raises(odm.OdmError, match="HERMITE or LAGRANGE"):
+        odm.oem_from_result(result, "2024-06-01T00:00:00", "earth", ["a"], interpolation="spline")

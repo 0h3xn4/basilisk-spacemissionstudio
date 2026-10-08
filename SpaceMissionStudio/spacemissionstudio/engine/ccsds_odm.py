@@ -373,6 +373,10 @@ def _check_header(message: OdmMessage, issues: List[Issue]) -> None:
         if entry.keyword == f"CCSDS_{message.kind}_VERS":
             if not re.match(r"^\d+\.\d+$", entry.value):
                 issues.append(Issue("error", entry.line, "7.9.1", f"version {entry.value!r} is not 'x.y'"))
+            elif entry.value != VERSION:
+                issues.append(Issue("warning", entry.line, "Table " + {"OPM": "3-1", "OMM": "4-1", "OEM": "5-2"}[
+                    message.kind], f"version {entry.value}: checked against CCSDS 502.0-B-3 (version {VERSION}) "
+                    "rules; the rules of earlier versions are not implemented"))
         elif entry.keyword != "COMMENT":
             _check_value(entry, None, issues)
 
@@ -859,10 +863,16 @@ def omm_from_tle(line1: str, line2: str, object_name: str, **kwargs) -> str:
 
 
 def oem_from_result(result, epoch_utc: str, central_body: str, spacecraft: Sequence[str],
-                    object_ids: Optional[Dict[str, str]] = None, stride: int = 1, **kwargs) -> Dict[str, str]:
+                    object_ids: Optional[Dict[str, str]] = None, stride: int = 1, interpolation: str = "HERMITE",
+                    **kwargs) -> Dict[str, str]:
     """One OEM per spacecraft from a run's ``position_N``/``velocity_N``
     series: EME2000, centre = central body, UTC epochs converted from the
-    run's TDB time (engine.time_system). Returns ``{spacecraft: text}``."""
+    run's TDB time (engine.time_system), suggested interpolation
+    ``interpolation`` of degree 7 ("HERMITE" or "LAGRANGE"; GMAT R2026a
+    reads only Lagrange, Phase 3 finding F-08). Returns ``{spacecraft: text}``."""
+    interpolation = interpolation.upper()
+    if interpolation not in ("HERMITE", "LAGRANGE"):
+        raise OdmError(f"OEM interpolation {interpolation!r} must be HERMITE or LAGRANGE")
     from . import time_system as ts
 
     messages = {}
@@ -876,7 +886,7 @@ def oem_from_result(result, epoch_utc: str, central_body: str, spacecraft: Seque
         segment = {"object_name": name, "object_id": (object_ids or {}).get(name, "UNKNOWN"),
                    "center_name": central_body, "ref_frame": "EME2000", "time_system": "UTC", "epochs": epochs,
                    "r_km": np.asarray(position.data)[index] / 1e3, "v_km_s": np.asarray(velocity.data)[index] / 1e3,
-                   "interpolation": "HERMITE", "interpolation_degree": 7,
+                   "interpolation": interpolation, "interpolation_degree": 7,
                    "comments": ["Produced by a SpaceMissionStudio (Basilisk) simulation; EME2000 is SPICE J2000",
                                 "Planetary ephemeris DE430; positions in km, velocities in km/s, as recorded"]}
         messages[name] = write_oem([segment], **kwargs)

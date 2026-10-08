@@ -138,7 +138,8 @@ def cmd_run(args: argparse.Namespace) -> int:
 
         names = [sc.name for sc in scenario.spacecraft if f"{sc.name}.position_N" in result.series]
         for name, text in ccsds_odm.oem_from_result(result, scenario.epoch_utc, scenario.gravity.central_body,
-                                                    names, stride=args.oem_stride).items():
+                                                    names, stride=args.oem_stride,
+                                                    interpolation=args.oem_interpolation).items():
             oem_path = args.out_dir / f"{name}.oem"
             oem_path.write_text(text, encoding="ascii")
             print(f"  CCSDS OEM: {oem_path}")
@@ -713,6 +714,8 @@ def build_parser() -> argparse.ArgumentParser:
                        help="also write each spacecraft's ephemeris as a CCSDS OEM (KVN, EME2000, UTC)")
     p_run.add_argument("--oem-stride", type=int, default=1, metavar="N",
                        help="write every Nth recorded state to the OEM (default 1: all)")
+    p_run.add_argument("--oem-interpolation", choices=("hermite", "lagrange"), default="hermite",
+                       help="interpolation the OEM suggests, degree 7 (GMAT reads only lagrange)")
     p_run.add_argument("--vizard-save-file", type=str, default=None,
                         help="write a Vizard .bin playback file to this path (see engine/vizard.py)")
     p_run.add_argument("--vizard-live-stream", action="store_true",
