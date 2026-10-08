@@ -290,5 +290,3 @@ def test_mission_engine_cancelled_emits_cancelled_signal_with_partial_result_and
     qtbot.waitUntil(lambda: not worker.isRunning(), timeout=5000)
 
     assert blocker.args == [partial, summary]
-
-

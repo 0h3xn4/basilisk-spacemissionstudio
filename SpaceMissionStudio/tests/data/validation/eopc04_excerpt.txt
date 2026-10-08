@@ -1,7 +1,7 @@
 # Excerpt (every 15th observed day from 1990) of eopc04_08.62-now as shipped with GMAT, SHA-256 52c95d6871066e892463328424ca34f5e9cedde92c747465a40f7cd0ecd86ed3
 #                EARTH ORIENTATION PARAMETER (EOP) PRODUCT CENTER CENTER (PARIS OBSERVATORY)
 #                       INTERNATIONAL EARTH ROTATION AND REFERENCE SYSTEMS SERVICE
-#                                     EOP (IERS) 20 C04 TIME SERIES  (old format)   
+#                                     EOP (IERS) 20 C04 TIME SERIES  (old format)
 #                Description: https://hpiers.obspm.fr/eoppc/eop/eopc04/eopc04.txt
 #                             contact: christian.bizouard@obspm.fr
 #              FORMAT(3(I4),I7,2(F11.6),2(F12.7),2(F11.6),2(F11.6),2(F11.7),2(F12.6))

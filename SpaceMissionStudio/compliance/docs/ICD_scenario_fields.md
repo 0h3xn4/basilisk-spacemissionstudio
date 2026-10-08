@@ -354,4 +354,3 @@ Automated altitude/semi-major-axis station-keeping for one spacecraft, with delt
 | `eclipse_sunlit_threshold` | float | `0.99` | [-] shadow factor above which the spacecraft is treated as sunlit |
 | `min_on_time_s` | float | `0.0` | [s] minimum firing duration (minimum impulse bit = thrust_n * min_on_time_s) |
 | `eccentricity_neutral_burns` | bool | `False` |  |
-

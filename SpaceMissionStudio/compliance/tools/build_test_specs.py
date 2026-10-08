@@ -127,7 +127,7 @@ def _write(out: Path, title: str, intro: list, cases: list) -> None:
             lines.append(f"| {name} | {c['purpose'] or '-'} | {', '.join(c['requirements']) or '-'} | "
                          f"{c['level']} |")
         lines.append("")
-    out.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    out.write_text("\n".join(lines).rstrip("\n") + "\n", encoding="utf-8")  # one final newline (pre-commit end-of-file-fixer)
     print(f"{out.name}: {len(cases)} test cases, {len(by_file)} designs")
 
 

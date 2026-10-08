@@ -52,4 +52,3 @@ The validation cases V-01 to V-08 and their references are specified in `SVS.md`
 | `test_tool_reads_and_checks_the_oem_gmat_writes` | GMAT's OEM reads; against 502.0-B-3 it has one error (CENTER_NAME = 'Earth' mixes case, 7.5.3) and a warning that it is a version 1.0 message; its states every 600 s equal GMAT's own two-body report to 1 mm. | CCSDS-502.0-B-3 5.1.1, CCSDS-502.0-B-3 7.5.3, E-ST-40C 5.6.3.1 | validation |
 | `test_the_oem_the_tool_writes_conforms` | The committed tool OEM (Lagrange, degree 7, 60 s) has no issues. | CCSDS-502.0-B-3 5.1.1, CCSDS-502.0-B-3 7.5.3, E-ST-40C 5.6.3.1 | validation |
 | `test_gmat_reading_the_tool_oem_returns_the_tool_trajectory` | GMAT's interpolation of the tool's OEM between nodes is within 1 cm of the tool's own run at the same instants. | CCSDS-502.0-B-3 5.1.1, CCSDS-502.0-B-3 7.5.3, E-ST-40C 5.6.3.1 | validation |
-

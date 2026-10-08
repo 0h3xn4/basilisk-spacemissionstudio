@@ -35,3 +35,9 @@ prediction for future solar activity: the 95th percentile for operations
 budgets, the 50th for end of life, NRLMSISE-00, and the last 132 months
 repeated past the file's end. A study's own MSFC file can be set in
 Propagation setup instead.
+
+The two files differ from the published originals only in whitespace that
+this repository's pre-commit hooks remove: trailing spaces at the end of
+two header lines (`SW-All.txt`: one comment line; `oct2026f10-prd.txt`: the
+percentile header), and LF instead of CRLF line endings. No value changed.
+A run records the SHA-256 of the file it used in its provenance.

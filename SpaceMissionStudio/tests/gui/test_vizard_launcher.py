@@ -514,4 +514,3 @@ def test_vizard_fetch_worker_request_cancel_is_seen_by_should_cancel(tmp_path, m
     assert worker.wait(5000)  # join it: GC of a still-running QThread aborts the process
 
     assert seen_should_cancel["callable"]() is True  # the Event was already set before start()
-

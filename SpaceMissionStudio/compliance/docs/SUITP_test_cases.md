@@ -2133,4 +2133,3 @@ Levels: *unit* runs without Basilisk or Qt; *integration* runs a Basilisk simula
 | `test_empty_chief_name_falls_back_to_the_generic_label` | - | - | unit |
 | `test_bare_axis_letter_always_fits_even_on_the_narrowest_realistic_panel` | - | - | unit |
 | `test_slant_range_geometry` | Distance from a surface station to an orbit at a given elevation: straight up it is the altitude; on the horizon it is the tangent. | - | unit |
-

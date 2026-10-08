@@ -1232,4 +1232,3 @@ def test_an_answer_that_never_comes_does_not_stall_the_save(widget, monkeypatch,
     assert len(page.pending) == 1
     page.pending.pop()("data:image/png;base64,AAAA")
     assert len(rendered) == 1 and widget._png_poll_state is None
-

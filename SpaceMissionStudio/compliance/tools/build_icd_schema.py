@@ -89,7 +89,7 @@ def build_cli() -> int:
             lines.append(f"| `{argument}` | {_cell(action.help)} |")
         lines.append("")
     out = ROOT / "docs" / "ICD_cli.md"
-    out.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    out.write_text("\n".join(lines).rstrip("\n") + "\n", encoding="utf-8")  # one final newline (pre-commit end-of-file-fixer)
     print(f"{out.name}: {len(subparsers.choices)} commands")
     return 0
 
@@ -116,7 +116,7 @@ def build() -> int:
             lines.append(f"| `{f.name}` | {kind} | `{_default(f)[:60]}` | {note[:160]} |")
         lines.append("")
     out = ROOT / "docs" / "ICD_scenario_fields.md"
-    out.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    out.write_text("\n".join(lines).rstrip("\n") + "\n", encoding="utf-8")  # one final newline (pre-commit end-of-file-fixer)
     print(f"{out.name}: {len(classes)} classes")
     return build_cli()
 
