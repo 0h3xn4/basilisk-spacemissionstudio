@@ -235,7 +235,9 @@ TECHNICAL_RULES = [
      "(1316/1407 W/m^2 at aphelion/perihelion, tested).", "Thermal sensor: epoch distance only (see 6.2.1a).",
      "-", "S", "yes", "R06"),
     ("E-ST-10-04C", "7.2.1.1a", "C", "engine/service.py msisAtmosphere (Basilisk NRLMSISE-00), default "
-     "atmosphere_model; tests/test_lifetime.py (density matches the simulation's)",
+     "atmosphere_model, fed WGS-84 geodetic altitude and latitude by engine/geodetic_atmosphere.py (Phase 3 "
+     "F-07: Basilisk computes them on a sphere); tests/test_lifetime.py (density matches the simulation's); "
+     "validation V-04 against GMAT's NRLMSISE-00 (one-day decay within 1.6 %, tests/validation)",
      "The exponential model can also be chosen; the tool warns that it is far too thin above ~150 km.",
      "Keep NRLMSISE-00 the default; mark exponential as non-compliant in the UI.", "S", "yes", ""),
     ("E-ST-10-04C", "7.2.1.1b", "NA", "-", "Permission (may); JB2008 not used.", "-", "S", "no", ""),

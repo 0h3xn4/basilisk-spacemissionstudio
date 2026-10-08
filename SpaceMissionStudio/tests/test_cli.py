@@ -529,15 +529,15 @@ def test_run_parses_vizard_trail_and_ground_track_flags():
 
 @pytest.mark.requires_basilisk
 def test_lifetime_reports_reentry_and_the_disposal_rules(capsys):
-    """Template 18 at 400 km re-enters within a year; with a burn down to
-    a 200 km perigee, within weeks."""
+    """Template 18 at 400 km re-enters in March 2031 (about 15 months);
+    with a burn down to a 200 km perigee, within weeks."""
     from pathlib import Path
 
     path = Path(__file__).resolve().parent.parent / "spacemissionstudio" / "scenarios" / "templates" \
         / "18_leo_station_keeping.json"
     assert cli.main(["lifetime", str(path)]) == 0
     out = capsys.readouterr().out
-    assert "leo-sat-1: re-entry 2030-" in out and "5-year rule: met" in out
+    assert "leo-sat-1: re-entry 2031-" in out and "5-year rule: met" in out
     assert cli.main(["lifetime", str(path), "--deorbit-perigee-km", "200"]) == 0
     assert "-> perigee 200 km" in capsys.readouterr().out
 

@@ -57,6 +57,8 @@ from typing import Callable, List, Optional
 
 import numpy as np
 
+from . import geodesy
+
 # Basilisk's own Earth constants (architecture/utilities/astroConstants.h)
 MU_EARTH_M3_S2 = 398600.436e9  # [m^3/s^2]
 REQ_EARTH_M = 6378136.6  # [m]
@@ -225,7 +227,9 @@ class MsisDensity:
         self._planet_msg.write(planet)
         for msg, position in zip(self._state_msgs, r_m):
             state = self._messaging.SCStatesMsgPayload()
-            state.r_BN_N = [float(v) for v in position]
+            # geodetic altitude and latitude, as the simulation's atmosphere sees them (engine.geodetic_atmosphere)
+            proxy = geodesy.atmosphere_proxy_position(position, planet.J20002Pfix, self._atmosphere.planetRadius)
+            state.r_BN_N = [float(v) for v in proxy]
             msg.write(state)
 
     def __call__(self, t_s: float, r_m: np.ndarray) -> np.ndarray:
@@ -240,7 +244,7 @@ def exponential_density(t_s: float, r_m: np.ndarray) -> np.ndarray:
     """Basilisk's exponential Earth atmosphere, as
     ``simSetPlanetEnvironment.exponentialAtmosphere(module, "earth")`` sets
     it up (1.217 kg/m^3 at the surface, 8.5 km scale height)."""
-    altitude_m = np.linalg.norm(r_m, axis=1) - REQ_EARTH_M
+    altitude_m = np.array([geodesy.pcpf_to_geodetic(r)[2] for r in np.atleast_2d(r_m)])  # [m] geodetic
     return 1.217 * np.exp(-altitude_m / 8500.0)  # [kg/m^3]
 
 

@@ -166,3 +166,18 @@ def test_basilisk_ground_location_uses_the_wgs84_site():
     assert azimuth[0] == pytest.approx(ref_az, abs=1e-9)
     # Basilisk's own (geocentric) elevation differs by the latitude tilt.
     assert abs(recorder.elevation[-1] - ref_el) < math.radians(0.2)
+
+
+def test_the_atmosphere_proxy_carries_the_geodetic_altitude_and_latitude():
+    """A sphere-based model (Basilisk's atmospheres) reading the proxy
+    position finds the WGS-84 geodetic latitude and altitude, at the same
+    longitude (Phase 3 finding F-07)."""
+    radius_m = 6378136.6  # [m] Basilisk's REQ_EARTH, the MSIS sphere
+    latitude, longitude, altitude = math.radians(60.0), math.radians(-30.0), 400e3  # [rad], [rad], [m]
+    r_P = geodesy.geodetic_to_pcpf(latitude, longitude, altitude)
+    dcm_PN = np.array([[0.6, 0.8, 0.0], [-0.8, 0.6, 0.0], [0.0, 0.0, 1.0]])
+    proxy_P = dcm_PN @ geodesy.atmosphere_proxy_position(dcm_PN.T @ r_P, dcm_PN, radius_m)
+    assert np.linalg.norm(proxy_P) - radius_m == pytest.approx(altitude, abs=1e-6)  # spherical altitude
+    assert math.asin(proxy_P[2] / np.linalg.norm(proxy_P)) == pytest.approx(latitude, abs=1e-12)
+    assert math.atan2(proxy_P[1], proxy_P[0]) == pytest.approx(longitude, abs=1e-12)
+    assert np.linalg.norm(r_P) - radius_m < altitude - 15e3  # the sphere alone reads it >15 km too low

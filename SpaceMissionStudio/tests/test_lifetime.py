@@ -128,11 +128,12 @@ def test_density_matches_the_simulations_own_atmosphere():
 def test_reentry_date_matches_a_basilisk_decay_run():
     """Template 18's spacecraft from 300 km with no station keeping: the
     estimate's re-entry (perigee at 120 km) within 3% of a full Basilisk
-    run's (25.66 vs 25.43 days on MSFC's 2030 prediction: +0.9%). The run
+    run's (34.35 vs 34.04 days on MSFC's 2030 prediction: +0.9%; 25.7 days
+    before the density used geodetic altitude, Phase 3 F-07). The run
     stops at re-entry with a warning."""
     from spacemissionstudio.engine.service import SimulationService
 
-    scenario = _template_18(300.0, duration_days=28.0)  # [day]
+    scenario = _template_18(300.0, duration_days=40.0)  # [day]
     estimate = lifetime.spacecraft_lifetime(scenario, "leo-sat-1")
     result = SimulationService(scenario).run()
 
@@ -191,7 +192,7 @@ def test_the_exponential_atmosphere_is_flagged_as_too_thin():
 @pytest.mark.requires_basilisk
 def test_a_run_stops_cleanly_when_its_spacecraft_reenters(monkeypatch):
     """Template 18's spacecraft from 300 km asked to fly 60 days, split
-    into 20-day segments: the run stops at re-entry (~25 days) with its
+    into 20-day segments: the run stops at re-entry (~34 days) with its
     results so far and a warning, rather than integrate on through the
     Earth until the state diverges and the whole run is lost."""
     from spacemissionstudio.engine import long_run
@@ -203,7 +204,7 @@ def test_a_run_stops_cleanly_when_its_spacecraft_reenters(monkeypatch):
     result = SimulationService(_template_18(300.0, duration_days=60.0)).run()  # [km], [day]
 
     end_days = result.series["leo-sat-1.position_N"].time_s[-1] / 86400.0
-    assert 20.0 < end_days < 30.0
+    assert 30.0 < end_days < 40.0
     reentries = [w for w in result.warnings if w.startswith("leo-sat-1 re-entered")]
     assert len(reentries) == 1 and reentries[0].endswith("the run stopped there")
     altitude_km = (np.linalg.norm(result.series["leo-sat-1.position_N"].data[-1]) - lifetime.REQ_EARTH_M) / 1e3

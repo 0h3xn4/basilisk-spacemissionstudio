@@ -157,3 +157,15 @@ def geodetic_elevation_azimuth(r_BL_L_m, geocentric_latitude_rad: float,
         elevation = np.arcsin(np.where(norm > 0.0, zenith / norm, 0.0))
     azimuth = np.arctan2(east, -south)
     return elevation, azimuth
+
+
+def atmosphere_proxy_position(r_BP_N_m, dcm_PN, sphere_radius_m: float) -> np.ndarray:
+    """Planet-relative position (N components) at which a spherical model
+    of radius ``sphere_radius_m`` finds the WGS-84 geodetic latitude and
+    altitude of ``r_BP_N_m``, at the same longitude (engine.geodetic_atmosphere)."""
+    dcm_PN = np.asarray(dcm_PN, dtype=float)
+    latitude, longitude, altitude = pcpf_to_geodetic(dcm_PN @ np.asarray(r_BP_N_m, dtype=float))
+    radius = sphere_radius_m + altitude  # [m]
+    r_P = radius * np.array([np.cos(latitude) * np.cos(longitude), np.cos(latitude) * np.sin(longitude),
+                             np.sin(latitude)])
+    return dcm_PN.T @ r_P

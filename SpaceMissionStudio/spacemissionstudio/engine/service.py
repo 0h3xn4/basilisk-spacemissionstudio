@@ -170,8 +170,8 @@ from Basilisk.utilities.supportDataTools.dataFetcher import DataFile, get_path
 from .. import __version__ as _SPACEMISSIONSTUDIO_VERSION
 from .. import dependencies
 from ..schema.scenario import OrbitIC, Scenario
-from . import (earth_orientation, environment_models, frames, fsw, geodesy, kernels, link_budget, long_run,
-               orbit_maintenance, planet_rotation, time_system, tle, vizard)
+from . import (earth_orientation, environment_models, frames, fsw, geodesy, geodetic_atmosphere, kernels,
+               link_budget, long_run, orbit_maintenance, planet_rotation, time_system, tle, vizard)
 from .results import ResultSet, RunProvenance, TimeSeries, conservation_drift_warnings
 from .vizard import VizardRequest
 
@@ -577,6 +577,7 @@ class SimulationService:
         self._space_weather_warnings: List[str] = []  # what the resolved space weather is built from
         self._data_files: Dict[str, Dict[str, object]] = {}  # reference data used, for RunProvenance
         self._earth_orientation_notes: List[str] = []
+        self._geodetic_proxies: List = []
         self.earth_frame = "IAU_EARTH"
         self._run_started_utc: Optional[str] = None  # set by build() -- see RunProvenance
         # Set below, during gravity setup, only when a real J2 term is
@@ -776,6 +777,11 @@ class SimulationService:
                 start_utc = start_utc.astimezone(timezone.utc).replace(tzinfo=None)
             self._earth_orientation_notes = earth_orientation.notes(
                 start_utc, start_utc + timedelta(days=sim_settings.duration_days), eop_kernels)
+            if not eop_kernels and gravity.central_body == "earth" and gravity.central_body_degree > 0:
+                # Phase 3 V-04: degree 20 at 400 km is ~160 m from GMAT after a day with IAU_EARTH
+                self._earth_orientation_notes.append(
+                    "Earth gravity field oriented by the IAU model (no IERS data): ~160 m/day "
+                    "position error at degree 20, 400 km")
         # Re-zero every SPICE ephemeris output on the central body (SPICE's
         # own observer/"zeroBase" concept -- see spiceInterface.cpp's
         # spkezr_c call, which queries each body's state relative to
@@ -1166,7 +1172,12 @@ class SimulationService:
                     drag_effector.coreParams.dragCoeff = sc_config.drag_coeff  # [-]
                 drag_effector.ModelTag = f"{sc_config.name}Drag"
                 sc_object.addDynamicEffector(drag_effector)
-                atmo_module.addSpacecraftToModel(sc_object.scStateOutMsg)
+                # Density at the WGS-84 geodetic altitude and latitude (engine.geodetic_atmosphere);
+                # the wind and the drag force use the real state.
+                proxy = geodetic_atmosphere.attach(self.scSim, dyn_task_name, sc_config.name, sc_object.scStateOutMsg,
+                                                   central_body_state_out_msg, atmo_module.planetRadius)
+                self._geodetic_proxies.append(proxy)
+                atmo_module.addSpacecraftToModel(proxy.scStateOutMsg)
                 wind_model.addSpacecraftToModel(sc_object.scStateOutMsg)
                 drag_effector.atmoDensInMsg.subscribeTo(atmo_module.envOutMsgs[drag_index])
                 drag_effector.windVelInMsg.subscribeTo(wind_model.envOutMsgs[drag_index])
