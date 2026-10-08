@@ -7545,3 +7545,21 @@ The free-drift J22 acceleration at 10 E, measured with the boxes opened wide, is
 * Template 03's claim test: 32 days, three east-west and two north-south burns, in the box.
 
 Full suite with Basilisk: 1986 pass, 11 skip; without it, 1737 pass and 260 skip.
+
+## Synthetic solar activity follows the calendar
+
+The synthetic space-weather profile (the default, and what every drag template uses) started each run two years before a solar maximum, whatever its date. A 2030-2035 mission, really the quiet end of cycle 25, therefore saw F10.7 ~127 sfu rising to 150: near-maximum drag, and propellant budgets overstated by a factor of several. Found while answering "what about a 5-year LEO station-keeping run?".
+
+**Now** the envelope follows the calendar:
+* cycle 25's minimum (December 2019) and maximum (about October 2024), repeating every 11 years;
+* the usual lopsided shape: rising for 44% of the cycle, falling for the rest;
+* between the same 70 and 150 sfu.
+
+So 2030-01 is 74 sfu, December 2030 the next minimum (70), and late 2035 cycle 26's maximum (150). It is still a shape, not a forecast; a real file (`source="local_file"`) remains the way to model actual activity. Cached synthetic files now carry a profile version (`synthetic_v2_...`), so files written by the old profile are never reused.
+
+**Re-verified in Basilisk** (every drag template starts in January 2030, now near minimum):
+* **Template 21:** rods-off stores ~1.7 N*m*s by the end of the day (was 3.2: less drag torque on the array); rods-on stays under ~20 RPM.
+* **Template 05** (90 days, 582 s wall): the separation leaves its band at day 20.7 (was ~28), one correction brings it back in ~2.5 days, and it stays within 45-54 km for 0.013 m/s.
+* **Template 18:** its claims still hold. Its description no longer says 03's GEO thruster never fires.
+
+Descriptions, the catalog README and `test_template_claims.py` now give these figures. New tests check the cycle's calendar alignment and the cache-name version.

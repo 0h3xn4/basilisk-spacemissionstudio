@@ -122,6 +122,6 @@
     "dispersions": []
   },
   "mission_sequence": [],
-  "description": "The LEO counterpart to 03: a 400 km satellite holding its altitude against atmospheric drag with a 1 km deadband. Radiation pressure is off, to isolate drag.\n\nWhat to look at:\n- leo-sat-1.station_keeping.altitude and .propellant_remaining: each reboost, and the propellant it costs over 14 days; compare 03, where at GEO the thruster never fires.\n\nTry changing:\n- Orbit altitude: lower decays much faster (try 350 or 300 km).\n- Drag area or coefficient.\n- Deadband.\n\nNote:\n- Drag uses a synthetic, solar-cycle-shaped space-weather profile.",
+  "description": "The LEO counterpart to 03: a 400 km satellite holding its altitude against atmospheric drag with a 1 km deadband. Radiation pressure is off, to isolate drag.\n\nWhat to look at:\n- leo-sat-1.station_keeping.altitude and .propellant_remaining: each reboost, and the propellant it costs over 14 days; compare 03, which holds a GEO slot's longitude and inclination instead.\n\nTry changing:\n- Orbit altitude: lower decays much faster (try 350 or 300 km).\n- Drag area or coefficient.\n- Deadband.\n\nNote:\n- Drag uses a synthetic, solar-cycle-shaped space-weather profile.",
   "schema_version": 2
 }

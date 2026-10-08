@@ -100,7 +100,7 @@ import csv
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -138,17 +138,25 @@ _USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like G
 # unbounded response into memory.
 _MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024
 
-# Synthetic fallback: a smooth ~11-year solar-cycle envelope with correlated
+# Synthetic fallback: an ~11-year solar-cycle envelope with correlated
 # day-to-day noise and occasional storm episodes -- shaped like real solar
-# activity, but not tied to any actual cycle forecast. Ported from
+# activity, NOT a forecast. Ported from
 # ../missionAnalysis/generate_space_weather_placeholder.py, generalized to
 # take an arbitrary date range instead of reading missionAnalysis's own
 # mission_config.py.
+#
+# The envelope follows the calendar: cycle 25's minimum (December 2019) and
+# smoothed maximum (about October 2024), repeated every 11 years, with the
+# usual lopsided shape (a faster rise than decline). It used to start every
+# run 2 years before a maximum whatever its date, so a 2030-2035 mission --
+# really the quiet end of cycle 25 -- saw near-maximum drag.
 _PAD_DAYS = 10
 _F107_SOLAR_MIN = 70.0  # [sfu]
 _F107_SOLAR_MAX = 150.0  # [sfu]
 _CYCLE_PERIOD_DAYS = 11.0 * 365.25  # [day]
-_CYCLE_PHASE_DAYS = -2.0 * 365.25  # [day]
+_CYCLE_MINIMUM = datetime(2019, 12, 1)  # cycle 25 began
+_CYCLE_RISE_FRACTION = 0.44  # [-] minimum -> maximum (Oct 2024) as a fraction of the cycle
+_SYNTHETIC_VERSION = 2  # bump when the profile changes, so cached files are not reused
 
 
 class SpaceWeatherError(Exception):
@@ -331,11 +339,16 @@ def cached_fetch_path(dataset: str = "SW-All", cache_dir: Optional[Path] = None)
     return path if path.exists() else None
 
 
-def _f107_base(day_index: np.ndarray) -> np.ndarray:
-    phase = 2.0 * np.pi * (day_index + _CYCLE_PHASE_DAYS) / _CYCLE_PERIOD_DAYS
-    midpoint = 0.5 * (_F107_SOLAR_MAX + _F107_SOLAR_MIN)
-    amplitude = 0.5 * (_F107_SOLAR_MAX - _F107_SOLAR_MIN)
-    return midpoint + amplitude * np.cos(phase)
+def _f107_base(dates) -> np.ndarray:
+    """Smooth F10.7 [sfu] on each date: a cosine rise from the cycle's
+    minimum to its maximum, then a slower cosine decline to the next
+    minimum."""
+    days = np.array([(d - _CYCLE_MINIMUM).total_seconds() / 86400.0 for d in dates])  # [day]
+    phase = np.mod(days, _CYCLE_PERIOD_DAYS) / _CYCLE_PERIOD_DAYS  # [-] 0 at minimum
+    rise = _CYCLE_RISE_FRACTION
+    level = np.where(phase < rise, 0.5 * (1.0 - np.cos(np.pi * phase / rise)),
+                     0.5 * (1.0 + np.cos(np.pi * (phase - rise) / (1.0 - rise))))  # [-] 0 min, 1 max
+    return _F107_SOLAR_MIN + (_F107_SOLAR_MAX - _F107_SOLAR_MIN) * level
 
 
 def generate_synthetic(start_utc: datetime, end_utc: datetime, dest_path, seed: int = 42) -> Path:
@@ -351,9 +364,8 @@ def generate_synthetic(start_utc: datetime, end_utc: datetime, dest_path, seed: 
     end = end_utc + timedelta(days=_PAD_DAYS)
     n_days = (end - start).days + 1
     dates = [start + timedelta(days=i) for i in range(n_days)]
-    day_index = np.arange(n_days, dtype=float)
-
-    f107_base = _f107_base(day_index)
+    naive = [d.astimezone(timezone.utc).replace(tzinfo=None) if d.tzinfo else d for d in dates]
+    f107_base = _f107_base(naive)
     noise = np.zeros(n_days)
     for i in range(1, n_days):
         noise[i] = 0.85 * noise[i - 1] + rng.normal(0.0, 3.0)
@@ -397,7 +409,7 @@ def generate_synthetic(start_utc: datetime, end_utc: datetime, dest_path, seed: 
 
 def _synthetic_cache_path(cache_dir: Optional[Path], start_utc: datetime, end_utc: datetime) -> Path:
     cache_dir = Path(cache_dir) if cache_dir else DEFAULT_CACHE_DIR
-    name = f"synthetic_{start_utc:%Y%m%d}_{end_utc:%Y%m%d}.csv"
+    name = f"synthetic_v{_SYNTHETIC_VERSION}_{start_utc:%Y%m%d}_{end_utc:%Y%m%d}.csv"
     return cache_dir / name
 
 

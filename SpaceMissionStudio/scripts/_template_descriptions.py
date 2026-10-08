@@ -106,15 +106,15 @@ the separation drifts out of tolerance.
 
 What to look at:
 - follower-1.phasing_keeping.separation_error and .relative_semi_major_axis.
-- The separation drifts slowly, leaves its 10% band around day 28, and one correction brings it back in \
-about 2.4 days. It stays within 45-52 km for ~0.014 m/s.
+- The separation drifts slowly, leaves its 10% band around day 21, and one correction brings it back in \
+about 2.5 days. It stays within 45-54 km for ~0.013 m/s.
 
 Try changing:
 - Target separation (a list of values steps through a schedule).
 - Correction window: shorter is faster but costs more delta-V (roughly 1 / window).
 - Tolerance: tighter triggers corrections sooner.
 - follower-1's starting mean anomaly, to begin off target.
-- Duration: under ~35 days no correction fires; the maximum is 100 days.""",
+- Duration: under ~21 days no correction fires; the maximum is 100 days.""",
 
     "06": """\
 A spacecraft pointing at nadir, starting tipped away from it with a small body rate. There are no sensors \
@@ -272,7 +272,7 @@ deadband. Radiation pressure is off, to isolate drag.
 
 What to look at:
 - leo-sat-1.station_keeping.altitude and .propellant_remaining: each reboost, and the propellant it costs over \
-14 days; compare 03, where at GEO the thruster never fires.
+14 days; compare 03, which holds a GEO slot's longitude and inclination instead.
 
 Try changing:
 - Orbit altitude: lower decays much faster (try 350 or 300 km).
@@ -330,9 +330,9 @@ steady torque. rods-off has only reaction wheels; rods-on also has torque rods.
 
 What to look at:
 - rods-off.rw_speeds: after the first turn to the Sun, the wheels soak up the torque all day -- about \
-3.2 N*m*s stored by the end, rw-x near -1300 RPM.
+1.7 N*m*s stored by the end, rw-x near -840 RPM.
 - rods-on.rw_speeds: the torque rods hand that momentum to Earth's magnetic field; the wheels stay under \
-~80 RPM.
+~20 RPM.
 - rods-on.mtb_dipole_commanded: the rods working against the torque.
 
 Try changing:
