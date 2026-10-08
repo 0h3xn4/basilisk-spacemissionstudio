@@ -139,7 +139,8 @@ to stay under 15 (SVR 4.5).
 - Problem reports and nonconformances are to be GitHub issues (decision 11);
   the procedure is not yet in use.
 - The known open problems are K-01 to K-09 (RD4).
-- The deviations D-01 to D-07 are unsigned (H08).
+- The deviations D-01 to D-07 are unsigned; D-08 to D-13 are signed
+  (decision 14, H08).
 
 ## 10 Reference to progress reports (C.2.1<10>)
 

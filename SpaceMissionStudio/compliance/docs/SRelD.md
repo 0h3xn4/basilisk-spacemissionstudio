@@ -101,7 +101,8 @@ SpaceMissionStudio". In summary:
 | K-08 | Tracebacks from `results_widget._poll_plot_png` ("'NoneType' object is not subscriptable") appear in the CI log of the GUI tests | Possibly a timer firing after its state was cleared; no test fails | CI run 3 log; to investigate |
 | K-09 | 988 of 1488 unit and integration tests have no docstring | Weaker test documentation | `SUITP_test_cases.md` |
 
-**Waivers and deviations:** D-01 to D-13 (RD4). None is signed yet (H08).
+**Waivers and deviations:** D-01 to D-13 (RD4). D-08 to D-13 are signed; D-01 to D-07
+are not (decision 14, H08).
 
 ## 6 Operational aspects (G.2.1<6>)
 

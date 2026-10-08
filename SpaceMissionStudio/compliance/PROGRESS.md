@@ -77,6 +77,9 @@ Result: **2055 passed, 11 skipped, 0 failed** (245 s, 3 workers). Every later ph
     function used, including those not externally validated; licences
     accepted as listed in the SRF (Basilisk's dependencies and Vizard not
     reviewed); export status left open.
+14. 2026-10-08, user (H08): D-08 to D-13 signed; D-01 to D-07 stay
+    unsigned; the user will supply IERS TN36 for D-07; the figures of D-02
+    and D-03 are accepted as the supplier's estimates.
 
 ## Phase 1 test run
 

@@ -26,7 +26,7 @@ ones supplied, and every requirement ID and text here comes from them.
 
 * `gap_analysis.md`, `compliance_matrix.csv` (Phase 1; rebuilt by CI from
   `audit/`), `traceability_matrix.csv`, `ics_ccsds_502.csv`.
-* `deviations.md` -- deviations D-01 to D-13 (unsigned).
+* `deviations.md` -- deviations D-01 to D-13 (D-08 to D-13 signed).
 * `phase2_log.md`, `phase3_log.md` -- implementation and validation logs.
 * `docs/` -- the DRD-based documents (Phase 4): SRS, ICD, SDD, CSD, SRF,
   SVerP, SValP, SUITP, SVS, SVR, SUM, SRelD, SDP, SMP, SPAP, SPAMR, and the

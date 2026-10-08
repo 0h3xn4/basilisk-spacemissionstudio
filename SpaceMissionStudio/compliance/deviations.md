@@ -6,15 +6,19 @@ accepts it (ECSS tailoring authority); the user's decisions of 2026-10-08
 (D1-D4, `PROGRESS.md`) select these deviations, the **signature** below is a
 human action (H08 in `human_actions.md`).
 
-Status: **selected by the user 2026-10-08; justification drafted; awaiting
-signature.** Figures marked *(to confirm)* were not checked against a
-supplied document and must be confirmed by the signatory.
+Status (decision 14, 2026-10-08):
+- **D-08 to D-13: signed** by the user (section "Signature").
+- **D-01 to D-07: selected by the user, justification drafted, not
+  signed.** D-07 waits for IERS TN36, which the user will supply.
+- The figures of D-02 and D-03 are the supplier's order-of-magnitude
+  estimates, not checked against a supplied document; the user accepted
+  them as estimates (decision 14).
 
 | # | Requirement(s) | Deviation | Justification | Decision |
 |---|---|---|---|---|
 | D-01 | ECSS-E-ST-10-04C 6.2.2a-d, 6.2.3c, 7.2.1.2b-d (via R07) | Solar and geomagnetic activity are taken from observed indices (CelesTrak SW-All, bundled) and NASA MSFC predictions at the 95th or 50th percentile, as ESA AD10 (EOP-FM/2024-07-177 v3.0) Sec. 5.9 prescribes, instead of the reference values of Tables 6-3, 6-4 and A-1. | The project's applicable guideline AD10 requires MSFC percentile predictions; Tables 6-3/6-4 are rounded reference values of solar cycle 23 and Table A-1 is cycle 23 itself. The user requires real data and the AD10 approach for drag ("conservative" = MSFC 95th percentile). | D1 (a) |
-| D-02 | ECSS-E-ST-10-04C 7.2.2a | No thermospheric wind model: the atmosphere co-rotates with the Earth. | Basilisk 2.12 has no wind model (B7). Thermospheric winds change the relative velocity by some 100 m/s against ~7.5 km/s, a drag effect of a few percent *(to confirm)*, below the drag-coefficient uncertainty used for budgets (AD10 margins). | D3 |
-| D-03 | ECSS-E-ST-10-04C 4.2.2b (tides part) | No solid-Earth or ocean tides. | Basilisk 2.12 has no tide model (B4). Tidal accelerations in LEO are of order 1e-7 m/s^2 *(to confirm, e.g. Montenbruck & Gill, Satellite Orbits, Fig. 3.1)*, well below drag for the tool's mission-analysis use. Earth orientation itself is IERS-based (R04). | D3 |
+| D-02 | ECSS-E-ST-10-04C 7.2.2a | No thermospheric wind model: the atmosphere co-rotates with the Earth. | Basilisk 2.12 has no wind model (B7). Thermospheric winds change the relative velocity by some 100 m/s against ~7.5 km/s, a drag effect of a few percent *(supplier's estimate, accepted by the user, decision 14)*, below the drag-coefficient uncertainty used for budgets (AD10 margins). | D3 |
+| D-03 | ECSS-E-ST-10-04C 4.2.2b (tides part) | No solid-Earth or ocean tides. | Basilisk 2.12 has no tide model (B4). Tidal accelerations in LEO are of order 1e-7 m/s^2 *(supplier's estimate, accepted by the user, decision 14; not checked against a reference)*, well below drag for the tool's mission-analysis use. Earth orientation itself is IERS-based (R04). | D3 |
 | D-04 | ECSS-E-ST-10-04C 5.2.1a, 5.2.1.1a, 5.3a (via R08) | The internal geomagnetic field is WMM2025 (Basilisk magneticFieldWMM), not IGRF-12. | IGRF-12 (2015) predicts only to 2020, so for the tool's 2025+ epochs it is extrapolated; WMM2025 is a current main-field model. Basilisk 2.12 has no IGRF (B5). | D2 (a) |
 | D-05 | ECSS-E-ST-10-04C 5.2.2a | No external (magnetospheric) field model. | The internal field dominates in LEO for magnetometer and torque-rod sizing; Basilisk has no external model (B6). | D3 |
 | D-06 | ECSS-E-ST-10-04C 6.2.1c | The Basilisk sensorThermal model radiates to a 0 K sink, not 3 K. | (3 K / T)^4 is about 1e-8 of the radiated power at 300 K. The module's solar constant and Stefan-Boltzmann value are corrected by R06. | D3 |
@@ -36,6 +40,10 @@ decision.
 
 ## Signature
 
-| Role | Name | Date | Decision |
-|---|---|---|---|
-| Responsible engineer / customer | | | |
+| Deviations | Role | Name | Date | Decision |
+|---|---|---|---|---|
+| D-08 to D-13 | Responsible engineer / customer | The user (name to be entered by the user) | 2026-10-08 | Signed (decision 14) |
+| D-01 to D-07 | Responsible engineer / customer | | | Not signed |
+
+The signature of D-08 to D-13 records the user's answer in the audit
+session of 2026-10-08. A handwritten or named signature can replace it.
