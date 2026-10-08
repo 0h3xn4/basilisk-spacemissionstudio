@@ -872,19 +872,19 @@ Q-ST-80C,6.2.5.2a,Partially compliant,"R11,R14","R11 (Phase 2): compliance/tools
 Q-ST-80C,6.2.5.3a,Requires human or process action,H02,-,-,,0
 Q-ST-80C,6.2.5.4a,Partially compliant,"R11,R14","R11 (Phase 2): compliance/tools/metrics.py run in .github/workflows/spacemissionstudio.yml (size, complexity, coverage, failures, corrective-commit count as a problem proxy) -> compliance/metrics.md",-,,0
 Q-ST-80C,6.2.5.5a,Partially compliant,R14,compliance/docs/SPAMR.md section 7 (metrics),-,,0
-Q-ST-80C,6.2.6.1a,Partially compliant,"R14,H06",tests/; ruff,-,,0
-Q-ST-80C,6.2.6.2a,Partially compliant,"R14,H06",tests/; ruff,-,,0
-Q-ST-80C,6.2.6.2b,Partially compliant,"R14,H06",tests/; ruff,-,,0
-Q-ST-80C,6.2.6.3a,Partially compliant,"R14,H06",tests/; ruff,-,,0
-Q-ST-80C,6.2.6.4a,Partially compliant,"R14,H06",tests/; ruff,-,,0
-Q-ST-80C,6.2.6.5a,Partially compliant,"R14,H06",tests/; ruff,-,,0
-Q-ST-80C,6.2.6.6a,Partially compliant,"R14,H06",tests/; ruff,-,,0
-Q-ST-80C,6.2.6.7a,Partially compliant,"R14,H06",tests/; ruff,-,,0
-Q-ST-80C,6.2.6.8a,Partially compliant,"R14,H06",tests/; ruff,-,,0
-Q-ST-80C,6.2.6.9a,Partially compliant,"R14,H06",tests/; ruff,-,,0
-Q-ST-80C,6.2.6.10a,Partially compliant,"R14,H06",tests/; ruff,-,,0
-Q-ST-80C,6.2.6.11a,Partially compliant,"R14,H06",tests/; ruff,-,,0
-Q-ST-80C,6.2.6.12a,Partially compliant,"R14,H06",tests/; ruff,-,,0
+Q-ST-80C,6.2.6.1a,Partially compliant,"R14,H06","tests/; ruff; compliance/docs/SVerP.md, SVR.md; compliance/reviews/code_review_guide.md",-,,0
+Q-ST-80C,6.2.6.2a,Partially compliant,"R14,H06","tests/; ruff; compliance/docs/SVerP.md, SVR.md; compliance/reviews/code_review_guide.md",-,,0
+Q-ST-80C,6.2.6.2b,Partially compliant,"R14,H06","tests/; ruff; compliance/docs/SVerP.md, SVR.md; compliance/reviews/code_review_guide.md",-,,0
+Q-ST-80C,6.2.6.3a,Partially compliant,"R14,H06","tests/; ruff; compliance/docs/SVerP.md, SVR.md; compliance/reviews/code_review_guide.md",-,,0
+Q-ST-80C,6.2.6.4a,Partially compliant,"R14,H06","tests/; ruff; compliance/docs/SVerP.md, SVR.md; compliance/reviews/code_review_guide.md",-,,0
+Q-ST-80C,6.2.6.5a,Partially compliant,"R14,H06","tests/; ruff; compliance/docs/SVerP.md, SVR.md; compliance/reviews/code_review_guide.md",-,,0
+Q-ST-80C,6.2.6.6a,Partially compliant,"R14,H06","tests/; ruff; compliance/docs/SVerP.md, SVR.md; compliance/reviews/code_review_guide.md",-,,0
+Q-ST-80C,6.2.6.7a,Partially compliant,"R14,H06","tests/; ruff; compliance/docs/SVerP.md, SVR.md; compliance/reviews/code_review_guide.md",-,,0
+Q-ST-80C,6.2.6.8a,Partially compliant,"R14,H06","tests/; ruff; compliance/docs/SVerP.md, SVR.md; compliance/reviews/code_review_guide.md",-,,0
+Q-ST-80C,6.2.6.9a,Partially compliant,"R14,H06","tests/; ruff; compliance/docs/SVerP.md, SVR.md; compliance/reviews/code_review_guide.md",-,,0
+Q-ST-80C,6.2.6.10a,Partially compliant,"R14,H06","tests/; ruff; compliance/docs/SVerP.md, SVR.md; compliance/reviews/code_review_guide.md",-,,0
+Q-ST-80C,6.2.6.11a,Partially compliant,"R14,H06","tests/; ruff; compliance/docs/SVerP.md, SVR.md; compliance/reviews/code_review_guide.md",-,,0
+Q-ST-80C,6.2.6.12a,Partially compliant,"R14,H06","tests/; ruff; compliance/docs/SVerP.md, SVR.md; compliance/reviews/code_review_guide.md",-,,0
 Q-ST-80C,6.2.7.2a,Partially compliant,"R14,R01,H07",compliance/docs/SRF.md; R01 version pin and check; validation V-01 to V-08 of the reused models,test,tests/test_dependencies.py::test_basilisk_check_accepts_only_the_qualified_version; tests/test_dependencies.py::test_basilisk_check_reports_a_missing_basilisk; tests/test_dependencies.py::test_dependency_versions_lists_python_and_installed_packages; tests/test_dependencies.py::test_file_record_hashes_small_files_and_flags_missing_ones; tests/test_dependencies.py::test_installers_pin_the_qualified_basilisk_version; tests/test_dependencies.py::test_run_provenance_records_the_configuration,6
 Q-ST-80C,6.2.7.3a,Partially compliant,"R14,R01,H07",compliance/docs/SRF.md; R01 version pin and check; validation V-01 to V-08 of the reused models,test,tests/test_dependencies.py::test_basilisk_check_accepts_only_the_qualified_version; tests/test_dependencies.py::test_basilisk_check_reports_a_missing_basilisk; tests/test_dependencies.py::test_dependency_versions_lists_python_and_installed_packages; tests/test_dependencies.py::test_file_record_hashes_small_files_and_flags_missing_ones; tests/test_dependencies.py::test_installers_pin_the_qualified_basilisk_version; tests/test_dependencies.py::test_run_provenance_records_the_configuration,6
 Q-ST-80C,6.2.7.3b,Partially compliant,"R14,R01,H07",compliance/docs/SRF.md; R01 version pin and check; validation V-01 to V-08 of the reused models,test,tests/test_dependencies.py::test_basilisk_check_accepts_only_the_qualified_version; tests/test_dependencies.py::test_basilisk_check_reports_a_missing_basilisk; tests/test_dependencies.py::test_dependency_versions_lists_python_and_installed_packages; tests/test_dependencies.py::test_file_record_hashes_small_files_and_flags_missing_ones; tests/test_dependencies.py::test_installers_pin_the_qualified_basilisk_version; tests/test_dependencies.py::test_run_provenance_records_the_configuration,6

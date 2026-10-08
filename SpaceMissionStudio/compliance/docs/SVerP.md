@@ -50,7 +50,8 @@ and run on every change:
 
 What cannot be computed is a human action:
 - the review of requirements and design (H01);
-- the independent review of the code (H06).
+- the independent review of the code (H06; guide in
+  `compliance/reviews/code_review_guide.md`).
 
 **Effort:**
 - A CI run takes about 6 minutes; the test step took 305 s in run 3.

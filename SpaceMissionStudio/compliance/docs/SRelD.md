@@ -31,7 +31,7 @@ changed since 2.0.0, what is known to be wrong, and how to use it.
 | Term | Meaning |
 |---|---|
 | SPR | Software problem report: here, a known open problem listed in 5.2 (no SPR system exists yet, H05) |
-| SW&D | Software waiver and deviation: the deviations D-01 to D-07 |
+| SW&D | Software waiver and deviation: the deviations D-01 to D-13 |
 
 ## 4 Software release overview (G.2.1<4>)
 
@@ -101,7 +101,7 @@ SpaceMissionStudio". In summary:
 | K-08 | Tracebacks from `results_widget._poll_plot_png` ("'NoneType' object is not subscriptable") appear in the CI log of the GUI tests | Possibly a timer firing after its state was cleared; no test fails | CI run 3 log; to investigate |
 | K-09 | 988 of 1488 unit and integration tests have no docstring | Weaker test documentation | `SUITP_test_cases.md` |
 
-**Waivers and deviations:** D-01 to D-07 (RD4). None is signed yet (H08).
+**Waivers and deviations:** D-01 to D-13 (RD4). None is signed yet (H08).
 
 ## 6 Operational aspects (G.2.1<6>)
 

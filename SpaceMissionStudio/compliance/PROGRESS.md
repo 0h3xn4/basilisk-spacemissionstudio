@@ -70,6 +70,9 @@ Result: **2055 passed, 11 skipped, 0 failed** (245 s, 3 workers). Every later ph
     board, risk process and operation support waived (D-12); the release
     of this candidate is 2.1.0, tagged, not signed (D-13), when the user
     says release.
+12. 2026-10-08, user (H06): the independent reviewer is to be named
+    later; the supplier prepares a review guide
+    (`reviews/code_review_guide.md`).
 
 ## Phase 1 test run
 

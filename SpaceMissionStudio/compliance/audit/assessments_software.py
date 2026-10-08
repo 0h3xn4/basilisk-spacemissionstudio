@@ -125,8 +125,9 @@ SOFTWARE_RULES = [
     ("E-ST-40C", "5.8.3.1a", "N", "-", "No customer requirements baseline: waived by the user (decision 9, 2026-10-08); the SRS is derived from the tool, not from a baseline.", "-", "S", "no", "H03,D-11"),
     ("E-ST-40C", "5.8.3.*", "P", "compliance/docs/SVR.md (verification by the supplier)", "Verification done and reported by the supplier; no independent verification (H06); drafted by the supplier; reviews waived (D-08).", "-", "M", "no", "R14,H06"),
     ("E-ST-40C", "5.8.3.5a", "P", "R10 (Phase 2): ruff rule set configured in pyproject.toml, zero findings, run "
-     "by .github/workflows/spacemissionstudio.yml; tests", "Code verified by tests and static analysis; no recorded code verification against "
-     "the design and no independent human review.", "Code verification in the SVR; human review (H06).", "M",
+     "by .github/workflows/spacemissionstudio.yml; tests", "Code verified by tests and static analysis; no independent human review yet: the reviewer is to be named "
+     "(decision 12); the review guide is prepared (compliance/reviews/code_review_guide.md).", "Independent review "
+     "with the guide (H06).", "M",
      "no", "R10,R14,H06"),
     ("E-ST-40C", "5.8.3.5b", "P", "R11 (Phase 2): statement and branch coverage measured by pytest-cov in "
      ".github/workflows/spacemissionstudio.yml (statement coverage >= 90 % enforced by metrics.py --fail-under 90) and reported in compliance/metrics.md", "Coverage is measured and "
@@ -253,8 +254,9 @@ SOFTWARE_RULES = [
      "effort records, which only the project can keep.", "Keep a schedule and effort log (H02).", "S", "no",
      "H02"),
     ("Q-ST-80C", "6.2.5.5a", "P", "compliance/docs/SPAMR.md section 7 (metrics)", "Metrics in the audit's PA report; further reports on request (decision 8).", "-", "S", "no", "R14"),
-    ("Q-ST-80C", "6.2.6.*", "P", "tests/; ruff", "Verification by tests; no verification plan or reports, no "
-     "human review record of AI-written code.", "SVerP/SVR; documented human code review.", "M", "no",
+    ("Q-ST-80C", "6.2.6.*", "P", "tests/; ruff; compliance/docs/SVerP.md, SVR.md; compliance/reviews/code_review_guide.md",
+     "Verification by tests and static analysis, planned and reported by the supplier; no independent human review "
+     "of the AI-written code yet (reviewer to be named, decision 12).", "Independent review with the guide (H06).", "M", "no",
      "R14,H06"),
     ("Q-ST-80C", "6.2.7.*", "P", "compliance/docs/SRF.md; R01 version pin and check; validation V-01 to V-08 of the reused models", "Reuse analysed and documented; Basilisk lacks ECSS documentation and coverage figures; acceptance pending (H07).", "Accept or reject the reuse (H07).", "M", "yes", "R14,R01,H07"),
     ("Q-ST-80C", "6.2.8.*", "NA", "-", "No automatic code generation from models. (AI-assisted coding is "

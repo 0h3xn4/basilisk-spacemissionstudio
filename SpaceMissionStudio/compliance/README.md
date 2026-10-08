@@ -26,7 +26,7 @@ ones supplied, and every requirement ID and text here comes from them.
 
 * `gap_analysis.md`, `compliance_matrix.csv` (Phase 1; rebuilt by CI from
   `audit/`), `traceability_matrix.csv`, `ics_ccsds_502.csv`.
-* `deviations.md` -- deviations D-01 to D-07 (unsigned).
+* `deviations.md` -- deviations D-01 to D-13 (unsigned).
 * `phase2_log.md`, `phase3_log.md` -- implementation and validation logs.
 * `docs/` -- the DRD-based documents (Phase 4): SRS, ICD, SDD, CSD, SRF,
   SVerP, SValP, SUITP, SVS, SVR, SUM, SRelD, SDP, SMP, SPAP, SPAMR, and the
@@ -35,6 +35,7 @@ ones supplied, and every requirement ID and text here comes from them.
   they are out of date, and `tools/check_drds.py` checks every DRD section.
 * `docs/dependability_safety_analysis.md` -- category C sign-off and failure modes (H04).
 * `human_actions.md` -- what needs people (H01 to H13).
+* `reviews/code_review_guide.md` -- the guide for the independent code review (H06).
 * `summary_report.md` -- the audit's result.
 
 ## Requirement CSV columns
