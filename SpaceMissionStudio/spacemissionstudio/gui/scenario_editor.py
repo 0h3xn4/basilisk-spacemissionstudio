@@ -237,6 +237,8 @@ class ScenarioEditorWidget(QWidget):
         add_row("Integrator", sim.integrator)
         add_row("Dynamics task rate [s]", f"{sim.dynamics_task_rate_s:g}")
         add_row("Duration [days]", f"{sim.duration_days:g}")
+        if sim.record_interval_s > 0.0:
+            add_row("Recorded every [s]", f"{sim.record_interval_s:g}")
 
         if sw.atmosphere_model == "exponential":
             add_row("Atmosphere model", "Exponential (no space weather)")

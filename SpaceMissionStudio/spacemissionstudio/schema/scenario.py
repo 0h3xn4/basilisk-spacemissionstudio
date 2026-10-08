@@ -1495,6 +1495,13 @@ class SimSettings:
     duration_days: float = 1.0
     dynamics_task_rate_s: float = 10.0
     integrator: str = "rkf78"  # see SUPPORTED_INTEGRATORS
+    # [s] How often results are recorded; 0 = every dynamics step. Long
+    # runs need this: a 5-year run at a 30 s step is ~5 million samples per
+    # series. Controller burn flags record "fired since the last sample", so
+    # short burns still show; positions, angles and access flags are
+    # snapshots, so anything shorter than this (e.g. a ground-station
+    # pass) can fall between two samples.
+    record_interval_s: float = 0.0
 
     # NOTE: gravity-field degree/order lives on GravityConfig.central_body_degree,
     # not here -- an earlier draft of this schema had a second,
@@ -1525,6 +1532,8 @@ class SimSettings:
                   "represent simulated time as a double up to 2**53 ns (~104.25 days) -- beyond that it "
                   "silently returns NaN for simulated time, corrupting the whole run")
         _require(self.dynamics_task_rate_s > 0, "sim_settings.dynamics_task_rate_s must be > 0")
+        _require(0.0 <= self.record_interval_s <= 86400.0,
+                  "sim_settings.record_interval_s must be in [0, 86400] s (0 = every dynamics step)")
         _require(self.integrator in SUPPORTED_INTEGRATORS,
                   f"sim_settings.integrator {self.integrator!r} must be one of {SUPPORTED_INTEGRATORS}")
 

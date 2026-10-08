@@ -957,7 +957,7 @@ class SimulationService:
             grav_factory.addBodiesTo(sc_object)
             self.scSim.AddModelToTask(dyn_task_name, sc_object, 10)
 
-            recorder = sc_object.scStateOutMsg.recorder()
+            recorder = self._record(sc_object.scStateOutMsg)
             self.scSim.AddModelToTask(dyn_task_name, recorder)
 
             handle = _SpacecraftHandle(sc_config.name, sc_object, recorder)
@@ -1002,7 +1002,7 @@ class SimulationService:
                 except fsw.FswError as exc:
                     raise SimulationServiceError(str(exc)) from exc
                 for sensor in sc_config.sensors:
-                    handle.sensor_recorders[sensor.name] = (sensor.kind, sensor_out_msgs[sensor.name].recorder())
+                    handle.sensor_recorders[sensor.name] = (sensor.kind, self._record(sensor_out_msgs[sensor.name]))
                     self.scSim.AddModelToTask(dyn_task_name, handle.sensor_recorders[sensor.name][1])
 
             # -- Phase 4: power budget, independent of fsw_mode/sensors like
@@ -1045,7 +1045,7 @@ class SimulationService:
                 # this tick's fresh generation/load values, not last tick's.
                 self.scSim.AddModelToTask(dyn_task_name, battery, 40)
 
-                handle.battery_recorder = battery.batPowerOutMsg.recorder()
+                handle.battery_recorder = self._record(battery.batPowerOutMsg)
                 self.scSim.AddModelToTask(dyn_task_name, handle.battery_recorder)
                 handle.battery_module = battery
 
@@ -1230,7 +1230,7 @@ class SimulationService:
                     # Must outlive build() -- see engine.fsw.build_css_sun_estimation's
                     # docstring and self._css_estimation_devices's own comment.
                     self._css_estimation_devices.append(css_devices)
-                    handle.css_sun_estimate_recorder = sun_direction_override_msg.recorder()
+                    handle.css_sun_estimate_recorder = self._record(sun_direction_override_msg)
                     self.scSim.AddModelToTask(dyn_task_name, handle.css_sun_estimate_recorder)
 
                 target_body_eph_msg = None
@@ -1268,7 +1268,7 @@ class SimulationService:
                     rw_motor_torque_mod = fsw.build_rw_motor_torque(
                         self.scSim, dyn_task_name, sc_config.name, mrp, rw_config_msg, rw_state_effector
                     )
-                    handle.rw_speed_recorder = rw_state_effector.rwSpeedOutMsg.recorder()
+                    handle.rw_speed_recorder = self._record(rw_state_effector.rwSpeedOutMsg)
                     self.scSim.AddModelToTask(dyn_task_name, handle.rw_speed_recorder)
                     rw_effector_for_viz = rw_state_effector
 
@@ -1284,7 +1284,7 @@ class SimulationService:
                         self.scSim, dyn_task_name, sc_config.name, rw_state_effector, rw_actuators
                     )
                     for actuator_name, temp_msg in rw_thermal_out_msgs.items():
-                        handle.rw_motor_thermal_recorders[actuator_name] = temp_msg.recorder()
+                        handle.rw_motor_thermal_recorders[actuator_name] = self._record(temp_msg)
                         self.scSim.AddModelToTask(dyn_task_name, handle.rw_motor_thermal_recorders[actuator_name])
 
                     # Reaction-wheel momentum desaturation via thrusters
@@ -1308,7 +1308,7 @@ class SimulationService:
                         self._desat_controls.append(desat_control)
                         thr_effector_for_viz = desat_thruster_effector
                         handle.num_thrusters = len(desat_thruster_actuators)
-                        handle.thruster_on_time_recorder = desat_dumping.thrusterOnTimeOutMsg.recorder()
+                        handle.thruster_on_time_recorder = self._record(desat_dumping.thrusterOnTimeOutMsg)
                         self.scSim.AddModelToTask(dyn_task_name, handle.thruster_on_time_recorder)
                         if sc_config.fuel_tank is not None:
                             fuel_tank_effector = fsw.build_fuel_tank(
@@ -1316,7 +1316,7 @@ class SimulationService:
                                 sc_config.fuel_tank,
                             )
                             handle.fuel_tank_effector = fuel_tank_effector
-                            handle.fuel_tank_recorder = fuel_tank_effector.fuelTankOutMsg.recorder()
+                            handle.fuel_tank_recorder = self._record(fuel_tank_effector.fuelTankOutMsg)
                             self.scSim.AddModelToTask(dyn_task_name, handle.fuel_tank_recorder)
 
                     # Reaction-wheel momentum management via magnetic torque
@@ -1334,7 +1334,7 @@ class SimulationService:
                             sc_config.magnetic_momentum_management,
                         )
                         handle.num_mtb = len(mtb_actuators)
-                        handle.mtb_dipole_recorder = mtb_management.mtbCmdOutMsg.recorder()
+                        handle.mtb_dipole_recorder = self._record(mtb_management.mtbCmdOutMsg)
                         self.scSim.AddModelToTask(dyn_task_name, handle.mtb_dipole_recorder)
                 else:
                     thruster_actuators = [a for a in sc_config.actuators if a.kind == "thruster"]
@@ -1351,7 +1351,7 @@ class SimulationService:
                             self.scSim, dyn_task_name, sc_config.name, mrp, thr_config_msg, veh_config_msg,
                             thruster_effector,
                         )
-                        handle.thruster_on_time_recorder = firing_logic.onTimeOutMsg.recorder()
+                        handle.thruster_on_time_recorder = self._record(firing_logic.onTimeOutMsg)
                         self.scSim.AddModelToTask(dyn_task_name, handle.thruster_on_time_recorder)
                         thr_effector_for_viz = thruster_effector
                         if sc_config.fuel_tank is not None:
@@ -1360,7 +1360,7 @@ class SimulationService:
                                 sc_config.fuel_tank,
                             )
                             handle.fuel_tank_effector = fuel_tank_effector
-                            handle.fuel_tank_recorder = fuel_tank_effector.fuelTankOutMsg.recorder()
+                            handle.fuel_tank_recorder = self._record(fuel_tank_effector.fuelTankOutMsg)
                             self.scSim.AddModelToTask(dyn_task_name, handle.fuel_tank_recorder)
                     else:
                         mrp = fsw.build_mrp_feedback(
@@ -1369,8 +1369,8 @@ class SimulationService:
                         )
                         fsw.build_idealized_actuation(self.scSim, dyn_task_name, sc_config.name, sc_object, mrp)
 
-                handle.nav_recorder = nav.attOutMsg.recorder()
-                handle.control_torque_recorder = mrp.cmdTorqueOutMsg.recorder()
+                handle.nav_recorder = self._record(nav.attOutMsg)
+                handle.control_torque_recorder = self._record(mrp.cmdTorqueOutMsg)
                 self.scSim.AddModelToTask(dyn_task_name, handle.nav_recorder)
                 self.scSim.AddModelToTask(dyn_task_name, handle.control_torque_recorder)
 
@@ -1441,7 +1441,7 @@ class SimulationService:
                 handle.comms_nav = nav
                 handle.comms_veh_config_msg = veh_config_msg
                 handle.comms_power_sink = comms_power_sink
-                handle.nav_recorder = nav.attOutMsg.recorder()
+                handle.nav_recorder = self._record(nav.attOutMsg)
                 self.scSim.AddModelToTask(dyn_task_name, handle.nav_recorder)
 
             rw_effectors_in_order.append(rw_effector_for_viz)
@@ -1488,7 +1488,7 @@ class SimulationService:
             fsw.add_access_analysis(ground_location, sc_objects_in_order)
             for index, sc_object in enumerate(sc_objects_in_order):
                 access_out_msg = ground_location.accessOutMsgs[index]
-                recorder = access_out_msg.recorder()
+                recorder = self._record(access_out_msg)
                 self.scSim.AddModelToTask(dyn_task_name, recorder)
                 self._access_recorders[(gs_name, sc_object.ModelTag)] = recorder
                 self._access_out_msgs[(gs_name, sc_object.ModelTag)] = access_out_msg
@@ -1526,7 +1526,7 @@ class SimulationService:
                 sc_config.control_params, inertia_kg_m2=sc_config.inertia_kg_m2,
             )
             fsw.build_idealized_actuation(self.scSim, dyn_task_name, sc_config.name, handle.sc_object, mrp)
-            handle.control_torque_recorder = mrp.cmdTorqueOutMsg.recorder()
+            handle.control_torque_recorder = self._record(mrp.cmdTorqueOutMsg)
             self.scSim.AddModelToTask(dyn_task_name, handle.control_torque_recorder)
 
         if self.vizard_request is not None:
@@ -1581,6 +1581,15 @@ class SimulationService:
             except vizard.VizardError as exc:
                 raise SimulationServiceError(str(exc)) from exc
 
+        # Every controller's own Python-side telemetry thins to the same
+        # sim_settings.record_interval_s as the Basilisk recorders above.
+        for handle in self._handles.values():
+            for controller in (handle.station_keeping_controller, handle.geo_station_keeping_controller,
+                               handle.phasing_keeping_controller, handle.constant_thrust_controller,
+                               handle.comms_pointing_arbitrator):
+                if controller is not None:
+                    controller.logThinner.intervalS = sim_settings.record_interval_s
+
         self.dyn_task_name = dyn_task_name
         if initialize:
             self.scSim.InitializeSimulation()
@@ -1608,6 +1617,12 @@ class SimulationService:
                 for desat_control in self._desat_controls:
                     desat_control.Reset(priming_time_ns)
             self.scSim.ConfigureStopTime(macros.sec2nano(stop_time_s))
+
+    def _record(self, msg):
+        """A recorder for ``msg`` sampling every
+        ``sim_settings.record_interval_s`` (0: every dynamics step)."""
+        interval_s = self.scenario.sim_settings.record_interval_s  # [s]
+        return msg.recorder(macros.sec2nano(interval_s)) if interval_s > 0.0 else msg.recorder()
 
     def run(self) -> ResultSet:
         """Build (if not already built) and execute the simulation, then

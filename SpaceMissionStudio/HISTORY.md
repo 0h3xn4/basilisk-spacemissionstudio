@@ -7563,3 +7563,17 @@ So 2030-01 is 74 sfu, December 2030 the next minimum (70), and late 2035 cycle 2
 * **Template 18:** its claims still hold. Its description no longer says 03's GEO thruster never fires.
 
 Descriptions, the catalog README and `test_template_claims.py` now give these figures. New tests check the cycle's calendar alignment and the cache-name version.
+
+## Recording interval for long runs
+
+Every Basilisk recorder and every controller's own telemetry used to record every dynamics step: a 100-day run at a 30 s step is 288,000 samples per series, and 5 years would be ~5 million.
+
+**New: `sim_settings.record_interval_s`** (0 = every step, the default). It is the "Record every [s]" field in Propagation setup, and appears in the editor's propagation summary when set.
+* All Basilisk recorders sample at it (`msg.recorder(interval)`).
+* The station-keeping, GEO, phasing, constant-thrust and comms-pointing controllers log through a shared `orbit_maintenance.LogThinner`.
+* Burn flags record "fired since the last sample", so a burn shorter than the interval still shows.
+* Positions, angles and access flags are snapshots, so the pre-run checks warn when passes are not much longer than the interval.
+
+**Confirmed in Basilisk** (template 18, 2 and 5 days): every 10 minutes instead of every 30 s gives the identical final position and propellant (to 0 m / 0 kg), 1/20 of the samples, and the same burn count.
+
+**Tests:** new `tests/test_record_interval.py` (validation, old files, the pass warning, physics equivalence in Basilisk, the thinner) and a GUI round-trip test.

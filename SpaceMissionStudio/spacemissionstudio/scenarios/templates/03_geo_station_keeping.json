@@ -110,7 +110,8 @@
   "sim_settings": {
     "duration_days": 45.0,
     "dynamics_task_rate_s": 30.0,
-    "integrator": "rkf78"
+    "integrator": "rkf78",
+    "record_interval_s": 0.0
   },
   "monte_carlo": {
     "enabled": false,

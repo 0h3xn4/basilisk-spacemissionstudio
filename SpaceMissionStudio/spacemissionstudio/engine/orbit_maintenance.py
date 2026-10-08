@@ -188,6 +188,23 @@ def _log_sunlit_transition(tag: str, t_s: float, illumination: float, in_sun: bo
     return in_sun
 
 
+class LogThinner:
+    """When a controller's per-step telemetry is due
+    (``sim_settings.record_interval_s``; 0 = every step). Burn flags
+    should be OR-ed over the skipped steps by the caller, so a burn
+    shorter than the interval still shows."""
+
+    def __init__(self, interval_s: float = 0.0):
+        self.intervalS = interval_s  # [s]
+        self._lastT: Optional[float] = None  # [s]
+
+    def due(self, t: float) -> bool:
+        if self.intervalS <= 0.0 or self._lastT is None or t - self._lastT >= self.intervalS - 1e-6:
+            self._lastT = t
+            return True
+        return False
+
+
 class ThrusterOnTimeModel:
     """On-time command model for the one physical thruster a spacecraft's
     station-keeping and phasing controllers share (see ``StationKeepingConfig``).
@@ -511,6 +528,8 @@ class StationKeepingController(sysModel.SysModel):
 
         # Python-side telemetry (cheap; avoids extra BSK messages/recorders
         # for what is ultimately just a handful of scalars per tick).
+        self.logThinner = LogThinner()  # see sim_settings.record_interval_s
+        self._burnedSinceLog = False
         self.tLog: list = []
         self.altLog: list = []
         self.smoothAltLog: list = []
@@ -575,12 +594,14 @@ class StationKeepingController(sysModel.SysModel):
         if not (np.all(np.isfinite(rVec)) and np.all(np.isfinite(vVec)) and np.linalg.norm(vVec) > 0.0):
             if self.extForceEffector is not None:
                 self.extForceEffector.extForce_N = [0.0, 0.0, 0.0]
-            self.tLog.append(t)
-            self.altLog.append(float("nan"))
-            self.smoothAltLog.append(float("nan"))
-            self.burnLog.append(0)
-            self.propellantLog.append(self.propellant)
-            self.deltaVLog.append(self._cumulativeDv)
+            if self.logThinner.due(t):
+                self.tLog.append(t)
+                self.altLog.append(float("nan"))
+                self.smoothAltLog.append(float("nan"))
+                self.burnLog.append(1 if self._burnedSinceLog else 0)
+                self._burnedSinceLog = False
+                self.propellantLog.append(self.propellant)
+                self.deltaVLog.append(self._cumulativeDv)
             return
 
         alt = float(np.linalg.norm(rVec) - self.rPlanet)  # [m]
@@ -725,12 +746,15 @@ class StationKeepingController(sysModel.SysModel):
         deltaVMsg.storageCapacity = self.dvBudgetMps  # [m/s]
         self.deltaVOutMsg.write(deltaVMsg, CurrentSimNanos, self.moduleID)
 
-        self.tLog.append(t)
-        self.altLog.append(alt)
-        self.smoothAltLog.append(smoothAlt)
-        self.burnLog.append(1 if thrustMag > 0.0 else 0)
-        self.propellantLog.append(self.propellant)
-        self.deltaVLog.append(self._cumulativeDv)
+        self._burnedSinceLog = self._burnedSinceLog or thrustMag > 0.0
+        if self.logThinner.due(t):
+            self.tLog.append(t)
+            self.altLog.append(alt)
+            self.smoothAltLog.append(smoothAlt)
+            self.burnLog.append(1 if self._burnedSinceLog else 0)
+            self._burnedSinceLog = False
+            self.propellantLog.append(self.propellant)
+            self.deltaVLog.append(self._cumulativeDv)
 
 
 def build_station_keeping(scSim, task_name: str, tag: str, sc_object, mu: float, r_planet_m: float,
@@ -1033,6 +1057,7 @@ class PhasingKeepingController(sysModel.SysModel):
         # don't silently drop it" discipline elsewhere).
         self.suspendedDueToNonConvergence = False
 
+        self.logThinner = LogThinner()  # see sim_settings.record_interval_s
         self.tLog: list = []
         self.errorDegLog: list = []
         self.stateLog: list = []
@@ -1191,12 +1216,13 @@ class PhasingKeepingController(sysModel.SysModel):
                 and np.linalg.norm(np.cross(rA, vA)) > 0.0 and np.linalg.norm(np.cross(rB, vB)) > 0.0):
             if self.extForceEffectorB is not None:
                 self.extForceEffectorB.extForce_N = [0.0, 0.0, 0.0]
-            self.tLog.append(t)
-            self.errorDegLog.append(float("nan"))
-            self.stateLog.append(self.state)
-            self.propellantLog.append(self._propellant_tracker().propellant)
-            self.deltaVLog.append(self._cumulativeDv)
-            self.relativeSmaLog.append(float("nan"))
+            if self.logThinner.due(t):
+                self.tLog.append(t)
+                self.errorDegLog.append(float("nan"))
+                self.stateLog.append(self.state)
+                self.propellantLog.append(self._propellant_tracker().propellant)
+                self.deltaVLog.append(self._cumulativeDv)
+                self.relativeSmaLog.append(float("nan"))
             return
 
         mA = self._argument_of_latitude(rA, vA)
@@ -1344,12 +1370,13 @@ class PhasingKeepingController(sysModel.SysModel):
             self.altitudeControllerB.burnOn or self.thruster.firing_owned_by(self.altitudeControllerB))
         if thrusterHeldByAltCtrl:
             self._quietSinceT = t  # station-keeping is changing this orbit -- re-measure afterwards
-            self.tLog.append(t)
-            self.errorDegLog.append(np.degrees(error))
-            self.stateLog.append(self.state)
-            self.propellantLog.append(self._propellant_tracker().propellant)
-            self.deltaVLog.append(self._cumulativeDv)
-            self.relativeSmaLog.append(relA)
+            if self.logThinner.due(t):
+                self.tLog.append(t)
+                self.errorDegLog.append(np.degrees(error))
+                self.stateLog.append(self.state)
+                self.propellantLog.append(self._propellant_tracker().propellant)
+                self.deltaVLog.append(self._cumulativeDv)
+                self.relativeSmaLog.append(relA)
             return
 
         thrustMag = 0.0  # [N]
@@ -1565,12 +1592,13 @@ class PhasingKeepingController(sysModel.SysModel):
         deltaVMsg.storageCapacity = self.dvBudgetMps  # [m/s] shared-tank total (see this class's docstring)
         self.deltaVOutMsg.write(deltaVMsg, CurrentSimNanos, self.moduleID)
 
-        self.tLog.append(t)
-        self.errorDegLog.append(np.degrees(error))
-        self.stateLog.append(self.state)
-        self.propellantLog.append(tracker.propellant)
-        self.deltaVLog.append(self._cumulativeDv)
-        self.relativeSmaLog.append(relA)
+        if self.logThinner.due(t):
+            self.tLog.append(t)
+            self.errorDegLog.append(np.degrees(error))
+            self.stateLog.append(self.state)
+            self.propellantLog.append(tracker.propellant)
+            self.deltaVLog.append(self._cumulativeDv)
+            self.relativeSmaLog.append(relA)
 
     def _propellant_tracker(self):
         # Satellite B's thruster (and hence its one physical propellant
@@ -1724,6 +1752,7 @@ class ConstantFrameThrustController(sysModel.SysModel):
         self._initialPropellantKg = propellant_kg  # [kg] fixed tank capacity, for fuelTankOutMsg.maxFuelMass
 
         self._lastT: Optional[float] = None  # [s]
+        self.logThinner = LogThinner()  # see sim_settings.record_interval_s
         self.tLog: list = []
         self.propellantLog: list = []
         self.deltaVLog: list = []
@@ -1757,9 +1786,10 @@ class ConstantFrameThrustController(sysModel.SysModel):
                 and np.linalg.norm(np.cross(rVec, vVec)) > 0.0):
             if self.extForceEffector is not None:
                 self.extForceEffector.extForce_N = [0.0, 0.0, 0.0]
-            self.tLog.append(t)
-            self.propellantLog.append(self.propellant)
-            self.deltaVLog.append(self._cumulativeDv)
+            if self.logThinner.due(t):
+                self.tLog.append(t)
+                self.propellantLog.append(self.propellant)
+                self.deltaVLog.append(self._cumulativeDv)
             return
 
         axis1, axis2, axis3 = _vnb_basis(rVec, vVec) if self.frame == "VNB" else _rtn_basis(rVec, vVec)
@@ -1800,9 +1830,10 @@ class ConstantFrameThrustController(sysModel.SysModel):
         fuelTankMsg.maxFuelMass = self._initialPropellantKg  # [kg]
         self.fuelTankOutMsg.write(fuelTankMsg, CurrentSimNanos, self.moduleID)
 
-        self.tLog.append(t)
-        self.propellantLog.append(self.propellant)
-        self.deltaVLog.append(self._cumulativeDv)
+        if self.logThinner.due(t):
+            self.tLog.append(t)
+            self.propellantLog.append(self.propellant)
+            self.deltaVLog.append(self._cumulativeDv)
 
 
 def build_constant_thrust(scSim, task_name: str, tag: str, sc_object, dry_mass_kg: float,

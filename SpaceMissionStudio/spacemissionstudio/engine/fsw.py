@@ -186,6 +186,7 @@ from Basilisk.utilities import macros, simIncludeRW, simIncludeThruster
 
 from ..schema.scenario import SUPPORTED_FSW_MODES, GroundStationConfig, RFLinkConfig
 from . import link_budget
+from .orbit_maintenance import LogThinner
 
 DEFAULT_MRP_GAINS: Dict[str, float] = {"K": 3.5, "P": 30.0}
 
@@ -570,6 +571,7 @@ class _CommsPointingArbitrator(sysModel.SysModel):
 
         # Python-side telemetry -- same convention as
         # engine.orbit_maintenance's controllers (see class docstring).
+        self.logThinner = LogThinner()  # see sim_settings.record_interval_s
         self.tLog: list = []
         self.modeLog: list = []  # 0 = Sun-pointing, 1 = ground-station-pointing
         self.pointingErrorDegLog: list = []  # [deg] the ACTIVE chain's own achieved tracking error
@@ -626,9 +628,10 @@ class _CommsPointingArbitrator(sysModel.SysModel):
         link_cmd.deviceCmd = link_ok_cmd
         self.linkStatusCmdOutMsg.write(link_cmd, CurrentSimNanos, self.moduleID)
 
-        self.tLog.append(t)
-        self.modeLog.append(1 if active_comms else 0)
-        self.pointingErrorDegLog.append(theta_deg)
+        if self.logThinner.due(t):
+            self.tLog.append(t)
+            self.modeLog.append(1 if active_comms else 0)
+            self.pointingErrorDegLog.append(theta_deg)
 
 
 def build_comms_pointing(scSim, task_name: str, tag: str, comms_config, sun_guid_msg, comms_guid_msg,

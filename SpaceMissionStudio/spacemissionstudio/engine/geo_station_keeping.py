@@ -71,6 +71,7 @@ from Basilisk.simulation import extForceTorque
 from Basilisk.utilities import macros
 
 from ..schema.scenario import GeoStationKeepingConfig
+from .orbit_maintenance import LogThinner
 from .propellant_bookkeeping import apply_propellant_burn
 
 _OMEGA_EARTH = 7.2921159e-5  # [rad/s] Earth's sidereal rotation rate
@@ -133,6 +134,8 @@ class GeoStationKeepingController(sysModel.SysModel):
         self.ewManeuvers = 0
         self.nsManeuvers = 0
 
+        self.logThinner = LogThinner()  # see sim_settings.record_interval_s
+        self._ewSinceLog = self._nsSinceLog = False
         self.tLog: list = []
         self.lonLog: list = []
         self.smoothLonLog: list = []
@@ -294,6 +297,12 @@ class GeoStationKeepingController(sysModel.SysModel):
         return self.thrustN * direction
 
     def _log(self, t, lon, smoothed_lon, inclination, ew_thrust, ns_thrust) -> None:
+        self._ewSinceLog = self._ewSinceLog or ew_thrust > 0.0
+        self._nsSinceLog = self._nsSinceLog or ns_thrust > 0.0
+        if not self.logThinner.due(t):
+            return
+        ew_thrust, ns_thrust = float(self._ewSinceLog), float(self._nsSinceLog)
+        self._ewSinceLog = self._nsSinceLog = False
         self.tLog.append(t)
         self.lonLog.append(lon)
         self.smoothLonLog.append(smoothed_lon)

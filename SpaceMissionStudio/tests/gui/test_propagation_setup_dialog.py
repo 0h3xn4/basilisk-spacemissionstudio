@@ -355,3 +355,14 @@ def test_srp_location_pointer_label_is_present(dialog):
     labels = [w.text() for w in dialog.findChildren(QLabel)]
     assert any("solar radiation pressure" in text.lower() and "per spacecraft" in text.lower()
                for text in labels)
+
+
+def test_record_interval_round_trips_and_zero_reads_every_step(qtbot):
+    from spacemissionstudio.schema.scenario import SimSettings
+
+    dialog = _dialog(sim_settings=SimSettings(duration_days=30.0, record_interval_s=600.0))
+    qtbot.addWidget(dialog)
+    assert dialog.to_sim_settings().record_interval_s == 600.0  # [s]
+    dialog.record_interval_spin.setValue(0.0)
+    assert dialog.record_interval_spin.text() == "Every step"
+    assert dialog.to_sim_settings().record_interval_s == 0.0

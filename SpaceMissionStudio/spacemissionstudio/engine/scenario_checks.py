@@ -228,16 +228,32 @@ def scenario_warnings(scenario) -> List[str]:
     """Short warnings for setups that can't do what they're configured
     for. Never raises."""
     warnings: List[str] = []
-    try:
-        warnings += _pass_warnings(scenario)
-    except Exception:  # noqa: BLE001 -- a half-edited scenario must never break the Explain tab
-        pass
+    for check in (_pass_warnings, _recording_warnings):
+        try:
+            warnings += check(scenario)
+        except Exception:  # noqa: BLE001 -- a half-edited scenario must never break the Explain tab
+            pass
     for sc in scenario.spacecraft:
         try:
             warnings += _spacecraft_warnings(sc)
         except Exception:  # noqa: BLE001 -- same reason
             pass
     return warnings
+
+
+def _recording_warnings(scenario) -> List[str]:
+    """Passes shorter than the recording interval can fall between samples."""
+    interval_s = scenario.sim_settings.record_interval_s  # [s]
+    if interval_s <= 0.0 or not scenario.ground_stations:
+        return []
+    passes = predict_passes(scenario, horizon_s=min(scenario.sim_settings.duration_days * 86400.0, 86400.0))
+    if not passes:
+        return []
+    shortest = min(p.end_s - p.start_s for p in passes)  # [s]
+    if shortest > 3.0 * interval_s:
+        return []
+    return [f"passes last as little as {format_elapsed(shortest)} but results are recorded every "
+            f"{format_elapsed(interval_s)} -- some may show coarsely or not at all"]
 
 
 def _pass_warnings(scenario) -> List[str]:

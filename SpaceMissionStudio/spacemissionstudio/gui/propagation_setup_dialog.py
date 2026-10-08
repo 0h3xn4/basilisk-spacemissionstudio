@@ -309,6 +309,18 @@ class PropagationSetupDialog(QDialog):
         )
         form.addRow("Dynamics task rate [s]", self.task_rate_spin)
 
+        self.record_interval_spin = PreciseDoubleSpinBox()
+        self.record_interval_spin.setRange(0.0, 86400.0)
+        self.record_interval_spin.setDecimals(1)
+        self.record_interval_spin.setSingleStep(60.0)
+        self.record_interval_spin.setSpecialValueText("Every step")
+        self.record_interval_spin.setValue(sim_settings.record_interval_s)
+        self.record_interval_spin.setToolTip(
+            "How often results are recorded. Long runs need this: a year at a 30 s step is a million "
+            "samples per plot. Burns still show however short; passes shorter than this may not."
+        )
+        form.addRow("Record every [s]", self.record_interval_spin)
+
         self.integrator_combo = ComboBox()
         self.integrator_combo.addItems(SUPPORTED_INTEGRATORS)
         self.integrator_combo.setCurrentText(sim_settings.integrator)
@@ -530,6 +542,7 @@ class PropagationSetupDialog(QDialog):
             duration_days=self.duration_days_spin.value(),
             dynamics_task_rate_s=self.task_rate_spin.value(),
             integrator=self.integrator_combo.currentText(),
+            record_interval_s=self.record_interval_spin.value(),
         )
 
     def to_space_weather(self) -> SpaceWeatherConfig:
