@@ -1393,10 +1393,14 @@ class GravityConfig:
 
 @dataclass
 class GroundStationConfig:
+    """A ground station. Coordinates are geodetic on the WGS-84 ellipsoid
+    for Earth (planetocentric on a sphere for other bodies); longitude is
+    east positive; see :mod:`engine.geodesy` (ECSS-E-ST-10-09C 5.4.6a)."""
+
     name: str
-    latitude_deg: float
-    longitude_deg: float
-    altitude_m: float = 0.0
+    latitude_deg: float  # [deg] geodetic latitude, north positive
+    longitude_deg: float  # [deg] east positive
+    altitude_m: float = 0.0  # [m] height above the ellipsoid
     min_elevation_deg: float = 10.0
     # Receive-side link-budget parameters -- only meaningful for a
     # spacecraft that also has RFLinkConfig set (see engine.link_budget);

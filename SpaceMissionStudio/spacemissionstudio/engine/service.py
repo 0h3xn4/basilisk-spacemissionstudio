@@ -166,7 +166,7 @@ from Basilisk.utilities.supportDataTools.dataFetcher import DataFile, get_path
 
 from .. import __version__ as _SPACEMISSIONSTUDIO_VERSION
 from ..schema.scenario import OrbitIC, Scenario
-from . import fsw, kernels, link_budget, long_run, orbit_maintenance, time_system, vizard
+from . import fsw, geodesy, kernels, link_budget, long_run, orbit_maintenance, time_system, vizard
 from .results import ResultSet, RunProvenance, TimeSeries, conservation_drift_warnings
 from .vizard import VizardRequest
 
@@ -604,6 +604,7 @@ class SimulationService:
         self._ground_locations: Dict[str, object] = {}
         self._mag_field_model = None
         self._access_recorders: Dict[tuple, object] = {}  # (ground_station_name, spacecraft_name) -> recorder
+        self._ground_station_latitudes: Dict[str, tuple] = {}  # name -> (geocentric, geodetic) [rad]
         self._access_out_msgs: Dict[tuple, object] = {}  # (ground_station_name, spacecraft_name) -> accessOutMsg, for engine.vizard
         self._eclipse_object = None  # Phase 4: only built if some spacecraft has power or station_keeping configured
         # Phase 4: retains the vizInterface module enable_vizard() returns,
@@ -805,9 +806,16 @@ class SimulationService:
         for gs_config in scenario.ground_stations:
             ground_location = fsw.build_ground_location(
                 self.scSim, dyn_task_name, gs_config, central_body.radEquator,
-                central_body_state_out_msg, sc_state_out_msgs=[],
+                central_body_state_out_msg, sc_state_out_msgs=[], central_body=gravity.central_body,
             )
             self._ground_locations[gs_config.name] = ground_location
+            ellipsoid = geodesy.ellipsoid_for(gravity.central_body, central_body.radEquator)
+            r_LP_P = geodesy.geodetic_to_pcpf(math.radians(gs_config.latitude_deg),
+                                              math.radians(gs_config.longitude_deg), gs_config.altitude_m, ellipsoid)
+            # (geocentric, geodetic) latitude: Basilisk reports geocentric
+            # elevation/azimuth; the recorded series are geodetic.
+            self._ground_station_latitudes[gs_config.name] = (geodesy.geocentric_latitude(r_LP_P),
+                                                              math.radians(gs_config.latitude_deg))
 
         needs_magnetometer = any(
             sensor.kind == "magnetometer" for sc in scenario.spacecraft for sensor in sc.sensors
@@ -2097,10 +2105,14 @@ class SimulationService:
                                    recorder.hasAccess, units="-"))
             result.add(TimeSeries(f"{series_name}.slant_range", access_t_s, ("slant_range",),
                                    recorder.slantRange, units="m"))
+            # Basilisk measures elevation/azimuth from the site's geocentric
+            # direction; convert to the geodetic (WGS-84 normal) horizon.
+            elevation, azimuth = geodesy.geodetic_elevation_azimuth(
+                np.asarray(recorder.r_BL_L).reshape(-1, 3), *self._ground_station_latitudes[gs_name])
             result.add(TimeSeries(f"{series_name}.elevation", access_t_s, ("elevation",),
-                                   recorder.elevation, units="rad"))
+                                   elevation, units="rad"))
             result.add(TimeSeries(f"{series_name}.azimuth", access_t_s, ("azimuth",),
-                                   recorder.azimuth, units="rad"))
+                                   azimuth, units="rad"))
 
         # Phase 4: link-budget margin -- a reported estimate computed from
         # the access-analysis series just added above (see

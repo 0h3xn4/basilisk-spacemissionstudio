@@ -36,6 +36,9 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers", "requires_gui: test needs PySide6 (the 'gui' extra; auto-skipped without it)"
     )
+    config.addinivalue_line(
+        "markers", "requirement(*ids): ECSS/CCSDS requirement IDs the test verifies (compliance/ traceability)"
+    )
 
 
 @pytest.fixture(autouse=True)

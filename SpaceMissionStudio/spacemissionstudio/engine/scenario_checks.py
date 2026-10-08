@@ -46,6 +46,8 @@ from typing import List, Optional
 
 import numpy as np
 
+from . import geodesy
+
 _MU_M3_S2 = 3.986004415e14  # [m^3/s^2] Earth, as Basilisk's simIncludeGravBody uses
 _R_EARTH_M = 6378.1366e3  # [m] equatorial radius, as engine.service gives groundLocation
 _J2 = 1.0826e-3  # [-]
@@ -167,10 +169,14 @@ def predict_passes(scenario, horizon_s: Optional[float] = None) -> Optional[List
             continue
         r = _positions(elements, t, with_j2)
         for gs in scenario.ground_stations:
+            # WGS-84 site and its ellipsoid normal (ECSS-E-ST-10-09C 5.4.6a).
             lat, lon = math.radians(gs.latitude_deg), math.radians(gs.longitude_deg)
+            site = geodesy.geodetic_to_pcpf(lat, lon, gs.altitude_m)
+            site_radius, site_longitude = math.hypot(site[0], site[1]), math.atan2(site[1], site[0])
             up = np.stack([math.cos(lat) * np.cos(rotation + lon), math.cos(lat) * np.sin(rotation + lon),
                            np.full_like(rotation, math.sin(lat))], 1)
-            d = r - (_R_EARTH_M + gs.altitude_m) * up
+            d = r - np.stack([site_radius * np.cos(rotation + site_longitude),
+                              site_radius * np.sin(rotation + site_longitude), np.full_like(rotation, site[2])], 1)
             elevation = np.degrees(np.arcsin(np.sum(d * up, 1) / np.linalg.norm(d, axis=1)))
             visible = np.concatenate([[False], elevation >= gs.min_elevation_deg, [False]])
             edges = np.flatnonzero(np.diff(visible.astype(np.int8)))

@@ -185,7 +185,7 @@ from Basilisk.simulation import (
 from Basilisk.utilities import macros, simIncludeRW, simIncludeThruster
 
 from ..schema.scenario import SUPPORTED_FSW_MODES, GroundStationConfig, RFLinkConfig
-from . import link_budget
+from . import geodesy, link_budget
 from .orbit_maintenance import LogThinner
 
 DEFAULT_MRP_GAINS: Dict[str, float] = {"K": 3.5, "P": 30.0}
@@ -1157,11 +1157,16 @@ def build_rw_motor_torque(scSim, task_name: str, tag: str, mrp_feedback_module, 
 
 
 def build_ground_location(scSim, task_name: str, gs_config, central_body_radius_m: float, planet_state_out_msg,
-                           sc_state_out_msgs: List):
+                           sc_state_out_msgs: List, central_body: str = "earth"):
     """One ``groundLocation.GroundLocation`` per
     :class:`schema.scenario.GroundStationConfig`. Matches
     ``examples/scenarioAttLocPoint.py``. Its ``currentGroundStateOutMsg`` is
     what ``locationPointing`` targets (:func:`build_guidance`).
+
+    The site is placed with ``specifyLocationPCPF`` at its position on the
+    reference surface of :func:`engine.geodesy.ellipsoid_for` (WGS-84 for
+    Earth, ECSS-E-ST-10-09C 5.4.6a): ``specifyLocation`` would put a
+    geodetic latitude on a sphere, up to about 21 km off for Earth.
 
     ``engine.service`` calls this BEFORE any spacecraft exist (ground
     stations don't depend on them), so ``sc_state_out_msgs`` is normally
@@ -1172,7 +1177,10 @@ def build_ground_location(scSim, task_name: str, gs_config, central_body_radius_
     gl = groundLocation.GroundLocation()
     gl.ModelTag = f"groundStation_{gs_config.name}"
     gl.planetRadius = central_body_radius_m
-    gl.specifyLocation(np.radians(gs_config.latitude_deg), np.radians(gs_config.longitude_deg), gs_config.altitude_m)
+    ellipsoid = geodesy.ellipsoid_for(central_body, central_body_radius_m)
+    r_LP_P = geodesy.geodetic_to_pcpf(np.radians(gs_config.latitude_deg), np.radians(gs_config.longitude_deg),
+                                      gs_config.altitude_m, ellipsoid)
+    gl.specifyLocationPCPF(r_LP_P)
     gl.minimumElevation = np.radians(gs_config.min_elevation_deg)
     gl.maximumRange = -1.0  # no maximum slant range
     gl.planetInMsg.subscribeTo(planet_state_out_msg)

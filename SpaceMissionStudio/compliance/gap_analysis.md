@@ -194,7 +194,7 @@ not modified.
 | # | Limitation | Affects | Handling |
 |---|---|---|---|
 | B1 | `tleHandling.satTle2elem` treats SGP4 mean elements as Keplerian, ignores TEME and the TLE epoch | 10-09C 5.3.1b; CCSDS 4.2.4.9 | R03: tool-side SGP4 + TEME rotation |
-| B2 | `groundLocation.specifyLocation` uses a spherical Earth | 10-09C 5.4.6a | R05: tool computes WGS-84 position, calls `specifyLocationPCPF` |
+| B2 | `groundLocation.specifyLocation` uses a spherical Earth; its horizon (elevation, access flag) is geocentric with either location call | 10-09C 5.4.6a | R05 (done): tool computes the WGS-84 position, calls `specifyLocationPCPF`, records geodetic elevation/azimuth; the access flag keeps the geocentric horizon (<= 0.19 deg) |
 | B3 | Default Earth frame `IAU_earth` (pck00010), no EOP | 10-09C 5.4.9f; 10-04C 4.2.1c, 4.2.2b | R04: IERS-based high-precision Earth PCK through Basilisk's public `spicePlanetFrame` |
 | B4 | No tide model | 10-04C 4.2.2b | D-03 |
 | B5 | No IGRF; WMM only | 10-04C 5.2.1a | D2 / R08 |

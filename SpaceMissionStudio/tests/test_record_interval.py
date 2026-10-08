@@ -52,7 +52,7 @@ def test_a_coarse_interval_warns_when_passes_are_short():
     scenario = _template("19")  # Berlin passes of ~4 and ~8 min
     scenario.sim_settings.record_interval_s = 600.0  # [s]
     assert scenario_warnings(scenario) == [
-        "passes last as little as 4 min but results are recorded every 10 min -- some may show coarsely or "
+        "passes last as little as 5 min but results are recorded every 10 min -- some may show coarsely or "
         "not at all"]
     scenario.sim_settings.record_interval_s = 60.0  # [s]
     assert scenario_warnings(scenario) == []

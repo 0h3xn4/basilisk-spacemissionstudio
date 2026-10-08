@@ -36,17 +36,20 @@ def _template(prefix):
     return load_scenario(next(_TEMPLATES_DIR.glob(f"{prefix}_*.json")))
 
 
+@pytest.mark.requirement("E-ST-10-09C 5.4.6a")
 def test_template_19_passes_match_an_independent_propagation():
-    """Reference: an RK4 J2 propagation of the same orbit against Berlin
-    (scratch check when the template's epoch was fixed) gave passes at
-    10.3-18.2 min (61.2 deg) and 106.8-111.7 min (15.7 deg)."""
+    """Reference: the full Basilisk run of template 19 with the WGS-84 site
+    (ECSS-E-ST-10-09C 5.4.6a; scratch check 2026-10-08) gives geodetic
+    elevation above 10 deg at 10.4-18.2 min (peak 61.6 deg) and
+    106.8-111.8 min (peak 16.1 deg). The prediction samples every 30 s, so
+    its peak of a high pass is up to ~1.5 deg low."""
     passes = predict_passes(_template("19"))
     assert [(p.station, p.spacecraft) for p in passes] == [("berlin-gs", "leo-comms-1")] * 2
-    for got, (start_min, end_min, peak_deg) in zip(passes, [(10.3, 18.2, 61.2), (106.8, 111.7, 15.7)]):
+    for got, (start_min, end_min, peak_deg) in zip(passes, [(10.4, 18.2, 61.6), (106.8, 111.8, 16.1)]):
         assert got.start_s / 60 == pytest.approx(start_min, abs=1.0)  # [min]
         assert got.end_s / 60 == pytest.approx(end_min, abs=1.0)  # [min]
         assert got.peak_elevation_deg == pytest.approx(peak_deg, abs=2.0)  # [deg]
-    assert pass_summary(_template("19")) == ["berlin-gs: 2 passes, first at 10 min for 8 min (peak 61 deg)"]
+    assert pass_summary(_template("19")) == ["berlin-gs: 2 passes, first at 10 min for 8 min (peak 60 deg)"]
 
 
 def test_a_cartesian_orbit_predicts_the_same_passes():

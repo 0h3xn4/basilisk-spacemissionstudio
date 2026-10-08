@@ -127,13 +127,17 @@ TECHNICAL_RULES = [
     ("E-ST-10-09C", "5.4.5e", "NA", "-", "Launcher interface frame: no launcher modelling.", "-", "S", "no", ""),
     ("E-ST-10-09C", "5.4.5f", "NA", "-", "Spacecraft/adapter/launcher mechanical frames: no launcher modelling.",
      "-", "S", "no", ""),
-    ("E-ST-10-09C", "5.4.6a", "N", "engine/service.py ground stations -> B2.12 groundLocation.specifyLocation "
-     "(src geodeticConversion.cpp LLA2PCPF with planetPoRad=-1)",
-     "Ground stations are placed on a SPHERE of radius REQ_EARTH: latitude/altitude are treated as geocentric "
-     "on a sphere, not WGS-84 geodetic (station position errors up to ~21 km in height and ~0.19 deg in "
-     "latitude). The ellipsoid is not specified anywhere.",
-     "Tool-side WGS-84 geodetic -> Earth-fixed conversion and groundLocation.specifyLocationPCPF; state the "
-     "ellipsoid, longitude origin and pole in the CSD.", "S", "yes (uses Basilisk's public API)", "R05"),
+    ("E-ST-10-09C", "5.4.6a", "C", "R05 (Phase 2): engine/geodesy.py defines the reference surface (WGS-84 "
+     "a = 6378137.0 m, 1/f = 298.257223563; sphere of the simulation radius for other bodies), longitude east "
+     "positive from the body-fixed prime meridian, North Pole = +z of the body-fixed frame; engine/fsw.py places "
+     "groundLocation with specifyLocationPCPF at the WGS-84 position; recorded elevation/azimuth are geodetic; "
+     "GUI and schema label the coordinates. Tests: tests/test_geodesy.py (published WGS-84 constants, round "
+     "trip, independent elevation/azimuth, Basilisk site position), tests/test_scenario_checks.py (template 19 "
+     "passes vs full Basilisk run).",
+     "Residual (Basilisk 2.12, B2): groundLocation's has_access flag uses the geocentric horizon, so a pass "
+     "boundary can differ from the geodetic minimum-elevation crossing by up to ~0.19 deg (about 2 s in the "
+     "template 19 check). The prime meridian is IAU_EARTH until R04. The CSD (R14) restates the definitions.",
+     "-", "S", "yes (Basilisk's public API only)", "R05"),
     ("E-ST-10-09C", "5.4.7*", "P", "schema OrbitIC (classical elements, cartesian, TLE); results orbit_elements_* "
      "series (osculating via rv2elem, mean via clMeanOscMap)",
      "Parameterisations exist and are documented in docstrings, not mathematically in a CSD.",
