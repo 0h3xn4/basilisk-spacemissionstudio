@@ -21,10 +21,13 @@ supplied document and must be confirmed by the signatory.
 | D-07 | ECSS-E-ST-10-04C 4.2.2d | Planetary GM values are Basilisk's: Earth 398600.436 km^3/s^2 (BODY399_GM of de-403-masses.tpc, also Basilisk's MU_EARTH), the other bodies from the same file; not checked against IERS TN36. The GGM03S field's coefficients are normalised with 398600.4415 km^3/s^2 (its file header), so with spherical harmonics the two differ by 1.4e-8. | IERS TN36 was not supplied and iers.org could not be reached (2026-10-08). Effect measured in Phase 3 (validation V-04): 1.4e-8 in GM moves a 400 km orbit about 18 m along-track per day for the same initial state; the difference to TN36 is unknown until TN36 is supplied (H08). An earlier draft of this row gave the Earth value as 398600.4415; that was wrong and is corrected here. | D4 |
 
 | D-08 | ECSS-E-ST-40C 5.2.5a, 5.3.3, 5.3.4, 5.3.5, 5.4.2.4a, 5.4.4a, 5.5.2.10a, 5.6.3.4a, 5.6.4.4a, 5.7.3, 5.11.5 (the review requirements of H01) | No reviews (SRR, PDR, CDR, TRR, QR, AR) are held. The documents in `docs/` stay drafts, accepted by no review. | The user's decision for this single-person tool (2026-10-08, decision 7). The reviews' purpose, an independent check of requirements, design and results, is not replaced: the requirements stay open, and the independent code review (H06) is a separate item. A reviewer may be named later. | User, 2026-10-08 |
+| D-09 | ECSS-Q-ST-80C 5.1.5 (training plan, training records, security training) and 5.7 (process assessment and improvement) | No training plan or records are kept, and no process assessment is made. | The user's decision for this single-person tool (2026-10-08, decision 8). | User, 2026-10-08 |
+| D-10 | ECSS-E-ST-40C 5.11.2a, 5.11.2b (software security management plan) | No security management plan is written. The security analysis (`docs/security_analysis.md`) and its treatments stand without one. | The user's decision at security assurance level low (D8; 2026-10-08, decision 8). The security manager (5.11.2c) is not waived: the role is open (H02). | User, 2026-10-08 |
 
 The other process items not executed (deviation candidate D-08 of
-`gap_analysis.md`) are human actions in `human_actions.md`; only the
-reviews have been waived so far. Waiving any other item is the customer's
+`gap_analysis.md`) are human actions in `human_actions.md`; the reviews,
+training, process assessment and the security management plan have been
+waived so far. Waiving any other item is the customer's
 decision.
 
 ## Signature

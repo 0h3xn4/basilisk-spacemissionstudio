@@ -54,6 +54,10 @@ Result: **2055 passed, 11 skipped, 0 failed** (245 s, 3 workers). Every later ph
    keep their gravity degree (the 4.2.1b Explain-tab note stays).
 7. 2026-10-08, user: reviews (H01) are waived, deviation D-08; the
    reviewer is to be decided later; no review data packages for now.
+8. 2026-10-08, user (H02): the SPA manager and security manager roles are
+   left open; the software security management plan is waived (D-10);
+   training records and process assessment are waived (D-09); PA reports
+   only on request.
 
 ## Phase 1 test run
 

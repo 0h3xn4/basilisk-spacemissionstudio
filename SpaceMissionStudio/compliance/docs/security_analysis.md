@@ -16,8 +16,9 @@ contain:
 **Security assurance level:** low (decision D8).
 
 **Human actions:**
-- a software security management plan and a security manager
-  (E-ST-40C 5.11.2): H02;
+- a security manager (E-ST-40C 5.11.2c): not named, the roles are open
+  (H02). The security management plan (5.11.2a) is waived (decision 8,
+  deviation D-10);
 - the review of this analysis at SRR, PDR, CDR, QR and AR (5.11.5): H01.
 
 ## 1 Scope and method

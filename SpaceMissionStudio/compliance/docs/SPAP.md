@@ -56,7 +56,8 @@ SRS section 4 and SDD section 4. In brief, SpaceMissionStudio is:
 - No PA organisation exists. The user develops and accepts the software,
   assisted by an AI coding assistant.
 - No PA function is independent of the development.
-- To be defined:
+- The user left the roles open (decision 8, 2026-10-08). Still to be
+  defined:
   - the organisational structure;
   - the interfaces (customer, supplier, Basilisk upstream);
   - the PA manager's independence and reporting line.
@@ -82,7 +83,8 @@ The person is not yet named (H02).
 
 ### 5.4 Reporting (B.2.1<5.4>)
 
-- The SPAMR, at each release.
+- The SPAMR on request only (decision 8). There is no regular PA
+  reporting; the audit's SPAMR is the only one so far.
 - The CI artefacts on every change: test report, coverage, metrics,
   matrices.
 
@@ -118,8 +120,8 @@ SDP 5.3 and 5.4. All are mature, widely used open-source tools.
 
 ### 5.9 Process assessment and improvement (B.2.1<5.9>)
 
-- **Scope:** none planned. A process assessment is a human decision
-  (H02).
+- **Scope:** none. Process assessment and improvement (Q-ST-80C 5.7) are
+  waived by the user (decision 8, deviation D-09).
 - **Improvement:** the audit's findings and remediations (R01 to R15) are
   the improvement actions so far.
 
@@ -144,7 +146,7 @@ SDP 5.3 and 5.4. All are mature, widely used open-source tools.
 | SVerP, SValP, SUITP | Draft |
 | SMP | Draft |
 | SPAP | This outline |
-| Software security management plan (E-ST-40C 5.11.2) | Not written (H02) |
+| Software security management plan (E-ST-40C 5.11.2) | Waived by the user (decision 8, deviation D-10) |
 | SCMP | Its DRD (ECSS-M-ST-40C) is not supplied; described in SDP 6 |
 
 All plans are updated at each release (SDP 5.5.2).

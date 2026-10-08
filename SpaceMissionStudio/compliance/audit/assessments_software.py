@@ -51,7 +51,7 @@ SOFTWARE_RULES = [
      "-", "S", "no", ""),
     ("E-ST-40C", "5.2.4.4*", "NA", "-", "No system database.", "-", "S", "no", ""),
     ("E-ST-40C", "5.2.4.6a", "NA", "-", "No on-board control procedures.", "-", "S", "no", ""),
-    ("E-ST-40C", "5.2.5a", _H, "-", "No SRR held.", _REVIEW_FIX, "S", "no", "H01"),
+    ("E-ST-40C", "5.2.5a", "N", "-", "No SRR held.", _REVIEW_FIX, "S", "no", "H01,D-08"),
     # 5.3 management
     ("E-ST-40C", "5.3.2.1*", "P", "compliance/docs/SDP.md", "SDP drafted; no master schedule, risk process or staffing (H02, H05).", "Approve the SDP; close H02, H05.", "M", "no", "R14,H02,H05"),
     ("E-ST-40C", "5.3.2.2a", "P", "compliance/docs/SDP.md", "SDP drafted, not approved.", "Approve the SDP (H01).", "S", "no", "R14,H01"),
@@ -62,10 +62,9 @@ SOFTWARE_RULES = [
     ("E-ST-40C", "5.3.2.5a", "P", "git branches/commits; HISTORY.md", "Baselines are git commits but no "
      "configuration management process or release tags are defined for the tool.",
      "SCMP description (Phase 4) and tagged releases.", "S", "no", "R01,R14"),
-    ("E-ST-40C", "5.3.3*", _H, "-", "No joint or technical reviews held.", _REVIEW_FIX, "M", "no", "H01"),
-    ("E-ST-40C", "5.3.4*", _H, "-", "No project reviews (SRR, PDR, CDR, QR, AR) held.", _REVIEW_FIX, "M", "no",
-     "H01"),
-    ("E-ST-40C", "5.3.5*", _H, "-", "No TRR/TRB/DRB/SVSR held.", _REVIEW_FIX, "S", "no", "H01"),
+    ("E-ST-40C", "5.3.3*", "N", "-", "No joint or technical reviews held.", _REVIEW_FIX, "M", "no", "H01,D-08"),
+    ("E-ST-40C", "5.3.4*", "N", "-", "No project reviews (SRR, PDR, CDR, QR, AR) held.", _REVIEW_FIX, "M", "no", "H01,D-08"),
+    ("E-ST-40C", "5.3.5*", "N", "-", "No TRR/TRB/DRB/SVSR held.", _REVIEW_FIX, "S", "no", "H01,D-08"),
     ("E-ST-40C", "5.3.6.1*", "NA", "-", "Flight-software review phasing; the tool is ground software.", "-", "S",
      "no", ""),
     ("E-ST-40C", "5.3.6.2a", "N", "-", "The ground-software life cycle has not been chosen and documented.",
@@ -82,7 +81,7 @@ SOFTWARE_RULES = [
     # 5.4 requirements and architecture
     ("E-ST-40C", "5.4.2.1a", "P", "compliance/docs/SRS.md (SRS-F/P/I/O/R/D/S/PO/Q/RE/M/DEL/DF/H/A, 63 requirements with identifiers, sources and verification methods)", "SRS drafted from the implementation, not from a requirements baseline (H03); not reviewed.", "Review at SRR/PDR (H01).", "L", "no", "R14,H01,H03"),
     ("E-ST-40C", "5.4.2.2a", "NA", "-", "In-flight modification: flight software only.", "-", "S", "no", ""),
-    ("E-ST-40C", "5.4.2.4a", _H, "-", "No SWRR.", _REVIEW_FIX, "S", "no", "H01"),
+    ("E-ST-40C", "5.4.2.4a", "N", "-", "No SWRR.", _REVIEW_FIX, "S", "no", "H01,D-08"),
     ("E-ST-40C", "5.4.3.*", "P", "compliance/docs/SDD.md, SDD_components.md (generated component descriptions and traceability)", "Architecture documented after the fact; not reviewed (PDR, H01).", "Review at PDR (H01).", "M", "yes (Basilisk is the simulation core)", "R14,H01"),
     ("E-ST-40C", "5.4.3.2b", "P", "compliance/docs/security_analysis.md section 5 (residual vulnerabilities after treatment)", "Analysis by the supplier; not reviewed at PDR.", "Review at PDR (H01).", "S", "no", "R15,H01"),
     ("E-ST-40C", "5.4.3.6a", "NA", "-", "The tool is not developed for reuse.", "-", "S", "no", ""),
@@ -93,7 +92,7 @@ SOFTWARE_RULES = [
      "documented.", "Software reuse file for Basilisk (Phase 4).", "M", "yes", "R14"),
     ("E-ST-40C", "5.4.3.8a", "N", "-", "No integration strategy documented.", "In the SUITP (Phase 4).", "S",
      "no", "R14"),
-    ("E-ST-40C", "5.4.4a", _H, "-", "No PDR.", _REVIEW_FIX, "S", "no", "H01"),
+    ("E-ST-40C", "5.4.4a", "N", "-", "No PDR.", _REVIEW_FIX, "S", "no", "H01,D-08"),
     # 5.5 design and implementation
     ("E-ST-40C", "5.5.2.*", "P", "Module and class docstrings (engine/, gui/, schema/)",
      "Detailed design is documented inline only; no SDD.", "SDD detailed-design part (Phase 4).", "M", "no",
@@ -104,7 +103,7 @@ SOFTWARE_RULES = [
      "S", "no", "R14"),
     ("E-ST-40C", "5.5.2.8a", "P", "compliance/docs/SUM.md (maps the DRD to USER_MANUAL.md and adds data files, security, messages, recovery)", "SUM drafted; not reviewed with users; the message list is not exhaustive.", "Review with users (H01).", "M", "no", "R14,H01"),
     ("E-ST-40C", "5.5.2.9a", "N", "-", "No unit/integration test plan.", "SUITP (Phase 4).", "M", "no", "R14"),
-    ("E-ST-40C", "5.5.2.10a", _H, "-", "No DDR.", _REVIEW_FIX, "S", "no", "H01"),
+    ("E-ST-40C", "5.5.2.10a", "N", "-", "No DDR.", _REVIEW_FIX, "S", "no", "H01,D-08"),
     ("E-ST-40C", "5.5.3.1a", "P", "spacemissionstudio/ source; R10 (Phase 2): compliance/docs/coding_standard.md (rules C-1 to C-15); "
      "build and install steps in pyproject.toml and the CI workflow .github/workflows/spacemissionstudio.yml", "Coding standard and an automated "
      "build exist; the build procedure is not yet in a release document.", "SRelD (Phase 4).", "S", "no",
@@ -123,9 +122,9 @@ SOFTWARE_RULES = [
      "estimate -5% vs 5-year runs)", "Validation is done case by case but no validation process/plan exists.",
      "SValP (Phase 4), Phase 3 validation campaign.", "M", "no", "R13,R14"),
     ("E-ST-40C", "5.6.3.*", "P", "compliance/docs/SValP.md, SVS.md, SVR.md; tests/validation (V-01, V-02, V-04 to V-08 within tolerance)", "Validation against the TS is specified, done and reported; not reviewed (CDR, H01); SRS-P-09/R-02 not measured (H13).", "Review (H01); measure (H13).", "M", "no", "R13,R14,H01,H13"),
-    ("E-ST-40C", "5.6.3.4a", _H, "-", "No CDR.", _REVIEW_FIX, "S", "no", "H01"),
+    ("E-ST-40C", "5.6.3.4a", "N", "-", "No CDR.", _REVIEW_FIX, "S", "no", "H01,D-08"),
     ("E-ST-40C", "5.6.4.*", "H", "compliance/docs/SValP.md 4.1", "Validation against the requirements baseline is not possible: no baseline exists (H03).", "Customer provides the baseline (H03); then validate against it.", "M", "no", "H03,H01"),
-    ("E-ST-40C", "5.6.4.4a", _H, "-", "No QR.", _REVIEW_FIX, "S", "no", "H01"),
+    ("E-ST-40C", "5.6.4.4a", "N", "-", "No QR.", _REVIEW_FIX, "S", "no", "H01,D-08"),
     ("E-ST-40C", "5.6.5a", "P", "compliance/docs/SVR.md 4.6 (validation status per case)", "Status reported by the supplier; not reviewed.", "Review (H01).", "S", "no", "R14,H01"),
     # 5.7 delivery and acceptance
     ("E-ST-40C", "5.7.2.1a", "P", "packaging/; compliance/docs/SRelD.md", "Release document drafted for an unreleased candidate (version still 2.0.0).", "Release with a new version (H05).", "S", "no", "R14,H05"),
@@ -171,6 +170,7 @@ SOFTWARE_RULES = [
     ("E-ST-40C", "5.10.*", _H, "git history; HISTORY.md", "No maintenance plan or problem/modification "
      "procedures.", "SMP (Phase 4) and a problem-report procedure (e.g. GitHub issues).", "M", "no",
      "H05,R14"),
+    ("E-ST-40C", "5.11.2*", "N", "-", "No software security management plan: waived by the user (decision 8); no security manager named (roles open, H02).", "-", "S", "no", "H02,D-10"),
     ("E-ST-40C", "5.11.*", "P", "compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI", "Analysis by the supplier at security level low (D8); not reviewed at the milestones (H01); open items S-05, S-06 (H11), S-08.", "Review (H01); close H11, S-08.", "M", "no", "R15,H01,H11"),
     # Annexes: DRDs
     ("E-ST-40C", "B.*", "N", "-", "No SSS (customer document).", "Customer SSS; draft from the SRS.", "M", "no",
@@ -233,13 +233,10 @@ SOFTWARE_RULES = [
      "-", "-", "S", "no", ""),
 
     # ======================= ECSS-Q-ST-80C Rev.2 =================================
-    ("Q-ST-80C", "5.1.*", _H, "-", "No PA organisation, responsibilities, resources, SPA manager or training "
-     "defined (single-person project).", "User assigns roles (can be the same person for C, documented in "
-     "the SPAP) and records training.", "S", "no", "H02"),
-    ("Q-ST-80C", "5.2.1*", "N", "-", "No software product assurance plan.", "SPAP outline (Phase 4).", "M", "no",
-     "R14,H02"),
-    ("Q-ST-80C", "5.2.2*", _H, "-", "No PA reporting.", "Milestone reports per Annex C (SPAMR).", "S", "no",
-     "H02"),
+    ("Q-ST-80C", "5.1.*", _H, "-", "No SPA manager or security manager named: the user left the roles open (decision 8, 2026-10-08); responsibilities, resources and independence (5.1.4.2a, 5.1.3.2a) undefined.", "User names the roles (H02).", "S", "no", "H02"),
+    ("Q-ST-80C", "5.1.5*", "N", "-", "No training plan or training records: waived by the user (decision 8).", "-", "S", "no", "H02,D-09"),
+    ("Q-ST-80C", "5.2.1*", "P", "compliance/docs/SPAP.md (outline)", "SPAP is an outline; organisation sections wait for H02.", "Complete the SPAP once the roles are named (H02).", "M", "no", "R14,H02"),
+    ("Q-ST-80C", "5.2.2*", _H, "compliance/docs/SPAMR.md (the audit's report)", "PA reporting only on request (decision 8); no regular reports.", "Report on request.", "S", "no", "H02"),
     ("Q-ST-80C", "5.2.3*", _H, "-", "No audits.", "User plans audits as needed (category C: Y).", "S", "no",
      "H02"),
     ("Q-ST-80C", "5.2.4*", _H, "-", "No alert process.", "Subscribe to Basilisk/dependency advisories; record.",
@@ -262,8 +259,7 @@ SOFTWARE_RULES = [
      "licences in the SRF; user reviews.", "S", "yes", "H07,R01"),
     ("Q-ST-80C", "5.6.*", "P", "pyproject.toml (Python, pytest, pytest-qt); ruff", "Tools exist but are not "
      "selected/justified or documented.", "Tools and environment section in the SDP.", "S", "no", "R14"),
-    ("Q-ST-80C", "5.7.*", _H, "-", "No process assessment/improvement.", "User decides (category C: Y).", "S",
-     "no", "H02"),
+    ("Q-ST-80C", "5.7.*", "N", "-", "No process assessment or improvement process: waived by the user (decision 8).", "-", "S", "no", "H02,D-09"),
     ("Q-ST-80C", "6.1.*", "N", "-", "No documented life cycle.", "SDP (Phase 4).", "S", "no", "R14"),
     ("Q-ST-80C", "6.2.1*", "N", "-", "Processes not documented.", "SDP/SPAP (Phase 4).", "M", "no", "R14"),
     ("Q-ST-80C", "6.2.2.1a", "P", "compliance/phase0_tailoring.md", "As 5.4.4a.", "As 5.4.4a.", "S", "no", "H04"),
