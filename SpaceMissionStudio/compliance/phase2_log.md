@@ -10,6 +10,7 @@ done. "Suite" is the full test suite on the commit (baseline: 2055 passed,
 | R03 | E-ST-10-09C 5.3.1b, 5.3.1c; CCSDS 502.0-B-3 4.2.4.9 | `engine/tle.py`: TLE checks, SGP4 to the scenario epoch, TEME of date -> EME2000 (IAU 1976/1980 via ERFA); service, lifetime, pass prediction and plausibility warnings use it; GUI shows the TLE epoch and age; new runtime dependencies `sgp4`, `pyerfa` | `tests/test_tle.py`: Vallado TEME->J2000 example to 0.1 m, SPICE IAU-1976/1980 dynamic frame to 1e-13 rad, propagation to the scenario epoch, malformed TLEs, SGP4 failure, warnings; GUI test | 2082 passed, 11 skipped, 0 failed |
 | R01 | Q-ST-80C 6.2.4, 6.2.7 (and input to 5.5, H07) | `spacemissionstudio/dependencies.py` (qualified Basilisk 2.12.0, check, dependency versions, data-file records); installers pin `bsk[all]==2.12.0`; GUI status bar and CLI `run` warn on another version; `provenance.json` gains qualification, dependency versions, scenario SHA-256 and data files | `tests/test_dependencies.py` (check, installer pins = qualified version, file records, real run's provenance) | 2089 passed, 11 skipped, 0 failed |
 | R06 | E-ST-10-04C 4.2.1b, 4.2.2a, 4.2.2d, 6.2.1a, 6.3 | `engine/environment_models.py` (TSI 1361 W/m^2 with 1/r^2, Earth-Sun distance, sensorThermal input correction, Kaula truncation estimate); thermal sensors use the corrected inputs; warning for drag around a point-mass Earth; Explain-tab note when truncation exceeds SRP; schema caps the gravity degree at 180 (GGM03S); GUI 70 x 70 guidance; 4.2.2d -> deviation D-07 (TN36 unreachable) | `tests/test_environment_models.py`: Table 6-2 aphelion/perihelion, DE430 distance to 2e-4 AU, Basilisk 2.12 sensorThermal constants measured, corrected sensorThermal equilibrium = standard equilibrium to 0.01 K, truncation estimate, checks, degree cap | 2097 passed, 11 skipped, 0 failed |
+| R04 | E-ST-10-09C 5.4.9f; E-ST-10-04C 4.2.1c, 4.2.2b | `engine/earth_orientation.py` (NAIF ITRF93 Earth PCKs: consented fetch, file import, manifest with SHA-256, rollback, install-wide directory, coverage notes); service loads them and sets Earth's frame to ITRF93; startup prompt item; `spacemissionstudio earth-orientation`; installers prefetch; Explain-tab and run notes | `tests/test_earth_orientation.py` (offline: import, refusal of non-PCK, rollback, changed files, stubbed fetch, precedence, notes; with the real NAIF files: run frame == SPICE ITRF93 to 1e-12, differs from IAU_EARTH); GUI dialog tests | 2108 passed, 11 skipped, 0 failed |
 
 ## Result differences against the baseline
 
@@ -35,3 +36,10 @@ done. "Suite" is the full test suite on the commit (baseline: 2055 passed,
   (perihelion) through the year. No existing test asserted a temperature
   tightly enough to change. Gravity: no template is warned; five templates
   (04, 05, 07, 08, 21) now carry the Explain-tab 4.2.1b note.
+* R04: tests never see installed Earth orientation files (conftest
+  isolates both directories), so test results are unchanged; Earth runs
+  without the files carry a new warning. With the real files (installed
+  in this sandbox 2026-10-08), template 19 (epoch 2030, predicted EOP)
+  gives passes at 10.4-18.2 min (peak 62.1 deg) and 106.8-111.8 min
+  (16.0 deg) against 61.6 / 16.1 deg with IAU_EARTH; ITRF93 and IAU_EARTH
+  differ by 1.5 mrad in 2026.

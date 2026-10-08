@@ -83,6 +83,12 @@ def _isolate_logging_setup(tmp_path, monkeypatch):
     from spacemissionstudio.engine import spaceweather
 
     monkeypatch.setattr(spaceweather, "DEFAULT_CACHE_DIR", tmp_path / ".cache" / "SpaceMissionStudio" / "spaceweather")
+    # The same for the Earth orientation files (engine.earth_orientation):
+    # a test run never picks up the user's installed EOP kernels.
+    from spacemissionstudio.engine import earth_orientation
+
+    monkeypatch.setattr(earth_orientation, "DEFAULT_DIR", tmp_path / ".cache" / "SpaceMissionStudio" / "earth_orientation")
+    monkeypatch.setattr(earth_orientation, "SYSTEM_DIR", tmp_path / "share" / "earth_orientation")
 
     root_logger = logging.getLogger()
     original_handlers = list(root_logger.handlers)

@@ -90,6 +90,18 @@ if ($LASTEXITCODE -ne 0) {
     Fail "support-data pre-fetch failed (exit code $LASTEXITCODE) -- check internet access and try again"
 }
 
+# IERS-based Earth orientation (NAIF ITRF93 Earth PCKs, ~36 MB) into the
+# install-wide directory every user reads. Non-fatal: without them runs
+# use IAU_EARTH and say so.
+Write-Host "SpaceMissionStudio: fetching Earth orientation files (NAIF ITRF93 Earth PCKs, ~36 MB) ..."
+& $VenvPython -c "
+from spacemissionstudio.engine import earth_orientation
+earth_orientation.fetch(earth_orientation.SYSTEM_DIR)
+"
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "SpaceMissionStudio: could not fetch the Earth orientation files -- runs use IAU_EARTH until they are fetched."
+}
+
 # No custom Start Menu icon is rendered here: gui/icons.py's
 # ensure_icon_file() always writes PNG data regardless of the path's own
 # extension (see that function's own docstring) -- a Windows .lnk's

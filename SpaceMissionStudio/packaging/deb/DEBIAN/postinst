@@ -68,6 +68,17 @@ from spacemissionstudio.engine import kernels
 kernels.require_kernels()
 "
 
+        # IERS-based Earth orientation (NAIF ITRF93 Earth PCKs, ~36 MB, from
+        # naif.jpl.nasa.gov) into the install-wide directory every user
+        # reads (engine.earth_orientation.SYSTEM_DIR). Non-fatal: without
+        # them runs use IAU_EARTH and say so; users can fetch them later
+        # (startup prompt or 'spacemissionstudio earth-orientation --fetch').
+        echo "SpaceMissionStudio: fetching Earth orientation files (NAIF ITRF93 Earth PCKs, ~36 MB) ..."
+        "$VENV_DIR/bin/python3" -c "
+from spacemissionstudio.engine import earth_orientation
+earth_orientation.fetch(earth_orientation.SYSTEM_DIR)
+" || echo "SpaceMissionStudio: could not fetch the Earth orientation files -- runs will use IAU_EARTH until they are fetched."
+
         cat > "$LAUNCHER" <<EOF
 #!/bin/sh
 exec "$VENV_DIR/bin/spacemissionstudio" "\$@"

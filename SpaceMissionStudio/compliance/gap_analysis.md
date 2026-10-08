@@ -195,7 +195,7 @@ not modified.
 |---|---|---|---|
 | B1 | `tleHandling.satTle2elem` returns the SGP4 state at the TLE epoch (in GCRF), with no propagation to a given epoch (corrected in Phase 2, see section 3) | 10-09C 5.3.1b; CCSDS 4.2.4.9 | R03 (done): tool-side SGP4 to the scenario epoch, TEME of date -> EME2000 (`engine/tle.py`) |
 | B2 | `groundLocation.specifyLocation` uses a spherical Earth; its horizon (elevation, access flag) is geocentric with either location call | 10-09C 5.4.6a | R05 (done): tool computes the WGS-84 position, calls `specifyLocationPCPF`, records geodetic elevation/azimuth; the access flag keeps the geocentric horizon (<= 0.19 deg) |
-| B3 | Default Earth frame `IAU_earth` (pck00010), no EOP | 10-09C 5.4.9f; 10-04C 4.2.1c, 4.2.2b | R04: IERS-based high-precision Earth PCK through Basilisk's public `spicePlanetFrame` |
+| B3 | Default Earth frame `IAU_earth` (pck00010), no EOP | 10-09C 5.4.9f; 10-04C 4.2.1c, 4.2.2b | R04 (done): NAIF ITRF93 Earth PCKs (consented download or file import), set through `spiceInterface.planetFrames`; IAU_EARTH with a warning when not installed |
 | B4 | No tide model | 10-04C 4.2.2b | D-03 |
 | B5 | No IGRF; WMM only | 10-04C 5.2.1a | D2 / R08 |
 | B6 | No external magnetic field model | 10-04C 5.2.2a | D-05 |

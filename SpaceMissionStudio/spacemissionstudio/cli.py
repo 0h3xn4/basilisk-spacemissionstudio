@@ -412,6 +412,37 @@ def cmd_kernels_status(args: argparse.Namespace) -> int:
     return 0 if all(s.available for s in statuses) else 1
 
 
+def cmd_earth_orientation(args: argparse.Namespace) -> int:
+    """Status of the Earth orientation files; --fetch downloads them from
+    NAIF (network: only when asked), --import installs files from disk,
+    --rollback restores the previous set."""
+    from .engine import earth_orientation as eo
+
+    try:
+        if args.fetch:
+            print(f"Downloading from {eo.NAIF_PCK_URL}: {', '.join(eo.available_files())} ...")
+            eo.fetch()
+        elif args.import_files:
+            eo.import_files(args.import_files)
+        elif args.rollback:
+            eo.rollback()
+    except eo.EarthOrientationError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+    kernels = eo.installed()
+    if not kernels:
+        print(f"No Earth orientation files installed: runs use {eo.FALLBACK_EARTH_FRAME}. "
+              "Run 'spacemissionstudio earth-orientation --fetch' (needs internet) or --import FILE.")
+        return 1
+    for kernel in kernels:
+        print(f"  {kernel.role:15s} {Path(kernel.path).name}  {kernel.size_bytes / 1e6:.1f} MB  "
+              f"last datum {kernel.last_datum_utc or 'unknown'}  sha256 {kernel.sha256[:16]}  from {kernel.source}")
+    until = eo.high_accuracy_until(kernels)
+    print(f"Earth-fixed frame: {eo.EARTH_FIXED_FRAME}; high accuracy until "
+          f"{until:%Y-%m-%d}, predicted after." if until else f"Earth-fixed frame: {eo.EARTH_FIXED_FRAME}.")
+    return 0
+
+
 def cmd_spaceweather_resolve(args: argparse.Namespace) -> int:
     try:
         scenario = load_scenario(args.scenario)
@@ -624,6 +655,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_kernels = subparsers.add_parser("kernels-status", help="fetch/check SPICE kernel cache status")
     p_kernels.set_defaults(func=cmd_kernels_status)
+
+    p_eop = subparsers.add_parser("earth-orientation",
+                                  help="IERS-based Earth orientation files: status, --fetch, --import, --rollback")
+    eop_action = p_eop.add_mutually_exclusive_group()
+    eop_action.add_argument("--fetch", action="store_true", help="download the current NAIF Earth PCKs (internet)")
+    eop_action.add_argument("--import", dest="import_files", nargs="+", type=Path, metavar="FILE",
+                            help="install Earth PCK .bpc files from disk (a .cmt next to each is read too)")
+    eop_action.add_argument("--rollback", action="store_true", help="restore the previously installed files")
+    p_eop.set_defaults(func=cmd_earth_orientation)
 
     p_sw = subparsers.add_parser("spaceweather-resolve",
                                   help="resolve space weather for a scenario without running it (no Basilisk needed)")

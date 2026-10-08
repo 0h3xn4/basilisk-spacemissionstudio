@@ -157,11 +157,14 @@ TECHNICAL_RULES = [
     ("E-ST-10-09C", "5.4.9*", "N", "-", "Transformations are not defined verbally, mathematically and graphically; "
      "time dependence (planet rotation from pck00010) and interpolation (SPICE) are undocumented.",
      "CSD transformation definitions; frame layer documents time dependence.", "M", "yes", "R02,R14"),
-    ("E-ST-10-09C", "5.4.9f", "P", "SPICE double precision; Basilisk DCMs",
-     "Numerical precision adequate in double precision, but the IAU_EARTH (pck00010) Earth orientation omits "
-     "nutation details and polar motion; precision vs users' needs not stated.",
-     "Use the IERS-based high-precision Earth orientation (ITRF93 binary PCK) and state precision.", "M", "yes",
-     "R04"),
+    ("E-ST-10-09C", "5.4.9f", "C", "R04 (Phase 2): engine/earth_orientation.py; with the NAIF Earth PCKs "
+     "installed the Earth-fixed frame is SPICE ITRF93 (IAU 1976/1980 + IERS nutation corrections, UT1, polar "
+     "motion; NAIF: 'several microradians' within the high-accuracy span) instead of IAU_EARTH (measured 1.5 "
+     "mrad apart in 2026); planet frame set through spiceInterface.planetFrames; Explain tab and results state "
+     "the frame and accuracy; tests/test_earth_orientation.py (run frame == SPICE ITRF93 to 1e-12)",
+     "Past the files' last datum + 10 weeks the orientation is NAIF's long-term prediction (NAIF: 5-6 mrad); "
+     "without the files IAU_EARTH is used and every Earth run warns. Precision needs of users are stated in "
+     "the CSD (R14).", "-", "M", "yes (public spiceInterface API; Basilisk unchanged)", "R04"),
     ("E-ST-10-09C", "A.*", "N", "-", "The CSD does not exist.", _CSD_FIX, "M", "no", "R14"),
 
     # ======================= ECSS-E-ST-10-04C ===================================
@@ -176,19 +179,19 @@ TECHNICAL_RULES = [
      "no accuracy requirement input); drag is only compared for the point-mass case. Five bundled templates "
      "(04, 05, 07, 08, 21) use degree 2-10 with SRP on and get the note.",
      "Decide whether the templates move to the matching degree (slower runs).", "S", "no", "R06"),
-    ("E-ST-10-04C", "4.2.1c", "P", "engine/kernels.py pck00010 (IAU_EARTH)",
-     "High-degree gravity is evaluated in IAU_EARTH, a lower-accuracy Earth orientation than the IERS one.",
-     "Earth orientation from IERS data (R04).", "M", "yes", "R04"),
+    ("E-ST-10-04C", "4.2.1c", "C", "R04: the GGM03S field is evaluated in ITRF93 from IERS-based NAIF Earth PCKs "
+     "when installed (engine/earth_orientation.py; tests/test_earth_orientation.py)",
+     "Without the files the field is evaluated in IAU_EARTH and the run warns; beyond the files' high-accuracy "
+     "span the orientation is predicted.", "-", "M", "yes", "R04"),
     ("E-ST-10-04C", "4.2.2a", "P", "engine/kernels.py LocalGravData.GGM03S (GRACE-based, static, ICGEM, degree "
      "180); R06: schema caps the degree at 180, the GUI tooltip states the 70 x 70 requirement",
      "GGM03S satisfies items 1-4 as a model; the degree is the user's choice and templates use 0-10, below the "
      "70 x 70 the requirement asks for.",
      "Use degree >= 70 for compliant analyses (performance cost); template decision as 4.2.1b.", "S",
      "yes", "R06"),
-    ("E-ST-10-04C", "4.2.2b", "N", "-",
-     "No tides (Basilisk has no tide model) and no IERS Earth orientation parameters (IAU_EARTH from pck00010).",
-     "EOP via the IERS-based high-precision Earth PCK (R04); tides: deviation (D-03) or tool-side model.", "L",
-     "yes (Basilisk lacks tides)", "R04,D-03"),
+    ("E-ST-10-04C", "4.2.2b", "P", "R04: IERS-based Earth orientation (ITRF93 from NAIF's EOP-derived PCKs)",
+     "No solid-Earth or ocean tides (Basilisk has no tide model): deviation D-03.",
+     "Tides: deviation D-03 (accepted, D3).", "L", "yes (Basilisk lacks tides)", "R04,D-03"),
     ("E-ST-10-04C", "4.2.2c", "C", "engine/kernels.py DEFAULT_KERNELS: de430.bsp (planets and Moon, DE/LE-430)",
      "-", "-", "S", "yes", ""),
     ("E-ST-10-04C", "4.2.2d", "N", "B2.12 astroConstants (MU_EARTH 398600.436 km^3/s^2 ...), "

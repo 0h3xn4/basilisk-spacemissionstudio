@@ -54,8 +54,10 @@ sections.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List
 
+from . import earth_orientation
 from .orbit_design import sun_synchronous_inclination_deg
 from .scenario_checks import gravity_fidelity_notes, pass_summary, scenario_warnings
 
@@ -269,9 +271,26 @@ def _environment_section(scenario) -> ExplanationSection | None:
         badges.append(Badge("Gravity gradient", "accent"))
     if any(sc.facets and (sc.enable_drag or sc.enable_srp) for sc in scenario.spacecraft):
         badges.append(Badge("Facet model (drag/SRP torques)", "accent"))
+    notes = gravity_fidelity_notes(scenario)
+    if getattr(scenario.gravity, "central_body", "") == "earth":
+        notes += _earth_frame_notes(scenario)
     if not badges:
         return None
-    return ExplanationSection(title="Environment", badges=badges, notes=gravity_fidelity_notes(scenario))
+    return ExplanationSection(title="Environment", badges=badges, notes=notes)
+
+
+def _earth_frame_notes(scenario) -> List[str]:
+    """The Earth-fixed frame a run will use and its accuracy
+    (engine.earth_orientation, ECSS-E-ST-10-09C 5.4.9f)."""
+    try:
+        start = datetime.fromisoformat(scenario.epoch_utc)
+        if start.tzinfo is not None:
+            start = start.astimezone(timezone.utc).replace(tzinfo=None)
+        kernels = earth_orientation.installed()
+        notes = earth_orientation.notes(start, start + timedelta(days=scenario.sim_settings.duration_days), kernels)
+    except Exception:  # noqa: BLE001 -- a half-edited scenario must never break the Explain tab
+        return []
+    return notes or [f"Earth orientation: {earth_orientation.EARTH_FIXED_FRAME} from IERS data"]
 
 
 def _power_comms_section(scenario) -> ExplanationSection | None:

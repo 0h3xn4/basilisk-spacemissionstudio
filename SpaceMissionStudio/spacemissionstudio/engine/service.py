@@ -153,8 +153,10 @@ import hashlib
 import json
 import logging
 import math
+import os
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
 import numpy as np
@@ -167,7 +169,7 @@ from Basilisk.utilities.supportDataTools.dataFetcher import DataFile, get_path
 from .. import __version__ as _SPACEMISSIONSTUDIO_VERSION
 from .. import dependencies
 from ..schema.scenario import OrbitIC, Scenario
-from . import environment_models, fsw, geodesy, kernels, link_budget, long_run, orbit_maintenance, time_system, tle, vizard
+from . import earth_orientation, environment_models, fsw, geodesy, kernels, link_budget, long_run, orbit_maintenance, time_system, tle, vizard
 from .results import ResultSet, RunProvenance, TimeSeries, conservation_drift_warnings
 from .vizard import VizardRequest
 
@@ -572,6 +574,8 @@ class SimulationService:
         self.reentry: Optional[tuple] = None
         self._space_weather_warnings: List[str] = []  # what the resolved space weather is built from
         self._data_files: Dict[str, Dict[str, object]] = {}  # reference data used, for RunProvenance
+        self._earth_orientation_notes: List[str] = []
+        self.earth_frame = "IAU_EARTH"
         self._run_started_utc: Optional[str] = None  # set by build() -- see RunProvenance
         # Set below, during gravity setup, only when a real J2 term is
         # actually being modeled for the central body -- see that
@@ -757,6 +761,27 @@ class SimulationService:
         self.spice_object = kernels.build_spice_interface(grav_factory, spice_time_string, epoch_in_msg=True)
         for status in kernels.ensure_kernels(kernels.DEFAULT_KERNELS):
             self._data_files[f"spice:{status.filename}"] = dependencies.file_record(status.path)
+        # Earth-fixed frame: ITRF93 from the IERS-based NAIF Earth PCKs when
+        # installed (engine.earth_orientation, ECSS-E-ST-10-09C 5.4.9f),
+        # else Basilisk's default IAU_EARTH. Combined file first, so the
+        # high-precision one, loaded last, takes precedence.
+        self.earth_frame = earth_orientation.FALLBACK_EARTH_FRAME
+        if "earth" in body_names:
+            eop_kernels = earth_orientation.installed()
+            for eop in eop_kernels:
+                eop_path = Path(eop.path)
+                self.spice_object.loadSpiceKernel(eop_path.name, str(eop_path.parent) + os.sep)
+                self._data_files[f"earth_orientation:{eop_path.name}"] = {
+                    "path": eop.path, "size_bytes": eop.size_bytes, "sha256": eop.sha256, "source": eop.source,
+                    "last_datum_utc": eop.last_datum_utc}
+            if eop_kernels:
+                self.earth_frame = earth_orientation.EARTH_FIXED_FRAME
+                self.spice_object.planetFrames = [self.earth_frame if name == "earth" else "" for name in body_names]
+            start_utc = datetime.fromisoformat(scenario.epoch_utc)
+            if start_utc.tzinfo is not None:
+                start_utc = start_utc.astimezone(timezone.utc).replace(tzinfo=None)
+            self._earth_orientation_notes = earth_orientation.notes(
+                start_utc, start_utc + timedelta(days=sim_settings.duration_days), eop_kernels)
         # Re-zero every SPICE ephemeris output on the central body (SPICE's
         # own observer/"zeroBase" concept -- see spiceInterface.cpp's
         # spkezr_c call, which queries each body's state relative to
@@ -1907,6 +1932,7 @@ class SimulationService:
                 data_files=dict(self._data_files),
             )
         result.warnings.extend(self._space_weather_warnings)
+        result.warnings.extend(note for note in self._earth_orientation_notes if "no IERS data" in note)
         spacecraft_by_name = {sc_config.name: sc_config for sc_config in self.scenario.spacecraft}
         for name, handle in self._handles.items():
             t_s = handle.recorder.times() * macros.NANO2SEC

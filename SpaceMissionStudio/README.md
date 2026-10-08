@@ -906,6 +906,19 @@ versions, a SHA-256 of the scenario and the reference data files used
 sources in this repository (`../src`, currently 2.13.0b0) are not the
 qualified version.
 
+### Earth orientation
+
+With NAIF's IERS-based Earth PCKs installed, the Earth-fixed frame of a run
+is **ITRF93** (precession, nutation with IERS corrections, UT1, polar
+motion); without them it is SPICE's `IAU_EARTH` rotation model (about
+1.5 mrad, roughly 10 km at the surface, away from ITRF93 in 2026) and every
+Earth run says so. The files (about 36 MB from naif.jpl.nasa.gov) are
+fetched by the installers, by the startup prompt when you agree, or with
+`spacemissionstudio earth-orientation --fetch`; `--import FILE` installs
+them from disk and `--rollback` restores the previous set. After the files'
+last measured data plus about ten weeks the orientation is NAIF's
+long-term prediction, which the Explain tab notes.
+
 ## Closed-off/offline policy
 
 SpaceMissionStudio makes **no network calls implicitly**. Nothing here ever
