@@ -88,7 +88,7 @@ From `metrics.py` on this milestone's code and coverage run (RD2):
 | Cyclomatic complexity, median / max | 2 / 79 | ≤ 15 for new code |
 | Functions above 15 | 19 | not to grow |
 | Statement coverage | 91.5 % | ≥ 90 % (met) |
-| Branch coverage | 81.7 % | not set (H09) |
+| Branch coverage | 81.7 % | ≥ 80 % (met; decision 15) |
 | Test functions / requirement-tagged | 1511 / 99 | – |
 | Corrective commits (proxy) per kSLOC | 10 / 0.34 | – |
 

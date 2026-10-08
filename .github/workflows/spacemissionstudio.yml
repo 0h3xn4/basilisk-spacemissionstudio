@@ -64,7 +64,7 @@ jobs:
           --junitxml=test-report.xml
       - name: Metrics and statement coverage >= 90 % (C-7, C-10)
         if: always()
-        run: python compliance/tools/metrics.py --coverage coverage.json --junit test-report.xml --fail-under 90
+        run: python compliance/tools/metrics.py --coverage coverage.json --junit test-report.xml --fail-under 90 --fail-under-branch 80
       - name: Traceability, ICS and compliance matrix
         if: always()
         run: |

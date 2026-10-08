@@ -131,9 +131,10 @@ SOFTWARE_RULES = [
      "with the guide (H06).", "M",
      "no", "R10,R14,H06"),
     ("E-ST-40C", "5.8.3.5b", "P", "R11 (Phase 2): statement and branch coverage measured by pytest-cov in "
-     ".github/workflows/spacemissionstudio.yml (statement coverage >= 90 % enforced by metrics.py --fail-under 90) and reported in compliance/metrics.md", "Coverage is measured and "
-     "enforced, but Table 5-1 gives 'TBA' for category C: the 90 % target of coding standard rule C-10 is "
-     "the supplier's proposal, not an agreed figure.", "Customer agrees the coverage target (H09).", "S", "no",
+     ".github/workflows/spacemissionstudio.yml (statement coverage >= 90 % and branch coverage >= 80 % enforced by metrics.py --fail-under 90 --fail-under-branch 80) and reported in compliance/metrics.md; "
+     "targets agreed with the customer (decision 15)", "Statement and decision coverage measured and enforced at the agreed values (90 %, 80 %); "
+     "MC/DC agreed as not required for category C (decision 15). Partial: the coverage verification report is the "
+     "supplier's (SVR), not reviewed (D-08).", "-", "S", "no",
      "R11,H09"),
     ("E-ST-40C", "5.8.3.5c", "C", "R11 (Phase 2): coverage measured from the execution of the test suite "
      "(pytest-cov, .github/workflows/spacemissionstudio.yml; compliance/metrics.md)", "-", "-", "S", "no", "R11"),
@@ -223,7 +224,7 @@ SOFTWARE_RULES = [
      "S", "no", "H05"),
     ("Q-ST-80C", "5.2.5*", "P", "compliance/docs/SMP.md 10.1 (GitHub issues with labels, decision 11)", "Procedure defined, not yet in use (no labels created).", "Create the labels when the user agrees.", "S", "no", "H05"),
     ("Q-ST-80C", "5.2.6*", "P", "compliance/docs/SMP.md 12, 13 (nonconformances handled as issues)", "Procedure defined, not yet in use.", "-", "S", "no", "H05"),
-    ("Q-ST-80C", "5.2.7*", "P", "compliance/docs/SRS.md 5.10 (SRS-Q-01 to Q-03), SPAP.md 5.5", "Quality requirements stated; no formal quality model; thresholds not agreed (H09).", "-", "S", "no", "R14,H09"),
+    ("Q-ST-80C", "5.2.7*", "P", "compliance/docs/SRS.md 5.10 (SRS-Q-01 to Q-03), SPAP.md 5.5", "Quality requirements stated; thresholds agreed with the customer (decision 15); no formal quality model.", "-", "S", "no", "R14,H09"),
     ("Q-ST-80C", "5.3.*", "N", "Technical risks logged as findings F-nn, S-nn, K-nn", "No risk management or critical-item control process: waived by the user (decision 11).", "-", "S", "no", "H05,D-12"),
     ("Q-ST-80C", "5.4.*", _H, "-", "Supplier selection/control not applicable as such (no subcontractor); "
      "reused OSS suppliers (Basilisk) not assessed.", "Record OSS dependencies and their status in the SRF.",
@@ -277,8 +278,9 @@ SOFTWARE_RULES = [
      "no product quality requirements (SRS) exist to check it against.", "Review in H06; SRS (Phase 4).",
      "S", "no", "R10,R14,H06"),
     ("Q-ST-80C", "6.3.4.3a", "P", "compliance/docs/coding_standard.md section 3; SPAP.md 5.8 (refers to SDP 5.3, 5.4)", "Tools identified; drafted by the supplier; reviews waived (D-08).", "-", "S", "no", "R14"),
-    ("Q-ST-80C", "6.3.4.4a", "H", "compliance/docs/coding_standard.md", "The coding standard has not been reviewed with the customer.",
-     "Customer review of the coding standard (H09).", "S", "no", "H09"),
+    ("Q-ST-80C", "6.3.4.4a", "P", "compliance/docs/coding_standard.md; thresholds agreed (decision 15)", "The customer agreed the "
+     "thresholds of rules C-7 and C-10 and the metric set (decision 15); the rules themselves were not reviewed "
+     "one by one (reviews waived, D-08).", "-", "S", "no", "H09"),
     ("Q-ST-80C", "6.3.4.5a", "C", "compliance/docs/coding_standard.md rule C-1: no low-level language is used (Python only; C/C++ only "
      "inside reused Basilisk)", "-", "-", "S", "no", "R10"),
     ("Q-ST-80C", "6.3.4.6a", "C", "compliance/docs/coding_standard.md: measurements and criteria (C-7 complexity <= 15, C-8 zero ruff "

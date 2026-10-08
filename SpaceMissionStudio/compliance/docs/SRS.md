@@ -255,7 +255,7 @@ The security assurance level is low (UD-4, D8).
 
 | ID | Requirement |
 |---|---|
-| SRS-Q-01 | Statement coverage >= 90 % (coding standard C-10; target to be agreed, H09). |
+| SRS-Q-01 | Statement coverage >= 90 % and decision (branch) coverage >= 80 % (coding standard C-10; agreed with the customer, decision 15). |
 | SRS-Q-02 | Zero static-analysis findings for the configured rule set. |
 | SRS-Q-03 | Function complexity <= 15 for new code. |
 

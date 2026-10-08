@@ -144,10 +144,10 @@ SUITP, run on 2026-10-08 on the audit's container (Python 3.11, Basilisk
 
 | Requirement | Result |
 |---|---|
-| SRS-Q-01 statement coverage ≥ 90 % | 91.5 %, met |
+| SRS-Q-01 statement coverage ≥ 90 %, branch coverage ≥ 80 % | 91.5 % and 81.7 %, met |
 | SRS-Q-02 zero static-analysis findings | 0, met |
 | SRS-Q-03 complexity ≤ 15 for new code | Met: no new function above 15 |
-| Q-ST-80C 6.2.6.1 verification of the quality requirements | As above; the thresholds are to be agreed (H09) |
+| Q-ST-80C 6.2.6.1 verification of the quality requirements | As above; thresholds agreed with the customer (decision 15) |
 | Automatically generated code | None |
 
 ## 5 Margins and technical budgets

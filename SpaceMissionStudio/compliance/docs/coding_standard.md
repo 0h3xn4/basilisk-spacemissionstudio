@@ -6,9 +6,9 @@ Addresses ECSS-Q-ST-80C 6.3.4.1a-6.3.4.8a (coding standards, their tools,
 code evaluation) and ECSS-E-ST-40C 5.5.3.1a, 5.8.3.5a/b/f (coding, code
 verification, coverage, robustness).
 
-**Status:** written by the supplier. Not yet reviewed with the customer.
-That review (Q-ST-80C 6.3.4.4a) and agreement of the thresholds in rules C-7
-and C-10 are human action H09.
+**Status:** written by the supplier. The customer agreed the thresholds of
+rules C-7 and C-10 and the metric set (decision 15, 2026-10-08, H09). The
+other rules have not been reviewed one by one (reviews waived, D-08).
 
 ## 1 Scope and basis
 
@@ -49,7 +49,7 @@ Each rule names how it is checked:
 | C-7 | **Complexity.** McCabe cyclomatic complexity <= 15 for new or rewritten functions (ruff C901, measured by `compliance/tools/metrics.py`). Existing functions above 15 are listed in `compliance/metrics.md`. Each is split when it is next changed materially, or its size is justified in a comment (e.g. a GUI form constructor). | metrics.py; review |
 | C-8 | **Static analysis.** Zero ruff findings for the rule set in `pyproject.toml` (pyflakes F, pycodestyle E4/E7/E9/W, bugbear B; B007 and B023 ignored for the reasons given there). A `# noqa` names the rule and states the reason on the same line. | ruff in CI |
 | C-9 | **Tests.** Every new function has a unit test. Every test has a docstring stating what it checks. Tests check boundary values (n-1, n, n+1) and each error path the code defines (E-ST-40C 5.5.3.2c). A test that verifies a requirement carries `@pytest.mark.requirement("<standard> <ID>")` (traceability, `compliance/tools/build_traceability.py`). A test that needs Basilisk is marked `requires_basilisk`. Tests never download data themselves (the fetch functions are mocked); Basilisk's own data files are fetched by Basilisk's data fetcher when absent. | test; build_traceability.py |
-| C-10 | **Coverage.** Statement coverage of `spacemissionstudio` >= 90 % and branch coverage reported, measured by pytest-cov in CI (E-ST-40C 5.8.3.5b-c). For category C, Table 5-1 of E-ST-40C leaves the figure "TBA", so 90 % is the supplier's proposal (H09). Code not reached by tests (GUI error dialogs, download failures) is justified by inspection (5.8.3.5d). | CI; metrics.py |
+| C-10 | **Coverage.** Statement coverage of `spacemissionstudio` >= 90 % and decision (branch) coverage >= 80 %, measured by pytest-cov and enforced by `metrics.py --fail-under 90 --fail-under-branch 80` in CI (E-ST-40C 5.8.3.5b-c). Table 5-1 of E-ST-40C leaves these "TBA" for category C; the values were agreed with the customer (decision 15). MC/DC is not required for category C (decision 15). Code not reached by tests (GUI error dialogs, download failures) is justified by inspection (5.8.3.5d). | CI; metrics.py |
 | C-11 | **Security.** See the rule list after this table. | review; ruff S (from R15) |
 | C-12 | **Dependencies.** Basilisk is pinned (`QUALIFIED_BASILISK_VERSION`) and checked at start-up. Other dependencies have lower bounds in `pyproject.toml`, and their versions are recorded in each run's `provenance.json`. A new dependency needs an entry in the reused-software list (H07). | test (test_dependencies.py) |
 | C-13 | **Basilisk.** The Basilisk framework is never modified, patched or monkey-patched. Only its public Python API is used. A Basilisk shortcoming is corrected outside Basilisk (e.g. R06 thermal scaling) and is documented where it is corrected. | review |

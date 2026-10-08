@@ -8,7 +8,7 @@
    "gui": 13176,
    "schema": 2162
   },
-  "test_sloc": 20862
+  "test_sloc": 20892
  },
  "complexity": {
   "tool": "ruff C901 (mccabe)",
@@ -96,8 +96,8 @@
   ]
  },
  "tests": {
-  "test_functions": 1511,
-  "requirement_tagged_tests": 99
+  "test_functions": 1515,
+  "requirement_tagged_tests": 103
  },
  "fault_density": {
   "corrective_commits": 10,
@@ -111,7 +111,7 @@
   "branch_percent": 81.7
  },
  "failures": {
-  "tests": 2250,
+  "tests": 2254,
   "failures": 0,
   "errors": 0,
   "skipped": 11

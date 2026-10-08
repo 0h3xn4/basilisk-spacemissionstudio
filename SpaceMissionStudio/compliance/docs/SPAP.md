@@ -11,7 +11,6 @@ Document: SMS-SPAP, issue 1 (outline), 2026-10-08. Remediation R14.
     (H04);
   - nonconformance and problem handling: decided (decision 11), not yet in use;
   - independent review (H06);
-  - the agreement of metric thresholds (H09).
 - Each section names its gap.
 
 ## 1 Introduction (B.2.1<1>)
@@ -98,7 +97,8 @@ The quality characteristics used are those of the SRS:
 - portability (SRS-PO);
 - usability (SRS-H).
 
-No formal quality model has been agreed (H09).
+No formal quality model has been agreed. The metric thresholds were
+agreed with the customer (decision 15, H09).
 
 ### 5.6 Risk management (B.2.1<5.6>)
 
@@ -234,7 +234,8 @@ documents. The rest needs review (H01, H06).
 
 | Product metric | Target | Collection |
 |---|---|---|
-| Statement coverage | ≥ 90 % (C-10; category C target to be agreed, H09) | CI, `metrics.py --fail-under 90` |
+| Statement coverage | ≥ 90 % (C-10; agreed, decision 15) | CI, `metrics.py --fail-under 90` |
+| Decision (branch) coverage | ≥ 80 % (C-10; agreed, decision 15); MC/DC not required | CI, `metrics.py --fail-under-branch 80` |
 | Static analysis findings | 0 (C-8) | CI, ruff |
 | Cyclomatic complexity | ≤ 15 for new code; existing functions above it listed (C-7) | `metrics.py` |
 | Requirement traceability | Every SRS requirement allocated (SDD); tests tagged with requirements | `build_sdd_components.py`, `build_traceability.py` |

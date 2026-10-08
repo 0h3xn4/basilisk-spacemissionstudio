@@ -80,6 +80,9 @@ Result: **2055 passed, 11 skipped, 0 failed** (245 s, 3 workers). Every later ph
 14. 2026-10-08, user (H08): D-08 to D-13 signed; D-01 to D-07 stay
     unsigned; the user will supply IERS TN36 for D-07; the figures of D-02
     and D-03 are accepted as the supplier's estimates.
+15. 2026-10-08, user (H09): statement coverage >= 90 % and decision
+    (branch) coverage >= 80 %, both enforced in CI; MC/DC not required;
+    complexity <= 15 for new code and the metric set of `metrics.py` kept.
 
 ## Phase 1 test run
 
@@ -94,6 +97,7 @@ the table below.
 | After Phase 2 (R01-R12) | 2188 | 11 | 0 (133 new tests; changed expectations listed in `phase2_log.md`) |
 | After Phase 3 (R13) | 2209 | 11 | 0 (21 new tests; changed expectations listed in `phase3_log.md`) |
 | After Phase 4 (R14, R15) | 2239 | 11 | 0 (30 new tests; changed expectations: the script-block tests pass consent, the condition hint text; listed in the R15 commit) |
+| After H09 (decision 15) | 2243 | 11 | 0 (4 new tests of the branch coverage gate; no changed expectations) |
 
 ## Resuming
 
