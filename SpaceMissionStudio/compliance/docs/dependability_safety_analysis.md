@@ -7,7 +7,8 @@ Document: SMS-SDSA, issue 1 (draft for approval), 2026-10-08. Human action H04.
 - No DRD for this analysis appears in the supplied documents. Its contents
   follow ECSS-Q-ST-80C 6.2.2 and 6.2.3.
 - The standards that define the severity of system functions,
-  ECSS-Q-ST-30 and ECSS-Q-ST-40, were not supplied (decision 3, H12). The
+  ECSS-Q-ST-30 and ECSS-Q-ST-40, were not supplied (decision 3); the user
+  decided to proceed without them (decision 18, H12). The
   classification below therefore rests on the user's judgement, not on a
   system-level analysis.
 

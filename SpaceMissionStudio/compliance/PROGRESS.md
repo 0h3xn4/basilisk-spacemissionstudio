@@ -93,6 +93,10 @@ Result: **2055 passed, 11 skipped, 0 failed** (245 s, 3 workers). Every later ph
     port 5570 is bound only in broadcast mode, which the tool does not
     use. S-06 is corrected; a change built for the earlier decision was
     discarded uncommitted.
+18. 2026-10-08, user (H12): none of the missing documents (ECSS-M-ST-40C,
+    ECSS-M-ST-10-01, ECSS-Q-ST-30/40, NOAA's WMM2025 report) will be
+    supplied; the audit proceeds without them. IERS TN36 stays with H08
+    (decision 14). No SRevP: covered by the review waiver D-08.
 
 ## Phase 1 test run
 

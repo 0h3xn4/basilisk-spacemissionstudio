@@ -66,7 +66,7 @@ SOFTWARE_RULES = [
      "no", ""),
     ("E-ST-40C", "5.3.6.2a", "N", "-", "The ground-software life cycle has not been chosen and documented.",
      _PLAN_FIX, "S", "no", "R14"),
-    ("E-ST-40C", "5.3.7.1a", "P", "compliance/docs/ICD.md (interfaces, versioned scenario schema with migrations)", "Interfaces defined in the ICD, drafted by the supplier; reviews waived (D-08). ECSS-M-ST-40 not supplied (H12).", "-", "S", "no", "R14,H12"),
+    ("E-ST-40C", "5.3.7.1a", "P", "compliance/docs/ICD.md (interfaces, versioned scenario schema with migrations)", "Interfaces defined in the ICD, drafted by the supplier; reviews waived (D-08). ECSS-M-ST-40 not supplied; the user decided to proceed without it (decision 18).", "-", "S", "no", "R14,H12"),
     ("E-ST-40C", "5.3.8*", "P", "HISTORY.md: measured run time and memory (e.g. 5-year run 50 min, 450 MB)",
      "Measured, but no budget targets or margin philosophy.", "Define CPU/memory budgets for reference runs "
      "in the SRS; measure them in the SVR.", "S", "no", "R14"),
@@ -205,7 +205,7 @@ SOFTWARE_RULES = [
     ("E-ST-40C", "O.2.1<1>*", "C", "compliance/docs/SDP.md section 1 (introduction)", "-", "-", "S", "no", "R14"),
     ("E-ST-40C", "O.2.1<2>*", "C", "compliance/docs/SDP.md section 2 (applicable and reference documents)", "-", "-", "S", "no", "R14"),
     ("E-ST-40C", "O.2.1<3>*", "C", "compliance/docs/SDP.md section 3 (terms)", "-", "-", "S", "no", "R14"),
-    ("E-ST-40C", "P.*", "N", "-", "No SRevP written: reviews are not yet planned by the customer and the SRevP cites ECSS-M-ST-10-01, which was not supplied.", "Decide whether an SRevP is wanted; supply ECSS-M-ST-10-01 (H12).", "S", "no", "H01,H12"),
+    ("E-ST-40C", "P.*", "N", "-", "No SRevP: waived by the user with the reviews (decision 18; the review plan is the output of 5.3.3.2b, covered by D-08). ECSS-M-ST-10-01, which the DRD cites, was not supplied (decision 18).", "-", "S", "no", "H12,D-08"),
     ("E-ST-40C", "T.*", "P", "compliance/docs/SMP.md", "Draft per the DRD: every DRD section present and not empty (compliance/tools/check_drds.py); not reviewed (H01); sections that depend on people state the gap and name the human action.", "Review and approve at the reviews of H01; close the human actions named in the document.", "M", "no", "R14,H01"),
     ("E-ST-40C", "T.2.1<1>*", "C", "compliance/docs/SMP.md section 1 (introduction)", "-", "-", "S", "no", "R14"),
     ("E-ST-40C", "T.2.1<2>*", "C", "compliance/docs/SMP.md section 2 (applicable and reference documents)", "-", "-", "S", "no", "R14"),
@@ -229,7 +229,7 @@ SOFTWARE_RULES = [
     ("Q-ST-80C", "5.4.*", _H, "-", "Supplier selection/control not applicable as such (no subcontractor); "
      "reused OSS suppliers (Basilisk) not assessed.", "Record OSS dependencies and their status in the SRF.",
      "S", "yes", "H07"),
-    ("Q-ST-80C", "5.4.4a", "P", "compliance/docs/dependability_safety_analysis.md section 1 (category C signed off by the user, decision 10)", "Not derived from a system-level analysis: ECSS-Q-ST-30/-40 not supplied (H12); no lower-level suppliers to inform.", "-", "S", "no", "H04,H12"),
+    ("Q-ST-80C", "5.4.4a", "P", "compliance/docs/dependability_safety_analysis.md section 1 (category C signed off by the user, decision 10)", "Not derived from a system-level analysis: ECSS-Q-ST-30/-40 not supplied, the user decided to proceed without them (decision 18); no lower-level suppliers to inform.", "-", "S", "no", "H04,H12"),
     ("Q-ST-80C", "5.5.*", "P", "compliance/docs/SRF.md section 4 (items, versions, licences), 9 (SHA-256); "
      "pyproject.toml", "Components listed with versions and licences and accepted by the user as listed "
      "(decision 13); no procurement documents or receiving inspection reports; licences of Basilisk's own "
@@ -243,7 +243,7 @@ SOFTWARE_RULES = [
     ("Q-ST-80C", "6.1.*", "P", "compliance/docs/SDP.md 5.2, SPAP.md 6.1", "Life cycle defined (incremental); drafted by the supplier; reviews waived (D-08).", "-", "S", "no", "R14"),
     ("Q-ST-80C", "6.1.5a", "N", "-", "No TRR: reviews waived (decision 7).", "-", "S", "no", "H01,D-08"),
     ("Q-ST-80C", "6.2.1*", "P", "compliance/docs/SDP.md, SPAP.md 6.2 (plans and their status)", "Plans written after the activities they cover; drafted by the supplier; reviews waived (D-08).", "-", "M", "no", "R14"),
-    ("Q-ST-80C", "6.2.2.1a", "P", "compliance/docs/dependability_safety_analysis.md section 1", "Classification by the user's judgement; the ECSS-Q-ST-40 6.5.6.3 analysis is not available (H12).", "-", "S", "no", "H04,H12"),
+    ("Q-ST-80C", "6.2.2.1a", "P", "compliance/docs/dependability_safety_analysis.md section 1", "Classification by the user's judgement; the ECSS-Q-ST-40 6.5.6.3 analysis is not available; ECSS-Q-ST-40 not supplied (decision 18).", "-", "S", "no", "H04,H12"),
     ("Q-ST-80C", "6.2.2.*", "P", "compliance/docs/dependability_safety_analysis.md (functional FMEA, FM-01 to FM-12, safeguards with evidence)", "Drafted by the supplier, waiting for the user's approval; methods not agreed with a separate customer; no system-level analysis to start from.", "User approves the analysis (H04).", "S", "no", "H04"),
     ("Q-ST-80C", "6.2.3.*", "P", "compliance/docs/dependability_safety_analysis.md section 4 (measures for critical software: the whole tool, category C)", "Measures applied and verified by the supplier; unreachable-code analysis (6.2.3.6a) open; no independent verification (H06).", "Analyse the uncovered branches; H06.", "S", "no", "H04,H06"),
     ("Q-ST-80C", "6.2.4.*", "P", "git; version 2.0.0 (pyproject.toml); schema_version + migrations; "

@@ -127,7 +127,7 @@ SUITP, run on 2026-10-08 on the audit's container (Python 3.11, Basilisk
 | V-06a GMAT's OEM read | the known error only | – | SRS-F-14 | Met |
 | V-06b tool OEM conforms | no issue | – | SRS-F-14 | Met |
 | V-06c GMAT reads the tool's OEM | 8.4 mm | 1 cm | SRS-I-04 | Met |
-| V-07 Basilisk NRLMSISE-00, WMM2025 tests | 294 passed | – | SRF | Met (WMM values not checked against NOAA's report, H12) |
+| V-07 Basilisk NRLMSISE-00, WMM2025 tests | 294 passed | – | SRF | Met (WMM values not checked against NOAA's report, which was not supplied; decision 18) |
 | V-08 sgp4 tests | 49 passed | – | SRF | Met |
 | V-L lifetime vs a decay run | +0.9 % | 3 % | SRS-P-08 | Met |
 

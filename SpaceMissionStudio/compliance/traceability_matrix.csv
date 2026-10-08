@@ -693,22 +693,22 @@ E-ST-40C,O.2.1<5.5.3>c,Partially compliant,"R14,H01",compliance/docs/SDP.md,-,,0
 E-ST-40C,O.2.1<5.5.4>a,Partially compliant,"R14,H01",compliance/docs/SDP.md,-,,0
 E-ST-40C,O.2.1<5.5.4>b,Partially compliant,"R14,H01",compliance/docs/SDP.md,-,,0
 E-ST-40C,O.2.1<5.6>a,Partially compliant,"R14,H01",compliance/docs/SDP.md,-,,0
-E-ST-40C,P.2.1<1>a,Non-compliant,"H01,H12",-,-,,0
-E-ST-40C,P.2.1<2>a,Non-compliant,"H01,H12",-,-,,0
-E-ST-40C,P.2.1<3>a,Non-compliant,"H01,H12",-,-,,0
-E-ST-40C,P.2.1<4.1>a,Non-compliant,"H01,H12",-,-,,0
-E-ST-40C,P.2.1<4.2>a,Non-compliant,"H01,H12",-,-,,0
-E-ST-40C,P.2.1<5>a,Non-compliant,"H01,H12",-,-,,0
-E-ST-40C,P.2.1<5>b,Non-compliant,"H01,H12",-,-,,0
-E-ST-40C,P.2.1<6>a,Non-compliant,"H01,H12",-,-,,0
-E-ST-40C,P.2.1<7>a,Non-compliant,"H01,H12",-,-,,0
-E-ST-40C,P.2.1<8>a,Non-compliant,"H01,H12",-,-,,0
-E-ST-40C,P.2.1<8>b,Non-compliant,"H01,H12",-,-,,0
-E-ST-40C,P.2.1<9>a,Non-compliant,"H01,H12",-,-,,0
-E-ST-40C,P.2.1<10>a,Non-compliant,"H01,H12",-,-,,0
-E-ST-40C,P.2.1<11>a,Non-compliant,"H01,H12",-,-,,0
-E-ST-40C,P.2.1<12>a,Non-compliant,"H01,H12",-,-,,0
-E-ST-40C,P.2.1<13>a,Non-compliant,"H01,H12",-,-,,0
+E-ST-40C,P.2.1<1>a,Non-compliant,"H12,D-08",-,-,,0
+E-ST-40C,P.2.1<2>a,Non-compliant,"H12,D-08",-,-,,0
+E-ST-40C,P.2.1<3>a,Non-compliant,"H12,D-08",-,-,,0
+E-ST-40C,P.2.1<4.1>a,Non-compliant,"H12,D-08",-,-,,0
+E-ST-40C,P.2.1<4.2>a,Non-compliant,"H12,D-08",-,-,,0
+E-ST-40C,P.2.1<5>a,Non-compliant,"H12,D-08",-,-,,0
+E-ST-40C,P.2.1<5>b,Non-compliant,"H12,D-08",-,-,,0
+E-ST-40C,P.2.1<6>a,Non-compliant,"H12,D-08",-,-,,0
+E-ST-40C,P.2.1<7>a,Non-compliant,"H12,D-08",-,-,,0
+E-ST-40C,P.2.1<8>a,Non-compliant,"H12,D-08",-,-,,0
+E-ST-40C,P.2.1<8>b,Non-compliant,"H12,D-08",-,-,,0
+E-ST-40C,P.2.1<9>a,Non-compliant,"H12,D-08",-,-,,0
+E-ST-40C,P.2.1<10>a,Non-compliant,"H12,D-08",-,-,,0
+E-ST-40C,P.2.1<11>a,Non-compliant,"H12,D-08",-,-,,0
+E-ST-40C,P.2.1<12>a,Non-compliant,"H12,D-08",-,-,,0
+E-ST-40C,P.2.1<13>a,Non-compliant,"H12,D-08",-,-,,0
 E-ST-40C,R.2a,Compliant,,compliance/phase0_tailoring.md; requirements/ECSS-E-ST-40C.csv crit_C,inspection of the evidence,,0
 E-ST-40C,R.2 (ECSS-E-ST-40_0860665),Compliant,,compliance/phase0_tailoring.md; requirements/ECSS-E-ST-40C.csv crit_C,inspection of the evidence,,0
 E-ST-40C,T.2.1<1>a,Compliant,R14,compliance/docs/SMP.md section 1 (introduction),inspection of the evidence,,0
