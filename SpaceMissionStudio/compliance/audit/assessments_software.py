@@ -53,8 +53,9 @@ SOFTWARE_RULES = [
     # 5.3 management
     ("E-ST-40C", "5.3.2.1*", "P", "compliance/docs/SDP.md", "SDP drafted; no master schedule, risk process or staffing (H02, H05).", "Approve the SDP; close H02, H05.", "M", "no", "R14,H02,H05"),
     ("E-ST-40C", "5.3.2.2a", "P", "compliance/docs/SDP.md", "SDP drafted, not approved.", "Approve the SDP (H01).", "S", "no", "R14,H01"),
-    ("E-ST-40C", "5.3.2.3a", "N", "-", "No procurement process documented (Basilisk and other dependencies are "
-     "reused open-source software).", "Describe reuse/procurement of OSS in the SDP and SRF.", "S",
+    ("E-ST-40C", "5.3.2.3a", "P", "compliance/docs/SRF.md (reused items, versions, checksums, licences); reuse "
+     "accepted by the user as-is (decision 13)", "No procurement process as such (the items are open-source "
+     "software installed from PyPI); exportability not identified (left open, decision 13).", "-", "S",
      "yes (Basilisk reuse)", "R14,H07"),
     ("E-ST-40C", "5.3.2.4*", "NA", "-", "No automatic code generation from models.", "-", "S", "no", ""),
     ("E-ST-40C", "5.3.2.5a", "P", "compliance/docs/SDP.md section 6 (configuration management description); git", "Changes go through git and CI; no change board (waived, D-12) and no release tags yet (version 2.1.0 to be tagged, decision 11).", "-", "S", "no", "R14,D-12"),
@@ -80,7 +81,7 @@ SOFTWARE_RULES = [
     ("E-ST-40C", "5.4.3.6b", "NA", "-", "As 5.4.3.6a.", "-", "S", "no", ""),
     ("E-ST-40C", "5.4.3.6c", "C", "Mission data (scenarios JSON, space-weather data files) separate from code",
      "-", "-", "S", "no", ""),
-    ("E-ST-40C", "5.4.3.7a", "P", "compliance/docs/SRF.md (reuse analysis of Basilisk 2.12.0 and the packages)", "Analysis done; acceptance of the reuse pending (H07).", "-", "S", "no", "R14,H07"),
+    ("E-ST-40C", "5.4.3.7a", "P", "compliance/docs/SRF.md (reuse analysis of Basilisk 2.12.0 and the packages)", "Analysis done; the user accepted the reuse as-is (decision 13), for all functions used; no requirements baseline (D-11).", "-", "S", "no", "R14,H07"),
     ("E-ST-40C", "5.4.3.8a", "P", "compliance/docs/SUITP.md 7.1 (integration strategy)", "Strategy documented; drafted by the supplier; reviews waived (D-08).", "-", "S", "no", "R14"),
     ("E-ST-40C", "5.4.4a", "N", "-", "No PDR.", _REVIEW_FIX, "S", "no", "H01,D-08"),
     # 5.5 design and implementation
@@ -228,9 +229,13 @@ SOFTWARE_RULES = [
      "reused OSS suppliers (Basilisk) not assessed.", "Record OSS dependencies and their status in the SRF.",
      "S", "yes", "H07"),
     ("Q-ST-80C", "5.4.4a", "P", "compliance/docs/dependability_safety_analysis.md section 1 (category C signed off by the user, decision 10)", "Not derived from a system-level analysis: ECSS-Q-ST-30/-40 not supplied (H12); no lower-level suppliers to inform.", "-", "S", "no", "H04,H12"),
-    ("Q-ST-80C", "5.5.*", _H, "pyproject.toml dependencies", "No procurement documents for the reused/"
-     "procured components (Basilisk, PySide6, numpy, sgp4, ...).", "Component list with versions and "
-     "licences in the SRF; user reviews.", "S", "yes", "H07,R01"),
+    ("Q-ST-80C", "5.5.*", "P", "compliance/docs/SRF.md section 4 (items, versions, licences), 9 (SHA-256); "
+     "pyproject.toml", "Components listed with versions and licences and accepted by the user as listed "
+     "(decision 13); no procurement documents or receiving inspection reports; licences of Basilisk's own "
+     "dependencies and of Vizard not reviewed.", "-", "S", "yes", "H07,R01"),
+    ("Q-ST-80C", "5.5.6a", _H, "-", "Exportability constraints not identified: left open by the user "
+     "(decision 13).", "Classify the tool and the reused items, or have export control do it (H07).", "S",
+     "yes", "H07"),
     ("Q-ST-80C", "5.6.*", "P", "pyproject.toml (Python, pytest, pytest-qt); ruff", "Tools exist but are not "
      "selected/justified or documented.", "Tools and environment section in the SDP.", "S", "no", "R14"),
     ("Q-ST-80C", "5.7.*", "N", "-", "No process assessment or improvement process: waived by the user (decision 8).", "-", "S", "no", "H02,D-09"),
@@ -258,7 +263,7 @@ SOFTWARE_RULES = [
      "Verification by tests and static analysis, planned and reported by the supplier; no independent human review "
      "of the AI-written code yet (reviewer to be named, decision 12).", "Independent review with the guide (H06).", "M", "no",
      "R14,H06"),
-    ("Q-ST-80C", "6.2.7.*", "P", "compliance/docs/SRF.md; R01 version pin and check; validation V-01 to V-08 of the reused models", "Reuse analysed and documented; Basilisk lacks ECSS documentation and coverage figures; acceptance pending (H07).", "Accept or reject the reuse (H07).", "M", "yes", "R14,R01,H07"),
+    ("Q-ST-80C", "6.2.7.*", "P", "compliance/docs/SRF.md; R01 version pin and check; validation V-01 to V-08 of the reused models", "Reuse analysed and documented; accepted by the user as-is (decision 13). Basilisk lacks ECSS documentation and coverage figures; functions outside V-01 to V-08 rest on Basilisk's own tests.", "-", "M", "yes", "R14,R01,H07"),
     ("Q-ST-80C", "6.2.8.*", "NA", "-", "No automatic code generation from models. (AI-assisted coding is "
      "covered by review, H06.)", "-", "S", "no", "H06"),
     ("Q-ST-80C", "6.2.9.*", "P", "compliance/docs/security_analysis.md; security level low (decision D8)", "Analysis done and reported by the supplier; methods not agreed with the customer; no security manager (H02).", "Agree methods; name the security manager (H02).", "S", "no", "R15,H02"),

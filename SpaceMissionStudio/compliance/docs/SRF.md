@@ -6,8 +6,9 @@ Document: SMS-SRF, issue 1 (draft), 2026-10-08. Remediation R14.
 **Status:** draft, written by the supplier.
 - The decisions in section 6 are the user's (decision D5: qualify
   Basilisk 2.12.0, pin it and check it at start-up).
-- Acceptance of the reused software, its licences and its export status
-  is a human action (H07).
+- The user accepted the reused software and its licences as listed, and
+  left the export status open (decision 13, 2026-10-08; section 6). The
+  acceptance is recorded, not signed.
 - Where this file says "not assessed", the information was not available
   to the audit. That is a gap, not a finding that the item is absent.
 
@@ -86,7 +87,7 @@ These data files are reused through Basilisk or by the tool:
 
 - **Industrial property and exportability:** every item is open source and
   published. No item has been classified for export control by the
-  audit; classification is part of H07.
+  audit or by the user; the user left it open (decision 13, H07).
 - **Warranty and maintenance:** all items are provided "as is" without
   warranty (their licences). Maintenance is by the developers' public
   projects.
@@ -146,8 +147,8 @@ These data files are reused through Basilisk or by the tool:
   expectations for reused software of category C. The tool's validation
   compensates for this only for the functions validated. The modules not
   exercised by V-01 to V-08 (for example the thermal and power models,
-  the FSW algorithms) rest on Basilisk's own testing. Whether that is
-  acceptable is the customer's decision (H07).
+  the FSW algorithms) rest on Basilisk's own testing. The user accepted
+  this (decision 13, section 6).
 - **The other packages:** they are mature, widely used open-source
   libraries. For sgp4 and pyerfa the tool checks them against published
   test values (`tests/test_tle.py`: Vallado's TEME example;
@@ -162,6 +163,17 @@ These data files are reused through Basilisk or by the tool:
 | numpy, sgp4, pyerfa | Reuse, unmodified | Complete libraries, called through their public APIs | Reference implementations (SGP4, SOFA); checked against published values |
 | PySide6, plotly | Reuse, unmodified | User interface only; no effect on numerical results | Standard GUI toolkit; results are produced by the engine without them (CLI) |
 | Vizard | Optional reuse | Visualisation only | Not needed for any result |
+
+**Acceptance (H07, decision 13, 2026-10-08; recorded, not signed):**
+- **Basilisk 2.12.0:** accepted as-is by the user for every function the
+  tool uses. The functions not covered by V-01 to V-08 (for example the
+  thermal and power models and the FSW algorithms) rest on Basilisk's own
+  tests; the user accepted that.
+- **Licences:** accepted as listed in section 4. The licences of
+  Basilisk's own dependencies and of Vizard have not been reviewed.
+- **Export status:** not identified; left open (ECSS-Q-ST-80C 5.5.6a).
+  To be settled before the tool is passed outside the user's
+  organisation.
 
 **Method:** the level of reuse was estimated from the tool's imports (the
 module list of section 4) and the requirement allocation of the SDD

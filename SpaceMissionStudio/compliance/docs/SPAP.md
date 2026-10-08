@@ -199,7 +199,8 @@ All plans are updated at each release (SDP 5.5.2).
 - **Delta qualification:** the tool's validation (V-01, V-02, V-04 to
   V-08) against the pinned version.
 - **Requalification:** at each new Basilisk version (SMP 8).
-- **Acceptance:** H07.
+- **Acceptance:** accepted as-is by the user (decision 13); export status
+  open (H07).
 
 ### 6.8 Process activities (B.2.1<6.8>)
 

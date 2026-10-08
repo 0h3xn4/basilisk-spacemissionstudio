@@ -29,7 +29,7 @@ E-ST-40C,5.3.2.1b,Partially compliant,"R14,H02,H05",compliance/docs/SDP.md,-,,0
 E-ST-40C,5.3.2.1c,Partially compliant,"R14,H02,H05",compliance/docs/SDP.md,-,,0
 E-ST-40C,5.3.2.1d,Partially compliant,"R14,H02,H05",compliance/docs/SDP.md,-,,0
 E-ST-40C,5.3.2.2a,Partially compliant,"R14,H01",compliance/docs/SDP.md,-,,0
-E-ST-40C,5.3.2.3a,Non-compliant,"R14,H07",-,-,,0
+E-ST-40C,5.3.2.3a,Partially compliant,"R14,H07","compliance/docs/SRF.md (reused items, versions, checksums, licences); reuse accepted by the user as-is (decision 13)",-,,0
 E-ST-40C,5.3.2.5a,Partially compliant,"R14,D-12",compliance/docs/SDP.md section 6 (configuration management description); git,-,,0
 E-ST-40C,5.3.3.1a,Non-compliant,"H01,D-08",-,-,,0
 E-ST-40C,5.3.3.1b,Non-compliant,"H01,D-08",-,-,,0
@@ -798,12 +798,12 @@ Q-ST-80C,5.4.3.3a,Requires human or process action,H07,-,-,,0
 Q-ST-80C,5.4.3.4a,Requires human or process action,H07,-,-,,0
 Q-ST-80C,5.4.4a,Partially compliant,"H04,H12","compliance/docs/dependability_safety_analysis.md section 1 (category C signed off by the user, decision 10)",-,,0
 Q-ST-80C,5.4.5a,Requires human or process action,H07,-,-,,0
-Q-ST-80C,5.5.1a,Requires human or process action,"H07,R01",pyproject.toml dependencies,-,,0
-Q-ST-80C,5.5.2a,Requires human or process action,"H07,R01",pyproject.toml dependencies,-,,0
-Q-ST-80C,5.5.3a,Requires human or process action,"H07,R01",pyproject.toml dependencies,-,,0
-Q-ST-80C,5.5.4a,Requires human or process action,"H07,R01",pyproject.toml dependencies,-,,0
-Q-ST-80C,5.5.5a,Requires human or process action,"H07,R01",pyproject.toml dependencies,-,,0
-Q-ST-80C,5.5.6a,Requires human or process action,"H07,R01",pyproject.toml dependencies,-,,0
+Q-ST-80C,5.5.1a,Partially compliant,"H07,R01","compliance/docs/SRF.md section 4 (items, versions, licences), 9 (SHA-256); pyproject.toml",-,,0
+Q-ST-80C,5.5.2a,Partially compliant,"H07,R01","compliance/docs/SRF.md section 4 (items, versions, licences), 9 (SHA-256); pyproject.toml",-,,0
+Q-ST-80C,5.5.3a,Partially compliant,"H07,R01","compliance/docs/SRF.md section 4 (items, versions, licences), 9 (SHA-256); pyproject.toml",-,,0
+Q-ST-80C,5.5.4a,Partially compliant,"H07,R01","compliance/docs/SRF.md section 4 (items, versions, licences), 9 (SHA-256); pyproject.toml",-,,0
+Q-ST-80C,5.5.5a,Partially compliant,"H07,R01","compliance/docs/SRF.md section 4 (items, versions, licences), 9 (SHA-256); pyproject.toml",-,,0
+Q-ST-80C,5.5.6a,Requires human or process action,H07,-,-,,0
 Q-ST-80C,5.6.1.1a,Partially compliant,R14,"pyproject.toml (Python, pytest, pytest-qt); ruff",-,,0
 Q-ST-80C,5.6.1.2a,Partially compliant,R14,"pyproject.toml (Python, pytest, pytest-qt); ruff",-,,0
 Q-ST-80C,5.6.1.3a,Partially compliant,R14,"pyproject.toml (Python, pytest, pytest-qt); ruff",-,,0

@@ -69,11 +69,15 @@ From `compliance_matrix.csv`. "Was" is after Phase 3; Phase 1 values are in
 
 | Standard | Compliant | Partially | Non-compliant | Not applicable | Human/process action |
 |---|---|---|---|---|---|
-| ECSS-E-ST-40C | 43 (was 4) | 485 (was 86) | 109 (was 553) | 33 | 113 (was 107) |
-| ECSS-Q-ST-80C | 11 (was 5) | 161 (was 96) | 46 (was 96) | 33 | 96 (was 117) |
+| ECSS-E-ST-40C | 45 (was 4) | 533 (was 86) | 165 (was 553) | 33 | 7 (was 107) |
+| ECSS-Q-ST-80C | 12 (was 5) | 235 (was 96) | 22 (was 96) | 33 | 45 (was 117) |
 | ECSS-E-ST-10-09C | 23 | 59 | 0 | 6 | 4 |
 | ECSS-E-ST-10-04C | 9 | 4 | 17 | 122 | 0 |
-| CCSDS 502.0-B-3 | 263 | 4 | 71 | 369 | 8 |
+| CCSDS 502.0-B-3 | 263 | 10 | 71 | 369 | 2 |
+
+Counts as of the human-action decisions 7 to 13 (2026-10-08): a waived
+requirement counts as non-compliant (with its deviation), and a decided
+human action moves its rows out of the last column.
 
 **How to read it:**
 - Most of the E-ST-40C and Q-ST-80C change is the DRD contents.

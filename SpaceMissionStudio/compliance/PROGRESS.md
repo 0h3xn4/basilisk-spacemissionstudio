@@ -73,6 +73,10 @@ Result: **2055 passed, 11 skipped, 0 failed** (245 s, 3 workers). Every later ph
 12. 2026-10-08, user (H06): the independent reviewer is to be named
     later; the supplier prepares a review guide
     (`reviews/code_review_guide.md`).
+13. 2026-10-08, user (H07): Basilisk 2.12.0 accepted as-is for every
+    function used, including those not externally validated; licences
+    accepted as listed in the SRF (Basilisk's dependencies and Vizard not
+    reviewed); export status left open.
 
 ## Phase 1 test run
 
