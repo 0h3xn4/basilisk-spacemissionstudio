@@ -126,9 +126,8 @@ def test_density_matches_the_simulations_own_atmosphere():
 def test_reentry_date_matches_a_basilisk_decay_run():
     """Template 18's spacecraft from 300 km with no station keeping: the
     estimate's re-entry (perigee at 120 km) within 3% of a full Basilisk
-    run's (27.15 vs 26.78 days in a real run: +1.4%). The run itself
-    carries on below the atmosphere and now ends with a re-entry warning
-    rather than failing to compute mean elements."""
+    run's (24.00 vs 23.79 days on the real 2030 data: +0.9%). The run
+    stops at re-entry with a warning."""
     from spacemissionstudio.engine.service import SimulationService
 
     scenario = _template_18(300.0, duration_days=28.0)  # [day]
@@ -185,3 +184,25 @@ def test_the_exponential_atmosphere_is_flagged_as_too_thin():
     assert density is lifetime.exponential_density
     assert "far too thin" in warnings[0]
     assert density(0.0, np.array([[lifetime.REQ_EARTH_M + 400e3, 0.0, 0.0]]))[0] < 1e-20  # [kg/m^3]
+
+
+@pytest.mark.requires_basilisk
+def test_a_run_stops_cleanly_when_its_spacecraft_reenters(monkeypatch):
+    """Template 18's spacecraft from 300 km asked to fly 60 days, split
+    into 20-day segments: the run stops at re-entry (~24 days) with its
+    results so far and a warning, rather than integrate on through the
+    Earth until the state diverges and the whole run is lost."""
+    from spacemissionstudio.engine import long_run
+    from spacemissionstudio.engine.service import SimulationService
+    from spacemissionstudio.schema.scenario import SimSettings
+
+    monkeypatch.setattr(long_run, "SEGMENT_DAYS", 20.0)  # [day]
+    monkeypatch.setattr(SimSettings, "_MAX_SINGLE_RUN_DAYS", 20.0)  # [day]
+    result = SimulationService(_template_18(300.0, duration_days=60.0)).run()  # [km], [day]
+
+    end_days = result.series["leo-sat-1.position_N"].time_s[-1] / 86400.0
+    assert 20.0 < end_days < 30.0
+    reentries = [w for w in result.warnings if w.startswith("leo-sat-1 re-entered")]
+    assert len(reentries) == 1 and reentries[0].endswith("the run stopped there")
+    altitude_km = (np.linalg.norm(result.series["leo-sat-1.position_N"].data[-1]) - lifetime.REQ_EARTH_M) / 1e3
+    assert 0.0 < altitude_km < 200.0  # [km] stopped near the ground, not inside it

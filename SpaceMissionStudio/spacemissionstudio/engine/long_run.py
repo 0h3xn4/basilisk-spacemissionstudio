@@ -37,7 +37,9 @@ cumulative delta-V series carry on from where the previous segment left
 off. Space weather is resolved once for the whole span, so a run past
 the real data's last date is refused before the first segment.
 
-Not carried, so restarted at each boundary: controllers' internal
+A spacecraft that re-enters ends the run there (see
+``SimulationService._execute_until``). Not carried, so restarted at each
+boundary: controllers' internal
 filters (the station-keeping altitude smoothing refills over one orbit,
 the GEO drift fit over one day) and sensor noise sequences. Phasing
 keeping (its state machine and schedule), mission sequences, Monte Carlo
@@ -222,6 +224,12 @@ def run_segmented(scenario: Scenario, on_progress: Optional[Callable[[ResultSet,
             except SimulationCancelled as exc:
                 raise SimulationCancelled(_append(merged, exc.partial_result, offset_s, dv_offsets)) from None
         merged = _append(merged, part, offset_s, dv_offsets)
+        if service.reentry is not None:
+            name, t_s = service.reentry
+            merged.warnings = [w for w in merged.warnings if not w.startswith(f"{name} re-entered")]
+            merged.warnings.append(f"{name} re-entered: below 100 km at t = {(offset_s + t_s) / 86400.0:.2f} days "
+                                   "-- the run stopped there")
+            break
         if index < len(lengths) - 1:
             finals = _carry_state(segment, service, part)
             dv_offsets = {name: dv_offsets.get(name, 0.0) + value for name, value in finals.items()}

@@ -202,6 +202,9 @@ _logger = logging.getLogger(__name__)
 
 
 _REENTRY_ALTITUDE_M = 100e3  # [m] below this a spacecraft is flagged as re-entered
+_REENTRY_CHECK_S = 6.0 * 3600.0  # [s] between re-entry checks, perigee high
+_REENTRY_NEAR_PERIGEE_M = 200e3  # [m] below this perigee altitude, check often
+_REENTRY_NEAR_CHECK_S = 300.0  # [s] between re-entry checks, perigee low
 
 
 class SimulationServiceError(Exception):
@@ -567,6 +570,9 @@ class SimulationService:
         self.vizard_request = vizard_request
         self.scSim: Optional[SimulationBaseClass.SimBaseClass] = None
         self.mu: Optional[float] = None
+        # (spacecraft name, t [s]) once a spacecraft with drag re-entered;
+        # the run stopped there rather than integrate it through the Earth
+        self.reentry: Optional[tuple] = None
         self._run_started_utc: Optional[str] = None  # set by build() -- see RunProvenance
         # Set below, during gravity setup, only when a real J2 term is
         # actually being modeled for the central body -- see that
@@ -1669,7 +1675,7 @@ class SimulationService:
         if self.scSim is None:
             self.build()
         try:
-            self.scSim.ExecuteSimulation()
+            self._execute_until(macros.sec2nano(self.scenario.sim_settings.duration_days * 86400.0))
         except RuntimeError as exc:
             self.log_last_known_state()
             raise_clear_execution_error(exc)
@@ -1760,9 +1766,8 @@ class SimulationService:
 
         next_stop_ns = min(step_ns, stop_time_ns)
         while True:
-            self.scSim.ConfigureStopTime(next_stop_ns)
             try:
-                self.scSim.ExecuteSimulation()
+                finished = self._execute_until(next_stop_ns)
             except RuntimeError as exc:
                 # Log how far the run actually got before this -- see
                 # raise_clear_execution_error's own docstring for why this
@@ -1777,7 +1782,7 @@ class SimulationService:
                 )
                 self.log_last_known_state()
                 raise_clear_execution_error(exc)
-            fraction_complete = min(1.0, next_stop_ns / stop_time_ns)
+            fraction_complete = 1.0 if not finished else min(1.0, next_stop_ns / stop_time_ns)
             _logger.info(
                 "run_live: %.1f%% complete (t=%.1f s of %.1f s)",
                 100.0 * fraction_complete, next_stop_ns * macros.NANO2SEC, stop_time_s,
@@ -1786,11 +1791,53 @@ class SimulationService:
             on_progress(partial_result, fraction_complete)
             if should_cancel is not None and should_cancel():
                 raise SimulationCancelled(partial_result)
-            if next_stop_ns >= stop_time_ns:
+            if next_stop_ns >= stop_time_ns or not finished:
                 break
             next_stop_ns = min(next_stop_ns + step_ns, stop_time_ns)
 
         return self._extract_results()
+
+    def _execute_until(self, stop_ns: int) -> bool:
+        """Runs to ``stop_ns``. With drag, in chunks: every 6 h, or every
+        5 minutes once a perigee is below 200 km, and stops early (setting
+        :attr:`reentry`, returning False) once a spacecraft is below
+        100 km -- integrating it on through the Earth goes non-physical
+        and would lose the whole run."""
+        watched = [(name, handle) for name, handle in self._handles.items()
+                   if self._sc_has_drag(name)] if self.reentry is None else []
+        if not watched:
+            if self.reentry is not None:
+                return False
+            self.scSim.ConfigureStopTime(stop_ns)
+            self.scSim.ExecuteSimulation()
+            return True
+        now_ns = self.scSim.TotalSim.CurrentNanos
+        while now_ns < stop_ns:
+            step_s = _REENTRY_CHECK_S  # [s]
+            for name, handle in watched:
+                state = handle.sc_object.scStateOutMsg.read()
+                r_m, v_m_s = np.array(state.r_BN_N), np.array(state.v_BN_N)
+                radius_m = float(np.linalg.norm(r_m))
+                if radius_m - self.central_radius_m < _REENTRY_ALTITUDE_M:
+                    self.reentry = (name, now_ns * macros.NANO2SEC)
+                    _logger.warning("%s re-entered at t=%.0f s; stopping the run there", name, self.reentry[1])
+                    return False
+                energy = 0.5 * float(v_m_s @ v_m_s) - self.mu / radius_m  # [m^2/s^2]
+                if energy < 0.0:
+                    a_m = -self.mu / (2.0 * energy)
+                    h2 = float(np.sum(np.cross(r_m, v_m_s) ** 2))
+                    e = math.sqrt(max(0.0, 1.0 - h2 / (self.mu * a_m)))
+                    if a_m * (1.0 - e) - self.central_radius_m < _REENTRY_NEAR_PERIGEE_M:
+                        step_s = _REENTRY_NEAR_CHECK_S
+            next_ns = min(stop_ns, now_ns + macros.sec2nano(step_s))
+            self.scSim.ConfigureStopTime(next_ns)
+            self.scSim.ExecuteSimulation()
+            now_ns = next_ns
+        return True
+
+    def _sc_has_drag(self, name: str) -> bool:
+        sc_config = next((sc for sc in self.scenario.spacecraft if sc.name == name), None)
+        return sc_config is not None and sc_config.enable_drag
 
     def _orbit_elements(self, name: str, r_bn_n: np.ndarray, v_bn_n: np.ndarray):
         """Osculating (and, when enabled, mean) elements for every recorded
@@ -1843,7 +1890,10 @@ class SimulationService:
             result.add(TimeSeries(f"{name}.velocity_N", t_s, ("x", "y", "z"), handle.recorder.v_BN_N, units="m/s"))
             altitude_m = np.linalg.norm(np.asarray(handle.recorder.r_BN_N).reshape(-1, 3), axis=1) - self.central_radius_m
             below = np.nonzero(altitude_m < _REENTRY_ALTITUDE_M)[0]
-            if len(below):
+            if self.reentry is not None and self.reentry[0] == name:
+                result.warnings.append(f"{name} re-entered: below {_REENTRY_ALTITUDE_M / 1e3:g} km at "
+                                       f"t = {self.reentry[1] / 86400.0:.2f} days -- the run stopped there")
+            elif len(below):
                 result.warnings.append(f"{name} re-entered: below {_REENTRY_ALTITUDE_M / 1e3:g} km from "
                                        f"t = {t_s[below[0]] / 86400.0:.2f} days -- later results are not physical")
 
