@@ -7736,4 +7736,6 @@ From 400 km no disposal burn is needed at any date. A launch three years late ne
 
 **Cd 3.0.** The templates with drag (04, 05, 07, 08, 18, 21; spheres and template 21's facets) now use 3.0, AD10's operations value (Sec. 5.2); `box_facets` takes a `drag_coeff`. The End of Life tab and `spacemissionstudio lifetime` default to AD10's end-of-life 2.2, with "the spacecraft's own" (`--drag-coeff own`) as the alternative. Regenerating also wrote the `propellant_budget: null` key the previous regeneration had missed.
 
+**Re-measured at Cd 3.0:** template 05 is unchanged (leaves its band at day 19.9, back by day 23.1, then 48.9-51.6 km for 0.0136 m/s); template 21's off-centre array drags harder: rods-off stores 2.02 N*m*s (rw-x -938 RPM, was 1.77 and -843), rods-on ends under 30 RPM (28.2, was 18.8); descriptions updated.
+
 **Checked:** the full Basilisk suite (2051 passed; the one failure, the 300 km re-entry test landing in its first segment at Cd 3.0, now pins the 2.2 its quoted figures were measured at).

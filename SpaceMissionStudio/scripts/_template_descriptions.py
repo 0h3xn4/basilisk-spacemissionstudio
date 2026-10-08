@@ -333,9 +333,9 @@ steady torque. rods-off has only reaction wheels; rods-on also has torque rods.
 
 What to look at:
 - rods-off.rw_speeds: after the first turn to the Sun, the wheels soak up the torque all day -- about \
-1.8 N*m*s stored by the end, rw-x near -840 RPM.
+2.0 N*m*s stored by the end, rw-x near -940 RPM.
 - rods-on.rw_speeds: the torque rods hand that momentum to Earth's magnetic field; the wheels stay under \
-~20 RPM.
+~30 RPM.
 - rods-on.mtb_dipole_commanded: the rods working against the torque.
 
 Try changing:
