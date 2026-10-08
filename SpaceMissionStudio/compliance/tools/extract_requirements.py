@@ -306,7 +306,7 @@ def parse_ccsds(path: Path):
     return rows
 
 
-_ICS_ROW = re.compile(r"^(\d+)\s+(.*?)\s+(N/A|[A-Z][A-Z0-9_]*(?:\s*\[[^\]]*\])?|[A-Z][A-Za-z0-9_]*_x)\s+"
+_ICS_ROW = re.compile(r"^(\d+)\s+(.*?)\s+(N/A|…\s*<[^>]+>|[A-Z][A-Z0-9_]*(?:\s*\[[^\]]*\])?|[A-Z][A-Za-z0-9_]*_x)\s+"
                       r"((?:Table|Section|Annex|Sec\.)\s*[\w.\-]+|[\d.]+[\w.\-]*)\s+(M|O|C|X)\s*$")
 _ICS_LISTS = {"A2.5.1": "OPM", "A2.5.2": "OMM", "A2.5.3": "OEM", "A2.5.4": "OCM"}
 

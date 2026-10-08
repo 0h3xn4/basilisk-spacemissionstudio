@@ -906,6 +906,29 @@ versions, a SHA-256 of the scenario and the reference data files used
 sources in this repository (`../src`, currently 2.13.0b0) are not the
 qualified version.
 
+### CCSDS orbit data messages
+
+SpaceMissionStudio reads, validates and writes CCSDS 502.0-B-3 (April 2023)
+Orbit Parameter, Mean-Elements and Ephemeris Messages in KVN
+(`spacemissionstudio/engine/ccsds_odm.py`; the OCM and the XML form are not
+supported):
+
+* `spacemissionstudio ccsds-validate FILE...` checks files against the
+  standard; every breach of a "shall" is an error and of a "should" a
+  warning, each with its clause.
+* `spacemissionstudio run SCENARIO --oem` also writes each spacecraft's
+  ephemeris as an OEM (EME2000, UTC; `--oem-stride N` thins it).
+* `spacemissionstudio ccsds-export SCENARIO --out DIR` writes each
+  spacecraft's initial state as an OPM (with osculating elements and GM for
+  Earth), or a TLE spacecraft's elements as an OMM.
+* `spacemissionstudio ccsds-import FILE SCENARIO --spacecraft NAME` sets a
+  spacecraft's orbit from an OPM (EME2000, ICRF or GCRF; UTC, TAI, TT or
+  TDB; `--set-epoch` moves the scenario epoch to the OPM's) or from a
+  TLE-based OMM (converted to the TLE it represents).
+
+`compliance/ics_ccsds_502.csv` is the Implementation Conformance Statement
+(Annex A) for the three messages.
+
 ### Earth orientation
 
 With NAIF's IERS-based Earth PCKs installed, the Earth-fixed frame of a run

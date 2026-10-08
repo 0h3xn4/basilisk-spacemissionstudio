@@ -133,6 +133,15 @@ def cmd_run(args: argparse.Namespace) -> int:
     print(f"Wrote {len(paths)} result file(s) to {args.out_dir}:")
     for name, path in sorted(paths.items()):
         print(f"  {name}: {path}")
+    if args.oem:
+        from .engine import ccsds_odm
+
+        names = [sc.name for sc in scenario.spacecraft if f"{sc.name}.position_N" in result.series]
+        for name, text in ccsds_odm.oem_from_result(result, scenario.epoch_utc, scenario.gravity.central_body,
+                                                    names, stride=args.oem_stride).items():
+            oem_path = args.out_dir / f"{name}.oem"
+            oem_path.write_text(text, encoding="ascii")
+            print(f"  CCSDS OEM: {oem_path}")
 
     # Informational only -- never affects the exit code (see
     # ResultSet.warnings's own docstring: a non-empty list here is a
@@ -443,6 +452,99 @@ def cmd_earth_orientation(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_ccsds_validate(args: argparse.Namespace) -> int:
+    """Check KVN OPM/OMM/OEM files against CCSDS 502.0-B-3."""
+    from .engine import ccsds_odm
+
+    failed = False
+    for path in args.files:
+        issues = ccsds_odm.validate(Path(path).read_text(encoding="ascii", errors="replace"))
+        errors = [i for i in issues if i.level == "error"]
+        failed = failed or bool(errors)
+        print(f"{path}: {'conforms' if not errors else f'{len(errors)} error(s)'}"
+              + (f", {len(issues) - len(errors)} warning(s)" if len(issues) > len(errors) else ""))
+        for issue in issues:
+            print(f"  {issue}")
+    return 1 if failed else 0
+
+
+def cmd_ccsds_export(args: argparse.Namespace) -> int:
+    """OPM of each spacecraft's initial state, or a TLE spacecraft's OMM."""
+    try:
+        scenario = load_scenario(args.scenario)
+    except ScenarioValidationError as exc:
+        print(f"INVALID: {exc}", file=sys.stderr)
+        return 1
+    from .engine import ccsds_odm, time_system
+
+    args.out.mkdir(parents=True, exist_ok=True)
+    epoch = time_system.elapsed_to_utc(scenario.epoch_utc, [0.0])[0]
+    for sc in scenario.spacecraft:
+        if sc.orbit.type == "tle":
+            text = ccsds_odm.omm_from_tle(sc.orbit.tle_line1, sc.orbit.tle_line2, sc.name)
+            path = args.out / f"{sc.name}.omm"
+        else:
+            try:
+                from .engine.service import _orbit_ic_to_rv
+            except ImportError as exc:
+                print(f"ERROR: Basilisk is not installed/built ({exc})", file=sys.stderr)
+                return 2
+            r, v = _orbit_ic_to_rv(ccsds_odm.EARTH_GM_KM3_S2 * 1e9 if scenario.gravity.central_body == "earth"
+                                   else _central_mu(scenario), sc.orbit, scenario.epoch_utc)
+            gm = ccsds_odm.EARTH_GM_KM3_S2 if scenario.gravity.central_body == "earth" else None
+            text = ccsds_odm.write_opm(
+                object_name=sc.name, object_id="UNKNOWN", center_name=scenario.gravity.central_body,
+                ref_frame="EME2000", time_system="UTC", epoch=epoch, r_km=[x / 1e3 for x in r],
+                v_km_s=[x / 1e3 for x in v], gm_km3_s2=gm, mass_kg=sc.dry_mass_kg,
+                srp_area_m2=sc.srp_area_m2 if sc.enable_srp else None, srp_coeff=sc.srp_coeff if sc.enable_srp else None,
+                drag_area_m2=sc.drag_area_m2 if sc.enable_drag else None,
+                drag_coeff=sc.drag_coeff if sc.enable_drag else None,
+                comments=[f"Initial state of scenario {scenario.name!r}; EME2000 is SPICE J2000"])
+            path = args.out / f"{sc.name}.opm"
+        path.write_text(text, encoding="ascii")
+        print(f"wrote {path}")
+    return 0
+
+
+def _central_mu(scenario) -> float:
+    from Basilisk.utilities import simIncludeGravBody
+
+    factory = simIncludeGravBody.gravBodyFactory()
+    return getattr(factory, f"create{scenario.gravity.central_body.capitalize()}")().mu
+
+
+def cmd_ccsds_import(args: argparse.Namespace) -> int:
+    """Set a spacecraft's initial orbit from an OPM or TLE-based OMM."""
+    from .engine import ccsds_odm
+
+    try:
+        scenario = load_scenario(args.scenario)
+        orbit, epoch, notes = ccsds_odm.orbit_ic_from_odm(args.message.read_text(encoding="ascii", errors="replace"))
+    except (ScenarioValidationError, ccsds_odm.OdmError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        for issue in getattr(exc, "issues", []):
+            print(f"  {issue}", file=sys.stderr)
+        return 1
+    matches = [sc for sc in scenario.spacecraft if sc.name == args.spacecraft]
+    if not matches:
+        print(f"ERROR: no spacecraft {args.spacecraft!r} in {args.scenario}", file=sys.stderr)
+        return 1
+    if epoch is not None:
+        scenario_epoch = datetime.fromisoformat(scenario.epoch_utc)
+        if abs((epoch - scenario_epoch.replace(tzinfo=None)).total_seconds()) > 1e-3 and not args.set_epoch:
+            print(f"ERROR: the OPM state is at {epoch.isoformat()} UTC, the scenario epoch is {scenario.epoch_utc}; "
+                  "pass --set-epoch to move the scenario epoch to the OPM's", file=sys.stderr)
+            return 1
+        scenario.epoch_utc = epoch.isoformat()
+    matches[0].orbit = orbit
+    scenario.validate()
+    scenario.save(args.out or args.scenario)
+    for note in notes:
+        print(f"  {note}")
+    print(f"{args.spacecraft}: orbit set from {args.message} -> {args.out or args.scenario}")
+    return 0
+
+
 def cmd_spaceweather_resolve(args: argparse.Namespace) -> int:
     try:
         scenario = load_scenario(args.scenario)
@@ -607,6 +709,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_run = subparsers.add_parser("run", help="run a scenario headlessly and export results to CSV")
     p_run.add_argument("scenario", type=Path)
     p_run.add_argument("--out-dir", type=Path, default=Path("results"), help="directory to write CSV results to")
+    p_run.add_argument("--oem", action="store_true",
+                       help="also write each spacecraft's ephemeris as a CCSDS OEM (KVN, EME2000, UTC)")
+    p_run.add_argument("--oem-stride", type=int, default=1, metavar="N",
+                       help="write every Nth recorded state to the OEM (default 1: all)")
     p_run.add_argument("--vizard-save-file", type=str, default=None,
                         help="write a Vizard .bin playback file to this path (see engine/vizard.py)")
     p_run.add_argument("--vizard-live-stream", action="store_true",
@@ -664,6 +770,22 @@ def build_parser() -> argparse.ArgumentParser:
                             help="install Earth PCK .bpc files from disk (a .cmt next to each is read too)")
     eop_action.add_argument("--rollback", action="store_true", help="restore the previously installed files")
     p_eop.set_defaults(func=cmd_earth_orientation)
+
+    p_ccsds = subparsers.add_parser("ccsds-validate", help="check CCSDS OPM/OMM/OEM (KVN) files (no Basilisk needed)")
+    p_ccsds.add_argument("files", nargs="+", type=Path)
+    p_ccsds.set_defaults(func=cmd_ccsds_validate)
+    p_ccsds_out = subparsers.add_parser("ccsds-export",
+                                        help="write each spacecraft's initial state as a CCSDS OPM (or OMM for a TLE)")
+    p_ccsds_out.add_argument("scenario", type=Path)
+    p_ccsds_out.add_argument("--out", type=Path, required=True, help="output directory")
+    p_ccsds_out.set_defaults(func=cmd_ccsds_export)
+    p_ccsds_in = subparsers.add_parser("ccsds-import", help="set a spacecraft's orbit from a CCSDS OPM or TLE-based OMM")
+    p_ccsds_in.add_argument("message", type=Path)
+    p_ccsds_in.add_argument("scenario", type=Path)
+    p_ccsds_in.add_argument("--spacecraft", required=True)
+    p_ccsds_in.add_argument("--set-epoch", action="store_true", help="move the scenario epoch to the OPM's epoch")
+    p_ccsds_in.add_argument("--out", type=Path, help="write the updated scenario here (default: overwrite)")
+    p_ccsds_in.set_defaults(func=cmd_ccsds_import)
 
     p_sw = subparsers.add_parser("spaceweather-resolve",
                                   help="resolve space weather for a scenario without running it (no Basilisk needed)")

@@ -12,6 +12,7 @@ done. "Suite" is the full test suite on the commit (baseline: 2055 passed,
 | R06 | E-ST-10-04C 4.2.1b, 4.2.2a, 4.2.2d, 6.2.1a, 6.3 | `engine/environment_models.py` (TSI 1361 W/m^2 with 1/r^2, Earth-Sun distance, sensorThermal input correction, Kaula truncation estimate); thermal sensors use the corrected inputs; warning for drag around a point-mass Earth; Explain-tab note when truncation exceeds SRP; schema caps the gravity degree at 180 (GGM03S); GUI 70 x 70 guidance; 4.2.2d -> deviation D-07 (TN36 unreachable) | `tests/test_environment_models.py`: Table 6-2 aphelion/perihelion, DE430 distance to 2e-4 AU, Basilisk 2.12 sensorThermal constants measured, corrected sensorThermal equilibrium = standard equilibrium to 0.01 K, truncation estimate, checks, degree cap | 2097 passed, 11 skipped, 0 failed |
 | R04 | E-ST-10-09C 5.4.9f; E-ST-10-04C 4.2.1c, 4.2.2b | `engine/earth_orientation.py` (NAIF ITRF93 Earth PCKs: consented fetch, file import, manifest with SHA-256, rollback, install-wide directory, coverage notes); service loads them and sets Earth's frame to ITRF93; startup prompt item; `spacemissionstudio earth-orientation`; installers prefetch; Explain-tab and run notes | `tests/test_earth_orientation.py` (offline: import, refusal of non-PCK, rollback, changed files, stubbed fetch, precedence, notes; with the real NAIF files: run frame == SPICE ITRF93 to 1e-12, differs from IAU_EARTH); GUI dialog tests | 2108 passed, 11 skipped, 0 failed |
 | R02 | E-ST-10-09C 5.2.3, 5.3.2, 5.4.1a/h, 5.4.2a, 5.4.3a/b, 5.4.4a/b | `engine/frames.py` (frame definitions, named transformations, per-series frames); `engine/time_system.py` (UTC/TAI/TT/TDB via ERFA, `elapsed_to_utc`, metadata); provenance.json carries both; GUI UTC axis and long-run segment epochs convert TDB elapsed time correctly; frame labels on orbit inputs | `tests/test_time_system.py` (leap-second values, J2000.0, TDB vs SPICE str2et to 50 us, leap-second crossing, round trip), `tests/test_frames.py` (definitions, series frames, real run metadata, units on every series) | 2121 passed, 11 skipped, 0 failed |
+| R09 | CCSDS 502.0-B-3 sections 3, 4, 5, 7; Annex A (OPM, OMM, OEM) | `engine/ccsds_odm.py`: KVN read, validate (errors for shall/must, warnings for should, each with its clause), write; OPM <-> state, TLE <-> OMM (sgp4), OEM from a run; CLI `ccsds-validate`, `ccsds-export`, `ccsds-import`, `run --oem`; `compliance/ics_ccsds_502.csv` (tools/build_ics.py); extraction fix recovers 5 ICS items (715 CCSDS rows) | `tests/test_ccsds_odm.py`: all ten Annex G KVN examples conform; a failing message per rule; G-6 TLE -> OMM -> TLE identical; G-7 OMM -> G-6 TLE; G-2 elements reproduced (a, e, i, RAAN, argp); OEM from a real run; CLI; ICS keyword coverage | 2166 passed, 11 skipped, 0 failed |
 
 ## Result differences against the baseline
 
@@ -49,3 +50,9 @@ done. "Suite" is the full test suite on the commit (baseline: 2055 passed,
   falls inside a run). One GUI test expecting epoch + t exactly now allows
   1 ms; the exact-keys provenance test gained the four R02 fields. Units audit (templates 19, 07, 21, 05): every series has units,
   '-' for dimensionless.
+* R09: new capability only; no existing result changed. Annex G figure G-2
+  labels the mean anomaly (41.922339 deg) as TRUE_ANOMALY: Basilisk's
+  rv2elem and the tool both give a true anomaly of 43.549 deg and a mean
+  anomaly of 41.92237 deg for its state (an error in the informative
+  example, noted in tests/test_ccsds_odm.py). XML (section 8) is not
+  implemented (D6).

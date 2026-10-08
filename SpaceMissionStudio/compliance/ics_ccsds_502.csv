@@ -1,0 +1,177 @@
+item,message,description,keyword,reference,status,read_validate,write
+ICS-OPM-1,OPM,OPM Header,N/A,Table 3-1,M,Y,Y
+ICS-OPM-2,OPM,OPM Version,CCSDS_OPM_VERS,Table 3-1,M,Y,Y
+ICS-OPM-3,OPM,Comment,COMMENT,Table 3-1,O,Y,Y
+ICS-OPM-4,OPM,Message classification/caveats,CLASSIFICATION,Table 3-1,O,Y,N
+ICS-OPM-5,OPM,Message creation date and time,CREATION_DATE,Table 3-1,M,Y,Y
+ICS-OPM-6,OPM,Message originator,ORIGINATOR,Table 3-1,M,Y,Y
+ICS-OPM-7,OPM,Unique message identifier,MESSAGE_ID,Table 3-1,O,Y,N
+ICS-OPM-8,OPM,OPM Metadata,N/A,Table 3-2,M,Y,Y
+ICS-OPM-9,OPM,Comment,COMMENT,Table 3-2,O,Y,Y
+ICS-OPM-10,OPM,Name of space object,OBJECT_NAME,Table 3-2,M,Y,Y
+ICS-OPM-11,OPM,Identifier of space object,OBJECT_ID,Table 3-2,M,Y,Y
+ICS-OPM-12,OPM,Orbit center,CENTER_NAME,Table 3-2,M,Y,Y
+ICS-OPM-13,OPM,Reference frame,REF_FRAME,Table 3-2,M,Y,Y
+ICS-OPM-14,OPM,Epoch of reference frame,REF_FRAME_EPOCH,Table 3-2,C,Y,N
+ICS-OPM-15,OPM,Time system applicable to data,TIME_SYSTEM,Table 3-2,M,Y,Y
+ICS-OPM-16,OPM,OPM Data,N/A,Table 3-3,M,Y,Y
+ICS-OPM-17,OPM,State Vector logical block,N/A,Table 3-3,M,Y,Y
+ICS-OPM-18,OPM,Comment,COMMENT,Table 3-3,O,Y,Y
+ICS-OPM-19,OPM,Epoch of the state vector,EPOCH,Table 3-3,M,Y,Y
+ICS-OPM-20,OPM,X component of position,X,Table 3-3,M,Y,Y
+ICS-OPM-21,OPM,Y component of position,Y,Table 3-3,M,Y,Y
+ICS-OPM-22,OPM,Z component of position,Z,Table 3-3,M,Y,Y
+ICS-OPM-23,OPM,X component of velocity,X_DOT,Table 3-3,M,Y,Y
+ICS-OPM-24,OPM,Y component of velocity,Y_DOT,Table 3-3,M,Y,Y
+ICS-OPM-25,OPM,Z component of velocity,Z_DOT,Table 3-3,M,Y,Y
+ICS-OPM-26,OPM,Keplerian Elements logical block,N/A,Table 3-3,O,Y,Y
+ICS-OPM-27,OPM,Comment,COMMENT,Table 3-3,O,Y,Y
+ICS-OPM-28,OPM,Semi-major axis of orbit,SEMI_MAJOR_AXIS,Table 3-3,C,Y,Y
+ICS-OPM-29,OPM,Eccentricity of orbit,ECCENTRICITY,Table 3-3,C,Y,Y
+ICS-OPM-30,OPM,Inclination of orbit,INCLINATION,Table 3-3,C,Y,Y
+ICS-OPM-31,OPM,Right ascension of ascending node of orbit,RA_OF_ASC_NODE,Table 3-3,C,Y,Y
+ICS-OPM-32,OPM,Argument of pericenter of orbit,ARG_OF_PERICENTER,Table 3-3,C,Y,Y
+ICS-OPM-33,OPM,True or mean anomaly of orbit TRUE_ANOMALY or,MEAN_ANOMALY,Table 3-3,C,Y,Y
+ICS-OPM-34,OPM,Gravitational coefficient of the central body,GM,Table 3-3,C,Y,Y
+ICS-OPM-35,OPM,Spacecraft Parameters logical block,N/A,Table 3-3,O,Y,Y
+ICS-OPM-36,OPM,Comment,COMMENT,Table 3-3,O,Y,Y
+ICS-OPM-37,OPM,Mass of the spacecraft,MASS,Table 3-3,C,Y,Y
+ICS-OPM-38,OPM,Solar radiation area of the spacecraft,SOLAR_RAD_AREA,Table 3-3,C,Y,Y
+ICS-OPM-39,OPM,Solar radiation coefficient of the spacecraft,SOLAR_RAD_COEFF,Table 3-3,C,Y,Y
+ICS-OPM-40,OPM,Drag area of the spacecraft,DRAG_AREA,Table 3-3,C,Y,Y
+ICS-OPM-41,OPM,Drag coefficient of the spacecraft,DRAG_COEFF,Table 3-3,C,Y,Y
+ICS-OPM-42,OPM,Position/velocity Covariance Matrix logical block,N/A,Table 3-3,O,Y,N
+ICS-OPM-43,OPM,Comment,COMMENT,Table 3-3,O,Y,Y
+ICS-OPM-44,OPM,Cov reference frame,COV_REF_FRAME,Table 3-3,C,Y,N
+ICS-OPM-45,OPM,"Covariance matrix [1,1]",CX_X,Table 3-3,C,Y,N
+ICS-OPM-46,OPM,"Covariance matrix [2,1]",CY_X,Table 3-3,C,Y,N
+ICS-OPM-47,OPM,"Covariance matrix [2,2]",CY_Y,Table 3-3,C,Y,N
+ICS-OPM-48,OPM,"Covariance matrix [3,1]",CZ_X,Table 3-3,C,Y,N
+ICS-OPM-49,OPM,"Covariance matrix [3,2]",CZ_Y,Table 3-3,C,Y,N
+ICS-OPM-50,OPM,"Covariance matrix [3,3]",CZ_Z,Table 3-3,C,Y,N
+ICS-OPM-51,OPM,"Covariance matrix [4,1]",CX_DOT_X,Table 3-3,C,Y,N
+ICS-OPM-52,OPM,"Covariance matrix [4,2]",CX_DOT_Y,Table 3-3,C,Y,N
+ICS-OPM-53,OPM,"Covariance matrix [4,3]",CX_DOT_Z,Table 3-3,C,Y,N
+ICS-OPM-54,OPM,"Covariance matrix [4,4]",CX_DOT_X_DOT,Table 3-3,C,Y,N
+ICS-OPM-55,OPM,"Covariance matrix [5,1]",CY_DOT_X,Table 3-3,C,Y,N
+ICS-OPM-56,OPM,"Covariance matrix [5,2]",CY_DOT_Y,Table 3-3,C,Y,N
+ICS-OPM-57,OPM,"Covariance matrix [5,3]",CY_DOT_Z,Table 3-3,C,Y,N
+ICS-OPM-58,OPM,"Covariance matrix [5,4]",CY_DOT_X_DOT,Table 3-3,C,Y,N
+ICS-OPM-59,OPM,"Covariance matrix [5,5]",CY_DOT_Y_DOT,Table 3-3,C,Y,N
+ICS-OPM-60,OPM,"Covariance matrix [6,1]",CZ_DOT_X,Table 3-3,C,Y,N
+ICS-OPM-61,OPM,"Covariance matrix [6,2]",CZ_DOT_Y,Table 3-3,C,Y,N
+ICS-OPM-62,OPM,"Covariance matrix [6,3]",CZ_DOT_Z,Table 3-3,C,Y,N
+ICS-OPM-63,OPM,"Covariance matrix [6,4]",CZ_DOT_X_DOT,Table 3-3,C,Y,N
+ICS-OPM-64,OPM,"Covariance matrix [6,5]",CZ_DOT_Y_DOT,Table 3-3,C,Y,N
+ICS-OPM-65,OPM,"Covariance matrix [6,6]",CZ_DOT_Z_DOT,Table 3-3,C,Y,N
+ICS-OPM-66,OPM,Maneuver Parameters logical block,N/A,Table 3-3,O,Y,N
+ICS-OPM-67,OPM,Comment,COMMENT,Table 3-3,O,Y,Y
+ICS-OPM-68,OPM,Time of maneuver start,MAN_EPOCH_IGNITION,Table 3-3,O,Y,N
+ICS-OPM-69,OPM,Duration of maneuver,MAN_DURATION,Table 3-3,O,Y,N
+ICS-OPM-70,OPM,Change of mass due to maneuver,MAN_DELTA_MASS,Table 3-3,O,Y,N
+ICS-OPM-71,OPM,Relevant reference frame for maneuver,MAN_REF_FRAME,Table 3-3,O,Y,N
+ICS-OPM-72,OPM,1st component of velocity change,MAN_DV_1,Table 3-3,O,Y,N
+ICS-OPM-73,OPM,2nd component of velocity change,MAN_DV_2,Table 3-3,O,Y,N
+ICS-OPM-74,OPM,3rd component of velocity change,MAN_DV_3,Table 3-3,O,Y,N
+ICS-OPM-75,OPM,User-Defined Parameters logical block,N/A,Table 3-3,O,Y,N
+ICS-OPM-76,OPM,"As defined by user, 'essential information that cannot be conveyed in COMMENT statements'",USER_DEFINED_x,Table 3-3,O,Y,N
+ICS-OMM-1,OMM,OMM Header,N/A,Table 4-1,M,Y,Y
+ICS-OMM-2,OMM,OMM Version,CCSDS_OMM_VERS,Table 4-1,M,Y,Y
+ICS-OMM-3,OMM,Comment,COMMENT,Table 4-1,O,Y,Y
+ICS-OMM-4,OMM,Message classification/caveats,CLASSIFICATION,Table 4-1,O,Y,N
+ICS-OMM-5,OMM,Message creation date and time,CREATION_DATE,Table 4-1,M,Y,Y
+ICS-OMM-6,OMM,Message originator,ORIGINATOR,Table 4-1,M,Y,Y
+ICS-OMM-7,OMM,Unique message identifier,MESSAGE_ID,Table 4-1,O,Y,N
+ICS-OMM-8,OMM,OMM Metadata,N/A,Table 4-2,M,Y,Y
+ICS-OMM-9,OMM,Comment,COMMENT,Table 4-2,O,Y,Y
+ICS-OMM-10,OMM,Name of space object,OBJECT_NAME,Table 4-2,M,Y,Y
+ICS-OMM-11,OMM,Identifier of space object,OBJECT_ID,Table 4-2,M,Y,Y
+ICS-OMM-12,OMM,Orbit center,CENTER_NAME,Table 4-2,M,Y,Y
+ICS-OMM-13,OMM,Reference frame,REF_FRAME,Table 4-2,M,Y,Y
+ICS-OMM-14,OMM,Epoch of reference frame,REF_FRAME_EPOCH,Table 4-2,C,Y,N
+ICS-OMM-15,OMM,Time system applicable to data,TIME_SYSTEM,Table 4-2,M,Y,Y
+ICS-OMM-16,OMM,Mean element set theory of data,MEAN_ELEMENT_THEORY,Table 4-2,M,Y,Y
+ICS-OMM-17,OMM,OMM Data,N/A,Table 4-3,M,Y,Y
+ICS-OMM-18,OMM,Mean Keplerian elements logical block,N/A,Table 4-3,M,Y,Y
+ICS-OMM-19,OMM,Comment,COMMENT,Table 4-3,O,Y,Y
+ICS-OMM-20,OMM,Epoch of the orbital elements,EPOCH,Table 4-3,M,Y,Y
+ICS-OMM-21,OMM,Semi-major axis or mean motion SEMI_MAJOR_AXIS or,MEAN_MOTION,Table 4-3,M,Y,Y
+ICS-OMM-22,OMM,Eccentricity,ECCENTRICITY,Table 4-3,M,Y,Y
+ICS-OMM-23,OMM,Inclination,INCLINATION,Table 4-3,M,Y,Y
+ICS-OMM-24,OMM,Right ascension of ascending node,RA_OF_ASC_NODE,Table 4-3,M,Y,Y
+ICS-OMM-25,OMM,Argument of pericenter,ARG_OF_PERICENTER,Table 4-3,M,Y,Y
+ICS-OMM-26,OMM,Mean anomaly,MEAN_ANOMALY,Table 4-3,M,Y,Y
+ICS-OMM-27,OMM,Gravitational Coefficient,GM,Table 4-3,O,Y,N
+ICS-OMM-28,OMM,Spacecraft Parameters logical block,N/A,Table 4-3,O,Y,N
+ICS-OMM-29,OMM,Comment,COMMENT,Table 4-3,O,Y,Y
+ICS-OMM-30,OMM,Spacecraft Mass,MASS,Table 4-3,O,Y,N
+ICS-OMM-31,OMM,Solar Radiation Pressure Area,SOLAR_RAD_AREA,Table 4-3,O,Y,N
+ICS-OMM-32,OMM,Solar Radiation Pressure Coefficient,SOLAR_RAD_COEFF,Table 4-3,O,Y,N
+ICS-OMM-33,OMM,Drag Area,DRAG_AREA,Table 4-3,O,Y,N
+ICS-OMM-34,OMM,Drag Coefficient,DRAG_COEFF,Table 4-3,O,Y,N
+ICS-OMM-35,OMM,TLE logical block,N/A,Table 4-3,O,Y,Y
+ICS-OMM-36,OMM,Comment,COMMENT,Table 4-3,O,Y,Y
+ICS-OMM-37,OMM,Ephemeris Type,EPHEMERIS_TYPE,Table 4-3,O,Y,Y
+ICS-OMM-38,OMM,Classification Type,CLASSIFICATION_TYPE,Table 4-3,O,Y,Y
+ICS-OMM-39,OMM,NORAD Catalog Number,NORAD_CAT_ID,Table 4-3,O,Y,Y
+ICS-OMM-40,OMM,Element set number,ELEMENT_SET_NO,Table 4-3,O,Y,Y
+ICS-OMM-41,OMM,Revolution Number,REV_AT_EPOCH,Table 4-3,O,Y,Y
+ICS-OMM-42,OMM,SGP/SGP4 drag-like coefficient BSTAR or,BTERM,Table 4-3,C,Y,Y
+ICS-OMM-43,OMM,First Time Derivative of the Mean Motion,MEAN_MOTION_DOT,Table 4-3,C,Y,Y
+ICS-OMM-44,OMM,Second Time Derivative of Mean Motion MEAN_MOTION_DDOT or,AGOM,Table 4-3,C,Y,Y
+ICS-OMM-45,OMM,Pos/Vel/Cov logical block Table 4-3 O 46 Comment,COMMENT,Table 4-3,O,Y,Y
+ICS-OMM-47,OMM,Cov reference frame,COV_REF_FRAME,Table 4-3,C,Y,N
+ICS-OMM-48,OMM,"Covariance [1,1]",CX_X,Table 4-3,C,Y,N
+ICS-OMM-49,OMM,"Covariance [2,1]",CY_X,Table 4-3,C,Y,N
+ICS-OMM-50,OMM,"Covariance [2,2]",CY_Y,Table 4-3,C,Y,N
+ICS-OMM-51,OMM,"Covariance [3,1]",CZ_X,Table 4-3,C,Y,N
+ICS-OMM-52,OMM,"Covariance [3,2]",CZ_Y,Table 4-3,C,Y,N
+ICS-OMM-53,OMM,"Covariance [3,3]",CZ_Z,Table 4-3,C,Y,N
+ICS-OMM-54,OMM,"Covariance [4,1]",CX_DOT_X,Table 4-3,C,Y,N
+ICS-OMM-55,OMM,"Covariance [4,2]",CX_DOT_Y,Table 4-3,C,Y,N
+ICS-OMM-56,OMM,"Covariance [4,3]",CX_DOT_Z,Table 4-3,C,Y,N
+ICS-OMM-57,OMM,"Covariance [4,4]",CX_DOT_X_DOT,Table 4-3,C,Y,N
+ICS-OMM-58,OMM,"Covariance [5,1]",CY_DOT_X,Table 4-3,C,Y,N
+ICS-OMM-59,OMM,"Covariance [5,2]",CY_DOT_Y,Table 4-3,C,Y,N
+ICS-OMM-60,OMM,"Covariance [5,3]",CY_DOT_Z,Table 4-3,C,Y,N
+ICS-OMM-61,OMM,"Covariance [5,4]",CY_DOT_X_DOT,Table 4-3,C,Y,N
+ICS-OMM-62,OMM,"Covariance [5,5]",CY_DOT_Y_DOT,Table 4-3,C,Y,N
+ICS-OMM-63,OMM,"Covariance [6,1]",CZ_DOT_X,Table 4-3,C,Y,N
+ICS-OMM-64,OMM,"Covariance [6,2]",CZ_DOT_Y,Table 4-3,C,Y,N
+ICS-OMM-65,OMM,"Covariance [6,3]",CZ_DOT_Z,Table 4-3,C,Y,N
+ICS-OMM-66,OMM,"Covariance [6,4]",CZ_DOT_X_DOT,Table 4-3,C,Y,N
+ICS-OMM-67,OMM,"Covariance [6,5]",CZ_DOT_Y_DOT,Table 4-3,C,Y,N
+ICS-OMM-68,OMM,"Covariance [6,6]",CZ_DOT_Z_DOT,Table 4-3,C,Y,N
+ICS-OMM-69,OMM,User-Defined Parameters logical block,N/A,Table 4-3,O,Y,N
+ICS-OMM-70,OMM,"As defined by user, 'essential information that cannot be conveyed in COMMENT statements'",USER_DEFINED_x,Table 4-3,O,Y,N
+ICS-OEM-1,OEM,OEM Header,N/A,Table 5-2,M,Y,Y
+ICS-OEM-2,OEM,OEM Version,CCSDS_OEM_VERS,Table 5-2,M,Y,Y
+ICS-OEM-3,OEM,Comment,COMMENT,Table 5-2,O,Y,Y
+ICS-OEM-4,OEM,Message classification/caveats,CLASSIFICATION,Table 5-2,O,Y,N
+ICS-OEM-5,OEM,Message creation date and time,CREATION_DATE,Table 5-2,M,Y,Y
+ICS-OEM-6,OEM,Message originator,ORIGINATOR,Table 5-2,M,Y,Y
+ICS-OEM-7,OEM,Unique message identifier,MESSAGE_ID,Table 5-2,O,Y,N
+ICS-OEM-8,OEM,Metadata logical block,N/A,Table 5-3,M,Y,Y
+ICS-OEM-9,OEM,Start of OEM Metadata,META_START,Table 5-3,M,Y,Y
+ICS-OEM-10,OEM,Comment,COMMENT,Table 5-3,O,Y,Y
+ICS-OEM-11,OEM,Name of space object,OBJECT_NAME,Table 5-3,M,Y,Y
+ICS-OEM-12,OEM,Identifier of space object,OBJECT_ID,Table 5-3,M,Y,Y
+ICS-OEM-13,OEM,Orbit center,CENTER_NAME,Table 5-3,M,Y,Y
+ICS-OEM-14,OEM,Reference frame,REF_FRAME,Table 5-3,M,Y,Y
+ICS-OEM-15,OEM,Epoch of reference frame,REF_FRAME_EPOCH,Table 5-3,C,Y,N
+ICS-OEM-16,OEM,Time system applicable to data,TIME_SYSTEM,Table 5-3,M,Y,Y
+ICS-OEM-17,OEM,Start of TOTAL time span covered by data,START_TIME,Table 5-3,M,Y,Y
+ICS-OEM-18,OEM,Start of useable orbit data,USEABLE_START_TIME,Table 5-3,O,Y,N
+ICS-OEM-19,OEM,End of useable orbit data,USEABLE_STOP_TIME,Table 5-3,O,Y,N
+ICS-OEM-20,OEM,End of TOTAL time span covered by data,STOP_TIME,Table 5-3,M,Y,Y
+ICS-OEM-21,OEM,Recommended interpolation method,INTERPOLATION,Table 5-3,O,Y,Y
+ICS-OEM-22,OEM,Recommended interpolation degree,INTERPOLATION_DEGREE,Table 5-3,C,Y,Y
+ICS-OEM-23,OEM,End of OEM Metadata,META_STOP,Table 5-3,M,Y,Y
+ICS-OEM-24,OEM,OEM Data logical block,N/A,Table 5-3,M,Y,Y
+ICS-OEM-25,OEM,Ephemeris lines,… <insert ephemeris data lines here.>,Table 5-3,M,Y,Y
+ICS-OEM-26,OEM,OEM Covariance logical block,N/A,Table 5-3,O,Y,N
+ICS-OEM-27,OEM,Start of OEM Covariance logical block,COVARIANCE_START,Table 5-3,M,Y,N
+ICS-OEM-28,OEM,Epoch of the navigation solution related to the covariance matrix,EPOCH,Table 5-3,C,Y,N
+ICS-OEM-29,OEM,"Reference frame of the covariance matrix, if different from that of the states in the ephemeris",COV_REF_FRAME,Table 5-3,C,Y,N
+ICS-OEM-30,OEM,Covariance lines,… <insert covariance matrices here>,Table 5-3,O,Y,N
+ICS-OEM-31,OEM,End of OEM Covariance logical block,COVARIANCE_STOP,Table 5-3,M,Y,N
