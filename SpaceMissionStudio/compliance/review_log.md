@@ -41,6 +41,12 @@ Findings of the whole-tool review that followed the human actions
   `test_a_refused_replace_of_an_incomplete_file_is_reported`.
 - The hint check now states the rule exactly: one line wherever the text
   fits, wrapping (at most two lines) only where it does not (Windows CI).
+- CI run 27 (macOS, push run; the pull-request run of the same commit was
+  green): in one test worker two plot pages never finished loading, even
+  with 30 s. The plot tests had never shown the widget; hidden, its web
+  view can stall on Qt's cocoa platform (the likely cause, not proven).
+  The results-widget test fixture now shows the widget and waits until it
+  is exposed, as it is in the app.
 - Reviewing F-12's one-query-at-a-time rule: an answer that never arrived
   would have stalled the save; the poll now asks again after a second.
 

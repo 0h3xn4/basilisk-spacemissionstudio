@@ -33,10 +33,15 @@ _PAGE_LOAD_TIMEOUT_MS = 30000  # [ms]
 
 @pytest.fixture
 def widget(qtbot):
+    """A shown, exposed ResultsWidget, as in the app. Hidden, its web view
+    could stall a page load for good on the macOS CI (cocoa: loadFinished
+    never came within 30 s in one test worker, CI run 27; SRelD K-10)."""
     from spacemissionstudio.gui.results_widget import ResultsWidget
 
     w = ResultsWidget()
     qtbot.addWidget(w)
+    with qtbot.waitExposed(w):
+        w.show()
     return w
 
 
