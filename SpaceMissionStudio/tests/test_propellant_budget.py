@@ -20,7 +20,9 @@
 (engine.propellant_budget). The last tests need Basilisk."""
 
 import math
+from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -43,7 +45,7 @@ _A_400_M = pb.REQ_EARTH_M + 400e3  # [m]
 
 def _scenario(budget, altitude_km=400.0):
     spacecraft = SpacecraftConfig(
-        name="sat-1", dry_mass_kg=120.0,
+        name="sat-1", dry_mass_kg=120.0, enable_drag=True,
         orbit=OrbitIC(type="classical_elements", semi_major_axis_km=pb.REQ_EARTH_M / 1e3 + altitude_km,
                       eccentricity=0.0, inclination_deg=97.0, raan_deg=0.0, arg_periapsis_deg=0.0,
                       true_anomaly_deg=0.0),
@@ -56,6 +58,20 @@ def _scenario(budget, altitude_km=400.0):
 
 def _no_reentry(*_args):
     return 0.0, 400.0, 0.5, []
+
+
+_DRAG_BY_YEAR = {2030: 100.0, 2031: 150.0, 2032: 250.0, 2033: 300.0, 2034: 200.0, 2035: 120.0}  # [m/s]
+
+
+class _StubMakeup:
+    """A drag make-up of ``_DRAG_BY_YEAR[launch year]``, recording its calls."""
+
+    def __init__(self):
+        self.calls = []
+
+    def __call__(self, scenario, spacecraft, start_utc, years, percentile, drag_coeff=None, should_cancel=None):
+        self.calls.append((start_utc, years, percentile, drag_coeff))
+        return SimpleNamespace(delta_v_m_s=_DRAG_BY_YEAR[start_utc.year], altitude_km=400.0, warnings=[])
 
 
 def test_propellant_follows_ad10s_formula():
@@ -171,3 +187,78 @@ def test_the_disposal_burn_brings_the_lifetime_to_five_years():
     assert 0.0 < dv < 60.0  # [m/s]
     assert perigee_km < 550.0
     assert 4.5 < years <= 5.05  # [year]
+
+
+def test_without_a_run_in_plane_control_is_the_drag_estimate():
+    """No entry, no run: a LEO station keeper's in-plane control is the
+    drag make-up at MSFC's 95th percentile, flagged as estimated."""
+    makeup = _StubMakeup()
+    budget = pb.compute_budget(_scenario(PropellantBudgetConfig(mission_years=5.0)), "sat-1",
+                               reentry_solver=_no_reentry, makeup=makeup)
+    row = next(r for r in budget.rows if r.contributor == "In-plane orbit control")
+    assert (row.delta_v_m_s, row.source) == (100.0, "estimated")
+    assert makeup.calls == [(datetime(2030, 1, 1), 5.0, 95.0, None)]
+    assert any("estimated from the drag at 400 km" in n for n in budget.notes)
+    assert any("uses Cd 2.2" in n for n in budget.notes)  # the fixture's own Cd, not AD10's 3.0
+
+
+def test_the_sweep_follows_each_launch_windows_drag():
+    """Launches 0-5 years late: in-plane control is each window's drag
+    estimate, propellant from each budget's own mass; the worst case is
+    the window with the most drag (2033 here)."""
+    makeup = _StubMakeup()
+    sweep = pb.launch_delay_sweep(_scenario(PropellantBudgetConfig(mission_years=5.0)), "sat-1",
+                                  reentry_solver=_no_reentry, makeup=makeup)
+    assert [c.launch_utc.year for c in sweep.cases] == [2030, 2031, 2032, 2033, 2034, 2035]
+    assert [c.delta_v_of("Operations", "In-plane") for c in sweep.cases] == pytest.approx(
+        [100.0, 150.0, 250.0, 300.0, 200.0, 120.0])
+    assert [c.drag_ratio for c in sweep.cases] == pytest.approx([1.0, 1.5, 2.5, 3.0, 2.0, 1.2])
+    assert sweep.worst.delay_years == 3.0
+    assert sweep.worst.budget.total_propellant_kg == max(c.budget.total_propellant_kg for c in sweep.cases)
+    assert all(call[2] == 95.0 for call in makeup.calls)  # AD10 Sec. 5.9 for operations
+    assert any("worst case: launch 2033-01-01 (3 years late)" in n for n in sweep.notes)
+
+
+def test_the_sweep_scales_the_entered_or_flown_figure_by_the_drag_ratio():
+    """An entered in-plane figure, or the last run's, is kept for the
+    planned launch and scaled by the drag ratio for the late ones, at the
+    run's own percentile and drag coefficient."""
+    entered = pb.launch_delay_sweep(_scenario(PropellantBudgetConfig(in_plane_control_delta_v_m_s=40.0)),
+                                    "sat-1", delays_years=(0.0, 2.0), reentry_solver=_no_reentry,
+                                    makeup=_StubMakeup())
+    rows = [next(r for r in c.budget.rows if r.contributor == "In-plane orbit control") for c in entered.cases]
+    assert [(r.delta_v_m_s, r.source) for r in rows] == [(40.0, "input"), (100.0, "input x2.50 (drag)")]
+
+    result = ResultSet(scenario_name="r")
+    t = np.array([0.0, 365.25 * 86400.0])  # [s] the whole 1-year mission
+    result.add(TimeSeries("sat-1.position_N", t, ("x", "y", "z"), np.zeros((2, 3))))
+    result.add(TimeSeries("sat-1.station_keeping.delta_v", t, ("dv",), [0.0, 30.0]))
+    result.add(TimeSeries("sat-1.station_keeping.propellant_remaining", t, ("kg",), [5.0, 4.7]))
+    run_scenario = _scenario(None)
+    run_scenario.space_weather.forecast_percentile = 50.0
+    run_scenario.spacecraft[0].drag_coeff = 3.0
+    makeup = _StubMakeup()
+    flown = pb.launch_delay_sweep(_scenario(PropellantBudgetConfig(mission_years=1.0)), "sat-1", result,
+                                  run_scenario, delays_years=(1.0,), reentry_solver=_no_reentry, makeup=makeup)
+    rows = [next(r for r in c.budget.rows if r.contributor == "In-plane orbit control") for c in flown.cases]
+    assert [(r.delta_v_m_s, r.source) for r in rows] == [(30.0, "last run"), (45.0, "last run x1.50 (drag)")]
+    assert rows[0].propellant_kg == pytest.approx(0.3)  # [kg] as flown
+    assert {call[2:] for call in makeup.calls} == {(50.0, 3.0)}
+
+
+def test_without_drag_driven_station_keeping_every_launch_date_is_the_same():
+    scenario = _scenario(PropellantBudgetConfig(in_plane_control_delta_v_m_s=10.0))
+    scenario.spacecraft[0].enable_drag = False
+    sweep = pb.launch_delay_sweep(scenario, "sat-1", delays_years=(0.0, 4.0), reentry_solver=_no_reentry,
+                                  makeup=_StubMakeup())
+    assert sweep.cases[0].budget.total_delta_v_m_s == sweep.cases[1].budget.total_delta_v_m_s
+    assert any("same for every launch date" in n for n in sweep.notes)
+
+
+def test_launch_dates_move_by_calendar_years():
+    """Same date and time of day (an SSO keeps its local time); 29 February
+    becomes 28 February."""
+    assert pb._years_later(datetime(2030, 1, 1, 8, 30), 3.0) == datetime(2033, 1, 1, 8, 30)
+    assert pb._years_later(datetime(2032, 2, 29), 1.0) == datetime(2033, 2, 28)
+    assert pb._years_later(datetime(2030, 1, 1), 0.5) == datetime(2030, 7, 2, 15)
+    assert [pb.years_late(d) for d in (0.0, 1.0, 2.0)] == ["planned launch", "1 year late", "2 years late"]

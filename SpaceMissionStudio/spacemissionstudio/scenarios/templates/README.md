@@ -15,6 +15,10 @@ after running it, and what to try changing. Read that field (open the
 `.json` file directly, or look at the Description box at the top of the
 GUI's scenario form after opening one) before diving into the raw numbers.
 
+Templates with drag (04, 05, 07, 08, 18, 21) use a drag coefficient of
+3.0, ESA AD10's value for operations (Sec. 5.2); the End of Life tab
+and `spacemissionstudio lifetime` use its end-of-life 2.2 by default.
+
 ## Opening a template
 
 ```bash

@@ -22,7 +22,8 @@
 * :class:`BudgetInputsGroup` -- the inputs, a tab of the spacecraft editor
   (saved with the spacecraft as ``propellant_budget``);
 * :class:`BudgetWidget` -- the "Budget" tab: the budget table for one
-  spacecraft, using the last run for the simulated contributors.
+  spacecraft, using the last run for the simulated contributors, and the
+  launch-delay sweep (AD10 Sec. 5.5: launches up to 5 years late).
 """
 
 from __future__ import annotations
@@ -30,6 +31,7 @@ from __future__ import annotations
 from typing import Optional
 
 from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -222,12 +224,20 @@ def _titled(title: str, form: QFormLayout) -> QGroupBox:
 
 
 class _BudgetWorker(QThread):
-    finished_ok = Signal(object)  # engine.propellant_budget.Budget
-    failed = Signal(str)
+    """One budget, or with ``sweep`` the launch-delay sweep, off the GUI thread."""
 
-    def __init__(self, scenario, name, result, run_scenario, parent=None):
+    finished_ok = Signal(object)  # engine.propellant_budget.Budget or LaunchDelaySweep
+    failed = Signal(str)
+    progressed = Signal(float, str)  # fraction [0, 1], what it is doing
+
+    def __init__(self, scenario, name, result, run_scenario, sweep=False, parent=None):
         super().__init__(parent)
         self._args = (scenario, name, result, run_scenario)
+        self._sweep = sweep
+        self._cancelled = False
+
+    def cancel(self) -> None:
+        self._cancelled = True
 
     def run(self) -> None:
         try:
@@ -237,14 +247,20 @@ class _BudgetWorker(QThread):
             return
         scenario, name, result, run_scenario = self._args
         try:
-            self.finished_ok.emit(pb.compute_budget(scenario, name, result, run_scenario))
+            if self._sweep:
+                self.finished_ok.emit(pb.launch_delay_sweep(
+                    scenario, name, result, run_scenario, progress=lambda f, label: self.progressed.emit(f, label),
+                    should_cancel=lambda: self._cancelled))
+            else:
+                self.finished_ok.emit(pb.compute_budget(scenario, name, result, run_scenario))
         except pb.BudgetError as exc:
             self.failed.emit(str(exc))
         except Exception as exc:  # noqa: BLE001 -- shown in the tab, never a crashed thread
-            self.failed.emit(f"budget failed: {exc}")
+            self.failed.emit("cancelled" if self._cancelled else f"budget failed: {exc}")
 
 
 _COLUMNS = ("Phase", "Contributor", "Delta-V [m/s]", "Propellant [kg]", "Margin", "From")
+_SWEEP_COLUMNS = ("Launch", "Delay [y]", "In-plane [m/s]", "Disposal [m/s]", "Total [m/s]", "Propellant [kg]")
 
 
 class BudgetWidget(QWidget):
@@ -264,6 +280,11 @@ class BudgetWidget(QWidget):
         self.compute_button = QPushButton("Compute budget")
         self.compute_button.clicked.connect(self.compute)
         top.addWidget(self.compute_button)
+        self.sweep_button = QPushButton("Launch delays")
+        self.sweep_button.setToolTip("Repeat the budget for launches 1-5 years late (AD10 Sec. 5.5). "
+                                     "Several minutes.")
+        self.sweep_button.clicked.connect(self._sweep_clicked)
+        top.addWidget(self.sweep_button)
         self.copy_button = QPushButton("Copy as CSV")
         self.copy_button.setEnabled(False)
         self.copy_button.clicked.connect(self._copy)
@@ -290,6 +311,25 @@ class BudgetWidget(QWidget):
         self.notes_label.setWordWrap(True)
         self.notes_label.setStyleSheet(f"color: {PALETTE['text_muted']};")
         layout.addWidget(self.notes_label)
+
+        self._sweep = None
+        self.sweep_group = QGroupBox("Launch delays (AD10 Sec. 5.5) -- pick a row for its budget")
+        sweep_layout = QVBoxLayout(self.sweep_group)
+        self.sweep_table = QTableWidget(0, len(_SWEEP_COLUMNS))
+        self.sweep_table.setHorizontalHeaderLabels(_SWEEP_COLUMNS)
+        self.sweep_table.verticalHeader().setVisible(False)
+        self.sweep_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.sweep_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.sweep_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.sweep_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.sweep_table.itemSelectionChanged.connect(self._sweep_row_picked)
+        sweep_layout.addWidget(self.sweep_table)
+        self.sweep_notes_label = QLabel("")
+        self.sweep_notes_label.setWordWrap(True)
+        self.sweep_notes_label.setStyleSheet(f"color: {PALETTE['text_muted']};")
+        sweep_layout.addWidget(self.sweep_notes_label)
+        self.sweep_group.setVisible(False)
+        layout.addWidget(self.sweep_group)
         self._update_enabled()
 
     def set_scenario(self, scenario) -> None:
@@ -307,22 +347,45 @@ class BudgetWidget(QWidget):
         self._last_run = (scenario, result) if scenario is not None and result is not None else None
 
     def _update_enabled(self) -> None:
-        self.compute_button.setEnabled(self._worker is None and self.spacecraft_combo.count() > 0)
+        idle = self._worker is None
+        has_spacecraft = self.spacecraft_combo.count() > 0
+        self.compute_button.setEnabled(idle and has_spacecraft)
+        sweeping = not idle and self._worker._sweep
+        self.sweep_button.setText("Cancel" if sweeping else "Launch delays")
+        self.sweep_button.setEnabled(sweeping or (idle and has_spacecraft))
 
     def compute(self) -> None:
+        self._start(sweep=False)
+
+    def compute_sweep(self) -> None:
+        self._start(sweep=True)
+
+    def _sweep_clicked(self) -> None:
+        if self._worker is not None and self._worker._sweep:
+            self._worker.cancel()
+            self.status_label.setText("Cancelling...")
+        else:
+            self.compute_sweep()
+
+    def _start(self, sweep: bool) -> None:
         name = self.spacecraft_combo.currentText()
-        if self._scenario is None or not name:
+        if self._scenario is None or not name or self._worker is not None:
             return
         run_scenario, result = self._last_run if self._last_run is not None else (None, None)
         if run_scenario is not None and name not in {sc.name for sc in run_scenario.spacecraft}:
             run_scenario = result = None
-        self._worker = _BudgetWorker(self._scenario, name, result, run_scenario, self)
-        self._worker.finished_ok.connect(self._show)
+        self._worker = _BudgetWorker(self._scenario, name, result, run_scenario, sweep, self)
+        self._worker.finished_ok.connect(self._show_sweep if sweep else self._show)
         self._worker.failed.connect(self._show_error)
+        self._worker.progressed.connect(self._show_progress)
         self._worker.finished.connect(self._worker_done)
-        self.status_label.setText("Computing (the disposal search can take a minute)...")
+        self.status_label.setText("Computing six launch dates (several minutes)..." if sweep
+                                  else "Computing (the disposal search can take a minute)...")
         self._update_enabled()
         self._worker.start()
+
+    def _show_progress(self, fraction: float, label: str) -> None:
+        self.status_label.setText(f"{fraction:.0%}: {label}...")
 
     def wait_for_worker(self, timeout_ms: int = 300000) -> None:
         if self._worker is not None:
@@ -334,6 +397,43 @@ class BudgetWidget(QWidget):
 
     def _show_error(self, message: str) -> None:
         self.status_label.setText(message)
+
+    def _show_sweep(self, sweep) -> None:
+        self._sweep = sweep
+        worst = sweep.worst
+        bold = QFont()
+        bold.setBold(True)
+        self.sweep_table.blockSignals(True)
+        self.sweep_table.setRowCount(len(sweep.cases))
+        for row, case in enumerate(sweep.cases):
+            values = (f"{case.launch_utc:%Y-%m-%d}" + (" (worst)" if case is worst else ""),
+                      f"{case.delay_years:g}", f"{case.delta_v_of('Operations', 'In-plane'):.1f}",
+                      f"{case.delta_v_of('End of life', ''):.1f}", f"{case.budget.total_delta_v_m_s:.1f}",
+                      f"{case.budget.total_propellant_kg:.2f}")
+            for column, text in enumerate(values):
+                item = QTableWidgetItem(text)
+                if column > 0:
+                    item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                if case is worst:
+                    item.setFont(bold)
+                self.sweep_table.setItem(row, column, item)
+        self.sweep_table.blockSignals(False)
+        rows = self.sweep_table.rowCount()
+        self.sweep_table.setFixedHeight(self.sweep_table.horizontalHeader().height()
+                                        + sum(self.sweep_table.rowHeight(r) for r in range(rows)) + 4)
+        self.sweep_notes_label.setText("\n".join(f"- {n}" for n in sweep.notes))
+        self.sweep_group.setVisible(True)
+        self.sweep_table.selectRow(sweep.cases.index(worst))  # shows the worst case's budget
+
+    def _sweep_row_picked(self) -> None:
+        rows = self.sweep_table.selectionModel().selectedRows() if self._sweep is not None else []
+        if rows:
+            case = self._sweep.cases[rows[0].row()]
+            self._show(case.budget)
+            from ..engine.propellant_budget import years_late
+
+            self.status_label.setText(f"Launch {case.launch_utc:%Y-%m-%d} ({years_late(case.delay_years)}): "
+                                      + self.status_label.text())
 
     def _show(self, budget) -> None:
         self._budget = budget

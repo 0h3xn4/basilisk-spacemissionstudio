@@ -55,9 +55,10 @@ class _LifetimeWorker(QThread):
     failed = Signal(str)
 
     def __init__(self, scenario, spacecraft_name, result, deorbit_perigee_km, max_years, forecast_percentile=50.0,
-                 parent=None):
+                 parent=None, drag_coeff=None):
         super().__init__(parent)
-        self._args = (scenario, spacecraft_name, result, deorbit_perigee_km, max_years, forecast_percentile)
+        self._args = (scenario, spacecraft_name, result, deorbit_perigee_km, max_years, forecast_percentile,
+                      drag_coeff)
 
     def run(self) -> None:
         try:
@@ -65,10 +66,10 @@ class _LifetimeWorker(QThread):
         except ImportError as exc:
             self.failed.emit(f"Basilisk is not installed/built ({exc}) -- the lifetime uses its atmosphere model.")
             return
-        scenario, name, result, perigee_km, max_years, percentile = self._args
+        scenario, name, result, perigee_km, max_years, percentile, drag_coeff = self._args
         try:
             self.finished_ok.emit(lifetime.end_of_life(scenario, name, result, perigee_km, max_years,
-                                                       forecast_percentile=percentile))
+                                                       forecast_percentile=percentile, drag_coeff=drag_coeff))
         except lifetime.LifetimeError as exc:
             self.failed.emit(str(exc))
         except Exception as exc:  # noqa: BLE001 -- shown in the tab, never a crashed thread
@@ -221,6 +222,12 @@ class LifetimeWidget(QWidget):
         self.activity_combo.setToolTip("NASA MSFC's predicted solar activity past the observations. "
                                        "ESA AD10 Sec. 5.9: 50th for end of life.")
         form.addRow("Solar activity", self.activity_combo)
+        self._drag_items = [("2.2 (AD10 end of life)", 2.2), ("The spacecraft's own", None)]  # [-]
+        self.drag_combo = ComboBox()
+        for label, _value in self._drag_items:
+            self.drag_combo.addItem(label)
+        self.drag_combo.setToolTip("ESA AD10 Sec. 5.2: Cd 2.2 at end of life (3.0 in operations).")
+        form.addRow("Drag coefficient", self.drag_combo)
         self.horizon_spin = PreciseDoubleSpinBox()
         self.horizon_spin.setRange(1.0, 100.0)
         self.horizon_spin.setDecimals(0)
@@ -297,7 +304,8 @@ class LifetimeWidget(QWidget):
             return
         perigee_km = self.deorbit_perigee_spin.value() if self.deorbit_check.isChecked() else None
         self._worker = _LifetimeWorker(scenario, name, result, perigee_km, self.horizon_spin.value(),
-                                       self._activity_items[self.activity_combo.currentIndex()][1], self)
+                                       self._activity_items[self.activity_combo.currentIndex()][1], self,
+                                       drag_coeff=self._drag_items[self.drag_combo.currentIndex()][1])
         self._worker.finished_ok.connect(self._show)
         self._worker.failed.connect(self._show_error)
         self._worker.finished.connect(self._worker_done)

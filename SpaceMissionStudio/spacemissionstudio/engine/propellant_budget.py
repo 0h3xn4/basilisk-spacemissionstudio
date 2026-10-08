@@ -36,7 +36,14 @@ total propellant until it changes by less than 0.1 kg (Sec. 6.5).
   spacecraft's last run -- delta-V and propellant as flown, so the mass
   evolution is the simulation's -- scaled up when the run is shorter than
   the mission, and flagged unless the run used AD10's operations settings
-  (MSFC 95th percentile, Sec. 5.9; Cd 3.0, Sec. 5.2).
+  (MSFC 95th percentile, Sec. 5.9; Cd 3.0, Sec. 5.2). Without a run, a
+  LEO station keeper's in-plane control is estimated from the drag on its
+  held orbit (:func:`.lifetime.drag_makeup`, MSFC 95th percentile).
+* **Launch delays** (Sec. 5.5): :func:`launch_delay_sweep` repeats the
+  budget for launches up to 5 years late. In-plane control follows the
+  solar activity of each window (the run's figure times the drag make-up
+  ratio of the two windows), and the disposal is re-solved from each end
+  of life.
 * **Margins** (Sec. 5.6): collision-avoidance count x4, thruster attitude
   control propellant +100%, a controlled re-entry's last burn +15%;
   residual 1% and uncertainty 2% of the tank's maximum load (Secs. 5.8,
@@ -53,16 +60,17 @@ total propellant until it changes by less than 0.1 kg (Sec. 6.5).
   ``235 + 1000 * Cr * A / m`` km (Sec. 6.3.1.3), as a Hohmann transfer.
 
 Not covered: the number of collision avoidances (ESA's DRAMA computes it;
-enter it), launch-date delays (Sec. 5.5), finite-burn gravity losses
-outside the simulations (Sec. 5.4), and hybrid propulsion systems.
+enter it), finite-burn gravity losses outside the simulations (Sec. 5.4),
+hybrid propulsion systems, and launch-date effects other than drag (e.g.
+the Moon's 18.6-year cycle in GEO north-south control).
 """
 
 from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from datetime import timedelta
-from typing import List, Optional
+from datetime import datetime, timedelta
+from typing import Callable, List, Optional
 
 from ..schema.scenario import PropellantBudgetConfig
 
@@ -83,6 +91,7 @@ EOL_PERCENTILE = 50.0  # [%] Sec. 5.9
 GEO_GRAVEYARD_BASE_M = 235e3  # [m] Sec. 6.3.1.3
 GEO_GRAVEYARD_PER_CR_A_M = 1000e3  # [m per (m^2/kg)] Sec. 6.3.1.3
 _MAX_ITERATIONS = 50
+LAUNCH_DELAYS_YEARS = (0.0, 1.0, 2.0, 3.0, 4.0, 5.0)  # [year] Sec. 5.5: up to 5 years late
 
 
 class BudgetError(Exception):
@@ -273,12 +282,28 @@ def uncontrolled_reentry_delta_v(scenario, spacecraft, eol_utc, mass_kg: float, 
     return delta_v, low_km, years_from(lowered), notes
 
 
+def _drag_makeup(scenario, spacecraft, start_utc, years, forecast_percentile, drag_coeff=None,
+                 should_cancel=None):
+    from . import lifetime as lt
+
+    return lt.drag_makeup(scenario, spacecraft, start_utc, years, forecast_percentile, drag_coeff,
+                          should_cancel=should_cancel)
+
+
+def _estimates_in_plane(spacecraft) -> bool:
+    """A LEO station keeper flying through drag."""
+    return spacecraft.station_keeping is not None and spacecraft.enable_drag
+
+
 def compute_budget(scenario, spacecraft_name: str, result=None, run_scenario=None,
-                   reentry_solver=uncontrolled_reentry_delta_v) -> Budget:
+                   reentry_solver=uncontrolled_reentry_delta_v, in_plane: Optional[tuple] = None,
+                   makeup=_drag_makeup) -> Budget:
     """The budget of one spacecraft (see this module's docstring).
     ``result``/``run_scenario``: the last run and the scenario it ran,
-    for the simulated contributors; ``reentry_solver`` is replaceable for
-    tests."""
+    for the simulated contributors; ``in_plane``: (delta-V [m/s],
+    propellant [kg] or None, source, note) in place of the entered, flown
+    or estimated in-plane control; ``reentry_solver`` and ``makeup``
+    (:func:`.lifetime.drag_makeup`) are replaceable for tests."""
     spacecraft = next((sc for sc in scenario.spacecraft if sc.name == spacecraft_name), None)
     if spacecraft is None:
         raise BudgetError(f"no spacecraft named {spacecraft_name!r}")
@@ -316,9 +341,26 @@ def compute_budget(scenario, spacecraft_name: str, result=None, run_scenario=Non
             notes.append(f"{label}: no value entered and none in the last run -- counted as 0")
         return 0.0, None, "input"
 
-    ip_dv, ip_kg, ip_source = simulated(config.in_plane_control_delta_v_m_s, flown and flown.in_plane,
-                                        "in-plane control" if spacecraft.station_keeping or
-                                        spacecraft.geo_station_keeping else "")
+    if in_plane is not None:
+        ip_dv, ip_kg, ip_source, ip_note = in_plane
+        if ip_note:
+            notes.append(ip_note)
+    elif (config.in_plane_control_delta_v_m_s is None and (flown is None or flown.in_plane is None)
+          and _estimates_in_plane(spacecraft) and scenario.gravity.central_body == "earth"):
+        estimate = makeup(scenario, spacecraft, _parse_epoch(scenario.epoch_utc), config.mission_years,
+                          OPERATIONS_PERCENTILE)
+        ip_dv, ip_kg, ip_source = estimate.delta_v_m_s, None, "estimated"
+        notes.append(f"in-plane control estimated from the drag at {estimate.altitude_km:.0f} km (NRLMSISE-00, "
+                     f"MSFC {OPERATIONS_PERCENTILE:g}th percentile, Cd {lifetime_cd(spacecraft):g}); full runs "
+                     "spent ~5% more -- run the mission for the simulated figure")
+        if lifetime_cd(spacecraft) != OPERATIONS_DRAG_COEFF:
+            notes.append(f"the estimate uses Cd {lifetime_cd(spacecraft):g}; AD10 Sec. 5.2 asks for "
+                         f"{OPERATIONS_DRAG_COEFF:g} in operations (2.2 for CubeSats)")
+        notes.extend(f"in-plane estimate: {w}" for w in estimate.warnings)
+    else:
+        ip_dv, ip_kg, ip_source = simulated(config.in_plane_control_delta_v_m_s, flown and flown.in_plane,
+                                            "in-plane control" if spacecraft.station_keeping or
+                                            spacecraft.geo_station_keeping else "")
     oop_dv, oop_kg, oop_source = simulated(config.out_of_plane_control_delta_v_m_s,
                                            flown and flown.out_of_plane, "")
     form_dv, form_kg, form_source = simulated(config.formation_delta_v_m_s, flown and flown.formation,
@@ -402,6 +444,156 @@ def compute_budget(scenario, spacecraft_name: str, result=None, run_scenario=Non
     if config.tank_capacity_kg and propellant_kg > config.tank_capacity_kg:
         notes.append(f"the budget ({propellant_kg:.2f} kg) exceeds the tank ({config.tank_capacity_kg:g} kg)")
     return Budget(rows, dry_kg, isp_s, efficiency, iteration, notes)
+
+
+def lifetime_cd(spacecraft) -> float:
+    """The drag coefficient the drag estimates use (the facets' area-
+    weighted mean when set)."""
+    if spacecraft.facets:
+        total = sum(f.area_m2 for f in spacecraft.facets)  # [m^2]
+        return round(sum(f.area_m2 * f.drag_coeff for f in spacecraft.facets) / total, 6)
+    return spacecraft.drag_coeff
+
+
+@dataclass
+class DelayCase:
+    """The budget for one launch date (:func:`launch_delay_sweep`)."""
+
+    delay_years: float  # [year]
+    launch_utc: datetime
+    budget: Budget
+    drag_ratio: Optional[float] = None  # [-] drag make-up against the planned launch, when used
+
+    def delta_v_of(self, phase: str, contributor_start: str) -> float:
+        return sum(r.delta_v_m_s or 0.0 for r in self.budget.rows
+                   if r.phase == phase and r.contributor.startswith(contributor_start))
+
+
+@dataclass
+class LaunchDelaySweep:
+    spacecraft_name: str
+    cases: List[DelayCase]
+    notes: List[str] = field(default_factory=list)
+
+    @property
+    def worst(self) -> DelayCase:
+        """The launch date needing the most propellant."""
+        return max(self.cases, key=lambda case: case.budget.total_propellant_kg)
+
+
+def _years_later(when: datetime, years: float) -> datetime:
+    """``when`` moved by whole calendar years (same date and time of day:
+    the Sun is back where it was, so an SSO's local time is kept; 29 Feb
+    becomes 28 Feb), plus any fraction as 365.25-day years."""
+    whole = int(math.floor(years))
+    try:
+        moved = when.replace(year=when.year + whole)
+    except ValueError:  # 29 February
+        moved = when.replace(year=when.year + whole, day=28)
+    return moved + timedelta(days=(years - whole) * 365.25)
+
+
+def years_late(delay_years: float) -> str:
+    """"planned launch", "1 year late", "2.5 years late"."""
+    if delay_years == 0.0:
+        return "planned launch"
+    return f"{delay_years:g} year{'' if delay_years == 1.0 else 's'} late"
+
+
+def _launched_later(scenario, years: float):
+    import copy
+
+    later = copy.deepcopy(scenario)
+    later.epoch_utc = _years_later(_parse_epoch(scenario.epoch_utc), years).isoformat()
+    return later
+
+
+def launch_delay_sweep(scenario, spacecraft_name: str, result=None, run_scenario=None,
+                       delays_years=LAUNCH_DELAYS_YEARS, reentry_solver=uncontrolled_reentry_delta_v,
+                       makeup=_drag_makeup, progress: Optional[Callable[[float, str], None]] = None,
+                       should_cancel: Optional[Callable[[], bool]] = None) -> LaunchDelaySweep:
+    """The budget for the planned launch and for launches ``delays_years``
+    later (Sec. 5.5: up to 5 years), the mission keeping its length.
+
+    In-plane control of a LEO station keeper follows each window's solar
+    activity: the last run's figure (or the entered one) times the drag
+    make-up of the delayed window over the planned one, both at the run's
+    own percentile and drag coefficient; with neither, the drag estimate
+    itself at the 95th percentile. Other entered and flown contributors
+    are kept; the disposal is re-solved from each end of life."""
+    spacecraft = next((sc for sc in scenario.spacecraft if sc.name == spacecraft_name), None)
+    if spacecraft is None:
+        raise BudgetError(f"no spacecraft named {spacecraft_name!r}")
+    config = spacecraft.propellant_budget or PropellantBudgetConfig()
+    delays = sorted(set(float(d) for d in delays_years) | {0.0})
+    notes: List[str] = []
+    steps = len(delays) * 2  # a drag estimate and a budget per launch date
+    done = [0]
+
+    def advance(label):
+        if should_cancel is not None and should_cancel():
+            raise BudgetError("cancelled")
+        if progress is not None:
+            progress(done[0] / steps, label)
+        done[0] += 1
+
+    flown = run_contributors(result, spacecraft_name, config.mission_years) if result is not None else None
+    reference = None  # (delta-V [m/s], propellant [kg] or None, source) the ratios scale
+    if config.in_plane_control_delta_v_m_s is not None:
+        reference = (config.in_plane_control_delta_v_m_s, None, "input")
+    elif flown is not None and flown.in_plane is not None:
+        reference = (flown.in_plane[0], flown.in_plane[1], "last run")
+    follows_drag = _estimates_in_plane(spacecraft) and scenario.gravity.central_body == "earth"
+    if reference is not None:
+        settings = run_scenario or scenario
+        run_sc = next((sc for sc in settings.spacecraft if sc.name == spacecraft_name), spacecraft)
+        percentile, drag_coeff = settings.space_weather.forecast_percentile, lifetime_cd(run_sc)
+    else:
+        percentile, drag_coeff = OPERATIONS_PERCENTILE, lifetime_cd(spacecraft)
+    if not follows_drag:
+        notes.append("no drag-driven station keeping: in-plane control is the same for every launch date")
+
+    base_makeup = None
+    cases: List[DelayCase] = []
+    for delay in delays:
+        later = _launched_later(scenario, delay)
+        launch_utc = _parse_epoch(later.epoch_utc)
+        advance(f"drag for a launch {years_late(delay)}" if delay else "drag for the planned launch")
+        in_plane, ratio = None, None
+        if follows_drag:
+            later_sc = next(sc for sc in later.spacecraft if sc.name == spacecraft_name)
+            estimate = makeup(later, later_sc, launch_utc, config.mission_years, percentile, drag_coeff,
+                              should_cancel)
+            notes.extend(w for w in estimate.warnings if w not in notes)
+            if base_makeup is None:
+                base_makeup = estimate
+            ratio = estimate.delta_v_m_s / base_makeup.delta_v_m_s if base_makeup.delta_v_m_s > 0.0 else 1.0
+            if reference is None:
+                in_plane = (estimate.delta_v_m_s, None, "estimated", "")
+            elif delay == 0.0:
+                in_plane = None  # the planned launch is the plain budget
+            else:
+                dv, _kg, source = reference  # propellant from this launch's own mass, not scaled
+                in_plane = (dv * ratio, None, f"{source} x{ratio:.2f} (drag)", "")
+        advance(f"budget for a launch {years_late(delay)}" if delay else "budget for the planned launch")
+        # the run's other contributors are kept as flown
+        budget = compute_budget(later, spacecraft_name, result, run_scenario, reentry_solver, in_plane, makeup)
+        cases.append(DelayCase(delay, launch_utc, budget, ratio))
+    if progress is not None:
+        progress(1.0, "done")
+    if reference is not None and follows_drag:
+        notes.append(f"in-plane control scaled by each window's drag make-up (NRLMSISE-00, MSFC "
+                     f"{percentile:g}th percentile, Cd {drag_coeff:g}) against the planned launch")
+    elif follows_drag:
+        notes.append(f"in-plane control estimated from the drag (NRLMSISE-00, MSFC {percentile:g}th "
+                     "percentile); full runs spent ~5% more")
+    worst = max(cases, key=lambda case: case.budget.total_propellant_kg)
+    notes.append(f"worst case: launch {worst.launch_utc:%Y-%m-%d} ({years_late(worst.delay_years)}), "
+                 f"{worst.budget.total_propellant_kg:.2f} kg")
+    tank = config.tank_capacity_kg
+    if tank and worst.budget.total_propellant_kg > tank:
+        notes.append(f"the worst case exceeds the tank ({tank:g} kg)")
+    return LaunchDelaySweep(spacecraft_name, cases, notes)
 
 
 def _parse_epoch(epoch_utc: str):

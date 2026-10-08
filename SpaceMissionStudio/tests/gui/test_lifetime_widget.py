@@ -86,3 +86,26 @@ def test_an_estimate_shows_the_reentry_and_the_rule_badges(qtbot):
     assert "5-year rule: met" in texts and "25-year guideline: met" in texts
     assert any(text.endswith("m/s, 0.67 kg") for text in texts)
     assert any(text.endswith("days") for text in texts)
+
+
+def test_the_drag_coefficient_defaults_to_ad10s_end_of_life_value(qtbot, monkeypatch):
+    """Cd 2.2 (AD10 Sec. 5.2, end of life) unless "the spacecraft's own" is
+    picked (templates fly at 3.0, the operations value)."""
+    from spacemissionstudio.engine import lifetime
+    from spacemissionstudio.gui.lifetime_widget import LifetimeWidget
+
+    asked = []
+
+    def fake_end_of_life(*_args, drag_coeff=None, **_kwargs):
+        asked.append(drag_coeff)
+        raise lifetime.LifetimeError("stub")
+
+    monkeypatch.setattr(lifetime, "end_of_life", fake_end_of_life)
+    widget = LifetimeWidget()
+    qtbot.addWidget(widget)
+    widget.set_scenario(_scenario())
+    for index, expected in ((0, 2.2), (1, None)):
+        widget.drag_combo.setCurrentIndex(index)
+        widget.compute()
+        qtbot.waitUntil(lambda: widget._worker is None, timeout=10000)
+        assert asked[-1] == expected

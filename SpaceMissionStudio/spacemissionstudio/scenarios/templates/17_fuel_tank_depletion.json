@@ -221,6 +221,7 @@
           0.0
         ]
       },
+      "propellant_budget": null,
       "vizard_model_path": null,
       "vizard_model_offset_m": [
         0.0,

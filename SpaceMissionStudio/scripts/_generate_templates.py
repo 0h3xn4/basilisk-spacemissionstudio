@@ -38,6 +38,7 @@ from spacemissionstudio.engine.constellation import WalkerConstellationRequest, 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _template_descriptions import DESCRIPTIONS  # noqa: E402 -- short, user-facing; see that module
 from spacemissionstudio.engine.facets import box_facets
+from spacemissionstudio.engine.propellant_budget import OPERATIONS_DRAG_COEFF  # 3.0: ESA AD10 Sec. 5.2
 from spacemissionstudio.engine.orbit_design import (
     geostationary_elements_deg,
     raan_for_ltan_deg,
@@ -266,7 +267,7 @@ def build_04_walker_constellation() -> Scenario:
                        anomaly_type="mean"),
         dry_mass_kg=180.0,
         inertia_kg_m2=_box_inertia(180.0, _MICROSAT_SIZE_M),
-        enable_drag=True, drag_coeff=2.2, drag_area_m2=1.0,
+        enable_drag=True, drag_coeff=OPERATIONS_DRAG_COEFF, drag_area_m2=1.0,
         enable_srp=True, srp_coeff=1.3, srp_area_m2=1.0,
     )
     request = WalkerConstellationRequest(
@@ -380,7 +381,7 @@ def build_05_formation_flying_phasing() -> Scenario:
                                arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
                 dry_mass_kg=400.0,
                 inertia_kg_m2=_box_inertia(400.0, _SMALLSAT_SIZE_M),
-                enable_drag=True, drag_coeff=2.2, drag_area_m2=1.0,
+                enable_drag=True, drag_coeff=OPERATIONS_DRAG_COEFF, drag_area_m2=1.0,
                 enable_srp=True, srp_coeff=1.3, srp_area_m2=1.0,
                 # chief-1 needs its OWN station_keeping too -- a real
                 # design bug, found from direct user feedback: a "chief"
@@ -451,7 +452,7 @@ def build_05_formation_flying_phasing() -> Scenario:
                                arg_periapsis_deg=0.0, anomaly_type="mean", mean_anomaly_deg=0.413509),
                 dry_mass_kg=400.0,
                 inertia_kg_m2=_box_inertia(400.0, _SMALLSAT_SIZE_M),
-                enable_drag=True, drag_coeff=2.2, drag_area_m2=1.0,
+                enable_drag=True, drag_coeff=OPERATIONS_DRAG_COEFF, drag_area_m2=1.0,
                 enable_srp=True, srp_coeff=1.3, srp_area_m2=1.0,
                 station_keeping=StationKeepingConfig(
                     # deadband_km=15.0, not 2.0 -- widened by audit (see the
@@ -560,7 +561,7 @@ def build_07_attitude_pointing_with_adcs_hardware() -> Scenario:
                                arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
                 dry_mass_kg=_MICROSAT_MASS_KG,
                 inertia_kg_m2=_box_inertia(_MICROSAT_MASS_KG, _MICROSAT_SIZE_M),
-                enable_drag=True, drag_coeff=2.2, drag_area_m2=1.0,
+                enable_drag=True, drag_coeff=OPERATIONS_DRAG_COEFF, drag_area_m2=1.0,
                 enable_srp=True, srp_coeff=1.3, srp_area_m2=1.0,
                 sigma_bn_init=[0.1, 0.2, -0.15],
                 omega_bn_b_init_rad_s=[0.001, -0.001, 0.0005],
@@ -618,7 +619,7 @@ def build_08_mission_sequence_orbit_raise() -> Scenario:
                                arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
                 dry_mass_kg=_LARGE_SMALLSAT_MASS_KG,
                 inertia_kg_m2=_box_inertia(_LARGE_SMALLSAT_MASS_KG, _LARGE_SMALLSAT_SIZE_M),
-                enable_drag=True, drag_coeff=2.2, drag_area_m2=1.0,
+                enable_drag=True, drag_coeff=OPERATIONS_DRAG_COEFF, drag_area_m2=1.0,
                 enable_srp=True, srp_coeff=1.3, srp_area_m2=1.0,
             ),
         ],
@@ -1035,7 +1036,7 @@ def build_18_leo_station_keeping() -> Scenario:
                                arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
                 dry_mass_kg=120.0,
                 inertia_kg_m2=_box_inertia(120.0, _MICROSAT_SIZE_M),
-                enable_drag=True, drag_coeff=2.2, drag_area_m2=1.5,
+                enable_drag=True, drag_coeff=OPERATIONS_DRAG_COEFF, drag_area_m2=1.5,
                 station_keeping=StationKeepingConfig(
                     target_altitude_km=400.0, deadband_km=1.0, thrust_n=0.05, isp_s=1500.0,
                     propellant_kg=2.0,
@@ -1233,7 +1234,8 @@ def build_21_disturbance_torques() -> Scenario:
             dry_mass_kg=_SMALLSAT_MASS_KG,
             inertia_kg_m2=_box_inertia(_SMALLSAT_MASS_KG, _SMALLSAT_SIZE_M),
             enable_drag=True, enable_srp=True,
-            facets=box_facets(_SMALLSAT_SIZE_M, 2.5, (0.0, 0.0, 1.0), (0.0, 1.5, 0.75)),  # [m], [m^2]
+            facets=box_facets(_SMALLSAT_SIZE_M, 2.5, (0.0, 0.0, 1.0), (0.0, 1.5, 0.75),  # [m], [m^2]
+                              drag_coeff=OPERATIONS_DRAG_COEFF),
             sensors=[SensorConfig(kind="coarse_sun_sensor", name="css-1", params={"nHat_B": [0.0, 0.0, 1.0]})],
             actuators=actuators,
             magnetic_momentum_management=(MagneticMomentumManagementConfig(wheel_speed_biases_rad_s=[0.0] * 3)

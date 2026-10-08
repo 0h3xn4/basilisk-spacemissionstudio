@@ -7701,4 +7701,39 @@ Propellant per contributor is the phase's starting mass times exp(dV/Ve) - 1, it
 * Nominal: 2.31 kg in 364 burns, 2.69 kg left; within 0.1 m/s of the CelesTrak/NOAA run above. Semi-major axis held 394.4-397.2 km above the equatorial radius. 54 min wall time, 459 MB peak.
 * AD10 operations: 5 kg is not enough. The tank ran dry at day 1595.8 after 676 burns; the spacecraft then decayed and re-entered at day 1633.3, and the run stopped there with a warning (49 min, 434 MB). The figures marked * are therefore cut short.
 
-**Not covered yet:** the launch-delay sweep (AD10 Sec. 5.5), the number of collision avoidances (DRAMA), Cd 3.0 in the templates (they keep 2.2).
+**Not covered yet:** the number of collision avoidances (DRAMA). (The launch-delay sweep and Cd 3.0 in the templates followed; see the next entry.)
+
+## AD10 launch-delay sweep; templates at Cd 3.0
+
+User request: do the launch-delay sweep and switch the templates to Cd 3.0.
+
+**Drag make-up estimate.** Six five-year Basilisk runs per sweep would take hours, so `engine.lifetime.drag_makeup` estimates the delta-V that holds an orbit against drag over a window: the lifetime estimator's drag ring (NRLMSISE-00, MSFC data, osculating ring, J2 turning the node), integrated along track every 6 h at a fixed orbit, about 15 s for five years. The orbit is held where station keeping holds it: mean radius at Req + target. A first try at the initial orbit's mean elements sat 5.4 km lower (the J2 short-period offset) and read 6% high.
+
+Against the two five-year runs of the previous entry, the estimate is low by:
+
+| | Year 1 | Year 2 | Years 3-5 |
+|---|---|---|---|
+| MSFC 50th, Cd 2.2 | -15.9% | -9.6% | -6.7% to -5.0% |
+| MSFC 95th, Cd 3.0 | -9.8% | -6.0% | -4.8% to -4.9% |
+
+The simulated controller spends ~5% more than the drag it replaces; why is not pinned down. Ratios between launch windows carry over; the notes say "full runs spent ~5% more" wherever the estimate is used alone. Against the decay propagator over 5 days, the estimate agrees to 1.9% (1.3% already over one day, from the propagator taking the mean semi-major axis with osculating velocities).
+
+**Budget without a run.** A LEO station keeper with drag and no entered or flown in-plane figure now gets the estimate at the 95th percentile (source "estimated") instead of 0.
+
+**Launch-delay sweep (AD10 Sec. 5.5).** `propellant_budget.launch_delay_sweep`, the Budget tab's **Launch delays** button and `spacemissionstudio budget --launch-delays` repeat the budget for the planned launch and 1-5 years later (same calendar date, so an SSO keeps its local time):
+* in-plane control: the entered or flown figure times the drag make-up ratio of the late window over the planned one (at the run's percentile and Cd); without either, the estimate itself;
+* the disposal is re-solved from each end of life; other contributors are kept;
+* the worst case is marked; in the GUI it is bold, and picking a row shows that launch date's full budget; a sweep can be cancelled.
+
+Template 18 (400 km, 5-year mission, 95th percentile, Cd 3.0, no run):
+
+| Launch | 2030 | 2031 | 2032 | 2033 | 2034 | 2035 |
+|---|---|---|---|---|---|---|
+| In-plane control [m/s] | 815.8 | 1125.9 | 1377.0 | **1450.1** | 1306.9 | 1026.1 |
+| Propellant [kg] | 8.61 | 12.33 | 15.53 | **16.50** | 14.62 | 11.10 |
+
+From 400 km no disposal burn is needed at any date. A launch three years late needs ~1.9x the propellant of the planned one. The whole sweep took ~80 s.
+
+**Cd 3.0.** The templates with drag (04, 05, 07, 08, 18, 21; spheres and template 21's facets) now use 3.0, AD10's operations value (Sec. 5.2); `box_facets` takes a `drag_coeff`. The End of Life tab and `spacemissionstudio lifetime` default to AD10's end-of-life 2.2, with "the spacecraft's own" (`--drag-coeff own`) as the alternative. Regenerating also wrote the `propellant_budget: null` key the previous regeneration had missed.
+
+**Checked:** the full Basilisk suite (2051 passed; the one failure, the 300 km re-entry test landing in its first segment at Cd 3.0, now pins the 2.2 its quoted figures were measured at).

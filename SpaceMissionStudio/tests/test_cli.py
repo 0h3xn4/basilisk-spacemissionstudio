@@ -553,3 +553,40 @@ def test_budget_prints_the_ad10_table(capsys):
     out = capsys.readouterr().out
     assert "Launcher injection errors, in-plane" in out and "Residual" in out and out.count("Total") == 1
     assert "NOTE: no collision avoidances entered" in out
+
+
+@pytest.mark.requires_basilisk
+def test_budget_launch_delays_prints_one_row_per_launch_date(capsys, monkeypatch):
+    """``budget --launch-delays``: the planned launch and 1-5 years late,
+    the worst marked (drag and disposal stubbed: the real ones take a
+    minute or two)."""
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    from spacemissionstudio.engine import propellant_budget as pb
+
+    drag = {2030: 100.0, 2031: 300.0, 2032: 200.0, 2033: 150.0, 2034: 120.0, 2035: 110.0}  # [m/s]
+    original = pb.launch_delay_sweep
+
+    def stubbed(scenario, name, result=None):
+        return original(scenario, name, result, reentry_solver=lambda *_a: (0.0, 400.0, 0.5, []),
+                        makeup=lambda _s, _sc, start, *_a: SimpleNamespace(
+                            delta_v_m_s=drag[start.year], altitude_km=400.0, warnings=[]))
+
+    monkeypatch.setattr(pb, "launch_delay_sweep", stubbed)
+    path = Path(__file__).resolve().parent.parent / "spacemissionstudio" / "scenarios" / "templates" \
+        / "18_leo_station_keeping.json"
+    assert cli.main(["budget", str(path), "--launch-delays"]) == 0
+    out = capsys.readouterr().out
+    rows = [line for line in out.splitlines() if line[:4].isdigit()]
+    assert [line[:10] for line in rows] == [f"{year}-01-01" for year in range(2030, 2036)]
+    assert rows[1].endswith("<- worst") and sum("worst" in line for line in rows) == 1
+    assert "NOTE: worst case: launch 2031-01-01" in out
+
+
+def test_lifetime_drag_coefficient_defaults_to_ad10s_end_of_life_value():
+    parser = cli.build_parser()
+    assert parser.parse_args(["lifetime", "s.json"]).drag_coeff == "2.2"
+    assert parser.parse_args(["lifetime", "s.json", "--drag-coeff", "own"]).drag_coeff == "own"
+    with pytest.raises(SystemExit):
+        parser.parse_args(["lifetime", "s.json", "--drag-coeff", "-1"])

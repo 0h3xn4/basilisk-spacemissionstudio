@@ -37,6 +37,10 @@ simulations (``zeroWindModel``).
 Re-entry is taken as the perigee reaching :data:`REENTRY_ALTITUDE_KM`;
 below that an orbit lasts days at most.
 
+:func:`drag_makeup` uses the same drag model the other way round: the
+delta-V a station keeper spends holding an orbit against drag over a
+window, for propellant budgets at other launch dates.
+
 Limits: Earth only; sphere (cannonball) drag, or the tumbling-average area
 of the facets (sum of facet areas / 4, exact for a convex body); no solar
 radiation pressure, third bodies or higher harmonics, which matter little
@@ -385,13 +389,94 @@ def density_for_scenario(scenario, start_utc: datetime, max_years: float, points
     return MsisDensity(resolved.path, start_utc, points), max_years, warnings + list(resolved.warnings)
 
 
+MAKEUP_STEP_S = 21600.0  # [s] drag make-up sampling step
+
+
+@dataclass
+class DragMakeup:
+    """Delta-V to hold an orbit against drag (:func:`drag_makeup`)."""
+
+    delta_v_m_s: float  # [m/s] over the whole window
+    time_s: np.ndarray  # [s] since the start
+    cumulative_m_s: np.ndarray  # [m/s] delta-V up to each time
+    altitude_km: float  # [km] mean orbit radius held, above the equatorial radius
+    years: float  # [year] window covered (less than asked where the data ends)
+    warnings: List[str] = field(default_factory=list)
+
+
+def held_orbit(spacecraft) -> MeanOrbit:
+    """The mean orbit a spacecraft keeps: its initial orbit, with the
+    semi-major axis set so the orbit's mean radius is the station-keeping
+    target (Req + ``target_altitude_km``, as the controller holds it)."""
+    from .service import _orbit_ic_to_rv  # the same orbit set-up a run uses
+
+    orbit = mean_orbit_from_state(*_orbit_ic_to_rv(MU_EARTH_M3_S2, spacecraft.orbit))
+    if spacecraft.station_keeping is not None:
+        target_m = REQ_EARTH_M + spacecraft.station_keeping.target_altitude_km * 1e3  # [m]
+        for _ in range(3):  # the J2 short-period terms move the mean radius by a few km: converges in 2
+            r, _v = ring_states(orbit)
+            orbit.semi_major_axis_m += target_m - float(np.linalg.norm(r, axis=1).mean())
+    return orbit
+
+
+def drag_makeup(scenario, spacecraft, start_utc: datetime, years: float, forecast_percentile: float = 50.0,
+                drag_coeff: Optional[float] = None, step_s: float = MAKEUP_STEP_S,
+                should_cancel: Optional[Callable[[], bool]] = None) -> DragMakeup:
+    """Delta-V [m/s] that holds the spacecraft's orbit (:func:`held_orbit`)
+    against drag for ``years`` from ``start_utc``: the orbit-averaged
+    along-track drag, integrated over the window, with J2 turning the node
+    and perigee. Mass: dry plus the propellant aboard at the start, held
+    fixed. Drag coefficient: ``drag_coeff``, else the spacecraft's (the
+    facets' tumbling average when set).
+
+    Against full five-year Basilisk station-keeping runs (template 18,
+    2030-2035) this comes out ~5% low (-5.0% at MSFC's 50th percentile and
+    Cd 2.2, -4.9% at the 95th and Cd 3.0, from the third year on; -16%
+    and -10% over the first year). The simulated controller spends more
+    than the drag it replaces; why exactly is not pinned down. Ratios of
+    it (one launch date against another) carry over better than its
+    absolute value."""
+    if scenario.gravity.central_body != "earth":
+        raise LifetimeError("drag make-up is only estimated around Earth")
+    orbit = held_orbit(spacecraft)
+    area_m2, own_cd = drag_properties(spacecraft)
+    _isp, propellant_kg = _propulsion(spacecraft)
+    mass_kg = spacecraft.dry_mass_kg + propellant_kg  # [kg]
+    if spacecraft.fuel_tank is not None:
+        mass_kg += spacecraft.fuel_tank.propellant_mass_kg
+    ballistic = (own_cd if drag_coeff is None else drag_coeff) * area_m2 / mass_kg  # [m^2/kg]
+    density, years, warnings = density_for_scenario(scenario, start_utc, years,
+                                                    forecast_percentile=forecast_percentile)
+    node_rate, perigee_rate = _j2_rates(orbit)
+    omega = np.array([0.0, 0.0, OMEGA_EARTH_RAD_S])
+    steps = max(1, int(round(years * 365.25 * 86400.0 / step_s)))
+    step_s = years * 365.25 * 86400.0 / steps  # [s]
+    times, cumulative = np.empty(steps), np.empty(steps)
+    total = 0.0  # [m/s]
+    for k in range(steps):
+        if should_cancel is not None and should_cancel():
+            raise LifetimeError("cancelled")
+        t_s = (k + 0.5) * step_s  # [s] mid-step
+        turned = MeanOrbit(orbit.semi_major_axis_m, orbit.eccentricity, orbit.inclination_rad,
+                           orbit.raan_rad + node_rate * t_s, orbit.arg_periapsis_rad + perigee_rate * t_s)
+        r, v = ring_states(turned, getattr(density, "points", RING_POINTS))
+        v_rel = v - np.cross(omega, r)
+        rho = density(t_s, r)
+        accel = -0.5 * ballistic * (rho * np.linalg.norm(v_rel, axis=1))[:, None] * v_rel  # [m/s^2]
+        total -= float(np.mean(np.sum(v * accel, axis=1) / np.linalg.norm(v, axis=1))) * step_s
+        times[k], cumulative[k] = (k + 1) * step_s, total
+    radius_r, _v = ring_states(orbit)
+    altitude_km = (float(np.linalg.norm(radius_r, axis=1).mean()) - REQ_EARTH_M) / 1e3
+    return DragMakeup(total, times, cumulative, altitude_km, years, warnings)
+
+
 def spacecraft_lifetime(scenario, spacecraft_name: str, max_years: float = 30.0,
                         should_cancel: Optional[Callable[[], bool]] = None,
-                        forecast_percentile: float = 50.0) -> LifetimeResult:
+                        forecast_percentile: float = 50.0, drag_coeff: Optional[float] = None) -> LifetimeResult:
     """Natural lifetime of one spacecraft from the scenario's start (see
     :func:`end_of_life` for after a run, or with a deorbit burn)."""
     return end_of_life(scenario, spacecraft_name, max_years=max_years, should_cancel=should_cancel,
-                       forecast_percentile=forecast_percentile).lifetime
+                       forecast_percentile=forecast_percentile, drag_coeff=drag_coeff).lifetime
 
 
 @dataclass
@@ -435,13 +520,15 @@ def _remaining_propellant(result, name: str, initial_kg: float) -> float:
 
 def end_of_life(scenario, spacecraft_name: str, result=None, deorbit_perigee_km: Optional[float] = None,
                 max_years: float = 30.0, should_cancel: Optional[Callable[[], bool]] = None,
-                forecast_percentile: float = 50.0) -> EndOfLife:
+                forecast_percentile: float = 50.0, drag_coeff: Optional[float] = None) -> EndOfLife:
     """Lifetime of one spacecraft after the run in ``result`` (from its
     last state, with the propellant left), or from the scenario's start
     when ``result`` is None. With ``deorbit_perigee_km``, an apogee burn
     first lowers the perigee there, or as far as the propellant allows.
     Solar activity at MSFC's ``forecast_percentile`` (ESA AD10 Sec. 5.9:
-    50 for end of life, whatever the scenario's operations setting)."""
+    50 for end of life, whatever the scenario's operations setting);
+    ``drag_coeff`` replaces the spacecraft's own (AD10 Sec. 5.2: 2.2 at
+    end of life, against 3.0 in operations)."""
     spacecraft = next((sc for sc in scenario.spacecraft if sc.name == spacecraft_name), None)
     if spacecraft is None:
         raise LifetimeError(f"no spacecraft named {spacecraft_name!r}")
@@ -478,7 +565,8 @@ def end_of_life(scenario, spacecraft_name: str, result=None, deorbit_perigee_km:
             needed_kg = propellant_kg
         plan = DeorbitPlan(deorbit_perigee_km, lowered.perigee_altitude_km, delta_v, needed_kg, propellant_kg)
         orbit, mass_kg = lowered, mass_kg - needed_kg
-    area_m2, drag_coeff = drag_properties(spacecraft)
+    area_m2, own_cd = drag_properties(spacecraft)
+    drag_coeff = own_cd if drag_coeff is None else drag_coeff
     start_utc = _parse_utc(scenario.epoch_utc) + timedelta(seconds=elapsed_s)
     density, horizon_years, warnings = density_for_scenario(scenario, start_utc, max_years,
                                                             forecast_percentile=forecast_percentile)

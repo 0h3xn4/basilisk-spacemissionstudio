@@ -263,8 +263,10 @@ def cmd_lifetime(args: argparse.Namespace) -> int:
         print(f"ERROR: Basilisk is not installed/built ({exc}) -- see SpaceMissionStudio/README.md", file=sys.stderr)
         return 2
     try:
+        drag_coeff = None if args.drag_coeff == "own" else float(args.drag_coeff)
         end = lifetime.end_of_life(scenario, name, deorbit_perigee_km=args.deorbit_perigee_km,
-                                   max_years=args.max_years, forecast_percentile=args.forecast_percentile)
+                                   max_years=args.max_years, forecast_percentile=args.forecast_percentile,
+                                   drag_coeff=drag_coeff)
     except lifetime.LifetimeError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 3
@@ -284,6 +286,16 @@ def cmd_lifetime(args: argparse.Namespace) -> int:
     for warning in result.warnings:
         print(f"WARNING: {warning}", file=sys.stderr)
     return 0
+
+
+def _drag_coeff_arg(text: str) -> str:
+    if text != "own":
+        try:
+            if not 0.0 < float(text) <= 10.0:
+                raise ValueError
+        except ValueError:
+            raise argparse.ArgumentTypeError(f"{text!r}: a drag coefficient in (0, 10], or 'own'") from None
+    return text
 
 
 def cmd_budget(args: argparse.Namespace) -> int:
@@ -307,6 +319,8 @@ def cmd_budget(args: argparse.Namespace) -> int:
         except Exception as exc:  # noqa: BLE001 -- report ANY run failure with a specific message
             print(f"ERROR: run failed: {exc}", file=sys.stderr)
             return 3
+    if args.launch_delays:
+        return _print_launch_delays(pb, scenario, name, result)
     try:
         budget = pb.compute_budget(scenario, name, result)
     except pb.BudgetError as exc:
@@ -319,6 +333,26 @@ def cmd_budget(args: argparse.Namespace) -> int:
         print(f"{row.phase:<18} {row.contributor:<52} {dv:>9} {row.propellant_kg:>10.3f}  {row.margin} ({row.source})")
     print(f"{'Total':<71} {budget.total_delta_v_m_s:>9.2f} {budget.total_propellant_kg:>10.3f}")
     for note in budget.notes:
+        print(f"NOTE: {note}")
+    return 0
+
+
+def _print_launch_delays(pb, scenario, name, result) -> int:
+    print(f"{name}: budget for the planned launch and up to 5 years late (ESA AD10 Sec. 5.5)...")
+    try:
+        sweep = pb.launch_delay_sweep(scenario, name, result)
+    except pb.BudgetError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 3
+    print(f"{'Launch':<11} {'Delay':>6} {'In-plane dV':>12} {'Disposal dV':>12} {'Total dV':>9} {'Prop. [kg]':>10}")
+    worst = sweep.worst
+    for case in sweep.cases:
+        in_plane = case.delta_v_of("Operations", "In-plane")
+        disposal = case.delta_v_of("End of life", "")
+        mark = "  <- worst" if case is worst else ""
+        print(f"{case.launch_utc:%Y-%m-%d} {case.delay_years:>5g}y {in_plane:>12.2f} {disposal:>12.2f} "
+              f"{case.budget.total_delta_v_m_s:>9.2f} {case.budget.total_propellant_kg:>10.3f}{mark}")
+    for note in sweep.notes:
         print(f"NOTE: {note}")
     return 0
 
@@ -533,6 +567,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_life.add_argument("--max-years", type=float, default=30.0, help="how far ahead to look [years]")
     p_life.add_argument("--forecast-percentile", type=float, choices=(95.0, 50.0, 5.0), default=50.0,
                         help="MSFC solar-activity percentile (ESA AD10: 50 for end of life)")
+    p_life.add_argument("--drag-coeff", default="2.2", type=_drag_coeff_arg,
+                        help="drag coefficient, or 'own' for the spacecraft's (default 2.2: ESA AD10 end of life)")
     p_life.set_defaults(func=cmd_lifetime)
 
     p_budget = subparsers.add_parser("budget", help="delta-V and propellant budget (ESA AD10 style)")
@@ -540,6 +576,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_budget.add_argument("--spacecraft", help="spacecraft name (default: the first)")
     p_budget.add_argument("--run", action="store_true",
                           help="run the scenario first, for orbit control and formation keeping")
+    p_budget.add_argument("--launch-delays", action="store_true",
+                          help="repeat the budget for launches 1-5 years late (ESA AD10 Sec. 5.5)")
     p_budget.set_defaults(func=cmd_budget)
 
     p_kernels = subparsers.add_parser("kernels-status", help="fetch/check SPICE kernel cache status")

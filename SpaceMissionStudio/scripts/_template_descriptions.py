@@ -97,7 +97,8 @@ Try changing:
 
 Note:
 - Drag uses real space weather; 2030 is NASA MSFC's 50th-percentile prediction. For an ESA AD10 \
-operations budget, set the forecast percentile to 95th in Propagation setup.""",
+operations budget, set the forecast percentile to 95th in Propagation setup.
+- Cd 3.0: AD10's operations value.""",
 
     "05": """\
 Two spacecraft in Sun-synchronous orbits, with follower-1 holding 50 km ahead of chief-1 for 90 days. The \
@@ -280,7 +281,9 @@ Try changing:
 - Deadband.
 
 Note:
-- Drag uses real space weather; 2030 is NASA MSFC's 50th-percentile prediction.""",
+- Drag uses real space weather; 2030 is NASA MSFC's 50th-percentile prediction.
+- Cd 3.0: ESA AD10's operations value. The Budget tab's Launch delays repeats the budget for launches \
+up to 5 years late.""",
 
     "19": """\
 leo-comms-1 points its solar panel at the Sun, and slews its antenna to the Berlin ground station whenever \

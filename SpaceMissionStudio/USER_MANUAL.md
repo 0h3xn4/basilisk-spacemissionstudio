@@ -373,9 +373,11 @@ approach, the FCC) and the 25-year guideline (IADC) are met. Choose
 propellant it left. Tick **Lower perigee to** to plan a deorbit burn
 with the orbit thruster; if the propellant is short, it says how low
 the perigee gets. The estimate takes seconds and agrees with full
-simulations to about 2%. It uses the scenario's atmosphere and the real
-space-weather record, which ends in 2041 (NOAA's forecast); a longer
-look-ahead stops there and says so.
+simulations to about 2%. It uses the scenario's atmosphere and real
+space weather: the observed record, then NASA MSFC's prediction, whose
+last solar cycle repeats past 2041. **Drag coefficient** defaults to
+2.2, ESA AD10's end-of-life value; the templates fly at 3.0, its
+operations value.
 
 **You need a delta-V and propellant budget.** Fill in the spacecraft
 editor's **Budget (AD10)** tab, run the mission (ideally its whole
@@ -383,7 +385,16 @@ length, with the forecast percentile at 95th and Cd 3.0 for an ESA AD10
 budget), then press **Compute budget** on the **Budget** tab. It lists
 each contributor per mission phase with its margin, the total, and notes
 on anything that departs from the guideline. **Copy as CSV** puts the
-table on the clipboard.
+table on the clipboard. Without a run, a LEO station keeper's orbit
+control is estimated from the drag on its orbit (full runs spent ~5%
+more).
+
+**Launch delays** repeats the budget for launches 1 to 5 years late, as
+AD10 asks: a later launch meets a different part of the solar cycle.
+Orbit control is scaled by how much more (or less) drag each window has,
+and the disposal is worked out again from each end of life. The worst
+launch date is in bold; pick any row for its full budget. Allow a
+minute or two.
 
 **You're not sure what a field in the Scenario Editor means.** Hover
 over it -- most fields have a tooltip explaining what it does in plain
@@ -432,6 +443,9 @@ anyone who hasn't worked with spacecraft before:
   re-entry (here: the perigee reaching 120 km). Disposal rules cap it
   after the mission ends: 5 years under ESA's Zero Debris approach and
   the FCC, 25 years under the older IADC guideline.
+* **Drag coefficient (Cd)** -- how strongly the thin upper atmosphere
+  drags on a spacecraft for its size. ESA's AD10 guideline uses 3.0 for
+  operations (a conservative, higher drag) and 2.2 for end of life.
 * **Station-keeping** -- firing small thruster burns periodically to
   correct a satellite's orbit as it naturally drifts (from gravity
   irregularities, drag, etc.), so it stays where it's supposed to be.

@@ -84,6 +84,7 @@ def _template_18(altitude_km, duration_days=1.0):
     scenario = load_scenario(_TEMPLATES / "18_leo_station_keeping.json")
     scenario.spacecraft[0].orbit.semi_major_axis_km = lifetime.REQ_EARTH_M / 1e3 + altitude_km  # [km]
     scenario.spacecraft[0].station_keeping = None
+    scenario.spacecraft[0].drag_coeff = 2.2  # [-] the figures quoted below (the template flies at 3.0)
     scenario.sim_settings.duration_days = duration_days  # [day]
     scenario.sim_settings.record_interval_s = 300.0  # [s]
     return scenario
@@ -206,3 +207,44 @@ def test_a_run_stops_cleanly_when_its_spacecraft_reenters(monkeypatch):
     assert len(reentries) == 1 and reentries[0].endswith("the run stopped there")
     altitude_km = (np.linalg.norm(result.series["leo-sat-1.position_N"].data[-1]) - lifetime.REQ_EARTH_M) / 1e3
     assert 0.0 < altitude_km < 200.0  # [km] stopped near the ground, not inside it
+
+
+@pytest.mark.requires_basilisk
+def test_the_held_orbit_sits_at_the_station_keeping_target():
+    """Station keeping holds the mean radius at Req + target (400.3 km in
+    the five-year runs): the J2 short-period terms put the mean
+    semi-major axis ~4.6 km lower."""
+    from spacemissionstudio.schema import load_scenario
+
+    spacecraft = load_scenario(_TEMPLATES / "18_leo_station_keeping.json").spacecraft[0]
+    orbit = lifetime.held_orbit(spacecraft)
+    r, _v = lifetime.ring_states(orbit)
+    assert (np.linalg.norm(r, axis=1).mean() - lifetime.REQ_EARTH_M) / 1e3 == pytest.approx(400.0, abs=0.01)
+    assert 394.0 < (orbit.semi_major_axis_m - lifetime.REQ_EARTH_M) / 1e3 < 397.0  # [km]
+
+
+@pytest.mark.requires_basilisk
+def test_drag_makeup_is_the_delta_v_the_decay_takes_away():
+    """Over 5 days from 400 km, the make-up delta-V matches what the same
+    drag takes out of the free-decaying orbit (dV = n * da / 2 on a
+    circle) to 2.5% (measured 1.9%: 1.3% already over one day, from the
+    decay's Gauss equation taking the mean semi-major axis with the
+    osculating velocities; the rest as the decaying orbit sinks into
+    denser air); Cd 3.0 is 3.0/2.2 times Cd 2.2."""
+    scenario = _template_18(400.0)
+    spacecraft = scenario.spacecraft[0]
+    start = datetime(2030, 1, 1)
+    window_years = 5.0 / 365.25  # [year]
+    makeup = lifetime.drag_makeup(scenario, spacecraft, start, window_years, drag_coeff=2.2)
+    assert makeup.cumulative_m_s[-1] == pytest.approx(makeup.delta_v_m_s)
+    assert np.all(np.diff(makeup.cumulative_m_s) > 0.0)
+
+    orbit = lifetime.held_orbit(spacecraft)
+    density, _years, _warnings = lifetime.density_for_scenario(scenario, start, 1.0)
+    decay = lifetime.propagate_decay(orbit, start, 2.2 * spacecraft.drag_area_m2 / spacecraft.dry_mass_kg,
+                                     density, window_years)
+    end_sma_m = lifetime.REQ_EARTH_M + 0.5e3 * (decay.perigee_altitude_km[-1] + decay.apogee_altitude_km[-1])
+    n = math.sqrt(lifetime.MU_EARTH_M3_S2 / orbit.semi_major_axis_m ** 3)  # [rad/s]
+    assert makeup.delta_v_m_s == pytest.approx(0.5 * n * (orbit.semi_major_axis_m - end_sma_m), rel=0.025)
+    harder = lifetime.drag_makeup(scenario, spacecraft, start, window_years, drag_coeff=3.0)
+    assert harder.delta_v_m_s == pytest.approx(makeup.delta_v_m_s * 3.0 / 2.2, rel=1e-9)

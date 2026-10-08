@@ -51,7 +51,7 @@
         0.0005
       ],
       "enable_drag": true,
-      "drag_coeff": 2.2,
+      "drag_coeff": 3.0,
       "drag_area_m2": 1.0,
       "enable_srp": true,
       "srp_coeff": 1.3,
@@ -156,6 +156,7 @@
       "momentum_dumping": null,
       "magnetic_momentum_management": null,
       "fuel_tank": null,
+      "propellant_budget": null,
       "vizard_model_path": null,
       "vizard_model_offset_m": [
         0.0,
