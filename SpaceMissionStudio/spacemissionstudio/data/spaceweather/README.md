@@ -22,7 +22,8 @@ replaces this one automatically; see `engine/spaceweather.py`.
 `oct2026f10-prd.txt` is NASA Marshall Space Flight Center's solar-cycle
 prediction of October 2026 ("Table 3: estimates of 13-month smoothed solar
 activity for the balance of cycle 25, with a mean cycle for cycle 26"),
-unmodified: monthly F10.7 and Ap at the 95th, 50th and 5th percentiles
+unmodified except for line endings (stored with LF): monthly F10.7 and Ap
+at the 95th, 50th and 5th percentiles
 from 2026-04 to 2041-10.
 
 * source: <https://www.nasa.gov/solar-cycle-progression-and-forecast/>
