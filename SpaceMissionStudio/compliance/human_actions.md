@@ -1,0 +1,27 @@
+# Human actions
+
+Items the audit cannot complete, because they need a person's decision,
+signature, review, or resources this environment does not have.
+
+- H01 to H10 come from `gap_analysis.md` section 11 (Phase 1, with H08 to
+  H10 added in Phases 2 and 3).
+- H11 to H13 were added in Phase 4.
+- Until an item is done, the requirements it covers stay "requires human
+  or process action" (or partial) in `compliance_matrix.csv`.
+- **No item has been done.**
+
+| # | Action | Who | Covers (requirement groups) | Waiting on it | What to produce |
+|---|---|---|---|---|---|
+| H01 | Hold the reviews: SRR, PDR, CDR, QR, AR, TRR, or a documented reduced set for category C; the SDP proposes SRR/PDR, CDR/QR, AR. Review the Phase 4 documents and this audit. | Customer (the user) with an independent reviewer | E-ST-40C 5.2.5, 5.3.3–5.3.5, 5.4.4, 5.5.2.10, 5.6.3.4, 5.6.4.4, 5.7.3, 5.11.5 | Every document in `compliance/docs/` (all are drafts); acceptance of the component descriptions generated from code (SDD 5.4.1) | Review records (RIDs, minutes), document approvals |
+| H02 | Set up the product assurance organisation: name an SPA manager (can be the user) and a security manager; resources; training; PA reporting; a software security management plan. | User | Q-ST-80C 5.1, 5.2.2–5.2.3, 5.7, Annex C; E-ST-40C 5.11.2 | SPAP 5.1–5.3, 5.9; SVerP 4.2, 4.5; SValP 4.2, 4.5; SMP 6.4; security analysis | Named roles; a security management plan; the SPAMR from then on |
+| H03 | Provide the customer specification: an SSS, an IRD, and installation and acceptance requirements. Agree the data-exchange interfaces (the ICD's CCSDS items). | Customer | E-ST-40C 5.2, 5.7.3, 5.8.3.1; CCSDS 502.0-B-3 3.1.6–3.1.7 | SRS (derived from the implementation, not from a baseline); validation against a requirements baseline (SValP 4.1) | SSS, IRD, or a recorded decision that the SRS stands in for them |
+| H04 | Sign off the criticality category (C, decision 1) with a dependability and safety analysis. | User, with a dependability engineer | Q-ST-80C 5.4.4, 6.2.2, 6.2.3 | SPAP 6.3; SDD 6 | Signed classification; analysis report |
+| H05 | Establish problem reporting, nonconformance control, change control (a configuration control board), risk management, operation support and the release procedure: version number, tag, signing. | User | Q-ST-80C 5.2.4–5.2.6, 5.3, 6.2.4; E-ST-40C 5.9, 5.10, 5.7.2.1b | SMP 10, 13, 14; SDP 4.5, 6; SRelD (unreleased candidate: version still 2.0.0); security analysis S-07, S-08 | Procedures; an issue tracker set-up; the release of this candidate with a new version |
+| H06 | Have a person independent of the development review the code written by the AI assistant: at least the budget, lifetime, frame and time, environment, mission-engine (script and condition handling) and CCSDS code. | Independent reviewer | Q-ST-80C 6.2.6; E-ST-40C 5.8.3.5a | SVerP 4.1 (no independence today) | Review report; resulting fixes |
+| H07 | Accept the reused software: Basilisk 2.12.0, numpy, sgp4, pyerfa, PySide6, plotly, Basilisk's own dependencies, Vizard. Check licences (PySide6 LGPL/GPL, Vizard's licence) and export status. | User (and legal or export control if needed) | Q-ST-80C 5.4, 5.5, 6.2.7; E-ST-40C 5.3.2.3, 5.4.3.7 | SRF 4–6 | Signed acceptance in the SRF |
+| H08 | Sign the deviations D-01 to D-07. Supply IERS TN36 so the GM values of D-07 can be checked, and confirm the figures marked *(to confirm)*. | Customer | E-ST-10-04C 4.2.2d and the clauses in `deviations.md` | `deviations.md` | Signed deviations |
+| H09 | Agree the coding standard's thresholds with the customer: coverage (category C is "TBA" in Q-ST-80C Table 5-1; 90 % statements is used), complexity (15), the metrics set. | Customer and supplier | Q-ST-80C 6.3.4.4a, 7.1.2a; E-ST-40C 5.8.3.5b | `coding_standard.md`; SPAP 7; SPAMR | Agreed thresholds |
+| H10 | Report F-01 (linear extrapolation of the planet orientation in `GravBodyData::computeGravityInertial`) and F-07 (spherical altitude and latitude in the atmosphere models) to the Basilisk developers. Drop `engine/planet_rotation.py` and `engine/geodetic_atmosphere.py` once a qualified Basilisk release fixes them. | User (GitHub issues to AVSLab/basilisk) | Q-ST-80C 6.2.7, 7.1.7a | SRF 8; SMP 4 | Upstream issues; later, requalification |
+| H11 | Check, with a real Vizard, that a live stream still works when the tool sets `vizInterface.reqComAddress` and `pubComAddress` to 127.0.0.1. Then let the tool make that change. Until then, firewall ports 5556 and 5570 on untrusted networks. | User or developer with Vizard and a display | E-ST-40C 5.11.4a; Q-ST-80C 6.2.9.4a | security analysis S-06; SUM 9.9; SRelD K-05 | Verified change, or an accepted residual risk |
+| H12 | Supply the documents the audit needed but was not given: ECSS-M-ST-40C (the SCMP DRD), ECSS-M-ST-10-01 (reviews and RIDs, cited by the SRevP DRD), ECSS-Q-ST-30/40 (criticality, decision 3), IERS TN36 (H08), NOAA's WMM2025 report (V-07). Decide whether an SRevP (E-ST-40C Annex P) is wanted; none was written. | User | The clauses that cite them | SDP 6 (CM described, SCMP DRD not checked); V-07 (WMM values not checked against NOAA) | The documents, or a decision to proceed without them |
+| H13 | Define the reference PC. Measure run time and memory there (SRS-P-09, SRS-R-02). Test on Windows (and macOS if wanted), including the Windows installer. | User | E-ST-40C 5.6, 5.7.3; SRS-P-09, SRS-R-02, SRS-PO-01, SRS-DEL-01 | SVR (not measured, not tested); SRelD K-06, K-07 | Measurements and test records |

@@ -30,7 +30,7 @@ Result: **2055 passed, 11 skipped, 0 failed** (245 s, 3 workers). Every later ph
 | 1 Audit and gap analysis | done: `gap_analysis.md`, `compliance_matrix.csv` (2084 rows); plan and D1-D8 **approved by the user (2026-10-08)** |
 | 2 Implementation | done: R01-R12 (`phase2_log.md`); deviations D-01 to D-07 (`deviations.md`) |
 | 3 Verification and validation | done: V-01, V-02 and V-04 to V-08 within tolerance (no case V-03 was defined) (`phase3_log.md`, `tests/validation/`); findings F-01 to F-08, two Basilisk accuracy defects corrected in the tool (F-01, F-07) |
-| 4 Documentation | not started |
+| 4 Documentation | done: R14 (16 documents to their DRDs in `docs/`, checked by `tools/check_drds.py`; generated parts kept current by CI), R15 (`docs/security_analysis.md`; script-block consent, safe conditions, checksums, security lint); `human_actions.md` (H01-H13); `summary_report.md`. Not written: SSS/IRD (H03), SRevP and SCMP (DRDs not supplied, H12). |
 
 ## Decisions recorded
 
@@ -65,6 +65,7 @@ the table below.
 | After Phase 1 | 2055 | 11 | 0 (no difference) |
 | After Phase 2 (R01-R12) | 2188 | 11 | 0 (133 new tests; changed expectations listed in `phase2_log.md`) |
 | After Phase 3 (R13) | 2209 | 11 | 0 (21 new tests; changed expectations listed in `phase3_log.md`) |
+| After Phase 4 (R14, R15) | 2239 | 11 | 0 (30 new tests; changed expectations: the script-block tests pass consent, the condition hint text; listed in the R15 commit) |
 
 ## Resuming
 

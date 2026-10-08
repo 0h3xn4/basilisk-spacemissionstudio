@@ -24,9 +24,17 @@ ones supplied, and every requirement ID and text here comes from them.
 * `tools/extract_requirements.py` -- regenerates the CSVs from the
   standards' text.
 
-Later phases add `gap_analysis.md`, `compliance_matrix.csv`, the
-traceability matrix, the deviation list and `docs/` (the DRD-based
-documents).
+* `gap_analysis.md`, `compliance_matrix.csv` (Phase 1; rebuilt by CI from
+  `audit/`), `traceability_matrix.csv`, `ics_ccsds_502.csv`.
+* `deviations.md` -- deviations D-01 to D-07 (unsigned).
+* `phase2_log.md`, `phase3_log.md` -- implementation and validation logs.
+* `docs/` -- the DRD-based documents (Phase 4): SRS, ICD, SDD, CSD, SRF,
+  SVerP, SValP, SUITP, SVS, SVR, SUM, SRelD, SDP, SMP, SPAP, SPAMR, and the
+  security analysis. `*_fields.md`, `*_cli.md`, `*_components.md` and
+  `*_test_cases.md` are generated from the code by `tools/`; CI fails when
+  they are out of date, and `tools/check_drds.py` checks every DRD section.
+* `human_actions.md` -- what needs people (H01 to H13).
+* `summary_report.md` -- the audit's result.
 
 ## Requirement CSV columns
 
