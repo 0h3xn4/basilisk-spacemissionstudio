@@ -385,44 +385,65 @@ def evaluate_condition(expression: str, context: Dict[str, Any]) -> Any:
     return _evaluate(parse_condition(expression).body, context)
 
 
+def _name(node, context):
+    if node.id not in context:
+        raise ConditionError(f"unknown name {node.id!r} (available: {', '.join(sorted(context))})")
+    return context[node.id]
+
+
+def _slice(node, context):
+    return slice(*(None if part is None else _evaluate(part, context) for part in (node.lower, node.upper, node.step)))
+
+
+def _sequence(node, context):
+    values = [_evaluate(element, context) for element in node.elts]
+    return tuple(values) if isinstance(node, ast.Tuple) else values
+
+
+def _binary(node, context):
+    left, right = _evaluate(node.left, context), _evaluate(node.right, context)
+    if isinstance(node.op, ast.Pow) and abs(right) > _MAX_POWER_EXPONENT:
+        raise ConditionError(f"exponent {right} is too large")
+    return _BINARY[type(node.op)](left, right)
+
+
+def _boolean(node, context):
+    is_and = isinstance(node.op, ast.And)
+    value = None
+    for operand in node.values:
+        value = _evaluate(operand, context)
+        if bool(value) != is_and:
+            return value
+    return value
+
+
+def _compare(node, context):
+    left = _evaluate(node.left, context)
+    for op, comparator in zip(node.ops, node.comparators):
+        right = _evaluate(comparator, context)
+        if not _COMPARE[type(op)](left, right):
+            return False
+        left = right
+    return True
+
+
+_EVALUATORS = {
+    ast.Constant: lambda node, context: node.value,
+    ast.Name: _name,
+    ast.Subscript: lambda node, context: _evaluate(node.value, context)[_evaluate(node.slice, context)],
+    ast.Slice: _slice,
+    ast.Tuple: _sequence,
+    ast.List: _sequence,
+    ast.BinOp: _binary,
+    ast.UnaryOp: lambda node, context: _UNARY[type(node.op)](_evaluate(node.operand, context)),
+    ast.BoolOp: _boolean,
+    ast.Compare: _compare,
+    ast.IfExp: lambda node, context: _evaluate(node.body if _evaluate(node.test, context) else node.orelse, context),
+}
+
+
 def _evaluate(node: ast.AST, context: Dict[str, Any]) -> Any:
-    if isinstance(node, ast.Constant):
-        return node.value
-    if isinstance(node, ast.Name):
-        if node.id not in context:
-            raise ConditionError(f"unknown name {node.id!r} (available: {', '.join(sorted(context))})")
-        return context[node.id]
-    if isinstance(node, ast.Subscript):
-        return _evaluate(node.value, context)[_evaluate(node.slice, context)]
-    if isinstance(node, ast.Slice):
-        return slice(*(None if part is None else _evaluate(part, context)
-                       for part in (node.lower, node.upper, node.step)))
-    if isinstance(node, (ast.Tuple, ast.List)):
-        values = [_evaluate(element, context) for element in node.elts]
-        return tuple(values) if isinstance(node, ast.Tuple) else values
-    if isinstance(node, ast.BinOp):
-        left, right = _evaluate(node.left, context), _evaluate(node.right, context)
-        if isinstance(node.op, ast.Pow) and abs(right) > _MAX_POWER_EXPONENT:
-            raise ConditionError(f"exponent {right} is too large")
-        return _BINARY[type(node.op)](left, right)
-    if isinstance(node, ast.UnaryOp):
-        return _UNARY[type(node.op)](_evaluate(node.operand, context))
-    if isinstance(node, ast.BoolOp):
-        is_and = isinstance(node.op, ast.And)
-        value = None
-        for operand in node.values:
-            value = _evaluate(operand, context)
-            if bool(value) != is_and:
-                return value
-        return value
-    if isinstance(node, ast.Compare):
-        left = _evaluate(node.left, context)
-        for op, comparator in zip(node.ops, node.comparators):
-            right = _evaluate(comparator, context)
-            if not _COMPARE[type(op)](left, right):
-                return False
-            left = right
-        return True
-    if isinstance(node, ast.IfExp):
-        return _evaluate(node.body if _evaluate(node.test, context) else node.orelse, context)
-    raise ConditionError(f"{type(node).__name__} is not allowed in a condition")  # unreachable after parse
+    evaluator = _EVALUATORS.get(type(node))
+    if evaluator is None:  # unreachable after parse_condition
+        raise ConditionError(f"{type(node).__name__} is not allowed in a condition")
+    return evaluator(node, context)

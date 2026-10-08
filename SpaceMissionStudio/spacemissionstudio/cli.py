@@ -81,6 +81,19 @@ def cmd_validate(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_argument_error(scenario, args: argparse.Namespace):
+    """Why ``run`` cannot start with these arguments, or None. A scenario
+    with script blocks needs --allow-scripts: a scenario file must not run
+    code without the user knowing (SRS-S-03)."""
+    if args.vizard_save_file and args.vizard_live_stream:
+        return "pass at most one of --vizard-save-file / --vizard-live-stream"
+    blocks = script_blocks(scenario.mission_sequence)
+    if blocks and not args.allow_scripts:
+        return (f"{len(blocks)} script_block(s) ({', '.join(path for path, _ in blocks)}) run unrestricted "
+                "Python from the scenario file. Read the code first, then pass --allow-scripts to run it.")
+    return None
+
+
 def cmd_run(args: argparse.Namespace) -> int:
     try:
         scenario = load_scenario(args.scenario)
@@ -88,15 +101,9 @@ def cmd_run(args: argparse.Namespace) -> int:
         print(f"INVALID: {exc}", file=sys.stderr)
         return 1
 
-    if args.vizard_save_file and args.vizard_live_stream:
-        print("ERROR: pass at most one of --vizard-save-file / --vizard-live-stream", file=sys.stderr)
-        return 1
-    blocks = script_blocks(scenario.mission_sequence)
-    if blocks and not args.allow_scripts:
-        # SRS-S-03: a scenario file must not run code without the user knowing.
-        print(f"ERROR: {len(blocks)} script_block(s) ({', '.join(path for path, _ in blocks)}) run unrestricted "
-              "Python from the scenario file. Read the code first, then pass --allow-scripts to run it.",
-              file=sys.stderr)
+    argument_error = _run_argument_error(scenario, args)
+    if argument_error:
+        print(f"ERROR: {argument_error}", file=sys.stderr)
         return 1
 
     try:
