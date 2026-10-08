@@ -20,9 +20,12 @@ supplied document and must be confirmed by the signatory.
 | D-06 | ECSS-E-ST-10-04C 6.2.1c | The Basilisk sensorThermal model radiates to a 0 K sink, not 3 K. | (3 K / T)^4 is about 1e-8 of the radiated power at 300 K. The module's solar constant and Stefan-Boltzmann value are corrected by R06. | D3 |
 | D-07 | ECSS-E-ST-10-04C 4.2.2d | Planetary GM values are Basilisk's: Earth 398600.436 km^3/s^2 (BODY399_GM of de-403-masses.tpc, also Basilisk's MU_EARTH), the other bodies from the same file; not checked against IERS TN36. The GGM03S field's coefficients are normalised with 398600.4415 km^3/s^2 (its file header), so with spherical harmonics the two differ by 1.4e-8. | IERS TN36 was not supplied and iers.org could not be reached (2026-10-08). Effect measured in Phase 3 (validation V-04): 1.4e-8 in GM moves a 400 km orbit about 18 m along-track per day for the same initial state; the difference to TN36 is unknown until TN36 is supplied (H08). An earlier draft of this row gave the Earth value as 398600.4415; that was wrong and is corrected here. | D4 |
 
-Deviation candidate D-08 of `gap_analysis.md` (process items not executed)
-is not a deviation the tool can take: each such item is a human action in
-`human_actions.md`; whether to waive any of them is the customer's decision.
+| D-08 | ECSS-E-ST-40C 5.2.5a, 5.3.3, 5.3.4, 5.3.5, 5.4.2.4a, 5.4.4a, 5.5.2.10a, 5.6.3.4a, 5.6.4.4a, 5.7.3, 5.11.5 (the review requirements of H01) | No reviews (SRR, PDR, CDR, TRR, QR, AR) are held. The documents in `docs/` stay drafts, accepted by no review. | The user's decision for this single-person tool (2026-10-08, decision 7). The reviews' purpose, an independent check of requirements, design and results, is not replaced: the requirements stay open, and the independent code review (H06) is a separate item. A reviewer may be named later. | User, 2026-10-08 |
+
+The other process items not executed (deviation candidate D-08 of
+`gap_analysis.md`) are human actions in `human_actions.md`; only the
+reviews have been waived so far. Waiving any other item is the customer's
+decision.
 
 ## Signature
 

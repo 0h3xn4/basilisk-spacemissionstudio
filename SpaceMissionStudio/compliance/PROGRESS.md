@@ -52,6 +52,8 @@ Result: **2055 passed, 11 skipped, 0 failed** (245 s, 3 workers). Every later ph
 6. 2026-10-08, user: Earth GM stays 398600.436 km^3/s^2 (Basilisk's) under
    deviation D-07 (Phase 3 finding F-02); templates 04, 05, 07, 08 and 21
    keep their gravity degree (the 4.2.1b Explain-tab note stays).
+7. 2026-10-08, user: reviews (H01) are waived, deviation D-08; the
+   reviewer is to be decided later; no review data packages for now.
 
 ## Phase 1 test run
 

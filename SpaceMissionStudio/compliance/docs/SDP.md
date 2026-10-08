@@ -153,15 +153,14 @@ analysis, so there is no system life cycle to phase with.
 
 #### 5.2.3 Reviews and milestones identification and associated documentation (O.2.1<5.2.3>)
 
-**Proposed reviews (H01):**
-- A reduced set suited to category C: SRR/PDR combined, then CDR/QR
-  combined, then AR. The review sets the formalism.
-- **Purposes:**
-  - SRR/PDR: SRS, ICD, SDD, SVerP, SValP, SDP;
-  - CDR/QR: the code, SUITP, SVS, SVR;
-  - AR: SRelD, SUM, the open items.
-- **Roles:** the user as customer. A reviewer independent of the
-  development is needed (H06).
+**Reviews: none are held.** The user waived them on 2026-10-08 (deviation
+D-08, decision 7).
+- The documents stay drafts; no review accepts them.
+- A reviewer may be named later. If reviews are reinstated, the reduced set
+  proposed for category C was: SRR/PDR combined (SRS, ICD, SDD, SVerP,
+  SValP, SDP); CDR/QR combined (the code, SUITP, SVS, SVR); AR (SRelD, SUM,
+  the open items).
+- The independent code review (H06) is a separate item.
 
 ### 5.3 Software engineering standards and techniques (O.2.1<5.3>)
 

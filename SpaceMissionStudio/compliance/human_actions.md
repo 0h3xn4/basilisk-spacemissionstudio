@@ -8,11 +8,11 @@ signature, review, or resources this environment does not have.
 - H11 to H13 were added in Phase 4.
 - Until an item is done, the requirements it covers stay "requires human
   or process action" (or partial) in `compliance_matrix.csv`.
-- **No item has been done.**
+- **No item has been done.** H01 has been decided (waived); see its row.
 
 | # | Action | Who | Covers (requirement groups) | Waiting on it | What to produce |
 |---|---|---|---|---|---|
-| H01 | Hold the reviews: SRR, PDR, CDR, QR, AR, TRR, or a documented reduced set for category C; the SDP proposes SRR/PDR, CDR/QR, AR. Review the Phase 4 documents and this audit. | Customer (the user) with an independent reviewer | E-ST-40C 5.2.5, 5.3.3–5.3.5, 5.4.4, 5.5.2.10, 5.6.3.4, 5.6.4.4, 5.7.3, 5.11.5 | Every document in `compliance/docs/` (all are drafts); acceptance of the component descriptions generated from code (SDD 5.4.1) | Review records (RIDs, minutes), document approvals |
+| H01 | **Decided 2026-10-08: waived (deviation D-08, decision 7); reviewer to be decided later; no packages for now.** Was: hold the reviews: SRR, PDR, CDR, QR, AR, TRR, or a documented reduced set for category C; the SDP proposes SRR/PDR, CDR/QR, AR. Review the Phase 4 documents and this audit. | Customer (the user) with an independent reviewer | E-ST-40C 5.2.5, 5.3.3–5.3.5, 5.4.4, 5.5.2.10, 5.6.3.4, 5.6.4.4, 5.7.3, 5.11.5 | Every document in `compliance/docs/` (all are drafts); acceptance of the component descriptions generated from code (SDD 5.4.1) | Review records (RIDs, minutes), document approvals |
 | H02 | Set up the product assurance organisation: name an SPA manager (can be the user) and a security manager; resources; training; PA reporting; a software security management plan. | User | Q-ST-80C 5.1, 5.2.2–5.2.3, 5.7, Annex C; E-ST-40C 5.11.2 | SPAP 5.1–5.3, 5.9; SVerP 4.2, 4.5; SValP 4.2, 4.5; SMP 6.4; security analysis | Named roles; a security management plan; the SPAMR from then on |
 | H03 | Provide the customer specification: an SSS, an IRD, and installation and acceptance requirements. Agree the data-exchange interfaces (the ICD's CCSDS items). | Customer | E-ST-40C 5.2, 5.7.3, 5.8.3.1; CCSDS 502.0-B-3 3.1.6–3.1.7 | SRS (derived from the implementation, not from a baseline); validation against a requirements baseline (SValP 4.1) | SSS, IRD, or a recorded decision that the SRS stands in for them |
 | H04 | Sign off the criticality category (C, decision 1) with a dependability and safety analysis. | User, with a dependability engineer | Q-ST-80C 5.4.4, 6.2.2, 6.2.3 | SPAP 6.3; SDD 6 | Signed classification; analysis report |

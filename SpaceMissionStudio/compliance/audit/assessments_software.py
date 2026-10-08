@@ -36,7 +36,8 @@ Context used throughout:
 """
 
 _H = "H"
-_REVIEW_FIX = "Hold the review (can be a documented self-review plus an independent reviewer); keep minutes."
+_REVIEW_FIX = ("Reviews waived by the user 2026-10-08 (deviation D-08, decision 7; signature pending, H08); "
+               "the requirement stays open.")
 _PLAN_FIX = "Draft the plan in Phase 4 (compliance/docs/); user approves."
 _NO_SDP = "No software development plan; life cycle and standards are implicit."
 
