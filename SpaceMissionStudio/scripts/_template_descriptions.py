@@ -106,15 +106,15 @@ the separation drifts out of tolerance.
 
 What to look at:
 - follower-1.phasing_keeping.separation_error and .relative_semi_major_axis.
-- The separation drifts slowly, leaves its 10% band around day 21, and one correction brings it back in \
-about 2.5 days. It stays within 45-54 km for ~0.013 m/s.
+- The separation drifts slowly, leaves its 10% band around day 20, and one correction brings it back in \
+about 3 days. It stays within 45-52 km for ~0.013 m/s.
 
 Try changing:
 - Target separation (a list of values steps through a schedule).
 - Correction window: shorter is faster but costs more delta-V (roughly 1 / window).
 - Tolerance: tighter triggers corrections sooner.
 - follower-1's starting mean anomaly, to begin off target.
-- Duration: under ~21 days no correction fires; the maximum is 100 days.""",
+- Duration: under ~20 days no correction fires; the maximum is 100 days.""",
 
     "06": """\
 A spacecraft pointing at nadir, starting tipped away from it with a small body rate. There are no sensors \
