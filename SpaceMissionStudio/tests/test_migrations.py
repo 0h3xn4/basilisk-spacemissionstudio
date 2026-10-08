@@ -40,15 +40,25 @@ def test_migrate_bumps_schema_version_to_current():
     assert data["schema_version"] == CURRENT_SCHEMA_VERSION
 
 
-def test_migrate_rewrites_celestrak_source_to_synthetic():
+def test_migrate_rewrites_celestrak_source_to_bundled():
+    """v1 "celestrak" became v2 "synthetic", which became v3 "bundled"
+    (real CelesTrak data shipped with the app)."""
     data = migrate(_v1_scenario({"source": "celestrak"}))
-    assert data["space_weather"]["source"] == "synthetic"
+    assert data["space_weather"]["source"] == "bundled"
 
 
-def test_migrate_downgrades_conservative_celestrak_to_nominal_synthetic():
+def test_migrate_rewrites_a_v2_synthetic_source_to_bundled():
+    """The synthetic profile was removed: real space weather only."""
+    data = _v1_scenario({"source": "synthetic", "activity_level": "nominal"})
+    data["schema_version"] = 2
+    data = migrate(data)
+    assert data["space_weather"]["source"] == "bundled" and data["schema_version"] == 3
+
+
+def test_migrate_downgrades_conservative_celestrak_to_nominal_bundled():
     data = migrate(_v1_scenario({"source": "celestrak", "activity_level": "conservative",
                                   "activity_percentile": 95.0}))
-    assert data["space_weather"]["source"] == "synthetic"
+    assert data["space_weather"]["source"] == "bundled"
     assert data["space_weather"]["activity_level"] == "nominal"
 
 
@@ -85,7 +95,7 @@ def test_load_scenario_migrates_an_old_celestrak_file_end_to_end(tmp_path):
 
     scenario = load_scenario(path)
 
-    assert scenario.space_weather.source == "synthetic"
+    assert scenario.space_weather.source == "bundled"
     assert scenario.schema_version == CURRENT_SCHEMA_VERSION
 
 
@@ -97,7 +107,7 @@ def test_load_scenario_migrates_an_old_conservative_celestrak_file_end_to_end(tm
 
     scenario = load_scenario(path)
 
-    assert scenario.space_weather.source == "synthetic"
+    assert scenario.space_weather.source == "bundled"
     assert scenario.space_weather.activity_level == "nominal"
 
 

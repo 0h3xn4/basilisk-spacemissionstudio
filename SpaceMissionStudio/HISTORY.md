@@ -7640,3 +7640,19 @@ Each estimate takes 1-2 s; each Basilisk run took up to 5 minutes. The standalon
 **Limits:** Earth only; sphere drag, or the facets' tumbling average (sum of areas / 4); no SRP, third bodies or higher harmonics, which matter little for orbits that decay within decades. With the exponential atmosphere (fitted at sea level, ~1e9 times too thin at 400 km) the estimate warns that the lifetime is overstated.
 
 **Tests:** new `tests/test_lifetime.py` (burn arithmetic, facet area, rules; Basilisk: density against the simulation's, re-entry date against a decay run, end-of-run start and a short-propellant burn), `tests/gui/test_lifetime_widget.py`, a CLI test, and a span-independence test for synthetic space weather.
+
+## Real space weather only: synthetic profile removed
+
+User requirement: "never ever use synthetic space weather. Only real atmospheric models and data."
+
+**Now** `space_weather.source` is `"bundled"` (the default) or `"local_file"`:
+* **bundled:** CelesTrak's `SW-All` file shipped in `spacemissionstudio/data/spaceweather/` (CSSI format, updated 2025-07-21; taken unmodified from the `spaceweather` 0.4.2 package, which redistributes it with CelesTrak's permission; source <https://celestrak.org/SpaceData/>). A newer copy downloaded by the consent-gated startup prompt is used instead when it is newer.
+* **local_file:** your own CelesTrak file, `.txt` or `.csv`.
+
+The file holds observed daily Kp/Ap and F10.7 from 1957-10-01 to 2025-07-20, CelesTrak's 45-day forecast, and NOAA's monthly F10.7 forecast to 2041-10. That monthly forecast has no Ap, which NRLMSISE-00 needs. User decision: Ap there is held at the mean of every observed day (12.8), and runs say so in their warnings. A run outside the data's dates is refused, naming the range. The orbital-lifetime estimate stops where the data ends and says so; the rules it cannot decide read "not known".
+
+Kept, by user decision: the exponential atmosphere, and the `conservative` worst case (now a percentile of the bundled file's observed days by default, not only of a local file).
+
+**Migration:** schema version 3 rewrites `"synthetic"` to `"bundled"`; every template now uses `"bundled"`. The synthetic generator, its cycle shape and its cache files are gone. The 5-year and lifetime figures in the two entries above were measured with the synthetic profile; they are re-measured on the real data below.
+
+**Tests:** `tests/test_spaceweather.py` rewritten on excerpts of the real record (parsing against the raw file, observed and forecast windows, the coverage refusal, CelesTrak CSV parity, choosing the newer file, conservative percentiles), plus migration and GUI updates.

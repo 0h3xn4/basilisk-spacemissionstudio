@@ -23,6 +23,7 @@ deorbit burn -- computed on a background thread (a few seconds)."""
 
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import Optional
 
 from PySide6.QtCore import QPointF, QRectF, QSize, Qt, QThread, Signal
@@ -319,13 +320,14 @@ class LifetimeWidget(QWidget):
         result = end_of_life.lifetime
         self.status_label.setText("From the end of the last run" if end_of_life.from_end_of_run
                                   else "From the start of the scenario")
-        horizon_years = self.horizon_spin.value()
+        horizon_years = result.horizon_years or self.horizon_spin.value()  # [year] can stop at the data's end
         if result.reentered:
             self.tiles_row.addWidget(_stat_tile("Re-entry", f"{result.reentry_utc:%Y-%m-%d}"))
             self.tiles_row.addWidget(_stat_tile("Lifetime", _years_text(result.lifetime_years)))
         else:
-            self.tiles_row.addWidget(_stat_tile("Re-entry", f"after {horizon_years:g} years"))
-            self.tiles_row.addWidget(_stat_tile("Lifetime", f"> {horizon_years:g} years"))
+            end_utc = result.start_utc + timedelta(days=horizon_years * 365.25)
+            self.tiles_row.addWidget(_stat_tile("Re-entry", f"after {end_utc:%Y-%m}"))
+            self.tiles_row.addWidget(_stat_tile("Lifetime", f"> {horizon_years:.1f} years"))
         self.tiles_row.addWidget(_stat_tile("Mass", f"{end_of_life.mass_kg:.1f} kg"))
         plan = end_of_life.deorbit
         if plan is not None:
@@ -334,7 +336,7 @@ class LifetimeWidget(QWidget):
         self.tiles_row.addStretch(1)
 
         for years, label in ((lt.ZERO_DEBRIS_YEARS, "5-year rule"), (lt.IADC_YEARS, "25-year guideline")):
-            unknown = not result.reentered and horizon_years < years
+            unknown = not result.known(years)
             met = result.meets(years)
             text = f"{label}: {'not known' if unknown else 'met' if met else 'not met'}"
             badge = QLabel(text)

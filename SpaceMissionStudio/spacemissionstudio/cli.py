@@ -277,10 +277,10 @@ def cmd_lifetime(args: argparse.Namespace) -> int:
         print(f"{name}: re-entry {result.reentry_utc:%Y-%m-%d}, {result.lifetime_years:.2f} years from "
               f"{result.start_utc:%Y-%m-%d}")
     else:
-        print(f"{name}: still in orbit after {args.max_years:g} years")
+        print(f"{name}: still in orbit after {result.horizon_years:.1f} years")
     for years, label in ((lifetime.ZERO_DEBRIS_YEARS, "5-year rule"), (lifetime.IADC_YEARS, "25-year guideline")):
-        known = result.reentered or args.max_years >= years
-        print(f"  {label}: {('met' if result.meets(years) else 'not met') if known else 'not known'}")
+        verdict = ("met" if result.meets(years) else "not met") if result.known(years) else "not known"
+        print(f"  {label}: {verdict}")
     for warning in result.warnings:
         print(f"WARNING: {warning}", file=sys.stderr)
     return 0
@@ -324,7 +324,7 @@ def cmd_spaceweather_resolve(args: argparse.Namespace) -> int:
         print(f"ERROR: space weather resolve failed: {exc}", file=sys.stderr)
         return 3
     print(f"Resolved to: {resolved.path}")
-    print(f"Synthetic: {resolved.is_synthetic}")
+    print(f"From real data: {resolved.data_file}")
     for warning in resolved.warnings:
         print(f"  warning: {warning}")
     return 0

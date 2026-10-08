@@ -100,7 +100,7 @@
   ],
   "ground_stations": [],
   "space_weather": {
-    "source": "synthetic",
+    "source": "bundled",
     "local_file_path": null,
     "cache_dir": null,
     "atmosphere_model": "nrlmsise00",
@@ -122,5 +122,5 @@
   },
   "mission_sequence": [],
   "description": "The spacecraft's +Z axis stays pointed at the Moon for the whole run, about three-quarters of an orbit (locationPointing with a celestial target).\n\nWhat to look at:\n- Vizard's attitude view: the commanded attitude keeps changing as both the spacecraft and the Moon move.\n\nTry changing:\n- Target body: the Sun, a farther and slower target.\n- The pointing axis, to aim a different face.",
-  "schema_version": 2
+  "schema_version": 3
 }

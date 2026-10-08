@@ -373,8 +373,9 @@ approach, the FCC) and the 25-year guideline (IADC) are met. Choose
 propellant it left. Tick **Lower perigee to** to plan a deorbit burn
 with the orbit thruster; if the propellant is short, it says how low
 the perigee gets. The estimate takes seconds and agrees with full
-simulations to about 2%. It uses the scenario's atmosphere and space
-weather, so with the synthetic profile it is a shape, not a forecast.
+simulations to about 2%. It uses the scenario's atmosphere and the real
+space-weather record, which ends in 2041 (NOAA's forecast); a longer
+look-ahead stops there and says so.
 
 **You're not sure what a field in the Scenario Editor means.** Hover
 over it -- most fields have a tooltip explaining what it does in plain

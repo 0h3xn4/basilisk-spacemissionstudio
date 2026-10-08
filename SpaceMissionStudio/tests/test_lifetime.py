@@ -114,7 +114,7 @@ def test_density_matches_the_simulations_own_atmosphere():
     service.scSim.ExecuteSimulation()
 
     start = datetime(2030, 1, 1)
-    weather = spaceweather.resolve("synthetic", start, datetime(2031, 1, 1))
+    weather = spaceweather.resolve("bundled", start, datetime(2031, 1, 1))
     evaluator = lifetime.MsisDensity(weather.path, start, points=1)
     times = state.times() * 1e-9  # [s]
     for k in range(0, len(times), 40):
@@ -181,7 +181,7 @@ def test_the_exponential_atmosphere_is_flagged_as_too_thin():
                         space_weather=SpaceWeatherConfig(atmosphere_model="exponential"),
                         spacecraft=[SpacecraftConfig(name="s", orbit=OrbitIC(
                             type="cartesian", position_km=[6778.0, 0.0, 0.0], velocity_km_s=[0.0, 7.67, 0.0]))])
-    density, warnings = lifetime.density_for_scenario(scenario, datetime(2030, 1, 1), 1.0)
+    density, _years, warnings = lifetime.density_for_scenario(scenario, datetime(2030, 1, 1), 1.0)
     assert density is lifetime.exponential_density
     assert "far too thin" in warnings[0]
     assert density(0.0, np.array([[lifetime.REQ_EARTH_M + 400e3, 0.0, 0.0]]))[0] < 1e-20  # [kg/m^3]

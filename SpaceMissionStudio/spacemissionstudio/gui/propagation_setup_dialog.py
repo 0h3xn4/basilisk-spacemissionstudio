@@ -53,10 +53,10 @@ its own explicit enable control here:
   ``schema.scenario.SpaceWeatherConfig``'s own docstring for exactly
   what each selects and why (Basilisk has no Jacchia-Roberts model to
   offer, checked directly against its source; the percentile margin is
-  computed from real historical F10.7/Ap data the user supplies via a
-  local file). This dialog itself makes no network calls -- there is no
-  "celestrak" source option here, only "local_file"/"synthetic" -- but
-  its Local file field pre-fills with the path of the most recent
+  computed from the observed days of the real data file). This dialog
+  makes no network calls -- the sources are "bundled" (CelesTrak data
+  shipped with the app) and "local_file" -- but its Local file field
+  pre-fills with the path of the most recent
   startup-time fetch (``gui.startup_fetch_dialog``, a real CelesTrak CSV,
   only ever downloaded after the user explicitly agreed to it) when one
   exists and the scenario doesn't already have its own path set; see
@@ -96,6 +96,7 @@ from PySide6.QtWidgets import (
 from ..schema.scenario import (
     SUPPORTED_CENTRAL_BODIES,
     SUPPORTED_INTEGRATORS,
+    SUPPORTED_SPACE_WEATHER_SOURCES,
     GravityConfig,
     ScenarioValidationError,
     SimSettings,
@@ -396,14 +397,13 @@ class PropagationSetupDialog(QDialog):
         form.addRow("Atmosphere model", self.atmosphere_model_combo)
 
         self.space_weather_source_combo = ComboBox()
-        self.space_weather_source_combo.addItems(["synthetic", "local_file"])
+        self.space_weather_source_combo.addItems(list(SUPPORTED_SPACE_WEATHER_SOURCES))
         self.space_weather_source_combo.setCurrentText(space_weather.source)
         self.space_weather_source_combo.setToolTip(
-            "Where NRLMSISE-00's solar/geomagnetic activity inputs (F10.7, Ap) come from. "
-            "'synthetic' generates a nominal, solar-cycle-SHAPED profile locally -- plausible "
-            "but not a real historical record, and the only option that needs no extra setup. "
-            "'local_file' reads real historical data from a CSV you supply yourself (this app "
-            "makes no network calls at runtime -- see the field below)."
+            "Where NRLMSISE-00's F10.7 and Ap come from -- real data only. 'bundled': CelesTrak's "
+            "record shipped with the app (observed since 1957, a 45-day forecast, NOAA's monthly "
+            "F10.7 forecast to 2041; past the 45 days Ap is the observed mean). A newer copy from "
+            "the startup download is used automatically. 'local_file': your own CelesTrak file."
         )
         self.space_weather_source_combo.currentTextChanged.connect(self._on_space_weather_source_changed)
         form.addRow("Source", self.space_weather_source_combo)
@@ -411,9 +411,8 @@ class PropagationSetupDialog(QDialog):
         local_file_row = QHBoxLayout()
         self.local_file_edit = QLineEdit(space_weather.local_file_path or "")
         self.local_file_edit.setToolTip(
-            "Path to a real historical space-weather CSV (e.g. a CelesTrak F10.7/Ap extract "
-            "you downloaded ahead of time) -- only read when Source above is 'local_file'; "
-            "ignored otherwise. This app never fetches this itself at run time."
+            "A CelesTrak space-weather file (SW-All.txt or .csv) you downloaded yourself -- "
+            "only read when Source above is 'local_file'. This app never fetches it at run time."
         )
         self.local_file_edit.setPlaceholderText("only used when Source is local_file")
         self.local_file_browse_button = QPushButton("Browse...")
@@ -512,7 +511,7 @@ class PropagationSetupDialog(QDialog):
         the source IS local_file: real bug, found on a real user's
         machine, where pre-filling it for every scenario meant merely
         opening this dialog and clicking OK wrote the user's own absolute
-        cache path into a synthetic-source scenario (and so into any file
+        cache path into a bundled-source scenario (and so into any file
         they saved and shared). Never touches the network -- it only
         checks whether a previous fetch already left a file on disk.
         """
@@ -524,7 +523,8 @@ class PropagationSetupDialog(QDialog):
             self.local_file_edit.setText(str(cached))
 
     def _on_browse_local_file(self) -> None:
-        path, _filter = QFileDialog.getOpenFileName(self, "Select space-weather CSV", "", "CSV files (*.csv)")
+        path, _filter = QFileDialog.getOpenFileName(self, "Select a CelesTrak space-weather file", "",
+                                                    "Space weather (*.txt *.csv)")
         if path:
             self.local_file_edit.setText(path)
 

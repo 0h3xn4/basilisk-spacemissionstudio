@@ -90,7 +90,7 @@
   ],
   "ground_stations": [],
   "space_weather": {
-    "source": "synthetic",
+    "source": "bundled",
     "local_file_path": null,
     "cache_dir": null,
     "atmosphere_model": "nrlmsise00",
@@ -121,5 +121,5 @@
   },
   "mission_sequence": [],
   "description": "Template 01's circular orbit as a 20-run Monte Carlo batch: each run's dry mass is drawn from a normal distribution, 500 kg +/- 25 kg.\n\nWhat to look at:\n- Run it with Run Monte Carlo... and compare final positions across runs.\n- Mass barely matters here: with no drag, radiation pressure or burns, mass doesn't change the trajectory.\n\nTry changing:\n- Number of runs, or the standard deviation.\n- Turn on drag or radiation pressure to make mass matter.\n- Add an initial-attitude dispersion (needs full-attitude simulation).",
-  "schema_version": 2
+  "schema_version": 3
 }

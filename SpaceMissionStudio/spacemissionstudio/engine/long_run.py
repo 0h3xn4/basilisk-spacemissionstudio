@@ -34,9 +34,8 @@ simulation starting where the last one ended:
 
 Results are stitched into one :class:`ResultSet` on one time axis;
 cumulative delta-V series carry on from where the previous segment left
-off. When drag uses generated space weather (synthetic, or a
-conservative worst case) one file is made for the whole span, so solar
-activity is continuous across segments.
+off. Space weather is resolved once for the whole span, so a run past
+the real data's last date is refused before the first segment.
 
 Not carried, so restarted at each boundary: controllers' internal
 filters (the station-keeping altitude smoothing refills over one orbit,
@@ -106,7 +105,8 @@ def _parse_epoch(epoch_utc: str) -> datetime:
 
 def _whole_span_space_weather(scenario: Scenario) -> SpaceWeatherConfig:
     """One resolved file for the whole run (only matters with drag on an
-    NRLMSISE atmosphere), handed to every segment as a local file."""
+    NRLMSISE atmosphere), handed to every segment as a local file: the
+    whole span is checked against the data's dates up front."""
     sw_config = scenario.space_weather
     if sw_config.atmosphere_model != "nrlmsise00" or not any(sc.enable_drag for sc in scenario.spacecraft):
         return sw_config

@@ -20,13 +20,23 @@ r"""
 Space-weather resolution for Basilisk's ``spaceWeatherData`` module (which
 drives ``msisAtmosphere`` for atmospheric drag).
 
+**Real data only** (user requirement: "never ever use synthetic space
+weather -- only real atmospheric models and data"). ``source`` is
+``"bundled"`` (the default: CelesTrak's ``SW-All`` file shipped with the
+app, ``data/spaceweather/SW-All.txt``, or a newer one the startup prompt
+downloaded) or ``"local_file"`` (the user's own CelesTrak file). The file
+holds observed daily Kp/Ap and F10.7 since 1957, CelesTrak's 45-day
+forecast, and NOAA's monthly F10.7 forecast (to 2041 in the shipped
+copy). That monthly forecast has no Ap, and NRLMSISE-00 needs one: there,
+Ap is held at the mean of every observed day in the file (user decision;
+12.8 for the shipped copy) -- a single fixed number from the real
+record, reported in the run's warnings. A run outside the file's dates is
+refused rather than filled in.
+
 **Closed-off/offline policy**: SpaceMissionStudio never accesses the
 network implicitly at runtime (real user requirement -- "the app must be
 completely closed off and offline, only exception is the installation
-process"). ``resolve()`` itself NEVER touches the network: ``source`` is
-only ever ``"local_file"`` (a real file the user supplies) or
-``"synthetic"`` (the default -- a solar-cycle-SHAPED, never a real
-forecast, profile generated locally, no file or network needed).
+process"). ``resolve()`` itself NEVER touches the network.
 
 The ONE allowed exception, besides installation itself: a real user
 decision later relaxed the policy to also allow "a one-time fetch during
@@ -53,14 +63,10 @@ No Basilisk import in this module -- it is pure standard library + numpy,
 fully unit-testable without a Basilisk build (see ``tests/test_spaceweather.py``).
 
 Format note (verified against this checkout's own
-``spaceWeatherData.cpp``, not assumed): the loader parses its input CSV by
-**column name** from the header row, requiring only
-``DATE, AP1..AP8, AP_AVG, F10.7_OBS, F10.7_OBS_CENTER81`` to be present --
-extra columns are ignored. A real CelesTrak ``SW-All.csv``/
-``SW-Last5Years.csv`` download has those exact column names (plus many
-more Basilisk doesn't need), so it can be handed to
-``spaceWeatherData.loadSpaceWeatherFile()`` completely unmodified: no
-reformatting step exists or is needed in this module.
+``spaceWeatherData.cpp``): the loader parses its CSV by column name,
+requiring ``DATE, AP1..AP8, AP_AVG, F10.7_OBS, F10.7_OBS_CENTER81``.
+:func:`resolve` writes the run's days in exactly those columns from the
+real file (CelesTrak ``.txt`` or ``.csv``; :func:`load_celestrak`).
 
 Conservative ("worst-case") drag margin
 ----------------------------------------
@@ -72,15 +78,9 @@ project has no authoritative source for a specific fixed "worst-case"
 F10.7/Ap constant to hand-code (deliberately NOT guessed; see
 ``AGENTS.md``'s "never guess about Basilisk's API" spirit extended here
 to "never guess a specific physical constant either"). Real user
-decision: derive it statistically instead, from REAL historical F10.7/Ap
-records (never the synthetic generator, which is a fabricated profile,
-not observed history; see :func:`compute_worst_case_activity`/
-:func:`resolve`'s own docstrings for the refusal that enforces this).
-Since the offline policy above removed this module's own ability to pull
-that real historical record in automatically, "conservative" mode is now
-``source == "local_file"``-only: supply your own real historical CSV
-(e.g. a CelesTrak extract downloaded ahead of time, outside this app) via
-``local_file_path``.
+decision: derive it statistically instead, from the OBSERVED days of the
+same real file ``source`` names (the shipped CelesTrak record by default,
+68 years of it).
 
 The result -- :func:`generate_worst_case` -- is a CSV holding F10.7/Ap
 CONSTANT at the computed percentile across the whole scenario, not a
@@ -100,7 +100,7 @@ import csv
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -138,28 +138,11 @@ _USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like G
 # unbounded response into memory.
 _MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024
 
-# Synthetic fallback: an ~11-year solar-cycle envelope with correlated
-# day-to-day noise and occasional storm episodes -- shaped like real solar
-# activity, NOT a forecast. Ported from
-# ../missionAnalysis/generate_space_weather_placeholder.py, generalized to
-# take an arbitrary date range instead of reading missionAnalysis's own
-# mission_config.py.
-#
-# The envelope follows the calendar: cycle 25's minimum (December 2019) and
-# smoothed maximum (about October 2024), repeated every 11 years, with the
-# usual lopsided shape (a faster rise than decline). It used to start every
-# run 2 years before a maximum whatever its date, so a 2030-2035 mission --
-# really the quiet end of cycle 25 -- saw near-maximum drag.
-_PAD_DAYS = 10
-_F107_SOLAR_MIN = 70.0  # [sfu]
-_F107_SOLAR_MAX = 150.0  # [sfu]
-_CYCLE_PERIOD_DAYS = 11.0 * 365.25  # [day]
-_CYCLE_MINIMUM = datetime(2019, 12, 1)  # cycle 25 began
-_SYNTHETIC_ANCHOR = datetime(1990, 1, 1)  # synthetic sequences start here, so each date's values are fixed
-_CENTER81_HALF_WIDTH = 40  # [day] half of the 81-day F10.7 average
-_CYCLE_RISE_FRACTION = 0.44  # [-] minimum -> maximum (Oct 2024) as a fraction of the cycle
-_SYNTHETIC_VERSION = 3  # bump when the profile changes, so cached files are not reused
-
+# Real data shipped with the app: CelesTrak's SW-All (observed since 1957,
+# a 45-day daily forecast, NOAA's monthly F10.7 forecast) -- see
+# data/spaceweather/README.md for its source and date.
+BUNDLED_DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "spaceweather" / "SW-All.txt"
+_PAD_DAYS = 10  # [day] around a run: MSIS reads the previous days' Ap and F10.7
 
 class SpaceWeatherError(Exception):
     """Raised on an unresolvable space-weather request (bad source name,
@@ -182,8 +165,8 @@ class ValidationResult:
 
 @dataclass
 class ResolvedSpaceWeather:
-    path: Path
-    is_synthetic: bool
+    path: Path  # the CSV handed to Basilisk
+    data_file: Path  # the real data it was built from
     warnings: list = field(default_factory=list)
 
 
@@ -341,92 +324,216 @@ def cached_fetch_path(dataset: str = "SW-All", cache_dir: Optional[Path] = None)
     return path if path.exists() else None
 
 
-def _f107_base(dates) -> np.ndarray:
-    """Smooth F10.7 [sfu] on each date: a cosine rise from the cycle's
-    minimum to its maximum, then a slower cosine decline to the next
-    minimum."""
-    days = np.array([(d - _CYCLE_MINIMUM).total_seconds() / 86400.0 for d in dates])  # [day]
-    phase = np.mod(days, _CYCLE_PERIOD_DAYS) / _CYCLE_PERIOD_DAYS  # [-] 0 at minimum
-    rise = _CYCLE_RISE_FRACTION
-    level = np.where(phase < rise, 0.5 * (1.0 - np.cos(np.pi * phase / rise)),
-                     0.5 * (1.0 + np.cos(np.pi * (phase - rise) / (1.0 - rise))))  # [-] 0 min, 1 max
-    return _F107_SOLAR_MIN + (_F107_SOLAR_MAX - _F107_SOLAR_MIN) * level
+@dataclass
+class _DailyRecord:
+    ap: tuple  # eight 3-hour Ap values
+    ap_avg: float
+    f107_obs: float  # [sfu] observed (not 1-AU adjusted), as MSIS wants
+    f107_center81: float  # [sfu] observed, 81-day centred average
+    kind: str  # "observed", "daily_forecast" or "monthly_forecast"
 
 
-def generate_synthetic(start_utc: datetime, end_utc: datetime, dest_path, seed: int = 42) -> Path:
-    """Write a synthetic, solar-cycle-shaped (NOT a real forecast)
-    space-weather CSV covering ``[start_utc, end_utc]`` (plus padding) to
-    ``dest_path``, in the exact column layout :func:`validate_file`/
-    Basilisk's loader expect.
+@dataclass
+class CelestrakData:
+    """A parsed CelesTrak space-weather file, one record per day."""
 
-    Every date gets the same values whatever span is asked for: the
-    sequence always runs from :data:`_SYNTHETIC_ANCHOR` (earlier only for
-    an earlier start), each quantity draws from its own random stream, and
-    the 81-day average is taken over days generated beyond the span's
-    ends. So a short run and a long run (or an orbit-lifetime estimate)
-    starting on the same day see the same storms.
-    """
-    start = start_utc - timedelta(days=_PAD_DAYS)
-    end = end_utc + timedelta(days=_PAD_DAYS)
-    start, end = (d.astimezone(timezone.utc).replace(tzinfo=None) if d.tzinfo else d for d in (start, end))
-    start = datetime(start.year, start.month, start.day)
-    anchor = min(_SYNTHETIC_ANCHOR, start)
-    first = (start - anchor).days  # index of the first written day
-    n_days = (end - anchor).days + 1 + _CENTER81_HALF_WIDTH  # generated, including days past the end
-    all_dates = [anchor + timedelta(days=i) for i in range(n_days)]
-    noise_rng, storm_rng, ap_rng = (np.random.default_rng([seed, stream]) for stream in range(3))
+    path: Path
+    updated: str  # the file's own "UPDATED" stamp, or ""
+    days: dict  # datetime.date -> _DailyRecord
+    long_term_ap: float  # mean daily Ap over every observed day
 
-    f107_base = _f107_base(all_dates)
-    noise = np.zeros(n_days)
-    steps = noise_rng.normal(0.0, 3.0, size=n_days)
-    for i in range(1, n_days):
-        noise[i] = 0.85 * noise[i - 1] + steps[i]
-    f107_all = np.clip(f107_base + noise, 65.0, 300.0)
-    sums = np.concatenate([[0.0], np.cumsum(f107_all)])
-    low = np.maximum(np.arange(n_days) - _CENTER81_HALF_WIDTH, 0)
-    high = np.minimum(np.arange(n_days) + _CENTER81_HALF_WIDTH + 1, n_days)
-    center81_all = (sums[high] - sums[low]) / (high - low)
+    @property
+    def first_date(self):
+        return min(self.days)
 
-    ap_all = np.zeros(n_days)
-    storm_prob = 0.02 + 0.03 * (f107_base - _F107_SOLAR_MIN) / (_F107_SOLAR_MAX - _F107_SOLAR_MIN)
-    day = 0
-    while day < n_days:
-        if storm_rng.random() < storm_prob[day]:
-            duration = storm_rng.integers(1, 4)
-            peak = storm_rng.uniform(30.0, 110.0)
-            for k in range(duration):
-                if day + k < n_days:
-                    ap_all[day + k] = max(ap_all[day + k], peak * (0.6 ** k))
-            day += duration
-        else:
-            ap_all[day] = storm_rng.uniform(3.0, 12.0)
-            day += 1
-    ap_3hr_all = np.clip(ap_all[:, None] + ap_rng.normal(0.0, 2.0, size=(n_days, 8)), 0.0, None)
+    @property
+    def last_date(self):
+        return max(self.days)
 
-    written = slice(first, n_days - _CENTER81_HALF_WIDTH)
-    dates = all_dates[written]
-    f107_obs, f107_center81 = f107_all[written], center81_all[written]
-    ap_avg, ap_3hr = ap_all[written], ap_3hr_all[written]
+    def kinds_between(self, start, end) -> set:
+        return {rec.kind for day, rec in self.days.items() if start <= day <= end}
 
+
+# CSSI text format, FORMAT(I4,I3,I3,I5,I3,8I3,I4,8I4,I4,F4.1,I2,I4,F6.1,I2,5F6.1)
+# (https://celestrak.org/SpaceData/SpaceWx-format.php): column slices.
+_TXT_AP = [(46 + 4 * k, 50 + 4 * k) for k in range(8)]
+_TXT_AP_AVG = (78, 82)
+_TXT_F107_OBS = (112, 118)
+_TXT_CTR81_OBS = (118, 124)
+
+
+def _number(text: str) -> Optional[float]:
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
+def _parse_txt(path: Path):
+    """(updated, daily rows, monthly rows) from a CSSI ``.txt`` file."""
+    daily, monthly, updated, section = [], [], "", None
+    with open(path) as f:
+        for line in f:
+            if line.startswith("UPDATED"):
+                updated = line[len("UPDATED"):].strip()
+            elif line.startswith("BEGIN "):
+                section = line.split()[1]
+            elif line.startswith("END "):
+                section = None
+            elif section and line[:4].strip().isdigit():
+                day = datetime(int(line[0:4]), int(line[4:7]), int(line[7:10])).date()
+                f107 = _number(line[slice(*_TXT_F107_OBS)])
+                center81 = _number(line[slice(*_TXT_CTR81_OBS)])
+                if section == "MONTHLY_PREDICTED":
+                    monthly.append((day, f107, center81))
+                    continue
+                aps = [_number(line[slice(*cols)]) for cols in _TXT_AP]
+                ap_avg = _number(line[slice(*_TXT_AP_AVG)])
+                kind = "observed" if section == "OBSERVED" else "daily_forecast"
+                daily.append((day, aps, ap_avg, f107, center81, kind))
+    return updated, daily, monthly
+
+
+def _parse_csv(path: Path):
+    """(updated, daily rows, monthly rows) from a CelesTrak ``.csv`` file
+    (``F10.7_DATA_TYPE`` OBS/INT, PRD, PRM) or any CSV with the columns
+    Basilisk's loader reads (taken as observed)."""
+    daily, monthly = [], []
+    with open(path, newline="") as f:
+        reader = csv.DictReader(f)
+        missing = [c for c in ("DATE", "AP_AVG", "F10.7_OBS", "F10.7_OBS_CENTER81")
+                   if c not in (reader.fieldnames or [])]
+        if missing:
+            raise SpaceWeatherError(f"{path} is missing column(s) {missing}")
+        for row in reader:
+            try:
+                day = datetime.strptime(row["DATE"].strip(), "%Y-%m-%d").date()
+            except (ValueError, AttributeError):
+                continue
+            f107, center81 = _number(row["F10.7_OBS"] or ""), _number(row["F10.7_OBS_CENTER81"] or "")
+            data_type = (row.get("F10.7_DATA_TYPE") or "OBS").strip().upper()
+            if data_type == "PRM":
+                monthly.append((day, f107, center81))
+                continue
+            aps = [_number(row.get(f"AP{k}") or "") for k in range(1, 9)]
+            kind = "daily_forecast" if data_type == "PRD" else "observed"
+            daily.append((day, aps, _number(row["AP_AVG"] or ""), f107, center81, kind))
+    return "", daily, monthly
+
+
+_LOADED: dict = {}  # (path, mtime) -> CelestrakData
+
+
+def load_celestrak(path) -> CelestrakData:
+    """Parse a real CelesTrak space-weather file (``.txt`` CSSI format or
+    ``.csv``) into daily records. NOAA's monthly F10.7 forecast covers
+    every day of its month as published; it has no Ap, so Ap there is
+    held at the mean of every observed day in the file -- one fixed
+    number from the real record, nothing generated."""
+    path = Path(path)
+    if not path.exists():
+        raise SpaceWeatherError(f"{path} does not exist")
+    key = (str(path.resolve()), path.stat().st_mtime)
+    if key in _LOADED:
+        return _LOADED[key]
+    parse = _parse_txt if path.suffix.lower() == ".txt" else _parse_csv
+    updated, daily, monthly = parse(path)
+    observed_ap = [ap_avg for _, _, ap_avg, _, _, kind in daily if kind == "observed" and ap_avg is not None]
+    if not observed_ap:
+        raise SpaceWeatherError(f"{path} has no observed Ap values")
+    long_term_ap = float(np.mean(observed_ap))
+    days: dict = {}
+    for day, aps, ap_avg, f107, center81, kind in daily:
+        if None in (ap_avg, f107, center81) or None in aps:
+            continue  # an incomplete row (e.g. today's, still being observed)
+        days[day] = _DailyRecord(tuple(aps), ap_avg, f107, center81, kind)
+    for month_start, f107, center81 in monthly:
+        if f107 is None or center81 is None:
+            continue
+        day = month_start
+        while day.month == month_start.month:
+            if day not in days:
+                days[day] = _DailyRecord((long_term_ap,) * 8, long_term_ap, f107, center81, "monthly_forecast")
+            day += timedelta(days=1)
+    if not days:
+        raise SpaceWeatherError(f"{path} has no usable space-weather rows")
+    data = CelestrakData(path, updated, days, long_term_ap)
+    _LOADED[key] = data
+    return data
+
+
+def real_data_path(source: str, local_file_path: Optional[str] = None, cache_dir: Optional[Path] = None) -> Path:
+    """The real data file a ``source`` uses: the user's own file, or for
+    ``"bundled"`` the newer of the file shipped with the app and one the
+    startup prompt downloaded (newer = later last observed day)."""
+    if source == "local_file":
+        if not local_file_path:
+            raise SpaceWeatherError("space_weather.source is 'local_file' but local_file_path was not set")
+        return Path(local_file_path)
+    if source != "bundled":
+        raise SpaceWeatherError(f"unknown space_weather.source {source!r}")
+    best, best_last = BUNDLED_DATA_PATH, None
+    for candidate in (BUNDLED_DATA_PATH, cached_fetch_path("SW-All", cache_dir)):
+        if candidate is None:
+            continue
+        try:
+            data = load_celestrak(candidate)
+        except SpaceWeatherError:
+            continue
+        last_observed = max((d for d, r in data.days.items() if r.kind == "observed"), default=None)
+        if last_observed is not None and (best_last is None or last_observed > best_last):
+            best, best_last = candidate, last_observed
+    return best
+
+
+def data_coverage(source: str, local_file_path: Optional[str] = None, cache_dir: Optional[Path] = None):
+    """(first, last) calendar dates the real data covers."""
+    data = load_celestrak(real_data_path(source, local_file_path, cache_dir))
+    return data.first_date, data.last_date
+
+
+def _write_basilisk_csv(data: CelestrakData, first, last, dest_path) -> Path:
+    """The days ``first``..``last`` in the columns Basilisk's loader reads."""
     dest_path = Path(dest_path)
     dest_path.parent.mkdir(parents=True, exist_ok=True)
     with open(dest_path, "w", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow(["DATE", "AP1", "AP2", "AP3", "AP4", "AP5", "AP6", "AP7", "AP8",
-                          "AP_AVG", "F10.7_OBS", "F10.7_OBS_CENTER81"])
-        for i, d in enumerate(dates):
-            writer.writerow(
-                [d.strftime("%Y-%m-%d")]
-                + [f"{v:.1f}" for v in ap_3hr[i]]
-                + [f"{ap_avg[i]:.1f}", f"{f107_obs[i]:.1f}", f"{f107_center81[i]:.1f}"]
-            )
+        writer.writerow(REQUIRED_COLUMNS)
+        day = first
+        while day <= last:
+            rec = data.days[day]
+            writer.writerow([day.strftime("%Y-%m-%d")] + [f"{v:g}" for v in rec.ap]
+                            + [f"{rec.ap_avg:g}", f"{rec.f107_obs:g}", f"{rec.f107_center81:g}"])
+            day += timedelta(days=1)
     return dest_path
 
 
-def _synthetic_cache_path(cache_dir: Optional[Path], start_utc: datetime, end_utc: datetime) -> Path:
+def _resolve_real(source: str, start_utc: datetime, end_utc: datetime, local_file_path: Optional[str],
+                  cache_dir: Optional[Path], warnings: list) -> "ResolvedSpaceWeather":
+    path = real_data_path(source, local_file_path, cache_dir)
+    data = load_celestrak(path)
+    first = (start_utc - timedelta(days=_PAD_DAYS)).date()
+    last = (end_utc + timedelta(days=_PAD_DAYS)).date()
+    if first < data.first_date or last > data.last_date:
+        raise SpaceWeatherError(
+            f"the real space-weather data ({path.name}) covers {data.first_date}..{data.last_date}; this run needs "
+            f"{first}..{last} (incl. {_PAD_DAYS} days either side) -- move the epoch or shorten the run")
+    missing = next((d for d in (first + timedelta(days=k) for k in range((last - first).days + 1))
+                    if d not in data.days), None)
+    if missing is not None:
+        raise SpaceWeatherError(f"{path.name} has no usable data for {missing}")
+    kinds = data.kinds_between(start_utc.date(), end_utc.date())
+    stamp = f", updated {data.updated}" if data.updated else ""
+    if "daily_forecast" in kinds:
+        warnings.append(f"space weather includes CelesTrak's 45-day forecast ({path.name}{stamp})")
+    if "monthly_forecast" in kinds:
+        warnings.append(f"space weather uses NOAA's monthly F10.7 forecast ({path.name}{stamp}), with Ap held at "
+                        f"the observed mean of {data.long_term_ap:.1f}")
     cache_dir = Path(cache_dir) if cache_dir else DEFAULT_CACHE_DIR
-    name = f"synthetic_v{_SYNTHETIC_VERSION}_{start_utc:%Y%m%d}_{end_utc:%Y%m%d}.csv"
-    return cache_dir / name
+    dest = cache_dir / f"real_{path.stem}_{int(path.stat().st_mtime)}_{first:%Y%m%d}_{last:%Y%m%d}.csv"
+    if not dest.exists():
+        _write_basilisk_csv(data, first, last, dest)
+    return ResolvedSpaceWeather(dest, path, warnings)
 
 
 # A percentile computed from less than a year of history isn't a
@@ -437,32 +544,11 @@ _MIN_HISTORICAL_DAYS = 365
 
 
 def _load_historical_activity(path) -> "tuple[np.ndarray, np.ndarray]":
-    """Read ``F10.7_OBS``/``AP_AVG`` as float arrays from a real
-    space-weather CSV (CelesTrak's own format, or a user-provided file in
-    the same layout) -- rows that fail to parse are skipped, not fatal
-    (real CelesTrak extracts have occasional blank/placeholder cells for
-    not-yet-observed recent days).
-    """
-    path = Path(path)
-    if not path.exists():
-        raise SpaceWeatherError(f"{path} does not exist")
-
-    f107_values: list = []
-    ap_values: list = []
-    with open(path, newline="") as f:
-        reader = csv.DictReader(f)
-        missing = [c for c in ("F10.7_OBS", "AP_AVG") if c not in (reader.fieldnames or [])]
-        if missing:
-            raise SpaceWeatherError(f"{path} is missing required column(s) {missing} for a historical-activity "
-                                     f"percentile computation")
-        for row in reader:
-            try:
-                f107_values.append(float(row["F10.7_OBS"]))
-                ap_values.append(float(row["AP_AVG"]))
-            except (TypeError, ValueError):
-                continue  # blank/placeholder cell -- skip, not fatal
-
-    return np.array(f107_values), np.array(ap_values)
+    """``F10.7_OBS``/``AP_AVG`` of every OBSERVED day in a real
+    space-weather file (forecast days are not history)."""
+    data = load_celestrak(path)
+    observed = [rec for rec in data.days.values() if rec.kind == "observed"]
+    return np.array([r.f107_obs for r in observed]), np.array([r.ap_avg for r in observed])
 
 
 def compute_worst_case_activity(path, percentile: float) -> "tuple[float, float, int]":
@@ -489,7 +575,7 @@ def generate_worst_case(f107_percentile: float, ap_percentile: float, start_utc:
                          dest_path) -> Path:
     """Write a space-weather CSV holding F10.7/Ap CONSTANT at
     ``f107_percentile``/``ap_percentile`` across ``[start_utc, end_utc]``
-    (plus the same padding :func:`generate_synthetic` uses) -- a sustained
+    (plus padding) -- a sustained
     "worst case could happen at any point in the mission" assumption, per
     :func:`compute_worst_case_activity`'s own docstring. AP1..AP8 (the
     eight 3-hour sub-values Basilisk's loader also requires) and
@@ -527,84 +613,43 @@ def _worst_case_cache_path(cache_dir: Optional[Path], start_utc: datetime, end_u
 def _resolve_conservative(source: str, start_utc: datetime, end_utc: datetime,
                            local_file_path: Optional[str], cache_dir: Optional[Path],
                            activity_percentile: float, warnings: list) -> ResolvedSpaceWeather:
-    """The ``activity_level == "conservative"`` branch of :func:`resolve` --
-    see that function's own docstring. Split out only for readability; not
-    meant to be called directly.
-    """
-    if source == "local_file":
-        if not local_file_path:
-            raise SpaceWeatherError("space_weather.source is 'local_file' but local_file_path was not set")
-        historical_path = Path(local_file_path)
-    elif source == "synthetic":
-        raise SpaceWeatherError(
-            "space_weather.activity_level='conservative' needs REAL historical F10.7/Ap data to compute a "
-            "percentile from -- source='synthetic' has none (it's a fabricated solar-cycle-shaped profile, "
-            "not observed history). Set source to 'local_file', or activity_level back to 'nominal'."
-        )
-    else:
-        raise SpaceWeatherError(f"unknown space_weather.source {source!r}")
-
+    """The ``activity_level == "conservative"`` branch of :func:`resolve`."""
+    historical_path = real_data_path(source, local_file_path, cache_dir)
     f107_p, ap_p, n_samples = compute_worst_case_activity(historical_path, activity_percentile)
     path = _worst_case_cache_path(cache_dir, start_utc, end_utc, activity_percentile)
     generate_worst_case(f107_p, ap_p, start_utc, end_utc, path)
     warnings.append(
         f"space weather is a CONSERVATIVE, sustained-worst-case profile: F10.7={f107_p:.1f} sfu, "
-        f"Ap={ap_p:.1f}, the {activity_percentile:.0f}th percentile of {n_samples} day(s) of REAL "
-        f"historical data from {historical_path.name}, held CONSTANT across the whole scenario duration -- "
-        "NOT real observed/forecast data for these specific dates, and by construction higher than almost "
-        "all actual days in that historical record."
+        f"Ap={ap_p:.1f}, the {activity_percentile:.0f}th percentile of {n_samples} observed day(s) in "
+        f"{historical_path.name}, held CONSTANT across the whole run -- by construction higher than almost "
+        "all actual days in that record."
     )
-    return ResolvedSpaceWeather(path, True, warnings)
+    return ResolvedSpaceWeather(path, historical_path, warnings)
 
 
 def resolve(source: str, start_utc: datetime, end_utc: datetime,
             local_file_path: Optional[str] = None, cache_dir: Optional[Path] = None,
             activity_level: str = "nominal", activity_percentile: float = 95.0) -> ResolvedSpaceWeather:
-    """Top-level entry point -- resolves a ``SpaceWeatherConfig`` (see
-    ``schema.scenario``) into an actual, validated CSV path Basilisk's
-    ``spaceWeatherData.loadSpaceWeatherFile()`` can load.
+    """Resolve a ``SpaceWeatherConfig`` (see ``schema.scenario``) into a
+    CSV Basilisk's ``spaceWeatherData.loadSpaceWeatherFile()`` loads.
+    Real data only -- no network here (see this module's docstring):
 
-    ``activity_level == "nominal"`` (the default) supports exactly two
-    sources (see this module's own "Closed-off/offline policy" docstring
-    -- there is no network fetch here or anywhere else in this module):
+    * ``source == "bundled"`` (the default): CelesTrak's file shipped
+      with the app, or a newer one the startup prompt downloaded;
+    * ``source == "local_file"``: the user's own CelesTrak file (``.txt``
+      or ``.csv``) or CSV in Basilisk's columns.
 
-    * ``source == "local_file"``: use exactly that file; error if missing
-      or invalid (no silent fallback -- the user asked for this file).
-    * ``source == "synthetic"`` (the default): generate the synthetic
-      profile directly -- always available, no file, no network.
+    The run's days (plus padding) are written out from that file; a run
+    outside the file's dates is refused, naming the range it covers.
 
-    Any other ``source`` value raises :class:`SpaceWeatherError`.
-
-    ``activity_level == "conservative"`` (see this module's own docstring,
-    "Conservative ('worst-case') drag margin") instead computes the
-    ``activity_percentile``-th percentile of REAL historical F10.7/Ap data
-    and returns a CSV holding that value constant across the scenario.
-    ``source`` must be ``"local_file"`` for this -- ``source ==
-    "synthetic"`` is refused outright here: a percentile computed from a
-    fabricated profile is not a real historical "worst case", whatever
-    the number comes out to.
+    ``activity_level == "conservative"`` instead holds F10.7/Ap constant
+    at the ``activity_percentile``-th percentile of the file's observed
+    days (see this module's docstring).
     """
     warnings: list = []
-
     if activity_level not in ("nominal", "conservative"):
         raise SpaceWeatherError(f"unknown space_weather.activity_level {activity_level!r}")
-
     if activity_level == "conservative":
         return _resolve_conservative(source, start_utc, end_utc, local_file_path, cache_dir,
                                       activity_percentile, warnings)
-
-    if source == "local_file":
-        if not local_file_path:
-            raise SpaceWeatherError("space_weather.source is 'local_file' but local_file_path was not set")
-        result = validate_file(local_file_path, start_utc, end_utc)
-        if not result.ok:
-            raise SpaceWeatherError(f"{local_file_path} failed validation: {result.message}")
-        return ResolvedSpaceWeather(Path(local_file_path), False, warnings)
-
-    if source == "synthetic":
-        path = _synthetic_cache_path(cache_dir, start_utc, end_utc)
-        generate_synthetic(start_utc, end_utc, path)
-        warnings.append("space weather is SYNTHETIC (not real observed/forecast data) -- explicitly requested.")
-        return ResolvedSpaceWeather(path, True, warnings)
-
-    raise SpaceWeatherError(f"unknown space_weather.source {source!r}")
+    return _resolve_real(source, start_utc, end_utc, local_file_path, cache_dir, warnings)

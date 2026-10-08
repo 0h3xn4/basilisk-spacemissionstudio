@@ -200,7 +200,7 @@
   ],
   "ground_stations": [],
   "space_weather": {
-    "source": "synthetic",
+    "source": "bundled",
     "local_file_path": null,
     "cache_dir": null,
     "atmosphere_model": "nrlmsise00",
@@ -222,5 +222,5 @@
   },
   "mission_sequence": [],
   "description": "Template 07's hardware with thermal models: a thermal sensor on the Sun-facing +Z panel heats in sunlight and cools in eclipse, and reaction wheel rw-1 carries a motor-thermal model.\n\nWhat to look at:\n- sat-1.sensor.therm-1 (temperature) rising in sunlight and falling in each eclipse.\n- sat-1.actuator.rw-1.motor_temperature: it rises only ~0.05 C above its 20 C ambient. The motor heats from wheel power and friction, and this gentle slew uses little of either.\n\nTry changing:\n- therm-1's facing direction, area, absorptivity, emissivity, mass or specific heat (more heat capacity responds more slowly).\n- rw-1's motor efficiency (closer to 1 means less heat; 1 itself is rejected) -- it only shows on a wheel that works hard.\n\nLimitations:\n- The thermal sensor's power draw is constant (no on/off duty cycle yet).",
-  "schema_version": 2
+  "schema_version": 3
 }

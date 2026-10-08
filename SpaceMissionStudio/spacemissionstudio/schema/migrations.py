@@ -72,9 +72,22 @@ def _migrate_1_to_2(data: dict) -> dict:
     return data
 
 
+def _migrate_2_to_3(data: dict) -> dict:
+    """v2 -> v3: ``SpaceWeatherConfig.source`` dropped ``"synthetic"``
+    (user requirement: real space-weather data only). It was the v2
+    default, so it covers most older files. Rewrites it to ``"bundled"``:
+    the real CelesTrak data shipped with the app."""
+    space_weather = data.get("space_weather")
+    if isinstance(space_weather, dict) and space_weather.get("source") == "synthetic":
+        space_weather["source"] = "bundled"
+    data["schema_version"] = 3
+    return data
+
+
 # {old_version: migration_function}.
 MIGRATIONS: Dict[int, Callable[[dict], dict]] = {
     1: _migrate_1_to_2,
+    2: _migrate_2_to_3,
 }
 
 

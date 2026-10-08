@@ -65,7 +65,7 @@ def test_spaceweather_resolve_reports_resolution(tmp_path, capsys):
     assert rc == 0
     out = capsys.readouterr().out
     assert "Resolved to:" in out
-    assert "Synthetic:" in out
+    assert "From real data:" in out and "SW-All" in out
 
 
 def test_spaceweather_resolve_reports_a_clean_error_instead_of_a_traceback(tmp_path, capsys):

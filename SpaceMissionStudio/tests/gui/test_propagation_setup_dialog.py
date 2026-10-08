@@ -160,7 +160,7 @@ def test_space_weather_local_file_field_enabled_only_for_local_file_source(dialo
     assert not dialog.local_file_edit.isEnabled()
     dialog.space_weather_source_combo.setCurrentText("local_file")
     assert dialog.local_file_edit.isEnabled()
-    dialog.space_weather_source_combo.setCurrentText("synthetic")
+    dialog.space_weather_source_combo.setCurrentText("bundled")
     assert not dialog.local_file_edit.isEnabled()
 
 
@@ -180,7 +180,7 @@ def test_local_file_field_prefills_from_a_cached_startup_fetch_when_empty(qtbot,
 
 def test_cached_fetch_is_suggested_only_once_the_source_is_local_file(qtbot, monkeypatch, tmp_path):
     """Real bug, found on a real user's machine: the cached path was
-    pre-filled for EVERY scenario, so opening this dialog on a synthetic
+    pre-filled for EVERY scenario, so opening this dialog on a bundled
     -source scenario and clicking OK wrote the user's own absolute cache
     path into it (and into any file they then saved and shared)."""
     from spacemissionstudio.engine import spaceweather as sw
@@ -189,7 +189,7 @@ def test_cached_fetch_is_suggested_only_once_the_source_is_local_file(qtbot, mon
     cached.write_text("DATE\n")
     monkeypatch.setattr(sw, "cached_fetch_path", lambda *a, **k: cached)
 
-    d = _dialog()  # default source: synthetic
+    d = _dialog()  # default source: bundled
     qtbot.addWidget(d)
     assert d.local_file_edit.text() == ""
     assert d.to_space_weather().local_file_path is None  # open + OK changes nothing

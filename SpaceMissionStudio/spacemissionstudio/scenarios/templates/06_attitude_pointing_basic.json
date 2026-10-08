@@ -93,7 +93,7 @@
   ],
   "ground_stations": [],
   "space_weather": {
-    "source": "synthetic",
+    "source": "bundled",
     "local_file_path": null,
     "cache_dir": null,
     "atmosphere_model": "nrlmsise00",
@@ -115,5 +115,5 @@
   },
   "mission_sequence": [],
   "description": "A spacecraft pointing at nadir, starting tipped away from it with a small body rate. There are no sensors or actuators: the control torque is applied ideally, so this shows only the pointing concept. Template 07 adds real hardware.\n\nWhat to look at:\n- Vizard's attitude view: the spacecraft swings onto nadir and holds it.\n\nTry changing:\n- Pointing mode: velocityPoint (along the velocity) or inertial3D (fixed in space).\n- The initial attitude tip.",
-  "schema_version": 2
+  "schema_version": 3
 }

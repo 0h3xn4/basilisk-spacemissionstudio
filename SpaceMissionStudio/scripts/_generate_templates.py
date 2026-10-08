@@ -154,29 +154,14 @@ def _berlin_ground_station(**overrides) -> GroundStationConfig:
 
 
 def _conservative_drag_margin() -> SpaceWeatherConfig:
-    """A nominal, synthetic atmospheric-drag environment -- a fresh
-    instance per call (like ``_box_inertia()`` above, not a single
-    shared object, since ``SpaceWeatherConfig`` is mutable) for every
-    template where drag is physically relevant (a LEO altitude) and
-    doesn't undermine that template's own stated lesson (see each
-    ``build_*()`` function's own comment for why some are, or aren't,
-    drag-enabled at all).
-
-    This used to compute a real ``activity_level="conservative"``
-    sustained-worst-case margin from real historical CelesTrak data
-    (``source="celestrak"``). The app's closed-off/offline policy (see
-    ``engine/spaceweather.py``'s own docstring) removed that network fetch
-    entirely -- "conservative" mode is now ``local_file``-only, and these
-    bundled templates ship no historical CSV to point it at. Rather than
-    fabricate a fake "real historical" file, these templates honestly fall
-    back to the synthetic, solar-cycle-shaped generator at the default
-    ``activity_level="nominal"``. A user who wants the real worst-case
-    margin back can still get it: download a CelesTrak CSV themselves
-    (outside this app) and set ``space_weather.source="local_file"``,
-    ``activity_level="conservative"``, ``local_file_path=<that file>`` in
-    the Scenario Editor.
+    """Drag from NRLMSISE-00 driven by real CelesTrak data shipped with the
+    app (``source="bundled"``: observed since 1957, NOAA's monthly F10.7
+    forecast to 2041, Ap at the observed mean past the 45-day forecast) --
+    a fresh instance per call, since ``SpaceWeatherConfig`` is mutable.
+    For a sustained worst case, set ``activity_level="conservative"`` in
+    Propagation setup (a percentile of the same real record).
     """
-    return SpaceWeatherConfig(source="synthetic", atmosphere_model="nrlmsise00", activity_level="nominal")
+    return SpaceWeatherConfig(source="bundled", atmosphere_model="nrlmsise00", activity_level="nominal")
 
 
 def _save(scenario: Scenario, filename: str) -> None:

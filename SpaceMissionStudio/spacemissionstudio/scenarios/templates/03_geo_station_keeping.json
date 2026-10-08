@@ -100,7 +100,7 @@
   ],
   "ground_stations": [],
   "space_weather": {
-    "source": "synthetic",
+    "source": "bundled",
     "local_file_path": null,
     "cache_dir": null,
     "atmosphere_model": "nrlmsise00",
@@ -122,5 +122,5 @@
   },
   "mission_sequence": [],
   "description": "A 500 kg geostationary satellite in the 10 deg E slot, kept there the way real GEO satellites are: east-west burns hold its longitude within +/-0.05 deg, north-south burns keep its inclination under 0.05 deg. Sun and Moon gravity, solar radiation pressure and Earth's gravity field all push it out.\n\nWhat to look at:\n- geo-sat-1.geo_station_keeping.longitude: the one-day fit drifts across the box on a parabola, and a small along-track burn (0.05-0.1 m/s) turns it back at each edge -- 4 in 45 days.\n- geo-sat-1.geo_station_keeping.inclination: Sun and Moon tilt the orbit ~0.0025 deg/day; at 0.05 deg a ~2 m/s burn at a node takes it back to ~0.013 deg -- 2 in 45 days.\n- geo-sat-1.geo_station_keeping.delta_v: north-south dominates, ~35 m/s per year in all.\n\nTry changing:\n- Target longitude: near 75 E or 255 E (the stable points) east-west burns become rare; near 165 E or 345 E they come often.\n- The box sizes: halving the longitude box roughly halves the time between east-west burns.\n\nLimitations:\n- The box holds the day-averaged longitude. The daily wobble from eccentricity (radiation pressure grows it, to ~+/-0.01 deg here and ~+/-0.03 deg after 3 months) is not controlled.",
-  "schema_version": 2
+  "schema_version": 3
 }

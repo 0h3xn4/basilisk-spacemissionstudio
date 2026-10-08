@@ -440,7 +440,7 @@ SpaceMissionStudio/
     engine/
       time_system.py                 -- UTC epoch -> SPICE time string for Basilisk (locale-independent; no Basilisk import)
       kernels.py                     -- SPICE kernel fetch/status (needs Basilisk; network only at install time/startup prompt)
-      spaceweather.py                -- local-file/synthetic resolve+validate (no network); fetch() is opt-in only (no Basilisk needed)
+      spaceweather.py                -- real CelesTrak data (bundled or local file) resolve+validate (no network); fetch() is opt-in only (no Basilisk needed)
       results.py                     -- TimeSeries/ResultSet, CSV export (no Basilisk needed)
       service.py                     -- SimulationService (needs Basilisk)
       fsw.py                         -- Phase 2: attitude nav/guidance/control/actuation chain (needs Basilisk)
@@ -680,15 +680,12 @@ scenario.save("my_scenario.json")
 from datetime import datetime
 from spacemissionstudio.engine import spaceweather as sw
 
-# resolve() itself never touches the network -- "celestrak" is not a
-# valid source. Use "local_file" with your own downloaded CSV (or one
-# fetched via the GUI's startup prompt -- see sw.fetch()/
-# sw.cached_fetch_path(), both consent-gated, never automatic), or
-# "synthetic" (the default) for a locally-generated, solar-cycle-shaped
-# profile that needs no file at all.
-resolved = sw.resolve("local_file", datetime(2030, 1, 1), datetime(2030, 4, 1),
-                       local_file_path="/path/to/your/SW-All.csv")  # your own CelesTrak download
-print(resolved.path, resolved.is_synthetic, resolved.warnings)
+# Real data only, and resolve() never touches the network. "bundled" (the
+# default) is CelesTrak's SW-All shipped with the app (or a newer copy the
+# GUI's consent-gated startup prompt downloaded); "local_file" is your own
+# CelesTrak .txt/.csv download.
+resolved = sw.resolve("bundled", datetime(2030, 1, 1), datetime(2030, 4, 1))
+print(resolved.path, resolved.data_file, resolved.warnings)
 ```
 
 ## Running a scenario (requires a Basilisk build)
@@ -924,18 +921,19 @@ network access can happen, all opt-in:
   published links) is always available alongside it.
 
 `engine.spaceweather.resolve()` itself -- the function actually called
-while a scenario runs -- still never touches the network under any
-circumstance: `source` is only ever `"local_file"` (a CSV you point it at,
-whether fetched via the startup prompt or supplied some other way) or
-`"synthetic"` (a locally-generated, solar-cycle-shaped profile, no file or
-network needed). There is no `"celestrak"` source value -- `fetch()` is a
-separate, explicitly-invoked utility that produces an ordinary local file,
-not a new value `source` can take. The `activity_level="conservative"`
-worst-case-percentile margin is `local_file`-only for the same reason; the
-bundled templates that used to default to it (04, 05, 07, 08, 18) ship
-`nominal`/`synthetic` instead, with their own `description` explaining how
-to restore the real-historical-data margin (fetch it via the startup
-prompt, or supply your own local CSV).
+while a scenario runs -- never touches the network. Space weather is real
+data only: `source` is `"bundled"` (the default: CelesTrak's SW-All file
+shipped in `spacemissionstudio/data/spaceweather/`, or a newer copy the
+startup prompt downloaded) or `"local_file"` (your own CelesTrak file).
+The shipped file (updated 2025-07-21; <https://celestrak.org/SpaceData/>)
+holds observed daily F10.7 and Ap from 1957-10-01, CelesTrak's 45-day
+forecast, and NOAA's monthly F10.7 forecast to 2041-10. That monthly
+forecast has no Ap; there, Ap is held at the mean of every observed day
+(12.8), and runs say so in their warnings. A run outside the data's dates
+is refused, naming the range. The earlier `"synthetic"` profile was
+removed; older scenario files are migrated to `"bundled"`. The
+`activity_level="conservative"` margin is a percentile of the same file's
+observed days.
 
 ## Known limitations
 

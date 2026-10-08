@@ -1,43 +1,109 @@
 """Tests for spacemissionstudio.engine.spaceweather -- no Basilisk import, runs
-anywhere. resolve() itself makes no network calls at all (see its own
-"Closed-off/offline policy" docstring) -- only "local_file" and "synthetic"
-are valid source values; "celestrak" (and anything else) is rejected as an
-unknown source. fetch() is a separate, never-automatically-called utility
-(only reached via gui.startup_fetch_dialog's consent-gated prompt) --
-its own network calls are mocked here (urllib.request.urlopen), same as
-gui/test_vizard_launcher.py's fetch_vizard() tests.
+anywhere. Real data only: "bundled" (CelesTrak's SW-All shipped with the app)
+and "local_file" are the sources; the fixtures below are excerpts of that
+real record. resolve() makes no network calls; fetch() (only reached via
+gui.startup_fetch_dialog's consent-gated prompt) is tested with
+urllib.request.urlopen mocked.
 """
 
-from datetime import datetime
+import csv
+from datetime import date, datetime
 
+import numpy as np
 import pytest
 
 from spacemissionstudio.engine import spaceweather as sw
 
-
-def test_generate_synthetic_passes_its_own_validation(tmp_path):
-    start, end = datetime(2030, 1, 1), datetime(2030, 1, 10)
-    path = sw.generate_synthetic(start, end, tmp_path / "synth.csv")
-    result = sw.validate_file(path, start, end)
-    assert result.ok, result.message
+_KIND_TO_TYPE = {"observed": "OBS", "daily_forecast": "PRD", "monthly_forecast": "PRM"}
+_SHIPPED = sw.BUNDLED_DATA_PATH  # kept: some tests point BUNDLED_DATA_PATH elsewhere
 
 
-def test_generate_synthetic_is_deterministic(tmp_path):
-    start, end = datetime(2030, 1, 1), datetime(2030, 1, 5)
-    path_a = sw.generate_synthetic(start, end, tmp_path / "a.csv", seed=7)
-    path_b = sw.generate_synthetic(start, end, tmp_path / "b.csv", seed=7)
-    assert path_a.read_text() == path_b.read_text()
+def _real_excerpt_csv(path, first, last):
+    """Days ``first``..``last`` of the shipped CelesTrak record, written in
+    CelesTrak's own CSV layout (monthly-forecast rows once per month,
+    with no Ap, as CelesTrak publishes them)."""
+    data = sw.load_celestrak(_SHIPPED)
+    with open(path, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["DATE"] + [f"AP{k}" for k in range(1, 9)]
+                        + ["AP_AVG", "F10.7_OBS", "F10.7_DATA_TYPE", "F10.7_OBS_CENTER81"])
+        for day in sorted(d for d in data.days if first <= d <= last):
+            rec = data.days[day]
+            if rec.kind == "monthly_forecast":
+                if day.day == 1:
+                    writer.writerow([day.isoformat()] + [""] * 9 + [rec.f107_obs, "PRM", rec.f107_center81])
+                continue
+            writer.writerow([day.isoformat()] + list(rec.ap)
+                            + [rec.ap_avg, rec.f107_obs, _KIND_TO_TYPE[rec.kind], rec.f107_center81])
+    return path
 
 
-def test_a_date_gets_the_same_synthetic_values_whatever_the_span(tmp_path):
-    """A 24-day run, a 5-year run and a 30-year lifetime estimate starting
-    on the same day must see the same storms on that day."""
-    short = sw.generate_synthetic(datetime(2030, 1, 1), datetime(2030, 1, 25), tmp_path / "short.csv")
-    long = sw.generate_synthetic(datetime(2029, 6, 1), datetime(2060, 1, 1), tmp_path / "long.csv")
-    long_rows = {line.split(",")[0]: line for line in long.read_text().splitlines()[1:]}
-    short_rows = short.read_text().splitlines()[1:]
-    assert len(short_rows) > 40
-    assert all(long_rows[line.split(",")[0]] == line for line in short_rows)
+def test_the_shipped_record_parses_as_published():
+    """Spot checks against the raw lines of data/spaceweather/SW-All.txt."""
+    data = sw.load_celestrak(sw.BUNDLED_DATA_PATH)
+    assert data.updated == "2025 Jul 21 10:37:15 UTC"
+    assert (data.first_date, data.last_date) == (date(1957, 10, 1), date(2041, 10, 31))
+    first = data.days[date(1957, 10, 1)]
+    assert first.ap == (32, 27, 15, 7, 22, 9, 32, 22) and first.ap_avg == 21
+    assert (first.f107_obs, first.f107_center81) == (269.3, 266.6)
+    assert data.days[date(2025, 7, 20)].kind == "observed"
+    assert data.days[date(2025, 7, 21)].kind == "daily_forecast"
+    month = data.days[date(2030, 1, 17)]
+    assert month.kind == "monthly_forecast" and month.f107_obs == 77.8  # [sfu] NOAA's January 2030 value
+    assert month.ap_avg == pytest.approx(data.long_term_ap)
+    observed = [r.ap_avg for r in data.days.values() if r.kind == "observed"]
+    assert data.long_term_ap == pytest.approx(np.mean(observed)) == pytest.approx(12.83, abs=0.01)
+
+
+def test_a_past_run_gets_the_observed_days_unchanged(tmp_path):
+    """The 2003 Halloween storms, as observed."""
+    resolved = sw.resolve("bundled", datetime(2003, 10, 28), datetime(2003, 11, 2), cache_dir=tmp_path)
+    assert resolved.data_file == sw.BUNDLED_DATA_PATH and resolved.warnings == []
+    rows = {row["DATE"]: row for row in csv.DictReader(open(resolved.path))}
+    record = sw.load_celestrak(sw.BUNDLED_DATA_PATH).days[date(2003, 10, 29)]
+    assert float(rows["2003-10-29"]["AP_AVG"]) == record.ap_avg > 150.0
+    assert float(rows["2003-10-29"]["F10.7_OBS"]) == record.f107_obs
+    assert sw.validate_file(resolved.path, datetime(2003, 10, 28), datetime(2003, 11, 2)).ok
+
+
+def test_a_future_run_uses_noaas_forecast_and_says_so(tmp_path):
+    resolved = sw.resolve("bundled", datetime(2030, 1, 1), datetime(2030, 2, 1), cache_dir=tmp_path)
+    assert len(resolved.warnings) == 1
+    assert "NOAA's monthly F10.7 forecast" in resolved.warnings[0] and "observed mean of 12.8" in resolved.warnings[0]
+    row = next(r for r in csv.DictReader(open(resolved.path)) if r["DATE"] == "2030-01-15")
+    assert float(row["F10.7_OBS"]) == 77.8  # [sfu]
+
+
+def test_a_run_past_the_data_is_refused_with_the_range(tmp_path):
+    with pytest.raises(sw.SpaceWeatherError, match=r"covers 1957-10-01\.\.2041-10-31"):
+        sw.resolve("bundled", datetime(2041, 6, 1), datetime(2042, 1, 1), cache_dir=tmp_path)
+    assert sw.data_coverage("bundled") == (date(1957, 10, 1), date(2041, 10, 31))
+
+
+def test_a_celestrak_csv_with_forecast_rows_reads_like_the_text_file(tmp_path):
+    """CelesTrak's CSV layout (OBS/PRD/PRM rows, monthly rows without Ap)
+    gives the same days as its text file."""
+    path = _real_excerpt_csv(tmp_path / "SW-excerpt.csv", date(2025, 6, 1), date(2025, 12, 31))
+    from_csv = sw.load_celestrak(path)
+    shipped = sw.load_celestrak(sw.BUNDLED_DATA_PATH)
+    for day in (date(2025, 6, 10), date(2025, 7, 25), date(2025, 11, 20)):
+        assert from_csv.days[day].kind == shipped.days[day].kind
+        assert from_csv.days[day].f107_obs == shipped.days[day].f107_obs
+    # the excerpt's own observed days set its long-term Ap
+    assert from_csv.days[date(2025, 11, 20)].ap_avg == pytest.approx(from_csv.long_term_ap)
+
+
+def test_the_newer_of_the_shipped_and_downloaded_files_is_used(tmp_path, monkeypatch):
+    """A startup download observed further than the shipped file wins."""
+    older = _real_excerpt_csv(tmp_path / "old.csv", date(2023, 1, 1), date(2024, 12, 31))
+    monkeypatch.setattr(sw, "BUNDLED_DATA_PATH", older)
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    newer = _real_excerpt_csv(cache / "SW-All.csv", date(2024, 1, 1), date(2025, 7, 20))
+    assert sw.real_data_path("bundled", cache_dir=cache) == newer
+    monkeypatch.setattr(sw, "BUNDLED_DATA_PATH", newer)
+    _real_excerpt_csv(cache / "SW-All.csv", date(2023, 1, 1), date(2024, 6, 30))
+    assert sw.real_data_path("bundled", cache_dir=cache) == newer
 
 
 def test_validate_file_rejects_missing_file(tmp_path):
@@ -107,18 +173,12 @@ def test_validate_file_detects_duplicate_dates(tmp_path):
     assert result.duplicate_dates == ["2030-01-01"]
 
 
-def test_resolve_synthetic_source_returns_flagged_synthetic(tmp_path):
-    resolved = sw.resolve("synthetic", datetime(2030, 1, 1), datetime(2030, 1, 5), cache_dir=tmp_path)
-    assert resolved.is_synthetic
-    assert any("SYNTHETIC" in w for w in resolved.warnings)
-
-
-def test_resolve_local_file_source_uses_exact_file(tmp_path):
-    start, end = datetime(2030, 1, 1), datetime(2030, 1, 5)
-    local_path = sw.generate_synthetic(start, end, tmp_path / "mine.csv")
-    resolved = sw.resolve("local_file", start, end, local_file_path=str(local_path))
-    assert resolved.path == local_path
-    assert not resolved.is_synthetic
+def test_resolve_local_file_source_reads_that_file(tmp_path):
+    local_path = _real_excerpt_csv(tmp_path / "mine.csv", date(2024, 1, 1), date(2024, 3, 1))
+    resolved = sw.resolve("local_file", datetime(2024, 1, 20), datetime(2024, 2, 1),
+                          local_file_path=str(local_path), cache_dir=tmp_path / "cache")
+    assert resolved.data_file == local_path
+    assert sw.validate_file(resolved.path, datetime(2024, 1, 20), datetime(2024, 2, 1)).ok
 
 
 def test_resolve_local_file_source_raises_if_missing():
@@ -136,49 +196,27 @@ def test_resolve_unknown_source_raises():
         sw.resolve("magic", datetime(2030, 1, 1), datetime(2030, 1, 5))
 
 
-def test_resolve_celestrak_source_is_rejected_as_unknown():
-    """"celestrak" used to be a real fetch-from-network source; the
-    closed-off/offline policy removed it entirely (not just defaulted away
-    from -- see spaceweather.py's own module docstring), so it must now be
-    rejected the same as any other unknown source string, never silently
-    treated as "local_file" or "synthetic".
-    """
+@pytest.mark.parametrize("source", ["celestrak", "synthetic"])
+def test_removed_sources_are_rejected_as_unknown(source):
+    """"celestrak" (a runtime network fetch) and "synthetic" (a generated
+    profile) were both removed; neither is quietly read as another source."""
     with pytest.raises(sw.SpaceWeatherError, match="unknown space_weather.source"):
-        sw.resolve("celestrak", datetime(2030, 1, 1), datetime(2030, 1, 5))
+        sw.resolve(source, datetime(2030, 1, 1), datetime(2030, 1, 5))
 
 
 # -- Conservative ("worst-case") drag margin -------------------------------
-# See this module's own docstring, "Conservative ('worst-case') drag
-# margin", for the real user request this implements. generate_synthetic()
-# stands in for "a real historical CSV" purely as test data here (its
-# solar-cycle-shaped F10.7 and storm-episode Ap give a genuinely varied
-# distribution to compute a percentile over) -- compute_worst_case_activity
-# itself is source-agnostic file parsing + percentile math; the "must
-# actually BE real data" policy is enforced one layer up, in resolve()'s
-# own source handling, and tested separately below.
+# A percentile of the OBSERVED days of the same real file the source names.
 
-def _write_long_history(tmp_path, years: int = 15, seed: int = 3):
-    start = datetime(2000, 1, 1)
-    end = datetime(2000 + years, 1, 1)
-    return sw.generate_synthetic(start, end, tmp_path / "history.csv", seed=seed), start, end
-
-
-def test_compute_worst_case_activity_matches_numpy_percentile(tmp_path):
-    import numpy as np
-
-    path, _start, _end = _write_long_history(tmp_path)
-    f107_all, ap_all = sw._load_historical_activity(path)
-
-    f107_p, ap_p, n_samples = sw.compute_worst_case_activity(path, 95.0)
-
-    assert n_samples == len(f107_all) == len(ap_all)
+def test_compute_worst_case_activity_matches_numpy_percentile():
+    f107_all, ap_all = sw._load_historical_activity(sw.BUNDLED_DATA_PATH)
+    f107_p, ap_p, n_samples = sw.compute_worst_case_activity(sw.BUNDLED_DATA_PATH, 95.0)
+    assert n_samples == len(f107_all) == len(ap_all) == 24765  # every observed day, 1957-2025
     assert f107_p == pytest.approx(np.percentile(f107_all, 95.0))
     assert ap_p == pytest.approx(np.percentile(ap_all, 95.0))
 
 
 def test_compute_worst_case_activity_rejects_short_history(tmp_path):
-    start, end = datetime(2030, 1, 1), datetime(2030, 6, 1)  # well under a year
-    path = sw.generate_synthetic(start, end, tmp_path / "short.csv")
+    path = _real_excerpt_csv(tmp_path / "short.csv", date(2024, 1, 1), date(2024, 6, 1))  # well under a year
     with pytest.raises(sw.SpaceWeatherError, match="need at least"):
         sw.compute_worst_case_activity(path, 95.0)
 
@@ -202,36 +240,22 @@ def test_generate_worst_case_holds_values_constant_and_validates(tmp_path):
             assert float(row[f"AP{i}"]) == pytest.approx(45.0)
 
 
-def test_resolve_conservative_local_file_computes_real_percentile(tmp_path):
-    import numpy as np
-
-    history_path, _hist_start, _hist_end = _write_long_history(tmp_path)
+@pytest.mark.parametrize("source", ["bundled", "local_file"])
+def test_resolve_conservative_computes_the_real_percentile(tmp_path, source):
+    history_path = (sw.BUNDLED_DATA_PATH if source == "bundled"
+                    else _real_excerpt_csv(tmp_path / "history.csv", date(2000, 1, 1), date(2015, 1, 1)))
     f107_all, ap_all = sw._load_historical_activity(history_path)
-    expected_f107 = np.percentile(f107_all, 95.0)
-    expected_ap = np.percentile(ap_all, 95.0)
+    start, end = datetime(2030, 1, 1), datetime(2030, 1, 5)
+    resolved = sw.resolve(source, start, end, local_file_path=str(history_path), cache_dir=tmp_path / "cache",
+                          activity_level="conservative", activity_percentile=95.0)
 
-    scenario_start, scenario_end = datetime(2030, 1, 1), datetime(2030, 1, 5)
-    resolved = sw.resolve("local_file", scenario_start, scenario_end, local_file_path=str(history_path),
-                           cache_dir=tmp_path / "cache", activity_level="conservative", activity_percentile=95.0)
-
-    assert resolved.is_synthetic  # not real per-day data for THESE dates -- see resolve()'s own docstring
+    assert resolved.data_file == history_path
     assert any("CONSERVATIVE" in w for w in resolved.warnings)
-    result = sw.validate_file(resolved.path, scenario_start, scenario_end)
-    assert result.ok, result.message
-
-    import csv as _csv
-    with open(resolved.path, newline="") as f:
-        first_row = next(_csv.DictReader(f))
-    # abs=0.05: generate_worst_case's CSV rounds to 1 decimal place, so the
-    # round-tripped value can differ from the unrounded percentile by up to
-    # half of that -- real float formatting, not slack for a bug.
-    assert float(first_row["F10.7_OBS"]) == pytest.approx(expected_f107, abs=0.05)
-    assert float(first_row["AP_AVG"]) == pytest.approx(expected_ap, abs=0.05)
-
-
-def test_resolve_conservative_synthetic_source_raises():
-    with pytest.raises(sw.SpaceWeatherError, match="needs REAL historical"):
-        sw.resolve("synthetic", datetime(2030, 1, 1), datetime(2030, 1, 5), activity_level="conservative")
+    assert sw.validate_file(resolved.path, start, end).ok
+    first_row = next(csv.DictReader(open(resolved.path)))
+    # abs=0.05: generate_worst_case's CSV rounds to 1 decimal place
+    assert float(first_row["F10.7_OBS"]) == pytest.approx(np.percentile(f107_all, 95.0), abs=0.05)
+    assert float(first_row["AP_AVG"]) == pytest.approx(np.percentile(ap_all, 95.0), abs=0.05)
 
 
 def test_resolve_conservative_local_file_without_path_raises():
@@ -241,7 +265,7 @@ def test_resolve_conservative_local_file_without_path_raises():
 
 def test_resolve_unknown_activity_level_raises():
     with pytest.raises(sw.SpaceWeatherError, match="unknown space_weather.activity_level"):
-        sw.resolve("synthetic", datetime(2030, 1, 1), datetime(2030, 1, 5), activity_level="extreme")
+        sw.resolve("bundled", datetime(2030, 1, 1), datetime(2030, 1, 5), activity_level="extreme")
 
 
 def test_resolve_never_calls_fetch(tmp_path, monkeypatch):
@@ -254,11 +278,10 @@ def test_resolve_never_calls_fetch(tmp_path, monkeypatch):
         raise AssertionError("resolve() must never call fetch() itself")
 
     monkeypatch.setattr(sw, "fetch", _unexpected_fetch)
-    start, end = datetime(2030, 1, 1), datetime(2030, 1, 5)
-    local_path = sw.generate_synthetic(start, end, tmp_path / "local.csv")
-
-    sw.resolve("synthetic", start, end)
-    sw.resolve("local_file", start, end, local_file_path=str(local_path))
+    local_path = _real_excerpt_csv(tmp_path / "local.csv", date(2024, 1, 1), date(2024, 3, 1))
+    sw.resolve("bundled", datetime(2030, 1, 1), datetime(2030, 1, 5), cache_dir=tmp_path)
+    sw.resolve("local_file", datetime(2024, 1, 20), datetime(2024, 2, 1), local_file_path=str(local_path),
+               cache_dir=tmp_path)
 
 
 class _FakeFetchResponse:
@@ -369,31 +392,3 @@ def test_cached_fetch_path_finds_a_real_fetch(tmp_path, monkeypatch):
     fetched = sw.fetch(dataset="SW-All", cache_dir=tmp_path)
 
     assert sw.cached_fetch_path(cache_dir=tmp_path) == fetched
-
-
-def test_synthetic_cycle_follows_the_calendar():
-    """Cycle 25: minimum Dec 2019, maximum ~Oct 2024, next minimum ~Dec
-    2030. The profile used to start every run 2 years before a maximum,
-    so a 2030 mission saw near-maximum drag."""
-    from datetime import datetime
-
-    from spacemissionstudio.engine.spaceweather import _F107_SOLAR_MAX, _F107_SOLAR_MIN, _f107_base
-
-    def level(year, month):
-        return float(_f107_base([datetime(year, month, 1)])[0])  # [sfu]
-
-    assert level(2019, 12) == pytest.approx(_F107_SOLAR_MIN, abs=0.5)
-    assert level(2024, 10) == pytest.approx(_F107_SOLAR_MAX, abs=0.5)
-    assert level(2030, 1) < 80.0  # the quiet end of cycle 25
-    assert level(2030, 12) == pytest.approx(_F107_SOLAR_MIN, abs=1.0)
-    assert level(2035, 9) > 145.0  # cycle 26's maximum
-
-
-def test_synthetic_cache_name_carries_the_profile_version(tmp_path):
-    """Files generated by an older profile must not be picked up again."""
-    from datetime import datetime
-
-    from spacemissionstudio.engine.spaceweather import _SYNTHETIC_VERSION, _synthetic_cache_path
-
-    path = _synthetic_cache_path(tmp_path, datetime(2030, 1, 1), datetime(2030, 2, 1))
-    assert path.name == f"synthetic_v{_SYNTHETIC_VERSION}_20300101_20300201.csv"

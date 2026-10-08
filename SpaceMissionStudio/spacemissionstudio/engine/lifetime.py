@@ -105,6 +105,7 @@ class LifetimeResult:
     apogee_altitude_km: np.ndarray  # [km]
     start_utc: datetime
     warnings: List[str] = field(default_factory=list)
+    horizon_years: Optional[float] = None  # [year] how far it looked (less than asked where the data ends)
 
     @property
     def lifetime_years(self) -> float:
@@ -117,6 +118,11 @@ class LifetimeResult:
     def meets(self, years: float) -> bool:
         """Re-enters within ``years`` of the start."""
         return self.reentered and self.lifetime_years <= years
+
+    def known(self, years: float) -> bool:
+        """Whether :meth:`meets` is decided for ``years``: re-entered, or
+        looked at least that far ahead."""
+        return self.reentered or (self.horizon_years is not None and self.horizon_years >= years)
 
 
 def _perifocal_axes(orbit: MeanOrbit):
@@ -340,24 +346,37 @@ def drag_properties(spacecraft) -> tuple:
 
 
 def density_for_scenario(scenario, start_utc: datetime, max_years: float, points: int = RING_POINTS):
-    """The scenario's atmosphere model as a :data:`DensityModel` over
-    ``max_years`` from ``start_utc``, plus any space-weather warnings."""
+    """The scenario's atmosphere model as a :data:`DensityModel` from
+    ``start_utc``, the years it can look ahead (``max_years``, or less
+    where the real space-weather data ends), and any warnings."""
     sw_config = scenario.space_weather
     if sw_config.atmosphere_model == "exponential":
-        return exponential_density, [
+        return exponential_density, max_years, [
             "the exponential atmosphere (8.5 km scale height from sea level) is far too thin above ~150 km: "
             "the lifetime is overstated -- use NRLMSISE-00"]
     from . import spaceweather
 
-    end_utc = start_utc + timedelta(days=max_years * 365.25 + 2.0)
+    try:
+        first, last = spaceweather.data_coverage(sw_config.source, sw_config.local_file_path, sw_config.cache_dir)
+    except spaceweather.SpaceWeatherError as exc:
+        raise LifetimeError(str(exc)) from None
+    pad = timedelta(days=11.0)  # [day] the resolver's own padding, plus a day
+    data_years = ((datetime.combine(last, datetime.min.time()) - pad) - start_utc).total_seconds() / (365.25 * 86400.0)
+    if data_years <= 0.0 or start_utc - pad < datetime.combine(first, datetime.min.time()):
+        raise LifetimeError(f"the real space-weather data covers {first}..{last}, not {start_utc:%Y-%m-%d}")
+    warnings = []
+    if data_years < max_years:
+        warnings.append(f"the real space-weather data ends {last}: looked {data_years:.1f} years ahead, "
+                        f"not {max_years:g}")
+        max_years = data_years
+    end_utc = start_utc + timedelta(days=max_years * 365.25)
     try:
         resolved = spaceweather.resolve(sw_config.source, start_utc, end_utc, local_file_path=sw_config.local_file_path,
                                         cache_dir=sw_config.cache_dir, activity_level=sw_config.activity_level,
                                         activity_percentile=sw_config.activity_percentile)
     except spaceweather.SpaceWeatherError as exc:
-        raise LifetimeError(f"space weather does not cover {max_years:g} years from {start_utc:%Y-%m-%d}: {exc}") \
-            from None
-    return MsisDensity(resolved.path, start_utc, points), list(resolved.warnings)
+        raise LifetimeError(str(exc)) from None
+    return MsisDensity(resolved.path, start_utc, points), max_years, warnings + list(resolved.warnings)
 
 
 def spacecraft_lifetime(scenario, spacecraft_name: str, max_years: float = 30.0,
@@ -450,8 +469,10 @@ def end_of_life(scenario, spacecraft_name: str, result=None, deorbit_perigee_km:
         orbit, mass_kg = lowered, mass_kg - needed_kg
     area_m2, drag_coeff = drag_properties(spacecraft)
     start_utc = _parse_utc(scenario.epoch_utc) + timedelta(seconds=elapsed_s)
-    density, warnings = density_for_scenario(scenario, start_utc, max_years)
-    lifetime = propagate_decay(orbit, start_utc, drag_coeff * area_m2 / mass_kg, density, max_years, should_cancel)
+    density, horizon_years, warnings = density_for_scenario(scenario, start_utc, max_years)
+    lifetime = propagate_decay(orbit, start_utc, drag_coeff * area_m2 / mass_kg, density, horizon_years,
+                               should_cancel)
+    lifetime.horizon_years = horizon_years
     lifetime.warnings.extend(warnings)
     return EndOfLife(lifetime, result is not None, mass_kg, plan)
 
