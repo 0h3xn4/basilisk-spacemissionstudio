@@ -7608,3 +7608,35 @@ Results come back as one run on one time axis; cumulative delta-V carries on acr
 * 21 segments, 49 min wall time, 441 MB peak memory, 263,000 samples per series.
 
 **Tests:** new `tests/test_long_run.py` (segment lengths, refusals, stitching, the warning, and the Basilisk comparisons above plus live progress and Abort across segments).
+
+## End of life: orbital lifetime and deorbit burns
+
+After a 5-year mission the next questions are when the spacecraft comes down, and whether that meets the disposal rules: 5 years under ESA's Zero Debris approach and the FCC, 25 years under the IADC guideline. Simulating decades of decay in Basilisk would take hours, so `engine/lifetime.py` follows the mean orbit instead, one orbit-averaged drag step at a time:
+* drag on a ring of 16 points around the orbit changes the semi-major axis and eccentricity vector (Gauss's equations in vector form), with the atmosphere turning with the Earth as in the simulations;
+* J2 turns the node and perigee;
+* density comes from Basilisk's own `msisAtmosphere` and `spaceWeatherData`, run standalone on the scenario's space-weather file (or the exponential model);
+* re-entry is the perigee reaching 120 km.
+
+**New:** an **End of Life** tab and `spacemissionstudio lifetime`. From the scenario's start, or the end of the last run with the propellant it left. An optional deorbit burn (one retrograde apogee burn) lowers the perigee to a target, or as far as the propellant allows. Shown as re-entry date, lifetime, mass and burn tiles, a badge per rule, and a perigee/apogee chart.
+
+**Two things the Basilisk comparison caught:**
+* **The ring has to follow the real path.** A plain Keplerian ring from mean elements sits 4.6 km below the actual orbit at 300 km (J2's short-period terms), where the density is 12% higher. The ring now adds those terms back (Basilisk's `clMeanOscMap`).
+* **Step from the middle.** Rates taken at the start of each step lag the rising density and decayed ~2% slow; a midpoint step fixed it.
+
+**Confirmed against full Basilisk decay runs** of template 18's spacecraft (120 kg, 1.5 m², Cd 2.2), synthetic 2030 space weather:
+
+| Start | Estimate | Basilisk | Difference |
+|---|---|---|---|
+| 300 km circular | 27.15 days | 26.78 days | +1.4% |
+| 400 km circular | 354.8 days | 351.0 days | +1.1% |
+| 250 x 700 km | 130.3 days | 133.1 days | -2.1% |
+
+Each estimate takes 1-2 s; each Basilisk run took up to 5 minutes. The standalone density matches the simulation's own to 1.4% at the same instants (the rest is Earth's precession, ignored).
+
+**Fixed along the way:**
+* **Synthetic space weather depended on the span asked for.** Its random storms were drawn in an order set by the file's length, and its F10.7 noise and 81-day average restarted at each file's edges. So a 14-day run and a 5-year run (or a lifetime estimate) starting on the same day saw different storms. Each date's values are now fixed: generated from 1990 on, one random stream per quantity. Profile version 3; older cached files are not reused.
+* **A run that re-entered failed at the end** with `M2E() received e = 1.15`: mean elements cannot be computed for a path inside the Earth. Those samples are now NaN, and the run warns "re-entered: below 100 km from t = ... days".
+
+**Limits:** Earth only; sphere drag, or the facets' tumbling average (sum of areas / 4); no SRP, third bodies or higher harmonics, which matter little for orbits that decay within decades. With the exponential atmosphere (fitted at sea level, ~1e9 times too thin at 400 km) the estimate warns that the lifetime is overstated.
+
+**Tests:** new `tests/test_lifetime.py` (burn arithmetic, facet area, rules; Basilisk: density against the simulation's, re-entry date against a decay run, end-of-run start and a short-propellant burn), `tests/gui/test_lifetime_widget.py`, a CLI test, and a span-independence test for synthetic space weather.

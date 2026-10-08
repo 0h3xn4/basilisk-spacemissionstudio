@@ -29,6 +29,17 @@ def test_generate_synthetic_is_deterministic(tmp_path):
     assert path_a.read_text() == path_b.read_text()
 
 
+def test_a_date_gets_the_same_synthetic_values_whatever_the_span(tmp_path):
+    """A 24-day run, a 5-year run and a 30-year lifetime estimate starting
+    on the same day must see the same storms on that day."""
+    short = sw.generate_synthetic(datetime(2030, 1, 1), datetime(2030, 1, 25), tmp_path / "short.csv")
+    long = sw.generate_synthetic(datetime(2029, 6, 1), datetime(2060, 1, 1), tmp_path / "long.csv")
+    long_rows = {line.split(",")[0]: line for line in long.read_text().splitlines()[1:]}
+    short_rows = short.read_text().splitlines()[1:]
+    assert len(short_rows) > 40
+    assert all(long_rows[line.split(",")[0]] == line for line in short_rows)
+
+
 def test_validate_file_rejects_missing_file(tmp_path):
     result = sw.validate_file(tmp_path / "nope.csv", datetime(2030, 1, 1), datetime(2030, 1, 2))
     assert not result.ok

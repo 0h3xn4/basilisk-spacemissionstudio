@@ -365,6 +365,17 @@ fill memory. For scale: 5 years of LEO station keeping took 49 minutes
 and 441 MB. Mission sequences, phasing keeping, Monte Carlo and Vizard
 are limited to 100 days.
 
+**You want to know when the spacecraft comes down.** Open the **End of
+Life** tab, pick the spacecraft and press **Estimate lifetime**. It
+gives the re-entry date and whether the 5-year rule (ESA's Zero Debris
+approach, the FCC) and the 25-year guideline (IADC) are met. Choose
+**End of last run** to start from where a run finished, with the
+propellant it left. Tick **Lower perigee to** to plan a deorbit burn
+with the orbit thruster; if the propellant is short, it says how low
+the perigee gets. The estimate takes seconds and agrees with full
+simulations to about 2%. It uses the scenario's atmosphere and space
+weather, so with the synthetic profile it is a shape, not a forecast.
+
 **You're not sure what a field in the Scenario Editor means.** Hover
 over it -- most fields have a tooltip explaining what it does in plain
 language. The validation message at the bottom of the Scenario Editor
@@ -408,6 +419,10 @@ anyone who hasn't worked with spacecraft before:
   its own area, facing direction and centre of pressure. Drag and solar
   pressure push on each plate that faces the flow or the Sun, so both
   depend on the attitude and can twist the spacecraft.
+* **Orbital lifetime** -- how long drag takes to bring an orbit down to
+  re-entry (here: the perigee reaching 120 km). Disposal rules cap it
+  after the mission ends: 5 years under ESA's Zero Debris approach and
+  the FCC, 25 years under the older IADC guideline.
 * **Station-keeping** -- firing small thruster burns periodically to
   correct a satellite's orbit as it naturally drifts (from gravity
   irregularities, drag, etc.), so it stays where it's supposed to be.

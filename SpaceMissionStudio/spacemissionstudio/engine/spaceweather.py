@@ -155,8 +155,10 @@ _F107_SOLAR_MIN = 70.0  # [sfu]
 _F107_SOLAR_MAX = 150.0  # [sfu]
 _CYCLE_PERIOD_DAYS = 11.0 * 365.25  # [day]
 _CYCLE_MINIMUM = datetime(2019, 12, 1)  # cycle 25 began
+_SYNTHETIC_ANCHOR = datetime(1990, 1, 1)  # synthetic sequences start here, so each date's values are fixed
+_CENTER81_HALF_WIDTH = 40  # [day] half of the 81-day F10.7 average
 _CYCLE_RISE_FRACTION = 0.44  # [-] minimum -> maximum (Oct 2024) as a fraction of the cycle
-_SYNTHETIC_VERSION = 2  # bump when the profile changes, so cached files are not reused
+_SYNTHETIC_VERSION = 3  # bump when the profile changes, so cached files are not reused
 
 
 class SpaceWeatherError(Exception):
@@ -355,42 +357,56 @@ def generate_synthetic(start_utc: datetime, end_utc: datetime, dest_path, seed: 
     """Write a synthetic, solar-cycle-shaped (NOT a real forecast)
     space-weather CSV covering ``[start_utc, end_utc]`` (plus padding) to
     ``dest_path``, in the exact column layout :func:`validate_file`/
-    Basilisk's loader expect. Deterministic given the same inputs (fixed
-    default seed) so repeated runs of the same scenario are reproducible.
-    """
-    rng = np.random.default_rng(seed)
+    Basilisk's loader expect.
 
+    Every date gets the same values whatever span is asked for: the
+    sequence always runs from :data:`_SYNTHETIC_ANCHOR` (earlier only for
+    an earlier start), each quantity draws from its own random stream, and
+    the 81-day average is taken over days generated beyond the span's
+    ends. So a short run and a long run (or an orbit-lifetime estimate)
+    starting on the same day see the same storms.
+    """
     start = start_utc - timedelta(days=_PAD_DAYS)
     end = end_utc + timedelta(days=_PAD_DAYS)
-    n_days = (end - start).days + 1
-    dates = [start + timedelta(days=i) for i in range(n_days)]
-    naive = [d.astimezone(timezone.utc).replace(tzinfo=None) if d.tzinfo else d for d in dates]
-    f107_base = _f107_base(naive)
+    start, end = (d.astimezone(timezone.utc).replace(tzinfo=None) if d.tzinfo else d for d in (start, end))
+    start = datetime(start.year, start.month, start.day)
+    anchor = min(_SYNTHETIC_ANCHOR, start)
+    first = (start - anchor).days  # index of the first written day
+    n_days = (end - anchor).days + 1 + _CENTER81_HALF_WIDTH  # generated, including days past the end
+    all_dates = [anchor + timedelta(days=i) for i in range(n_days)]
+    noise_rng, storm_rng, ap_rng = (np.random.default_rng([seed, stream]) for stream in range(3))
+
+    f107_base = _f107_base(all_dates)
     noise = np.zeros(n_days)
+    steps = noise_rng.normal(0.0, 3.0, size=n_days)
     for i in range(1, n_days):
-        noise[i] = 0.85 * noise[i - 1] + rng.normal(0.0, 3.0)
-    f107_obs = np.clip(f107_base + noise, 65.0, 300.0)
+        noise[i] = 0.85 * noise[i - 1] + steps[i]
+    f107_all = np.clip(f107_base + noise, 65.0, 300.0)
+    sums = np.concatenate([[0.0], np.cumsum(f107_all)])
+    low = np.maximum(np.arange(n_days) - _CENTER81_HALF_WIDTH, 0)
+    high = np.minimum(np.arange(n_days) + _CENTER81_HALF_WIDTH + 1, n_days)
+    center81_all = (sums[high] - sums[low]) / (high - low)
 
-    f107_center81 = np.array([
-        f107_obs[max(0, i - 40): min(n_days, i + 41)].mean() for i in range(n_days)
-    ])
-
-    ap_avg = np.zeros(n_days)
+    ap_all = np.zeros(n_days)
     storm_prob = 0.02 + 0.03 * (f107_base - _F107_SOLAR_MIN) / (_F107_SOLAR_MAX - _F107_SOLAR_MIN)
     day = 0
     while day < n_days:
-        if rng.random() < storm_prob[day]:
-            duration = rng.integers(1, 4)
-            peak = rng.uniform(30.0, 110.0)
+        if storm_rng.random() < storm_prob[day]:
+            duration = storm_rng.integers(1, 4)
+            peak = storm_rng.uniform(30.0, 110.0)
             for k in range(duration):
                 if day + k < n_days:
-                    ap_avg[day + k] = max(ap_avg[day + k], peak * (0.6 ** k))
+                    ap_all[day + k] = max(ap_all[day + k], peak * (0.6 ** k))
             day += duration
         else:
-            ap_avg[day] = rng.uniform(3.0, 12.0)
+            ap_all[day] = storm_rng.uniform(3.0, 12.0)
             day += 1
+    ap_3hr_all = np.clip(ap_all[:, None] + ap_rng.normal(0.0, 2.0, size=(n_days, 8)), 0.0, None)
 
-    ap_3hr = np.clip(ap_avg[:, None] + rng.normal(0.0, 2.0, size=(n_days, 8)), 0.0, None)
+    written = slice(first, n_days - _CENTER81_HALF_WIDTH)
+    dates = all_dates[written]
+    f107_obs, f107_center81 = f107_all[written], center81_all[written]
+    ap_avg, ap_3hr = ap_all[written], ap_3hr_all[written]
 
     dest_path = Path(dest_path)
     dest_path.parent.mkdir(parents=True, exist_ok=True)

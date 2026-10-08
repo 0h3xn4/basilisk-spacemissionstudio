@@ -389,10 +389,17 @@ simulation chunks or commands, keeping whatever partial results were
 already produced -- never a forced kill that could leave Basilisk's C++
 state mid-mutation.
 
+**Long runs and end of life** -- runs of up to about 10 years, chained
+past Basilisk's ~104-day limit, with a "Record every" setting to keep
+them in memory; and an **End of Life** tab (and `spacemissionstudio
+lifetime`) estimating when a spacecraft re-enters, with or without a
+deorbit burn, checked against the 5- and 25-year disposal rules. The
+estimate agrees with full Basilisk decay runs to within ~2% in seconds.
+
 **GUI & CLI** -- a full PySide6 desktop shell (scenario editor,
 Monte Carlo, live progress feedback, a real visual theme/icon/
 toolbar) and an equivalent headless CLI (`spacemissionstudio validate/run/
-monte-carlo/kernels-status/generate-constellation/gui`), both built on
+monte-carlo/lifetime/kernels-status/generate-constellation/gui`), both built on
 the exact same `schema`/`engine` layer -- neither is a thin wrapper
 around the other. Result plots are Plotly figures (a validated,
 colorblind-safe categorical palette; a unified hover tooltip; plain
@@ -723,6 +730,7 @@ spacemissionstudio spaceweather-resolve spacemissionstudio/scenarios/two_body_va
 spacemissionstudio run spacemissionstudio/scenarios/two_body_validation.json --out-dir results/
 spacemissionstudio run scenario_with_fsw.json --out-dir results/ --vizard-save-file results/viz.bin
 spacemissionstudio monte-carlo scenario_with_dispersions.json --archive-dir mc_results/
+spacemissionstudio lifetime scenario.json --deorbit-perigee-km 250
 spacemissionstudio kernels-status
 
 # launches the PySide6 GUI (needs the 'gui' extra; does NOT need Basilisk

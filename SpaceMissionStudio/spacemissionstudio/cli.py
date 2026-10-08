@@ -250,6 +250,42 @@ def cmd_monte_carlo(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_lifetime(args: argparse.Namespace) -> int:
+    try:
+        scenario = load_scenario(args.scenario)
+    except ScenarioValidationError as exc:
+        print(f"INVALID: {exc}", file=sys.stderr)
+        return 1
+    name = args.spacecraft or scenario.spacecraft[0].name
+    try:
+        from .engine import lifetime
+    except ImportError as exc:
+        print(f"ERROR: Basilisk is not installed/built ({exc}) -- see SpaceMissionStudio/README.md", file=sys.stderr)
+        return 2
+    try:
+        end = lifetime.end_of_life(scenario, name, deorbit_perigee_km=args.deorbit_perigee_km,
+                                   max_years=args.max_years)
+    except lifetime.LifetimeError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 3
+    result = end.lifetime
+    if end.deorbit is not None:
+        plan = end.deorbit
+        print(f"Deorbit burn: {plan.delta_v_m_s:.1f} m/s, {plan.propellant_kg:.2f} kg of "
+              f"{plan.propellant_available_kg:.2f} kg -> perigee {plan.perigee_km:.0f} km")
+    if result.reentered:
+        print(f"{name}: re-entry {result.reentry_utc:%Y-%m-%d}, {result.lifetime_years:.2f} years from "
+              f"{result.start_utc:%Y-%m-%d}")
+    else:
+        print(f"{name}: still in orbit after {args.max_years:g} years")
+    for years, label in ((lifetime.ZERO_DEBRIS_YEARS, "5-year rule"), (lifetime.IADC_YEARS, "25-year guideline")):
+        known = result.reentered or args.max_years >= years
+        print(f"  {label}: {('met' if result.meets(years) else 'not met') if known else 'not known'}")
+    for warning in result.warnings:
+        print(f"WARNING: {warning}", file=sys.stderr)
+    return 0
+
+
 def cmd_kernels_status(args: argparse.Namespace) -> int:
     try:
         from .engine import kernels
@@ -455,6 +491,14 @@ def build_parser() -> argparse.ArgumentParser:
     p_mc.add_argument("--archive-dir", type=Path, default=Path("monte_carlo_results"),
                        help="directory to archive per-run parameters and retained data to")
     p_mc.set_defaults(func=cmd_monte_carlo)
+
+    p_life = subparsers.add_parser("lifetime", help="estimate when a spacecraft re-enters (orbit-averaged drag)")
+    p_life.add_argument("scenario", type=Path)
+    p_life.add_argument("--spacecraft", help="spacecraft name (default: the first)")
+    p_life.add_argument("--deorbit-perigee-km", type=float, default=None,
+                        help="first lower the perigee to this altitude [km] with the orbit thruster")
+    p_life.add_argument("--max-years", type=float, default=30.0, help="how far ahead to look [years]")
+    p_life.set_defaults(func=cmd_lifetime)
 
     p_kernels = subparsers.add_parser("kernels-status", help="fetch/check SPICE kernel cache status")
     p_kernels.set_defaults(func=cmd_kernels_status)

@@ -63,6 +63,7 @@ from .mission_output_widget import MissionOutputWidget
 from .results_widget import ResultsWidget
 from .run_worker import MonteCarloWorker, RunWorker
 from .scenario_editor import ScenarioEditorWidget
+from .lifetime_widget import LifetimeWidget
 from .scenario_explainer_widget import ScenarioExplainerWidget
 from .startup_fetch_dialog import maybe_run_startup_fetch
 from .vizard_dialog import VizardDialog
@@ -174,6 +175,7 @@ class MainWindow(QMainWindow):
         self.mission_output_widget = MissionOutputWidget()
         self.kernel_status_widget = KernelStatusWidget()
         self.scenario_explainer_widget = ScenarioExplainerWidget()
+        self.lifetime_widget = LifetimeWidget()
 
         self.right_tabs = TabWidget()
         self.right_tabs.addTab(self.results_widget, "Results")
@@ -181,6 +183,7 @@ class MainWindow(QMainWindow):
         self.right_tabs.addTab(self.mission_output_widget, "Mission Output")
         self.right_tabs.addTab(self.kernel_status_widget, "Kernel Status")
         self.right_tabs.addTab(self.scenario_explainer_widget, "Explain")
+        self.right_tabs.addTab(self.lifetime_widget, "End of Life")
         self._refresh_scenario_explainer()  # initial paint for the default scenario reset_to_default() just set up
 
         # "Load Scenario" first (index 0, so it's what a freshly launched
@@ -517,6 +520,7 @@ class MainWindow(QMainWindow):
         except ScenarioValidationError:
             scenario = None
         self.scenario_explainer_widget.set_scenario(scenario)
+        self.lifetime_widget.set_scenario(scenario)
         # The tab says when there's something to check, so it's seen even
         # by someone who never opens it before pressing Run.
         count = self.scenario_explainer_widget.warning_count
@@ -1184,6 +1188,7 @@ class MainWindow(QMainWindow):
             # whatever was shown before.
             self.results_widget.set_live_result(result, self._last_run_epoch_utc)
             self.mission_dashboard_widget.set_live_result(result, self._last_run_scenario)
+            self.lifetime_widget.set_last_run(self._last_run_scenario, result)
             if command_summary is not None:
                 self.mission_output_widget.set_command_summary(command_summary, result)
                 self.right_tabs.setCurrentWidget(self.mission_output_widget)
@@ -1300,6 +1305,7 @@ class MainWindow(QMainWindow):
                 event.ignore()
                 return
         if self._confirm_discard_unsaved():
+            self.lifetime_widget.wait_for_worker()  # a few seconds at most; its thread must not be destroyed mid-run
             event.accept()
         else:
             event.ignore()

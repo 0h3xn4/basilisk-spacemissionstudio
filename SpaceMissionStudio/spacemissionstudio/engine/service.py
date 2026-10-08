@@ -201,6 +201,9 @@ _LIVE_DEFAULT_FRAMES = 60
 _logger = logging.getLogger(__name__)
 
 
+_REENTRY_ALTITUDE_M = 100e3  # [m] below this a spacecraft is flagged as re-entered
+
+
 class SimulationServiceError(Exception):
     """Raised on anything that prevents building or running the
     simulation -- an unsupported configuration, a kernel fetch failure
@@ -488,7 +491,16 @@ def _mean_elements(oe: Dict[str, np.ndarray], req: float, j2: float) -> Dict[str
         osc.Omega = oe["raan"][k]
         osc.omega = oe["argp"][k]
         osc.f = oe["true_anomaly"][k]
-        orbitalMotion.clMeanOscMap(req, j2, osc, mean, -1)
+        try:
+            if not (0.0 <= osc.e < 1.0 and osc.a > 0.0):
+                raise ValueError("not a closed orbit")
+            orbitalMotion.clMeanOscMap(req, j2, osc, mean, -1)
+        except ValueError:
+            # a spacecraft past re-entry, inside the Earth: no closed
+            # orbit, or none once J2's terms are removed (clMeanOscMap's
+            # Kepler solve raises for e >= 1)
+            a[k] = e[k] = i[k] = raan[k] = argp[k] = true_anomaly[k] = np.nan
+            continue
         a[k] = mean.a
         e[k] = mean.e
         i[k] = mean.i
@@ -709,6 +721,7 @@ class SimulationService:
         mu = central_body.mu
         self.mu = mu
         self.grav_factory = grav_factory
+        self.central_radius_m = central_body.radEquator  # [m] for the re-entry warning
 
         if gravity.central_body == "earth" and gravity.central_body_degree >= 2:
             # A real J2 (degree-2 zonal) term is only actually present in
@@ -1828,6 +1841,11 @@ class SimulationService:
             t_s = handle.recorder.times() * macros.NANO2SEC
             result.add(TimeSeries(f"{name}.position_N", t_s, ("x", "y", "z"), handle.recorder.r_BN_N, units="m"))
             result.add(TimeSeries(f"{name}.velocity_N", t_s, ("x", "y", "z"), handle.recorder.v_BN_N, units="m/s"))
+            altitude_m = np.linalg.norm(np.asarray(handle.recorder.r_BN_N).reshape(-1, 3), axis=1) - self.central_radius_m
+            below = np.nonzero(altitude_m < _REENTRY_ALTITUDE_M)[0]
+            if len(below):
+                result.warnings.append(f"{name} re-entered: below {_REENTRY_ALTITUDE_M / 1e3:g} km from "
+                                       f"t = {t_s[below[0]] / 86400.0:.2f} days -- later results are not physical")
 
             # Conservation/drift diagnostic -- see _is_two_body_only's own
             # docstring for the (deliberately conservative) gate, and
