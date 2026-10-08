@@ -24,11 +24,11 @@ E-ST-40C,5.2.4.9c,Requires human or process action,"H03,R14",-,-,,0
 E-ST-40C,5.2.4.10a,Requires human or process action,"H03,R14",-,-,,0
 E-ST-40C,5.2.4.11a,Requires human or process action,"H03,R14",-,-,,0
 E-ST-40C,5.2.5a,Requires human or process action,H01,-,-,,0
-E-ST-40C,5.3.2.1a,Non-compliant,R14,HISTORY.md (de-facto change history),-,,0
-E-ST-40C,5.3.2.1b,Non-compliant,R14,HISTORY.md (de-facto change history),-,,0
-E-ST-40C,5.3.2.1c,Non-compliant,R14,HISTORY.md (de-facto change history),-,,0
-E-ST-40C,5.3.2.1d,Non-compliant,R14,HISTORY.md (de-facto change history),-,,0
-E-ST-40C,5.3.2.2a,Non-compliant,R14,-,-,,0
+E-ST-40C,5.3.2.1a,Partially compliant,"R14,H02,H05",compliance/docs/SDP.md,-,,0
+E-ST-40C,5.3.2.1b,Partially compliant,"R14,H02,H05",compliance/docs/SDP.md,-,,0
+E-ST-40C,5.3.2.1c,Partially compliant,"R14,H02,H05",compliance/docs/SDP.md,-,,0
+E-ST-40C,5.3.2.1d,Partially compliant,"R14,H02,H05",compliance/docs/SDP.md,-,,0
+E-ST-40C,5.3.2.2a,Partially compliant,"R14,H01",compliance/docs/SDP.md,-,,0
 E-ST-40C,5.3.2.3a,Non-compliant,"R14,H07",-,-,,0
 E-ST-40C,5.3.2.5a,Partially compliant,"R01,R14",git branches/commits; HISTORY.md,-,,0
 E-ST-40C,5.3.3.1a,Requires human or process action,H01,-,-,,0
@@ -56,13 +56,13 @@ E-ST-40C,5.3.8.2a,Partially compliant,R14,"HISTORY.md: measured run time and mem
 E-ST-40C,5.3.8.2b,Partially compliant,R14,"HISTORY.md: measured run time and memory (e.g. 5-year run 50 min, 450 MB)",-,,0
 E-ST-40C,5.3.9.1a,Partially compliant,,"compliance/ (this audit: requirements, compliance matrix)",-,,0
 E-ST-40C,5.3.9.2a,Partially compliant,,"compliance/ (this audit: requirements, compliance matrix)",-,,0
-E-ST-40C,5.4.2.1a,Non-compliant,R14,"Requirements implicit in HISTORY.md, docstrings and tests",-,,0
+E-ST-40C,5.4.2.1a,Partially compliant,"R14,H01,H03","compliance/docs/SRS.md (SRS-F/P/I/O/R/D/S/PO/Q/RE/M/DEL/DF/H/A, 63 requirements with identifiers, sources and verification methods)",-,,0
 E-ST-40C,5.4.2.4a,Requires human or process action,H01,-,-,,0
-E-ST-40C,5.4.3.1a,Partially compliant,R14,README.md (architecture overview: schema / engine / gui / cli layers); module docstrings,-,,0
-E-ST-40C,5.4.3.2a,Partially compliant,R14,README.md (architecture overview: schema / engine / gui / cli layers); module docstrings,-,,0
-E-ST-40C,5.4.3.2b,Non-compliant,R15,-,-,,0
-E-ST-40C,5.4.3.3a,Partially compliant,R14,README.md (architecture overview: schema / engine / gui / cli layers); module docstrings,-,,0
-E-ST-40C,5.4.3.5a,Partially compliant,R14,README.md (architecture overview: schema / engine / gui / cli layers); module docstrings,-,,0
+E-ST-40C,5.4.3.1a,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md (generated component descriptions and traceability)",-,,0
+E-ST-40C,5.4.3.2a,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md (generated component descriptions and traceability)",-,,0
+E-ST-40C,5.4.3.2b,Partially compliant,"R15,H01",compliance/docs/security_analysis.md section 5 (residual vulnerabilities after treatment),-,,0
+E-ST-40C,5.4.3.3a,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md (generated component descriptions and traceability)",-,,0
+E-ST-40C,5.4.3.5a,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md (generated component descriptions and traceability)",-,,0
 E-ST-40C,5.4.3.6c,Compliant,,"Mission data (scenarios JSON, space-weather data files) separate from code",inspection of the evidence,,0
 E-ST-40C,5.4.3.7a,Non-compliant,R14,-,-,,0
 E-ST-40C,5.4.3.8a,Non-compliant,R14,-,-,,0
@@ -80,7 +80,7 @@ E-ST-40C,5.5.2.5d,Non-compliant,R14,gui/*_widget.py QThread workers; engine/prop
 E-ST-40C,5.5.2.5e,Non-compliant,R14,gui/*_widget.py QThread workers; engine/propellant_budget.py process pool,-,,0
 E-ST-40C,5.5.2.6a,Partially compliant,R14,"Module and class docstrings (engine/, gui/, schema/)",-,,0
 E-ST-40C,5.5.2.7a,Partially compliant,R14,"Module and class docstrings (engine/, gui/, schema/)",-,,0
-E-ST-40C,5.5.2.8a,Partially compliant,R14,USER_MANUAL.md,-,,0
+E-ST-40C,5.5.2.8a,Partially compliant,"R14,H01","compliance/docs/SUM.md (maps the DRD to USER_MANUAL.md and adds data files, security, messages, recovery)",-,,0
 E-ST-40C,5.5.2.9a,Non-compliant,R14,-,-,,0
 E-ST-40C,5.5.2.10a,Requires human or process action,H01,-,-,,0
 E-ST-40C,5.5.3.1a,Partially compliant,"R10,R14",spacemissionstudio/ source; R10 (Phase 2): compliance/docs/coding_standard.md (rules C-1 to C-15); build and install steps in pyproject.toml and the CI workflow .github/workflows/spacemissionstudio.yml,-,,0
@@ -93,24 +93,24 @@ E-ST-40C,5.6.2.1a,Non-compliant,"R13,R14","HISTORY.md validation notes (e.g. lif
 E-ST-40C,5.6.2.1b,Non-compliant,"R13,R14","HISTORY.md validation notes (e.g. lifetime vs Basilisk decay +/-1%, drag estimate -5% vs 5-year runs)",-,,0
 E-ST-40C,5.6.2.1c,Non-compliant,"R13,R14","HISTORY.md validation notes (e.g. lifetime vs Basilisk decay +/-1%, drag estimate -5% vs 5-year runs)",-,,0
 E-ST-40C,5.6.2.1d,Non-compliant,"R13,R14","HISTORY.md validation notes (e.g. lifetime vs Basilisk decay +/-1%, drag estimate -5% vs 5-year runs)",-,,0
-E-ST-40C,5.6.3.1a,Partially compliant,"R13,R14",R13 (Phase 3): validation tests tests/validation (V-01 to V-08) with stated tolerances and results (compliance/phase3_log.md),test,tests/validation/test_v01_time_scales.py::test_tdb_series_reproduces_sofas_own_test_value; tests/validation/test_v01_time_scales.py::test_time_scale_offsets_agree_with_gmat; tests/validation/test_v02_earth_orientation.py::test_erfa_reproduces_the_published_vallado_example; tests/validation/test_v02_earth_orientation.py::test_tool_earth_frame_agrees_with_iers_c04; tests/validation/test_v02_earth_orientation.py::test_tool_earth_frame_reproduces_the_vallado_example; tests/validation/test_v04_propagation.py::test_propagation_agrees_with_gmat; tests/validation/test_v05_passes.py::test_pass_times_agree_with_gmat_contact_locator; tests/validation/test_v06_ccsds_oem.py::test_gmat_reading_the_tool_oem_returns_the_tool_trajectory; tests/validation/test_v06_ccsds_oem.py::test_the_oem_the_tool_writes_conforms; tests/validation/test_v06_ccsds_oem.py::test_tool_reads_and_checks_the_oem_gmat_writes,10
-E-ST-40C,5.6.3.1b,Partially compliant,"R13,R14",R13 (Phase 3): validation tests tests/validation (V-01 to V-08) with stated tolerances and results (compliance/phase3_log.md),test,tests/validation/test_v01_time_scales.py::test_tdb_series_reproduces_sofas_own_test_value; tests/validation/test_v01_time_scales.py::test_time_scale_offsets_agree_with_gmat; tests/validation/test_v02_earth_orientation.py::test_erfa_reproduces_the_published_vallado_example; tests/validation/test_v02_earth_orientation.py::test_tool_earth_frame_agrees_with_iers_c04; tests/validation/test_v02_earth_orientation.py::test_tool_earth_frame_reproduces_the_vallado_example; tests/validation/test_v04_propagation.py::test_propagation_agrees_with_gmat; tests/validation/test_v05_passes.py::test_pass_times_agree_with_gmat_contact_locator; tests/validation/test_v06_ccsds_oem.py::test_gmat_reading_the_tool_oem_returns_the_tool_trajectory; tests/validation/test_v06_ccsds_oem.py::test_the_oem_the_tool_writes_conforms; tests/validation/test_v06_ccsds_oem.py::test_tool_reads_and_checks_the_oem_gmat_writes,10
-E-ST-40C,5.6.3.1c,Partially compliant,"R13,R14",R13 (Phase 3): validation tests tests/validation (V-01 to V-08) with stated tolerances and results (compliance/phase3_log.md),test,tests/validation/test_v01_time_scales.py::test_tdb_series_reproduces_sofas_own_test_value; tests/validation/test_v01_time_scales.py::test_time_scale_offsets_agree_with_gmat; tests/validation/test_v02_earth_orientation.py::test_erfa_reproduces_the_published_vallado_example; tests/validation/test_v02_earth_orientation.py::test_tool_earth_frame_agrees_with_iers_c04; tests/validation/test_v02_earth_orientation.py::test_tool_earth_frame_reproduces_the_vallado_example; tests/validation/test_v04_propagation.py::test_propagation_agrees_with_gmat; tests/validation/test_v05_passes.py::test_pass_times_agree_with_gmat_contact_locator; tests/validation/test_v06_ccsds_oem.py::test_gmat_reading_the_tool_oem_returns_the_tool_trajectory; tests/validation/test_v06_ccsds_oem.py::test_the_oem_the_tool_writes_conforms; tests/validation/test_v06_ccsds_oem.py::test_tool_reads_and_checks_the_oem_gmat_writes,10
-E-ST-40C,5.6.3.2a,Partially compliant,"R13,R14",R13 (Phase 3): validation tests tests/validation (V-01 to V-08) with stated tolerances and results (compliance/phase3_log.md),-,,0
-E-ST-40C,5.6.3.3a,Partially compliant,"R13,R14",R13 (Phase 3): validation tests tests/validation (V-01 to V-08) with stated tolerances and results (compliance/phase3_log.md),-,,0
+E-ST-40C,5.6.3.1a,Partially compliant,"R13,R14,H01,H13","compliance/docs/SValP.md, SVS.md, SVR.md; tests/validation (V-01, V-02, V-04 to V-08 within tolerance)",test,tests/validation/test_v01_time_scales.py::test_tdb_series_reproduces_sofas_own_test_value; tests/validation/test_v01_time_scales.py::test_time_scale_offsets_agree_with_gmat; tests/validation/test_v02_earth_orientation.py::test_erfa_reproduces_the_published_vallado_example; tests/validation/test_v02_earth_orientation.py::test_tool_earth_frame_agrees_with_iers_c04; tests/validation/test_v02_earth_orientation.py::test_tool_earth_frame_reproduces_the_vallado_example; tests/validation/test_v04_propagation.py::test_propagation_agrees_with_gmat; tests/validation/test_v05_passes.py::test_pass_times_agree_with_gmat_contact_locator; tests/validation/test_v06_ccsds_oem.py::test_gmat_reading_the_tool_oem_returns_the_tool_trajectory; tests/validation/test_v06_ccsds_oem.py::test_the_oem_the_tool_writes_conforms; tests/validation/test_v06_ccsds_oem.py::test_tool_reads_and_checks_the_oem_gmat_writes,10
+E-ST-40C,5.6.3.1b,Partially compliant,"R13,R14,H01,H13","compliance/docs/SValP.md, SVS.md, SVR.md; tests/validation (V-01, V-02, V-04 to V-08 within tolerance)",test,tests/validation/test_v01_time_scales.py::test_tdb_series_reproduces_sofas_own_test_value; tests/validation/test_v01_time_scales.py::test_time_scale_offsets_agree_with_gmat; tests/validation/test_v02_earth_orientation.py::test_erfa_reproduces_the_published_vallado_example; tests/validation/test_v02_earth_orientation.py::test_tool_earth_frame_agrees_with_iers_c04; tests/validation/test_v02_earth_orientation.py::test_tool_earth_frame_reproduces_the_vallado_example; tests/validation/test_v04_propagation.py::test_propagation_agrees_with_gmat; tests/validation/test_v05_passes.py::test_pass_times_agree_with_gmat_contact_locator; tests/validation/test_v06_ccsds_oem.py::test_gmat_reading_the_tool_oem_returns_the_tool_trajectory; tests/validation/test_v06_ccsds_oem.py::test_the_oem_the_tool_writes_conforms; tests/validation/test_v06_ccsds_oem.py::test_tool_reads_and_checks_the_oem_gmat_writes,10
+E-ST-40C,5.6.3.1c,Partially compliant,"R13,R14,H01,H13","compliance/docs/SValP.md, SVS.md, SVR.md; tests/validation (V-01, V-02, V-04 to V-08 within tolerance)",test,tests/validation/test_v01_time_scales.py::test_tdb_series_reproduces_sofas_own_test_value; tests/validation/test_v01_time_scales.py::test_time_scale_offsets_agree_with_gmat; tests/validation/test_v02_earth_orientation.py::test_erfa_reproduces_the_published_vallado_example; tests/validation/test_v02_earth_orientation.py::test_tool_earth_frame_agrees_with_iers_c04; tests/validation/test_v02_earth_orientation.py::test_tool_earth_frame_reproduces_the_vallado_example; tests/validation/test_v04_propagation.py::test_propagation_agrees_with_gmat; tests/validation/test_v05_passes.py::test_pass_times_agree_with_gmat_contact_locator; tests/validation/test_v06_ccsds_oem.py::test_gmat_reading_the_tool_oem_returns_the_tool_trajectory; tests/validation/test_v06_ccsds_oem.py::test_the_oem_the_tool_writes_conforms; tests/validation/test_v06_ccsds_oem.py::test_tool_reads_and_checks_the_oem_gmat_writes,10
+E-ST-40C,5.6.3.2a,Partially compliant,"R13,R14,H01,H13","compliance/docs/SValP.md, SVS.md, SVR.md; tests/validation (V-01, V-02, V-04 to V-08 within tolerance)",-,,0
+E-ST-40C,5.6.3.3a,Partially compliant,"R13,R14,H01,H13","compliance/docs/SValP.md, SVS.md, SVR.md; tests/validation (V-01, V-02, V-04 to V-08 within tolerance)",-,,0
 E-ST-40C,5.6.3.4a,Requires human or process action,H01,-,-,,0
-E-ST-40C,5.6.4.1a,Partially compliant,"R13,R14","R13 (Phase 3): tests/validation, compliance/phase3_log.md",test,tests/validation/test_v04_propagation.py::test_propagation_agrees_with_gmat,1
-E-ST-40C,5.6.4.1b,Partially compliant,"R13,R14","R13 (Phase 3): tests/validation, compliance/phase3_log.md",test,tests/validation/test_v04_propagation.py::test_propagation_agrees_with_gmat,1
-E-ST-40C,5.6.4.1c,Partially compliant,"R13,R14","R13 (Phase 3): tests/validation, compliance/phase3_log.md",test,tests/validation/test_v04_propagation.py::test_propagation_agrees_with_gmat,1
-E-ST-40C,5.6.4.2a,Partially compliant,"R13,R14","R13 (Phase 3): tests/validation, compliance/phase3_log.md",-,,0
-E-ST-40C,5.6.4.2b,Partially compliant,"R13,R14","R13 (Phase 3): tests/validation, compliance/phase3_log.md",-,,0
-E-ST-40C,5.6.4.3a,Partially compliant,"R13,R14","R13 (Phase 3): tests/validation, compliance/phase3_log.md",-,,0
+E-ST-40C,5.6.4.1a,Requires human or process action,"H03,H01",compliance/docs/SValP.md 4.1,test,tests/validation/test_v04_propagation.py::test_propagation_agrees_with_gmat,1
+E-ST-40C,5.6.4.1b,Requires human or process action,"H03,H01",compliance/docs/SValP.md 4.1,test,tests/validation/test_v04_propagation.py::test_propagation_agrees_with_gmat,1
+E-ST-40C,5.6.4.1c,Requires human or process action,"H03,H01",compliance/docs/SValP.md 4.1,test,tests/validation/test_v04_propagation.py::test_propagation_agrees_with_gmat,1
+E-ST-40C,5.6.4.2a,Requires human or process action,"H03,H01",compliance/docs/SValP.md 4.1,-,,0
+E-ST-40C,5.6.4.2b,Requires human or process action,"H03,H01",compliance/docs/SValP.md 4.1,-,,0
+E-ST-40C,5.6.4.3a,Requires human or process action,"H03,H01",compliance/docs/SValP.md 4.1,-,,0
 E-ST-40C,5.6.4.4a,Requires human or process action,H01,-,-,,0
-E-ST-40C,5.6.5a,Non-compliant,R14,-,-,,0
-E-ST-40C,5.7.2.1a,Partially compliant,R14,"packaging/ (.deb, Windows installer, wheel scripts)",-,,0
-E-ST-40C,5.7.2.1b,Partially compliant,R15,packaging/; offline-by-design runtime (README),-,,0
-E-ST-40C,5.7.2.3a,Partially compliant,R15,"packaging/README.md, install.sh/install.ps1",-,,0
-E-ST-40C,5.7.2.3b,Partially compliant,R15,"packaging/README.md, install.sh/install.ps1",-,,0
+E-ST-40C,5.6.5a,Partially compliant,"R14,H01",compliance/docs/SVR.md 4.6 (validation status per case),-,,0
+E-ST-40C,5.7.2.1a,Partially compliant,"R14,H05",packaging/; compliance/docs/SRelD.md,-,,0
+E-ST-40C,5.7.2.1b,Partially compliant,"R15,H05","packaging/build_wheel.sh, build_wheel.ps1, build_deb.sh write SHA-256 checksums (security analysis S-07)",-,,0
+E-ST-40C,5.7.2.3a,Partially compliant,"R15,H13","packaging/README.md, install scripts; compliance/docs/security_analysis.md section 6; SUM 9.2, 9.9",-,,0
+E-ST-40C,5.7.2.3b,Partially compliant,"R15,H13","packaging/README.md, install scripts; compliance/docs/security_analysis.md section 6; SUM 9.2, 9.9",-,,0
 E-ST-40C,5.7.2.4a,Partially compliant,R14,packaging/ (kernel pre-fetch at install),-,,0
 E-ST-40C,5.7.2.4b,Partially compliant,R14,packaging/ (kernel pre-fetch at install),-,,0
 E-ST-40C,5.7.2.4c,Partially compliant,R14,packaging/ (kernel pre-fetch at install),-,,0
@@ -194,56 +194,56 @@ E-ST-40C,5.10.7.1a,Requires human or process action,"H05,R14",git history; HISTO
 E-ST-40C,5.10.7.2a,Requires human or process action,"H05,R14",git history; HISTORY.md,-,,0
 E-ST-40C,5.10.7.3a,Requires human or process action,"H05,R14",git history; HISTORY.md,-,,0
 E-ST-40C,5.10.7.4a,Requires human or process action,"H05,R14",git history; HISTORY.md,-,,0
-E-ST-40C,5.11.2a,Non-compliant,R15,README.md: offline at runtime; schema validation of inputs,-,,0
-E-ST-40C,5.11.2b,Non-compliant,R15,README.md: offline at runtime; schema validation of inputs,-,,0
-E-ST-40C,5.11.2c,Non-compliant,R15,README.md: offline at runtime; schema validation of inputs,-,,0
-E-ST-40C,5.11.2d,Non-compliant,R15,README.md: offline at runtime; schema validation of inputs,-,,0
-E-ST-40C,5.11.3a,Non-compliant,R15,README.md: offline at runtime; schema validation of inputs,-,,0
-E-ST-40C,5.11.3b,Non-compliant,R15,README.md: offline at runtime; schema validation of inputs,-,,0
-E-ST-40C,5.11.3c,Non-compliant,R15,README.md: offline at runtime; schema validation of inputs,-,,0
-E-ST-40C,5.11.3d,Non-compliant,R15,README.md: offline at runtime; schema validation of inputs,-,,0
-E-ST-40C,5.11.3e,Non-compliant,R15,README.md: offline at runtime; schema validation of inputs,-,,0
-E-ST-40C,5.11.3f,Non-compliant,R15,README.md: offline at runtime; schema validation of inputs,-,,0
-E-ST-40C,5.11.3g,Non-compliant,R15,README.md: offline at runtime; schema validation of inputs,-,,0
-E-ST-40C,5.11.3h,Non-compliant,R15,README.md: offline at runtime; schema validation of inputs,-,,0
-E-ST-40C,5.11.3i,Non-compliant,R15,README.md: offline at runtime; schema validation of inputs,-,,0
-E-ST-40C,5.11.3j,Non-compliant,R15,README.md: offline at runtime; schema validation of inputs,-,,0
-E-ST-40C,5.11.3k,Non-compliant,R15,README.md: offline at runtime; schema validation of inputs,-,,0
-E-ST-40C,5.11.3l,Non-compliant,R15,README.md: offline at runtime; schema validation of inputs,-,,0
-E-ST-40C,5.11.4a,Non-compliant,R15,README.md: offline at runtime; schema validation of inputs,-,,0
-E-ST-40C,5.11.4b,Non-compliant,R15,README.md: offline at runtime; schema validation of inputs,-,,0
-E-ST-40C,5.11.4c,Non-compliant,R15,README.md: offline at runtime; schema validation of inputs,-,,0
-E-ST-40C,5.11.4d,Non-compliant,R15,README.md: offline at runtime; schema validation of inputs,-,,0
-E-ST-40C,5.11.4e,Non-compliant,R15,README.md: offline at runtime; schema validation of inputs,-,,0
-E-ST-40C,5.11.4f,Non-compliant,R15,README.md: offline at runtime; schema validation of inputs,-,,0
-E-ST-40C,5.11.5.1a,Non-compliant,R15,README.md: offline at runtime; schema validation of inputs,-,,0
-E-ST-40C,5.11.5.1b,Non-compliant,R15,README.md: offline at runtime; schema validation of inputs,-,,0
-E-ST-40C,5.11.5.1c,Non-compliant,R15,README.md: offline at runtime; schema validation of inputs,-,,0
-E-ST-40C,5.11.5.1d,Non-compliant,R15,README.md: offline at runtime; schema validation of inputs,-,,0
-E-ST-40C,5.11.5.2a,Non-compliant,R15,README.md: offline at runtime; schema validation of inputs,-,,0
-E-ST-40C,5.11.5.2b,Non-compliant,R15,README.md: offline at runtime; schema validation of inputs,-,,0
-E-ST-40C,5.11.5.2c,Non-compliant,R15,README.md: offline at runtime; schema validation of inputs,-,,0
-E-ST-40C,5.11.5.2d,Non-compliant,R15,README.md: offline at runtime; schema validation of inputs,-,,0
-E-ST-40C,5.11.5.3a,Non-compliant,R15,README.md: offline at runtime; schema validation of inputs,-,,0
-E-ST-40C,5.11.5.3b,Non-compliant,R15,README.md: offline at runtime; schema validation of inputs,-,,0
-E-ST-40C,5.11.5.3c,Non-compliant,R15,README.md: offline at runtime; schema validation of inputs,-,,0
-E-ST-40C,5.11.5.3d,Non-compliant,R15,README.md: offline at runtime; schema validation of inputs,-,,0
-E-ST-40C,5.11.5.4a,Non-compliant,R15,README.md: offline at runtime; schema validation of inputs,-,,0
-E-ST-40C,5.11.5.4b,Non-compliant,R15,README.md: offline at runtime; schema validation of inputs,-,,0
-E-ST-40C,5.11.5.4c,Non-compliant,R15,README.md: offline at runtime; schema validation of inputs,-,,0
-E-ST-40C,5.11.5.4d,Non-compliant,R15,README.md: offline at runtime; schema validation of inputs,-,,0
-E-ST-40C,5.11.5.5a,Non-compliant,R15,README.md: offline at runtime; schema validation of inputs,-,,0
-E-ST-40C,5.11.5.5b,Non-compliant,R15,README.md: offline at runtime; schema validation of inputs,-,,0
-E-ST-40C,5.11.5.5c,Non-compliant,R15,README.md: offline at runtime; schema validation of inputs,-,,0
-E-ST-40C,5.11.5.6a,Non-compliant,R15,README.md: offline at runtime; schema validation of inputs,-,,0
-E-ST-40C,5.11.5.6b,Non-compliant,R15,README.md: offline at runtime; schema validation of inputs,-,,0
-E-ST-40C,5.11.5.6c,Non-compliant,R15,README.md: offline at runtime; schema validation of inputs,-,,0
-E-ST-40C,5.11.5.6d,Non-compliant,R15,README.md: offline at runtime; schema validation of inputs,-,,0
-E-ST-40C,5.11.5.6e,Non-compliant,R15,README.md: offline at runtime; schema validation of inputs,-,,0
-E-ST-40C,5.11.5.6f,Non-compliant,R15,README.md: offline at runtime; schema validation of inputs,-,,0
-E-ST-40C,5.11.5.6g,Non-compliant,R15,README.md: offline at runtime; schema validation of inputs,-,,0
-E-ST-40C,5.11.5.6h,Non-compliant,R15,README.md: offline at runtime; schema validation of inputs,-,,0
-E-ST-40C,5.11.5.6i,Non-compliant,R15,README.md: offline at runtime; schema validation of inputs,-,,0
+E-ST-40C,5.11.2a,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
+E-ST-40C,5.11.2b,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
+E-ST-40C,5.11.2c,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
+E-ST-40C,5.11.2d,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
+E-ST-40C,5.11.3a,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
+E-ST-40C,5.11.3b,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
+E-ST-40C,5.11.3c,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
+E-ST-40C,5.11.3d,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
+E-ST-40C,5.11.3e,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
+E-ST-40C,5.11.3f,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
+E-ST-40C,5.11.3g,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
+E-ST-40C,5.11.3h,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
+E-ST-40C,5.11.3i,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
+E-ST-40C,5.11.3j,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
+E-ST-40C,5.11.3k,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
+E-ST-40C,5.11.3l,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
+E-ST-40C,5.11.4a,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
+E-ST-40C,5.11.4b,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
+E-ST-40C,5.11.4c,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
+E-ST-40C,5.11.4d,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
+E-ST-40C,5.11.4e,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
+E-ST-40C,5.11.4f,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
+E-ST-40C,5.11.5.1a,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
+E-ST-40C,5.11.5.1b,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
+E-ST-40C,5.11.5.1c,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
+E-ST-40C,5.11.5.1d,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
+E-ST-40C,5.11.5.2a,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
+E-ST-40C,5.11.5.2b,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
+E-ST-40C,5.11.5.2c,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
+E-ST-40C,5.11.5.2d,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
+E-ST-40C,5.11.5.3a,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
+E-ST-40C,5.11.5.3b,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
+E-ST-40C,5.11.5.3c,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
+E-ST-40C,5.11.5.3d,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
+E-ST-40C,5.11.5.4a,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
+E-ST-40C,5.11.5.4b,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
+E-ST-40C,5.11.5.4c,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
+E-ST-40C,5.11.5.4d,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
+E-ST-40C,5.11.5.5a,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
+E-ST-40C,5.11.5.5b,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
+E-ST-40C,5.11.5.5c,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
+E-ST-40C,5.11.5.6a,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
+E-ST-40C,5.11.5.6b,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
+E-ST-40C,5.11.5.6c,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
+E-ST-40C,5.11.5.6d,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
+E-ST-40C,5.11.5.6e,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
+E-ST-40C,5.11.5.6f,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
+E-ST-40C,5.11.5.6g,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
+E-ST-40C,5.11.5.6h,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
+E-ST-40C,5.11.5.6i,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
 E-ST-40C,B.2.1<1>a,Non-compliant,"H03,R14",-,-,,0
 E-ST-40C,B.2.1<2>a,Non-compliant,"H03,R14",-,-,,0
 E-ST-40C,B.2.1<3>a,Non-compliant,"H03,R14",-,-,,0
@@ -308,447 +308,447 @@ E-ST-40C,C.2.1<5.4>a,Non-compliant,"H03,R14",-,-,,0
 E-ST-40C,C.2.1<6>a,Non-compliant,"H03,R14",-,-,,0
 E-ST-40C,C.2.1<6>b,Non-compliant,"H03,R14",-,-,,0
 E-ST-40C,C.2.1<6>c,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,D.2.1<1>a,Non-compliant,R14,-,-,,0
-E-ST-40C,D.2.1<2>a,Non-compliant,R14,-,-,,0
-E-ST-40C,D.2.1<3>a,Non-compliant,R14,-,-,,0
-E-ST-40C,D.2.1<4.1>a,Non-compliant,R14,-,-,,0
-E-ST-40C,D.2.1<4.2>a,Non-compliant,R14,-,-,,0
-E-ST-40C,D.2.1<4.3>a,Non-compliant,R14,-,-,,0
-E-ST-40C,D.2.1<4.3>b,Non-compliant,R14,-,-,,0
-E-ST-40C,D.2.1<4.3>c,Non-compliant,R14,-,-,,0
-E-ST-40C,D.2.1<4.4>a,Non-compliant,R14,-,-,,0
-E-ST-40C,D.2.1<4.4>b,Non-compliant,R14,-,-,,0
-E-ST-40C,D.2.1<5.1>a,Non-compliant,R14,-,-,,0
-E-ST-40C,D.2.1<5.1>b,Non-compliant,R14,-,-,,0
-E-ST-40C,D.2.1<5.1>c,Non-compliant,R14,-,-,,0
-E-ST-40C,D.2.1<5.1>d,Non-compliant,R14,-,-,,0
-E-ST-40C,D.2.1<5.2>a,Non-compliant,R14,-,-,,0
-E-ST-40C,D.2.1<5.2>b,Non-compliant,R14,-,-,,0
-E-ST-40C,D.2.1<5.2>c,Non-compliant,R14,-,-,,0
-E-ST-40C,D.2.1<5.2>d,Non-compliant,R14,-,-,,0
-E-ST-40C,D.2.1<5.2>e,Non-compliant,R14,-,-,,0
-E-ST-40C,D.2.1<5.3>a,Non-compliant,R14,-,-,,0
-E-ST-40C,D.2.1<5.4>a,Non-compliant,R14,-,-,,0
-E-ST-40C,D.2.1<5.4>b,Non-compliant,R14,-,-,,0
-E-ST-40C,D.2.1<5.4>c,Non-compliant,R14,-,-,,0
-E-ST-40C,D.2.1<5.4>d,Non-compliant,R14,-,-,,0
-E-ST-40C,D.2.1<5.5>a,Non-compliant,R14,-,-,,0
-E-ST-40C,D.2.1<5.5>b,Non-compliant,R14,-,-,,0
-E-ST-40C,D.2.1<5.5>c,Non-compliant,R14,-,-,,0
-E-ST-40C,D.2.1<5.6>a,Non-compliant,R14,-,-,,0
-E-ST-40C,D.2.1<5.7>a,Non-compliant,R14,-,-,,0
-E-ST-40C,D.2.1<5.7>b,Non-compliant,R14,-,-,,0
-E-ST-40C,D.2.1<5.8>a,Non-compliant,R14,-,-,,0
-E-ST-40C,D.2.1<5.9>a,Non-compliant,R14,-,-,,0
-E-ST-40C,D.2.1<5.10>a,Non-compliant,R14,-,-,,0
-E-ST-40C,D.2.1<5.11>a,Non-compliant,R14,-,-,,0
-E-ST-40C,D.2.1<5.12>a,Non-compliant,R14,-,-,,0
-E-ST-40C,D.2.1<5.13>a,Non-compliant,R14,-,-,,0
-E-ST-40C,D.2.1<5.14>a,Non-compliant,R14,-,-,,0
-E-ST-40C,D.2.1<5.15>a,Non-compliant,R14,-,-,,0
-E-ST-40C,D.2.1<5.16>a,Non-compliant,R14,-,-,,0
-E-ST-40C,D.2.1<5.17>a,Non-compliant,R14,-,-,,0
-E-ST-40C,D.2.1<6>a,Non-compliant,R14,-,-,,0
-E-ST-40C,D.2.1<6>b,Non-compliant,R14,-,-,,0
-E-ST-40C,D.2.1<7>a,Non-compliant,R14,-,-,,0
-E-ST-40C,D.2.1<7>b,Non-compliant,R14,-,-,,0
-E-ST-40C,D.2.1<8>a,Non-compliant,R14,-,-,,0
-E-ST-40C,D.2.1<8>b,Non-compliant,R14,-,-,,0
-E-ST-40C,D.2.1<8>c,Non-compliant,R14,-,-,,0
-E-ST-40C,D.2.1<8>d,Non-compliant,R14,-,-,,0
-E-ST-40C,D.2.1<8>e,Non-compliant,R14,-,-,,0
-E-ST-40C,E.2.1<1>a,Non-compliant,R14,-,-,,0
-E-ST-40C,E.2.1<2>a,Non-compliant,R14,-,-,,0
-E-ST-40C,E.2.1<3>a,Non-compliant,R14,-,-,,0
-E-ST-40C,E.2.1<4>a,Non-compliant,R14,-,-,,0
-E-ST-40C,E.2.1<5.1>a,Non-compliant,R14,-,-,,0
-E-ST-40C,E.2.1<5.1>b,Non-compliant,R14,-,-,,0
-E-ST-40C,E.2.1<5.1>c,Non-compliant,R14,-,-,,0
-E-ST-40C,E.2.1<5.2>a,Non-compliant,R14,-,-,,0
-E-ST-40C,E.2.1<5.2>b,Non-compliant,R14,-,-,,0
-E-ST-40C,E.2.1<5.3>a,Non-compliant,R14,-,-,,0
-E-ST-40C,E.2.1<5.3>b,Non-compliant,R14,-,-,,0
-E-ST-40C,E.2.1<5.3>c,Non-compliant,R14,-,-,,0
-E-ST-40C,E.2.1<5.3>d,Non-compliant,R14,-,-,,0
-E-ST-40C,E.2.1<5.3>e,Non-compliant,R14,-,-,,0
-E-ST-40C,E.2.1<6>a,Non-compliant,R14,-,-,,0
-E-ST-40C,E.2.1<6>b,Non-compliant,R14,-,-,,0
-E-ST-40C,E.2.1<7>a,Non-compliant,R14,-,-,,0
-E-ST-40C,E.2.1<7>b,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<1>a,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<2>a,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<3>a,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<4.1>a,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<4.1>b,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<4.1>c,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<4.2>a,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<4.4>a,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<4.4>b,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<4.5>a,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<4.6>a,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<4.7>a,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<4.7>b,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<5.1>a,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<5.1>b,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<5.1>c,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<5.1>d,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<5.2>a,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<5.2>b,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<5.2>c,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<5.2>d,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<5.2>e,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<5.2>f,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<5.2>g,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<5.3>a,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<5.3>b,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<5.3>c,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<5.4.1>a,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<5.4.2>a,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<5.4.2>b,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<5.4.2>c,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<5.4.3>a,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<5.4.3>b,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<5.4.3>c,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<5.4.4>a,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<5.4.5>a,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<5.4.5>b,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<5.4.6>a,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<5.4.7>a,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<5.4.8>a,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<5.4.8>b,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<5.4.8>c,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<5.4.8>d,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<5.4.8>e,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<5.4.8>f,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<5.4.8>g,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<5.4.9>a,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<5.4.10>a,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<5.4.11>a,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<5.4.11>b,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<5.4.11>c,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<5.5>a,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<5.5>b,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<5.5>c,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<5.5>d,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<5.5>e,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<6>a,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<6>b,Non-compliant,R14,-,-,,0
-E-ST-40C,F.2.1<6>c,Non-compliant,R14,-,-,,0
-E-ST-40C,G.2.1<1>a,Partially compliant,R14,HISTORY.md (change history),-,,0
-E-ST-40C,G.2.1<2>a,Partially compliant,R14,HISTORY.md (change history),-,,0
-E-ST-40C,G.2.1<3>a,Partially compliant,R14,HISTORY.md (change history),-,,0
-E-ST-40C,G.2.1<4>a,Partially compliant,R14,HISTORY.md (change history),-,,0
-E-ST-40C,G.2.1<5.1>a,Partially compliant,R14,HISTORY.md (change history),-,,0
-E-ST-40C,G.2.1<5.2>a,Partially compliant,R14,HISTORY.md (change history),-,,0
-E-ST-40C,G.2.1<6>a,Partially compliant,R14,HISTORY.md (change history),-,,0
-E-ST-40C,G.2.1<7>a,Partially compliant,R14,HISTORY.md (change history),-,,0
-E-ST-40C,H.2.1<1>a,Partially compliant,R14,USER_MANUAL.md,-,,0
-E-ST-40C,H.2.1<2>a,Partially compliant,R14,USER_MANUAL.md,-,,0
-E-ST-40C,H.2.1<3>a,Partially compliant,R14,USER_MANUAL.md,-,,0
-E-ST-40C,H.2.1<4>a,Partially compliant,R14,USER_MANUAL.md,-,,0
-E-ST-40C,H.2.1<5>a,Partially compliant,R14,USER_MANUAL.md,-,,0
-E-ST-40C,H.2.1<6>a,Partially compliant,R14,USER_MANUAL.md,-,,0
-E-ST-40C,H.2.1<7.1>a,Partially compliant,R14,USER_MANUAL.md,-,,0
-E-ST-40C,H.2.1<7.2>a,Partially compliant,R14,USER_MANUAL.md,-,,0
-E-ST-40C,H.2.1<7.3>a,Partially compliant,R14,USER_MANUAL.md,-,,0
-E-ST-40C,H.2.1<7.4>a,Partially compliant,R14,USER_MANUAL.md,-,,0
-E-ST-40C,H.2.1<8>a,Partially compliant,R14,USER_MANUAL.md,-,,0
-E-ST-40C,H.2.1<9.1>a,Partially compliant,R14,USER_MANUAL.md,-,,0
-E-ST-40C,H.2.1<9.2>a,Partially compliant,R14,USER_MANUAL.md,-,,0
-E-ST-40C,H.2.1<9.3>a,Partially compliant,R14,USER_MANUAL.md,-,,0
-E-ST-40C,H.2.1<9.4>a,Partially compliant,R14,USER_MANUAL.md,-,,0
-E-ST-40C,H.2.1<9.5>a,Partially compliant,R14,USER_MANUAL.md,-,,0
-E-ST-40C,H.2.1<9.6>a,Partially compliant,R14,USER_MANUAL.md,-,,0
-E-ST-40C,H.2.1<9.7>a,Partially compliant,R14,USER_MANUAL.md,-,,0
-E-ST-40C,H.2.1<9.8>a,Partially compliant,R14,USER_MANUAL.md,-,,0
-E-ST-40C,H.2.1<9.9>a,Partially compliant,R14,USER_MANUAL.md,-,,0
-E-ST-40C,H.2.1<10.1>a,Partially compliant,R14,USER_MANUAL.md,-,,0
-E-ST-40C,H.2.1<10.2>a,Partially compliant,R14,USER_MANUAL.md,-,,0
-E-ST-40C,H.2.1<10.3>a,Partially compliant,R14,USER_MANUAL.md,-,,0
-E-ST-40C,H.2.1<10.4>a,Partially compliant,R14,USER_MANUAL.md,-,,0
-E-ST-40C,H.2.1<10.5>a,Partially compliant,R14,USER_MANUAL.md,-,,0
-E-ST-40C,H.2.1<11.1>a,Partially compliant,R14,USER_MANUAL.md,-,,0
-E-ST-40C,H.2.1<11.2>a,Partially compliant,R14,USER_MANUAL.md,-,,0
-E-ST-40C,H.2.1<11.3>a,Partially compliant,R14,USER_MANUAL.md,-,,0
-E-ST-40C,H.2.1<12>a,Partially compliant,R14,USER_MANUAL.md,-,,0
-E-ST-40C,I.2.1<1>a,Non-compliant,R14,-,-,,0
-E-ST-40C,I.2.1<2>a,Non-compliant,R14,-,-,,0
-E-ST-40C,I.2.1<3>a,Non-compliant,R14,-,-,,0
-E-ST-40C,I.2.1<4.1>a,Non-compliant,R14,-,-,,0
-E-ST-40C,I.2.1<4.2>a,Non-compliant,R14,-,-,,0
-E-ST-40C,I.2.1<4.2>b,Non-compliant,R14,-,-,,0
-E-ST-40C,I.2.1<4.3>a,Non-compliant,R14,-,-,,0
-E-ST-40C,I.2.1<4.3>b,Non-compliant,R14,-,-,,0
-E-ST-40C,I.2.1<4.4>a,Non-compliant,R14,-,-,,0
-E-ST-40C,I.2.1<4.5>a,Non-compliant,R14,-,-,,0
-E-ST-40C,I.2.1<4.6>a,Non-compliant,R14,-,-,,0
-E-ST-40C,I.2.1<4.7>a,Non-compliant,R14,-,-,,0
-E-ST-40C,I.2.1<5>a,Non-compliant,R14,-,-,,0
-E-ST-40C,I.2.1<6.1>a,Non-compliant,R14,-,-,,0
-E-ST-40C,I.2.1<6.1>b,Non-compliant,R14,-,-,,0
-E-ST-40C,I.2.1<6.2>a,Non-compliant,R14,-,-,,0
-E-ST-40C,I.2.1<6.3.1>a,Non-compliant,R14,-,-,,0
-E-ST-40C,I.2.1<6.3.2>a,Non-compliant,R14,-,-,,0
-E-ST-40C,I.2.1<6.3.3>a,Non-compliant,R14,-,-,,0
-E-ST-40C,I.2.1<6.3.4>a,Non-compliant,R14,-,-,,0
-E-ST-40C,J.2.1<1>a,Non-compliant,R14,-,-,,0
-E-ST-40C,J.2.1<2>a,Non-compliant,R14,-,-,,0
-E-ST-40C,J.2.1<3>a,Non-compliant,R14,-,-,,0
-E-ST-40C,J.2.1<4.1>a,Non-compliant,R14,-,-,,0
-E-ST-40C,J.2.1<4.1>b,Non-compliant,R14,-,-,,0
-E-ST-40C,J.2.1<4.1>c,Non-compliant,R14,-,-,,0
-E-ST-40C,J.2.1<4.1>d,Non-compliant,R14,-,-,,0
-E-ST-40C,J.2.1<4.2>a,Non-compliant,R14,-,-,,0
-E-ST-40C,J.2.1<4.2>b,Non-compliant,R14,-,-,,0
-E-ST-40C,J.2.1<4.3>a,Non-compliant,R14,-,-,,0
-E-ST-40C,J.2.1<4.3>b,Non-compliant,R14,-,-,,0
-E-ST-40C,J.2.1<4.3>c,Non-compliant,R14,-,-,,0
-E-ST-40C,J.2.1<4.4>a,Non-compliant,R14,-,-,,0
-E-ST-40C,J.2.1<4.5>a,Non-compliant,R14,-,-,,0
-E-ST-40C,J.2.1<4.5>b,Non-compliant,R14,-,-,,0
-E-ST-40C,J.2.1<4.6>a,Non-compliant,R14,-,-,,0
-E-ST-40C,J.2.1<4.6>b,Non-compliant,R14,-,-,,0
-E-ST-40C,J.2.1<4.7>a,Non-compliant,R14,-,-,,0
-E-ST-40C,J.2.1<4.8>a,Non-compliant,R14,-,-,,0
-E-ST-40C,J.2.1<4.8>b,Non-compliant,R14,-,-,,0
-E-ST-40C,J.2.1<5>a,Non-compliant,R14,-,-,,0
-E-ST-40C,J.2.1<5>b,Non-compliant,R14,-,-,,0
-E-ST-40C,J.2.1<5>c,Non-compliant,R14,-,-,,0
-E-ST-40C,J.2.1<5>d,Non-compliant,R14,-,-,,0
-E-ST-40C,J.2.1<5>e,Non-compliant,R14,-,-,,0
-E-ST-40C,J.2.1<6>a,Non-compliant,R14,-,-,,0
-E-ST-40C,J.2.1<6>b,Non-compliant,R14,-,-,,0
-E-ST-40C,J.2.1<6>c,Non-compliant,R14,-,-,,0
-E-ST-40C,J.2.1<7>a,Non-compliant,R14,-,-,,0
-E-ST-40C,J.2.1<7>b,Non-compliant,R14,-,-,,0
-E-ST-40C,J.2.1<7>c,Non-compliant,R14,-,-,,0
-E-ST-40C,J.2.1<8>a,Non-compliant,R14,-,-,,0
-E-ST-40C,J.2.1<9>a,Non-compliant,R14,-,-,,0
-E-ST-40C,K.2.1<1>a,Non-compliant,R14,-,-,,0
-E-ST-40C,K.2.1<2>a,Non-compliant,R14,-,-,,0
-E-ST-40C,K.2.1<3>a,Non-compliant,R14,-,-,,0
-E-ST-40C,K.2.1<4>a,Non-compliant,R14,-,-,,0
-E-ST-40C,K.2.1<5.1>a,Non-compliant,R14,-,-,,0
-E-ST-40C,K.2.1<5.1>b,Non-compliant,R14,-,-,,0
-E-ST-40C,K.2.1<5.2>a,Non-compliant,R14,-,-,,0
-E-ST-40C,K.2.1<5.2>b,Non-compliant,R14,-,-,,0
-E-ST-40C,K.2.1<5.3>a,Non-compliant,R14,-,-,,0
-E-ST-40C,K.2.1<5.4>a,Non-compliant,R14,-,-,,0
-E-ST-40C,K.2.1<5.4>b,Non-compliant,R14,-,-,,0
-E-ST-40C,K.2.1<5.5>a,Non-compliant,R14,-,-,,0
-E-ST-40C,K.2.1<5.6>a,Non-compliant,R14,-,-,,0
-E-ST-40C,K.2.1<5.7>a,Non-compliant,R14,-,-,,0
-E-ST-40C,K.2.1<5.7>b,Non-compliant,R14,-,-,,0
-E-ST-40C,K.2.1<6>a,Non-compliant,R14,-,-,,0
-E-ST-40C,K.2.1<7.1>a,Non-compliant,R14,-,-,,0
-E-ST-40C,K.2.1<7.2>a,Non-compliant,R14,-,-,,0
-E-ST-40C,K.2.1<7.3>a,Non-compliant,R14,-,-,,0
-E-ST-40C,K.2.1<7.4>a,Non-compliant,R14,-,-,,0
-E-ST-40C,K.2.1<7.5>a,Non-compliant,R14,-,-,,0
-E-ST-40C,K.2.1<7.6>a,Non-compliant,R14,-,-,,0
-E-ST-40C,K.2.1<8.1>a,Non-compliant,R14,-,-,,0
-E-ST-40C,K.2.1<8.1>b,Non-compliant,R14,-,-,,0
-E-ST-40C,K.2.1<8.2.1>a,Non-compliant,R14,-,-,,0
-E-ST-40C,K.2.1<8.2.1>b,Non-compliant,R14,-,-,,0
-E-ST-40C,K.2.1<8.2.2>a,Non-compliant,R14,-,-,,0
-E-ST-40C,K.2.1<8.2.2>b,Non-compliant,R14,-,-,,0
-E-ST-40C,K.2.1<8.2.3>a,Non-compliant,R14,-,-,,0
-E-ST-40C,K.2.1<8.2.3>b,Non-compliant,R14,-,-,,0
-E-ST-40C,K.2.1<8.2.3>c,Non-compliant,R14,-,-,,0
-E-ST-40C,K.2.1<8.2.3>d,Non-compliant,R14,-,-,,0
-E-ST-40C,K.2.1<8.2.4>a,Non-compliant,R14,-,-,,0
-E-ST-40C,K.2.1<9.1>a,Non-compliant,R14,-,-,,0
-E-ST-40C,K.2.1<9.1>b,Non-compliant,R14,-,-,,0
-E-ST-40C,K.2.1<9.2.1>a,Non-compliant,R14,-,-,,0
-E-ST-40C,K.2.1<9.2.1>b,Non-compliant,R14,-,-,,0
-E-ST-40C,K.2.1<9.2.2>a,Non-compliant,R14,-,-,,0
-E-ST-40C,K.2.1<9.2.2>b,Non-compliant,R14,-,-,,0
-E-ST-40C,K.2.1<9.2.3>a,Non-compliant,R14,-,-,,0
-E-ST-40C,K.2.1<9.2.4>a,Non-compliant,R14,-,-,,0
-E-ST-40C,K.2.1<9.2.5>a,Non-compliant,R14,-,-,,0
-E-ST-40C,K.2.1<9.2.6>a,Non-compliant,R14,-,-,,0
-E-ST-40C,K.2.1<9.2.7>a,Non-compliant,R14,-,-,,0
-E-ST-40C,K.2.1<9.2.8>a,Non-compliant,R14,-,-,,0
-E-ST-40C,K.2.1<9.2.9>a,Non-compliant,R14,-,-,,0
-E-ST-40C,K.2.1<10.1>a,Non-compliant,R14,-,-,,0
-E-ST-40C,K.2.1<10.1>b,Non-compliant,R14,-,-,,0
-E-ST-40C,K.2.1<10.2.1>a,Non-compliant,R14,-,-,,0
-E-ST-40C,K.2.1<10.2.2>a,Non-compliant,R14,-,-,,0
-E-ST-40C,K.2.1<10.2.2>b,Non-compliant,R14,-,-,,0
-E-ST-40C,K.2.1<10.2.3>a,Non-compliant,R14,-,-,,0
-E-ST-40C,K.2.1<11>a,Non-compliant,R14,-,-,,0
-E-ST-40C,L.2.1<1>a,Non-compliant,R14,-,-,,0
-E-ST-40C,L.2.1<2>a,Non-compliant,R14,-,-,,0
-E-ST-40C,L.2.1<3>a,Non-compliant,R14,-,-,,0
-E-ST-40C,L.2.1<4>a,Non-compliant,R14,-,-,,0
-E-ST-40C,L.2.1<5.1>a,Non-compliant,R14,-,-,,0
-E-ST-40C,L.2.1<5.2>a,Non-compliant,R14,-,-,,0
-E-ST-40C,L.2.1<5.3>a,Non-compliant,R14,-,-,,0
-E-ST-40C,L.2.1<5.4>a,Non-compliant,R14,-,-,,0
-E-ST-40C,L.2.1<5.5>a,Non-compliant,R14,-,-,,0
-E-ST-40C,L.2.1<5.5>b,Non-compliant,R14,-,-,,0
-E-ST-40C,L.2.1<5.5>c,Non-compliant,R14,-,-,,0
-E-ST-40C,L.2.1<5.6>a,Non-compliant,R14,-,-,,0
-E-ST-40C,L.2.1<6.1>a,Non-compliant,R14,-,-,,0
-E-ST-40C,L.2.1<6.1>b,Non-compliant,R14,-,-,,0
-E-ST-40C,L.2.1<6.2.1>a,Non-compliant,R14,-,-,,0
-E-ST-40C,L.2.1<6.2.2>a,Non-compliant,R14,-,-,,0
-E-ST-40C,L.2.1<6.2.2>b,Non-compliant,R14,-,-,,0
-E-ST-40C,L.2.1<6.2.3>a,Non-compliant,R14,-,-,,0
-E-ST-40C,L.2.1<6.2.3>b,Non-compliant,R14,-,-,,0
-E-ST-40C,L.2.1<6.2.3>c,Non-compliant,R14,-,-,,0
-E-ST-40C,L.2.1<6.2.3>d,Non-compliant,R14,-,-,,0
-E-ST-40C,L.2.1<7.1>a,Non-compliant,R14,-,-,,0
-E-ST-40C,L.2.1<7.1>b,Non-compliant,R14,-,-,,0
-E-ST-40C,L.2.1<7.2.1>a,Non-compliant,R14,-,-,,0
-E-ST-40C,L.2.1<7.2.1>b,Non-compliant,R14,-,-,,0
-E-ST-40C,L.2.1<7.2.2>a,Non-compliant,R14,-,-,,0
-E-ST-40C,L.2.1<7.2.3>a,Non-compliant,R14,-,-,,0
-E-ST-40C,L.2.1<7.2.4>a,Non-compliant,R14,-,-,,0
-E-ST-40C,L.2.1<7.2.5>a,Non-compliant,R14,-,-,,0
-E-ST-40C,L.2.1<7.2.6>a,Non-compliant,R14,-,-,,0
-E-ST-40C,L.2.1<7.2.7>a,Non-compliant,R14,-,-,,0
-E-ST-40C,L.2.1<8.1>a,Non-compliant,R14,-,-,,0
-E-ST-40C,L.2.1<8.1>b,Non-compliant,R14,-,-,,0
-E-ST-40C,L.2.1<8.1>c,Non-compliant,R14,-,-,,0
-E-ST-40C,L.2.1<8.2.1>a,Non-compliant,R14,-,-,,0
-E-ST-40C,L.2.1<8.2.2>a,Non-compliant,R14,-,-,,0
-E-ST-40C,L.2.1<8.2.2>b,Non-compliant,R14,-,-,,0
-E-ST-40C,L.2.1<8.2.3>a,Non-compliant,R14,-,-,,0
-E-ST-40C,L.2.1<8.2.4>a,Non-compliant,R14,-,-,,0
-E-ST-40C,L.2.1<9>a,Non-compliant,R14,-,-,,0
-E-ST-40C,L.2.1<10>a,Non-compliant,R14,-,-,,0
-E-ST-40C,L.2.1<11>a,Non-compliant,R14,-,-,,0
-E-ST-40C,M.2.1<1>a,Non-compliant,R14,-,-,,0
-E-ST-40C,M.2.1<2>a,Non-compliant,R14,-,-,,0
-E-ST-40C,M.2.1<3>a,Non-compliant,R14,-,-,,0
-E-ST-40C,M.2.1<4.1>a,Non-compliant,R14,-,-,,0
-E-ST-40C,M.2.1<4.2>a,Non-compliant,R14,-,-,,0
-E-ST-40C,M.2.1<4.2>b,Non-compliant,R14,-,-,,0
-E-ST-40C,M.2.1<4.3.1>a,Non-compliant,R14,-,-,,0
-E-ST-40C,M.2.1<4.3.2>a,Non-compliant,R14,-,-,,0
-E-ST-40C,M.2.1<4.4>a,Non-compliant,R14,-,-,,0
-E-ST-40C,M.2.1<4.5>a,Non-compliant,R14,-,-,,0
-E-ST-40C,M.2.1<4.6>a,Non-compliant,R14,-,-,,0
-E-ST-40C,M.2.1<4.7>a,Non-compliant,R14,-,-,,0
-E-ST-40C,M.2.1<5.1>a,Non-compliant,R14,-,-,,0
-E-ST-40C,M.2.1<5.2>a,Non-compliant,R14,-,-,,0
-E-ST-40C,M.2.1<5.2>b,Non-compliant,R14,-,-,,0
-E-ST-40C,M.2.1<5.2>c,Non-compliant,R14,-,-,,0
-E-ST-40C,M.2.1<5.2>d,Non-compliant,R14,-,-,,0
-E-ST-40C,M.2.1<5.3>a,Non-compliant,R14,-,-,,0
-E-ST-40C,M.2.1<6>a,Non-compliant,R14,-,-,,0
-E-ST-40C,M.2.1<7>a,Non-compliant,R14,-,-,,0
-E-ST-40C,N.2.1<1>a,Non-compliant,R14,-,-,,0
-E-ST-40C,N.2.1<2>a,Non-compliant,R14,-,-,,0
-E-ST-40C,N.2.1<3>a,Non-compliant,R14,-,-,,0
-E-ST-40C,N.2.1<4>a,Non-compliant,R14,-,-,,0
-E-ST-40C,N.2.1<4>b,Non-compliant,R14,-,-,,0
-E-ST-40C,N.2.1<5>a,Non-compliant,R14,-,-,,0
-E-ST-40C,N.2.1<5>b,Non-compliant,R14,-,-,,0
-E-ST-40C,N.2.1<5>c,Non-compliant,R14,-,-,,0
-E-ST-40C,N.2.1<6>a,Non-compliant,R14,-,-,,0
-E-ST-40C,N.2.1<6>b,Non-compliant,R14,-,-,,0
-E-ST-40C,N.2.1<7>a,Non-compliant,R14,-,-,,0
-E-ST-40C,N.2.1<8>a,Non-compliant,R14,-,-,,0
-E-ST-40C,N.2.1<8>b,Non-compliant,R14,-,-,,0
-E-ST-40C,N.2.1<9>a,Non-compliant,R14,-,-,,0
-E-ST-40C,O.2.1<1>a,Non-compliant,R14,-,-,,0
-E-ST-40C,O.2.1<2>a,Non-compliant,R14,-,-,,0
-E-ST-40C,O.2.1<3>a,Non-compliant,R14,-,-,,0
-E-ST-40C,O.2.1<4.1>a,Non-compliant,R14,-,-,,0
-E-ST-40C,O.2.1<4.2>a,Non-compliant,R14,-,-,,0
-E-ST-40C,O.2.1<4.3>a,Non-compliant,R14,-,-,,0
-E-ST-40C,O.2.1<4.4>a,Non-compliant,R14,-,-,,0
-E-ST-40C,O.2.1<4.5>a,Non-compliant,R14,-,-,,0
-E-ST-40C,O.2.1<4.6>a,Non-compliant,R14,-,-,,0
-E-ST-40C,O.2.1<4.7>a,Non-compliant,R14,-,-,,0
-E-ST-40C,O.2.1<4.8>a,Non-compliant,R14,-,-,,0
-E-ST-40C,O.2.1<4.9>a,Non-compliant,R14,-,-,,0
-E-ST-40C,O.2.1<5.1>a,Non-compliant,R14,-,-,,0
-E-ST-40C,O.2.1<5.2.1>a,Non-compliant,R14,-,-,,0
-E-ST-40C,O.2.1<5.2.1>b,Non-compliant,R14,-,-,,0
-E-ST-40C,O.2.1<5.2.1>c,Non-compliant,R14,-,-,,0
-E-ST-40C,O.2.1<5.2.2>a,Non-compliant,R14,-,-,,0
-E-ST-40C,O.2.1<5.2.3>a,Non-compliant,R14,-,-,,0
-E-ST-40C,O.2.1<5.2.3>b,Non-compliant,R14,-,-,,0
-E-ST-40C,O.2.1<5.2.3>c,Non-compliant,R14,-,-,,0
-E-ST-40C,O.2.1<5.3>a,Non-compliant,R14,-,-,,0
-E-ST-40C,O.2.1<5.3>b,Non-compliant,R14,-,-,,0
-E-ST-40C,O.2.1<5.3>c,Non-compliant,R14,-,-,,0
-E-ST-40C,O.2.1<5.3>d,Non-compliant,R14,-,-,,0
-E-ST-40C,O.2.1<5.3>e,Non-compliant,R14,-,-,,0
-E-ST-40C,O.2.1<5.3>f,Non-compliant,R14,-,-,,0
-E-ST-40C,O.2.1<5.3>g,Non-compliant,R14,-,-,,0
-E-ST-40C,O.2.1<5.3>h,Non-compliant,R14,-,-,,0
-E-ST-40C,O.2.1<5.3>i,Non-compliant,R14,-,-,,0
-E-ST-40C,O.2.1<5.4>a,Non-compliant,R14,-,-,,0
-E-ST-40C,O.2.1<5.4>b,Non-compliant,R14,-,-,,0
-E-ST-40C,O.2.1<5.4>c,Non-compliant,R14,-,-,,0
-E-ST-40C,O.2.1<5.5.1>a,Non-compliant,R14,-,-,,0
-E-ST-40C,O.2.1<5.5.2>a,Non-compliant,R14,-,-,,0
-E-ST-40C,O.2.1<5.5.3>a,Non-compliant,R14,-,-,,0
-E-ST-40C,O.2.1<5.5.3>b,Non-compliant,R14,-,-,,0
-E-ST-40C,O.2.1<5.5.3>c,Non-compliant,R14,-,-,,0
-E-ST-40C,O.2.1<5.5.4>a,Non-compliant,R14,-,-,,0
-E-ST-40C,O.2.1<5.5.4>b,Non-compliant,R14,-,-,,0
-E-ST-40C,O.2.1<5.6>a,Non-compliant,R14,-,-,,0
-E-ST-40C,P.2.1<1>a,Non-compliant,R14,-,-,,0
-E-ST-40C,P.2.1<2>a,Non-compliant,R14,-,-,,0
-E-ST-40C,P.2.1<3>a,Non-compliant,R14,-,-,,0
-E-ST-40C,P.2.1<4.1>a,Non-compliant,R14,-,-,,0
-E-ST-40C,P.2.1<4.2>a,Non-compliant,R14,-,-,,0
-E-ST-40C,P.2.1<5>a,Non-compliant,R14,-,-,,0
-E-ST-40C,P.2.1<5>b,Non-compliant,R14,-,-,,0
-E-ST-40C,P.2.1<6>a,Non-compliant,R14,-,-,,0
-E-ST-40C,P.2.1<7>a,Non-compliant,R14,-,-,,0
-E-ST-40C,P.2.1<8>a,Non-compliant,R14,-,-,,0
-E-ST-40C,P.2.1<8>b,Non-compliant,R14,-,-,,0
-E-ST-40C,P.2.1<9>a,Non-compliant,R14,-,-,,0
-E-ST-40C,P.2.1<10>a,Non-compliant,R14,-,-,,0
-E-ST-40C,P.2.1<11>a,Non-compliant,R14,-,-,,0
-E-ST-40C,P.2.1<12>a,Non-compliant,R14,-,-,,0
-E-ST-40C,P.2.1<13>a,Non-compliant,R14,-,-,,0
+E-ST-40C,D.2.1<1>a,Compliant,R14,compliance/docs/SRS.md section 1 (introduction),inspection of the evidence,,0
+E-ST-40C,D.2.1<2>a,Compliant,R14,compliance/docs/SRS.md section 2 (applicable and reference documents),inspection of the evidence,,0
+E-ST-40C,D.2.1<3>a,Compliant,R14,compliance/docs/SRS.md section 3 (terms),inspection of the evidence,,0
+E-ST-40C,D.2.1<4.1>a,Partially compliant,"R14,H01",compliance/docs/SRS.md,-,,0
+E-ST-40C,D.2.1<4.2>a,Partially compliant,"R14,H01",compliance/docs/SRS.md,-,,0
+E-ST-40C,D.2.1<4.3>a,Partially compliant,"R14,H01",compliance/docs/SRS.md,-,,0
+E-ST-40C,D.2.1<4.3>b,Partially compliant,"R14,H01",compliance/docs/SRS.md,-,,0
+E-ST-40C,D.2.1<4.3>c,Partially compliant,"R14,H01",compliance/docs/SRS.md,-,,0
+E-ST-40C,D.2.1<4.4>a,Partially compliant,"R14,H01",compliance/docs/SRS.md,-,,0
+E-ST-40C,D.2.1<4.4>b,Partially compliant,"R14,H01",compliance/docs/SRS.md,-,,0
+E-ST-40C,D.2.1<5.1>a,Partially compliant,"R14,H01",compliance/docs/SRS.md,-,,0
+E-ST-40C,D.2.1<5.1>b,Partially compliant,"R14,H01",compliance/docs/SRS.md,-,,0
+E-ST-40C,D.2.1<5.1>c,Partially compliant,"R14,H01",compliance/docs/SRS.md,-,,0
+E-ST-40C,D.2.1<5.1>d,Partially compliant,"R14,H01",compliance/docs/SRS.md,-,,0
+E-ST-40C,D.2.1<5.2>a,Partially compliant,"R14,H01",compliance/docs/SRS.md,-,,0
+E-ST-40C,D.2.1<5.2>b,Partially compliant,"R14,H01",compliance/docs/SRS.md,-,,0
+E-ST-40C,D.2.1<5.2>c,Partially compliant,"R14,H01",compliance/docs/SRS.md,-,,0
+E-ST-40C,D.2.1<5.2>d,Partially compliant,"R14,H01",compliance/docs/SRS.md,-,,0
+E-ST-40C,D.2.1<5.2>e,Partially compliant,"R14,H01",compliance/docs/SRS.md,-,,0
+E-ST-40C,D.2.1<5.3>a,Partially compliant,"R14,H01",compliance/docs/SRS.md,-,,0
+E-ST-40C,D.2.1<5.4>a,Partially compliant,"R14,H01",compliance/docs/SRS.md,-,,0
+E-ST-40C,D.2.1<5.4>b,Partially compliant,"R14,H01",compliance/docs/SRS.md,-,,0
+E-ST-40C,D.2.1<5.4>c,Partially compliant,"R14,H01",compliance/docs/SRS.md,-,,0
+E-ST-40C,D.2.1<5.4>d,Partially compliant,"R14,H01",compliance/docs/SRS.md,-,,0
+E-ST-40C,D.2.1<5.5>a,Partially compliant,"R14,H01",compliance/docs/SRS.md,-,,0
+E-ST-40C,D.2.1<5.5>b,Partially compliant,"R14,H01",compliance/docs/SRS.md,-,,0
+E-ST-40C,D.2.1<5.5>c,Partially compliant,"R14,H01",compliance/docs/SRS.md,-,,0
+E-ST-40C,D.2.1<5.6>a,Partially compliant,"R14,H01",compliance/docs/SRS.md,-,,0
+E-ST-40C,D.2.1<5.7>a,Partially compliant,"R14,H01",compliance/docs/SRS.md,-,,0
+E-ST-40C,D.2.1<5.7>b,Partially compliant,"R14,H01",compliance/docs/SRS.md,-,,0
+E-ST-40C,D.2.1<5.8>a,Partially compliant,"R14,H01",compliance/docs/SRS.md,-,,0
+E-ST-40C,D.2.1<5.9>a,Partially compliant,"R14,H01",compliance/docs/SRS.md,-,,0
+E-ST-40C,D.2.1<5.10>a,Partially compliant,"R14,H01",compliance/docs/SRS.md,-,,0
+E-ST-40C,D.2.1<5.11>a,Partially compliant,"R14,H01",compliance/docs/SRS.md,-,,0
+E-ST-40C,D.2.1<5.12>a,Partially compliant,"R14,H01",compliance/docs/SRS.md,-,,0
+E-ST-40C,D.2.1<5.13>a,Partially compliant,"R14,H01",compliance/docs/SRS.md,-,,0
+E-ST-40C,D.2.1<5.14>a,Partially compliant,"R14,H01",compliance/docs/SRS.md,-,,0
+E-ST-40C,D.2.1<5.15>a,Partially compliant,"R14,H01",compliance/docs/SRS.md,-,,0
+E-ST-40C,D.2.1<5.16>a,Partially compliant,"R14,H01",compliance/docs/SRS.md,-,,0
+E-ST-40C,D.2.1<5.17>a,Partially compliant,"R14,H01",compliance/docs/SRS.md,-,,0
+E-ST-40C,D.2.1<6>a,Partially compliant,"R14,H01",compliance/docs/SRS.md,-,,0
+E-ST-40C,D.2.1<6>b,Partially compliant,"R14,H01",compliance/docs/SRS.md,-,,0
+E-ST-40C,D.2.1<7>a,Partially compliant,"R14,H01",compliance/docs/SRS.md,-,,0
+E-ST-40C,D.2.1<7>b,Partially compliant,"R14,H01",compliance/docs/SRS.md,-,,0
+E-ST-40C,D.2.1<8>a,Partially compliant,"R14,H01",compliance/docs/SRS.md,-,,0
+E-ST-40C,D.2.1<8>b,Partially compliant,"R14,H01",compliance/docs/SRS.md,-,,0
+E-ST-40C,D.2.1<8>c,Partially compliant,"R14,H01",compliance/docs/SRS.md,-,,0
+E-ST-40C,D.2.1<8>d,Partially compliant,"R14,H01",compliance/docs/SRS.md,-,,0
+E-ST-40C,D.2.1<8>e,Partially compliant,"R14,H01",compliance/docs/SRS.md,-,,0
+E-ST-40C,E.2.1<1>a,Compliant,R14,"compliance/docs/ICD.md, ICD_scenario_fields.md, ICD_cli.md section 1 (introduction)",inspection of the evidence,,0
+E-ST-40C,E.2.1<2>a,Compliant,R14,"compliance/docs/ICD.md, ICD_scenario_fields.md, ICD_cli.md section 2 (applicable and reference documents)",inspection of the evidence,,0
+E-ST-40C,E.2.1<3>a,Compliant,R14,"compliance/docs/ICD.md, ICD_scenario_fields.md, ICD_cli.md section 3 (terms)",inspection of the evidence,,0
+E-ST-40C,E.2.1<4>a,Partially compliant,"R14,H01","compliance/docs/ICD.md, ICD_scenario_fields.md, ICD_cli.md",-,,0
+E-ST-40C,E.2.1<5.1>a,Partially compliant,"R14,H01","compliance/docs/ICD.md, ICD_scenario_fields.md, ICD_cli.md",-,,0
+E-ST-40C,E.2.1<5.1>b,Partially compliant,"R14,H01","compliance/docs/ICD.md, ICD_scenario_fields.md, ICD_cli.md",-,,0
+E-ST-40C,E.2.1<5.1>c,Partially compliant,"R14,H01","compliance/docs/ICD.md, ICD_scenario_fields.md, ICD_cli.md",-,,0
+E-ST-40C,E.2.1<5.2>a,Partially compliant,"R14,H01","compliance/docs/ICD.md, ICD_scenario_fields.md, ICD_cli.md",-,,0
+E-ST-40C,E.2.1<5.2>b,Partially compliant,"R14,H01","compliance/docs/ICD.md, ICD_scenario_fields.md, ICD_cli.md",-,,0
+E-ST-40C,E.2.1<5.3>a,Partially compliant,"R14,H01","compliance/docs/ICD.md, ICD_scenario_fields.md, ICD_cli.md",-,,0
+E-ST-40C,E.2.1<5.3>b,Partially compliant,"R14,H01","compliance/docs/ICD.md, ICD_scenario_fields.md, ICD_cli.md",-,,0
+E-ST-40C,E.2.1<5.3>c,Partially compliant,"R14,H01","compliance/docs/ICD.md, ICD_scenario_fields.md, ICD_cli.md",-,,0
+E-ST-40C,E.2.1<5.3>d,Partially compliant,"R14,H01","compliance/docs/ICD.md, ICD_scenario_fields.md, ICD_cli.md",-,,0
+E-ST-40C,E.2.1<5.3>e,Partially compliant,"R14,H01","compliance/docs/ICD.md, ICD_scenario_fields.md, ICD_cli.md",-,,0
+E-ST-40C,E.2.1<6>a,Partially compliant,"R14,H01","compliance/docs/ICD.md, ICD_scenario_fields.md, ICD_cli.md",-,,0
+E-ST-40C,E.2.1<6>b,Partially compliant,"R14,H01","compliance/docs/ICD.md, ICD_scenario_fields.md, ICD_cli.md",-,,0
+E-ST-40C,E.2.1<7>a,Partially compliant,"R14,H01","compliance/docs/ICD.md, ICD_scenario_fields.md, ICD_cli.md",-,,0
+E-ST-40C,E.2.1<7>b,Partially compliant,"R14,H01","compliance/docs/ICD.md, ICD_scenario_fields.md, ICD_cli.md",-,,0
+E-ST-40C,F.2.1<1>a,Compliant,R14,"compliance/docs/SDD.md, SDD_components.md section 1 (introduction)",inspection of the evidence,,0
+E-ST-40C,F.2.1<2>a,Compliant,R14,"compliance/docs/SDD.md, SDD_components.md section 2 (applicable and reference documents)",inspection of the evidence,,0
+E-ST-40C,F.2.1<3>a,Compliant,R14,"compliance/docs/SDD.md, SDD_components.md section 3 (terms)",inspection of the evidence,,0
+E-ST-40C,F.2.1<4.1>a,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md",-,,0
+E-ST-40C,F.2.1<4.1>b,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md",-,,0
+E-ST-40C,F.2.1<4.1>c,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md",-,,0
+E-ST-40C,F.2.1<4.2>a,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md",-,,0
+E-ST-40C,F.2.1<4.4>a,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md",-,,0
+E-ST-40C,F.2.1<4.4>b,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md",-,,0
+E-ST-40C,F.2.1<4.5>a,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md",-,,0
+E-ST-40C,F.2.1<4.6>a,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md",-,,0
+E-ST-40C,F.2.1<4.7>a,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md",-,,0
+E-ST-40C,F.2.1<4.7>b,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md",-,,0
+E-ST-40C,F.2.1<5.1>a,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md",-,,0
+E-ST-40C,F.2.1<5.1>b,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md",-,,0
+E-ST-40C,F.2.1<5.1>c,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md",-,,0
+E-ST-40C,F.2.1<5.1>d,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md",-,,0
+E-ST-40C,F.2.1<5.2>a,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md",-,,0
+E-ST-40C,F.2.1<5.2>b,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md",-,,0
+E-ST-40C,F.2.1<5.2>c,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md",-,,0
+E-ST-40C,F.2.1<5.2>d,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md",-,,0
+E-ST-40C,F.2.1<5.2>e,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md",-,,0
+E-ST-40C,F.2.1<5.2>f,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md",-,,0
+E-ST-40C,F.2.1<5.2>g,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md",-,,0
+E-ST-40C,F.2.1<5.3>a,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md",-,,0
+E-ST-40C,F.2.1<5.3>b,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md",-,,0
+E-ST-40C,F.2.1<5.3>c,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md",-,,0
+E-ST-40C,F.2.1<5.4.1>a,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md",-,,0
+E-ST-40C,F.2.1<5.4.2>a,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md",-,,0
+E-ST-40C,F.2.1<5.4.2>b,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md",-,,0
+E-ST-40C,F.2.1<5.4.2>c,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md",-,,0
+E-ST-40C,F.2.1<5.4.3>a,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md",-,,0
+E-ST-40C,F.2.1<5.4.3>b,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md",-,,0
+E-ST-40C,F.2.1<5.4.3>c,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md",-,,0
+E-ST-40C,F.2.1<5.4.4>a,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md",-,,0
+E-ST-40C,F.2.1<5.4.5>a,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md",-,,0
+E-ST-40C,F.2.1<5.4.5>b,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md",-,,0
+E-ST-40C,F.2.1<5.4.6>a,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md",-,,0
+E-ST-40C,F.2.1<5.4.7>a,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md",-,,0
+E-ST-40C,F.2.1<5.4.8>a,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md",-,,0
+E-ST-40C,F.2.1<5.4.8>b,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md",-,,0
+E-ST-40C,F.2.1<5.4.8>c,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md",-,,0
+E-ST-40C,F.2.1<5.4.8>d,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md",-,,0
+E-ST-40C,F.2.1<5.4.8>e,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md",-,,0
+E-ST-40C,F.2.1<5.4.8>f,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md",-,,0
+E-ST-40C,F.2.1<5.4.8>g,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md",-,,0
+E-ST-40C,F.2.1<5.4.9>a,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md",-,,0
+E-ST-40C,F.2.1<5.4.10>a,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md",-,,0
+E-ST-40C,F.2.1<5.4.11>a,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md",-,,0
+E-ST-40C,F.2.1<5.4.11>b,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md",-,,0
+E-ST-40C,F.2.1<5.4.11>c,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md",-,,0
+E-ST-40C,F.2.1<5.5>a,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md",-,,0
+E-ST-40C,F.2.1<5.5>b,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md",-,,0
+E-ST-40C,F.2.1<5.5>c,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md",-,,0
+E-ST-40C,F.2.1<5.5>d,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md",-,,0
+E-ST-40C,F.2.1<5.5>e,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md",-,,0
+E-ST-40C,F.2.1<6>a,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md",-,,0
+E-ST-40C,F.2.1<6>b,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md",-,,0
+E-ST-40C,F.2.1<6>c,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md",-,,0
+E-ST-40C,G.2.1<1>a,Compliant,R14,compliance/docs/SRelD.md section 1 (introduction),inspection of the evidence,,0
+E-ST-40C,G.2.1<2>a,Compliant,R14,compliance/docs/SRelD.md section 2 (applicable and reference documents),inspection of the evidence,,0
+E-ST-40C,G.2.1<3>a,Compliant,R14,compliance/docs/SRelD.md section 3 (terms),inspection of the evidence,,0
+E-ST-40C,G.2.1<4>a,Partially compliant,"R14,H01",compliance/docs/SRelD.md,-,,0
+E-ST-40C,G.2.1<5.1>a,Partially compliant,"R14,H01",compliance/docs/SRelD.md,-,,0
+E-ST-40C,G.2.1<5.2>a,Partially compliant,"R14,H01",compliance/docs/SRelD.md,-,,0
+E-ST-40C,G.2.1<6>a,Partially compliant,"R14,H01",compliance/docs/SRelD.md,-,,0
+E-ST-40C,G.2.1<7>a,Partially compliant,"R14,H01",compliance/docs/SRelD.md,-,,0
+E-ST-40C,H.2.1<1>a,Compliant,R14,"compliance/docs/SUM.md, USER_MANUAL.md section 1 (introduction)",inspection of the evidence,,0
+E-ST-40C,H.2.1<2>a,Compliant,R14,"compliance/docs/SUM.md, USER_MANUAL.md section 2 (applicable and reference documents)",inspection of the evidence,,0
+E-ST-40C,H.2.1<3>a,Compliant,R14,"compliance/docs/SUM.md, USER_MANUAL.md section 3 (terms)",inspection of the evidence,,0
+E-ST-40C,H.2.1<4>a,Partially compliant,"R14,H01","compliance/docs/SUM.md, USER_MANUAL.md",-,,0
+E-ST-40C,H.2.1<5>a,Partially compliant,"R14,H01","compliance/docs/SUM.md, USER_MANUAL.md",-,,0
+E-ST-40C,H.2.1<6>a,Partially compliant,"R14,H01","compliance/docs/SUM.md, USER_MANUAL.md",-,,0
+E-ST-40C,H.2.1<7.1>a,Partially compliant,"R14,H01","compliance/docs/SUM.md, USER_MANUAL.md",-,,0
+E-ST-40C,H.2.1<7.2>a,Partially compliant,"R14,H01","compliance/docs/SUM.md, USER_MANUAL.md",-,,0
+E-ST-40C,H.2.1<7.3>a,Partially compliant,"R14,H01","compliance/docs/SUM.md, USER_MANUAL.md",-,,0
+E-ST-40C,H.2.1<7.4>a,Partially compliant,"R14,H01","compliance/docs/SUM.md, USER_MANUAL.md",-,,0
+E-ST-40C,H.2.1<8>a,Partially compliant,"R14,H01","compliance/docs/SUM.md, USER_MANUAL.md",-,,0
+E-ST-40C,H.2.1<9.1>a,Partially compliant,"R14,H01","compliance/docs/SUM.md, USER_MANUAL.md",-,,0
+E-ST-40C,H.2.1<9.2>a,Partially compliant,"R14,H01","compliance/docs/SUM.md, USER_MANUAL.md",-,,0
+E-ST-40C,H.2.1<9.3>a,Partially compliant,"R14,H01","compliance/docs/SUM.md, USER_MANUAL.md",-,,0
+E-ST-40C,H.2.1<9.4>a,Partially compliant,"R14,H01","compliance/docs/SUM.md, USER_MANUAL.md",-,,0
+E-ST-40C,H.2.1<9.5>a,Partially compliant,"R14,H01","compliance/docs/SUM.md, USER_MANUAL.md",-,,0
+E-ST-40C,H.2.1<9.6>a,Partially compliant,"R14,H01","compliance/docs/SUM.md, USER_MANUAL.md",-,,0
+E-ST-40C,H.2.1<9.7>a,Partially compliant,"R14,H01","compliance/docs/SUM.md, USER_MANUAL.md",-,,0
+E-ST-40C,H.2.1<9.8>a,Partially compliant,"R14,H01","compliance/docs/SUM.md, USER_MANUAL.md",-,,0
+E-ST-40C,H.2.1<9.9>a,Partially compliant,"R14,H01","compliance/docs/SUM.md, USER_MANUAL.md",-,,0
+E-ST-40C,H.2.1<10.1>a,Partially compliant,"R14,H01","compliance/docs/SUM.md, USER_MANUAL.md",-,,0
+E-ST-40C,H.2.1<10.2>a,Partially compliant,"R14,H01","compliance/docs/SUM.md, USER_MANUAL.md",-,,0
+E-ST-40C,H.2.1<10.3>a,Partially compliant,"R14,H01","compliance/docs/SUM.md, USER_MANUAL.md",-,,0
+E-ST-40C,H.2.1<10.4>a,Partially compliant,"R14,H01","compliance/docs/SUM.md, USER_MANUAL.md",-,,0
+E-ST-40C,H.2.1<10.5>a,Partially compliant,"R14,H01","compliance/docs/SUM.md, USER_MANUAL.md",-,,0
+E-ST-40C,H.2.1<11.1>a,Partially compliant,"R14,H01","compliance/docs/SUM.md, USER_MANUAL.md",-,,0
+E-ST-40C,H.2.1<11.2>a,Partially compliant,"R14,H01","compliance/docs/SUM.md, USER_MANUAL.md",-,,0
+E-ST-40C,H.2.1<11.3>a,Partially compliant,"R14,H01","compliance/docs/SUM.md, USER_MANUAL.md",-,,0
+E-ST-40C,H.2.1<12>a,Partially compliant,"R14,H01","compliance/docs/SUM.md, USER_MANUAL.md",-,,0
+E-ST-40C,I.2.1<1>a,Compliant,R14,compliance/docs/SVerP.md section 1 (introduction),inspection of the evidence,,0
+E-ST-40C,I.2.1<2>a,Compliant,R14,compliance/docs/SVerP.md section 2 (applicable and reference documents),inspection of the evidence,,0
+E-ST-40C,I.2.1<3>a,Compliant,R14,compliance/docs/SVerP.md section 3 (terms),inspection of the evidence,,0
+E-ST-40C,I.2.1<4.1>a,Partially compliant,"R14,H01",compliance/docs/SVerP.md,-,,0
+E-ST-40C,I.2.1<4.2>a,Partially compliant,"R14,H01",compliance/docs/SVerP.md,-,,0
+E-ST-40C,I.2.1<4.2>b,Partially compliant,"R14,H01",compliance/docs/SVerP.md,-,,0
+E-ST-40C,I.2.1<4.3>a,Partially compliant,"R14,H01",compliance/docs/SVerP.md,-,,0
+E-ST-40C,I.2.1<4.3>b,Partially compliant,"R14,H01",compliance/docs/SVerP.md,-,,0
+E-ST-40C,I.2.1<4.4>a,Partially compliant,"R14,H01",compliance/docs/SVerP.md,-,,0
+E-ST-40C,I.2.1<4.5>a,Partially compliant,"R14,H01",compliance/docs/SVerP.md,-,,0
+E-ST-40C,I.2.1<4.6>a,Partially compliant,"R14,H01",compliance/docs/SVerP.md,-,,0
+E-ST-40C,I.2.1<4.7>a,Partially compliant,"R14,H01",compliance/docs/SVerP.md,-,,0
+E-ST-40C,I.2.1<5>a,Partially compliant,"R14,H01",compliance/docs/SVerP.md,-,,0
+E-ST-40C,I.2.1<6.1>a,Partially compliant,"R14,H01",compliance/docs/SVerP.md,-,,0
+E-ST-40C,I.2.1<6.1>b,Partially compliant,"R14,H01",compliance/docs/SVerP.md,-,,0
+E-ST-40C,I.2.1<6.2>a,Partially compliant,"R14,H01",compliance/docs/SVerP.md,-,,0
+E-ST-40C,I.2.1<6.3.1>a,Partially compliant,"R14,H01",compliance/docs/SVerP.md,-,,0
+E-ST-40C,I.2.1<6.3.2>a,Partially compliant,"R14,H01",compliance/docs/SVerP.md,-,,0
+E-ST-40C,I.2.1<6.3.3>a,Partially compliant,"R14,H01",compliance/docs/SVerP.md,-,,0
+E-ST-40C,I.2.1<6.3.4>a,Partially compliant,"R14,H01",compliance/docs/SVerP.md,-,,0
+E-ST-40C,J.2.1<1>a,Compliant,R14,compliance/docs/SValP.md section 1 (introduction),inspection of the evidence,,0
+E-ST-40C,J.2.1<2>a,Compliant,R14,compliance/docs/SValP.md section 2 (applicable and reference documents),inspection of the evidence,,0
+E-ST-40C,J.2.1<3>a,Compliant,R14,compliance/docs/SValP.md section 3 (terms),inspection of the evidence,,0
+E-ST-40C,J.2.1<4.1>a,Partially compliant,"R14,H01",compliance/docs/SValP.md,-,,0
+E-ST-40C,J.2.1<4.1>b,Partially compliant,"R14,H01",compliance/docs/SValP.md,-,,0
+E-ST-40C,J.2.1<4.1>c,Partially compliant,"R14,H01",compliance/docs/SValP.md,-,,0
+E-ST-40C,J.2.1<4.1>d,Partially compliant,"R14,H01",compliance/docs/SValP.md,-,,0
+E-ST-40C,J.2.1<4.2>a,Partially compliant,"R14,H01",compliance/docs/SValP.md,-,,0
+E-ST-40C,J.2.1<4.2>b,Partially compliant,"R14,H01",compliance/docs/SValP.md,-,,0
+E-ST-40C,J.2.1<4.3>a,Partially compliant,"R14,H01",compliance/docs/SValP.md,-,,0
+E-ST-40C,J.2.1<4.3>b,Partially compliant,"R14,H01",compliance/docs/SValP.md,-,,0
+E-ST-40C,J.2.1<4.3>c,Partially compliant,"R14,H01",compliance/docs/SValP.md,-,,0
+E-ST-40C,J.2.1<4.4>a,Partially compliant,"R14,H01",compliance/docs/SValP.md,-,,0
+E-ST-40C,J.2.1<4.5>a,Partially compliant,"R14,H01",compliance/docs/SValP.md,-,,0
+E-ST-40C,J.2.1<4.5>b,Partially compliant,"R14,H01",compliance/docs/SValP.md,-,,0
+E-ST-40C,J.2.1<4.6>a,Partially compliant,"R14,H01",compliance/docs/SValP.md,-,,0
+E-ST-40C,J.2.1<4.6>b,Partially compliant,"R14,H01",compliance/docs/SValP.md,-,,0
+E-ST-40C,J.2.1<4.7>a,Partially compliant,"R14,H01",compliance/docs/SValP.md,-,,0
+E-ST-40C,J.2.1<4.8>a,Partially compliant,"R14,H01",compliance/docs/SValP.md,-,,0
+E-ST-40C,J.2.1<4.8>b,Partially compliant,"R14,H01",compliance/docs/SValP.md,-,,0
+E-ST-40C,J.2.1<5>a,Partially compliant,"R14,H01",compliance/docs/SValP.md,-,,0
+E-ST-40C,J.2.1<5>b,Partially compliant,"R14,H01",compliance/docs/SValP.md,-,,0
+E-ST-40C,J.2.1<5>c,Partially compliant,"R14,H01",compliance/docs/SValP.md,-,,0
+E-ST-40C,J.2.1<5>d,Partially compliant,"R14,H01",compliance/docs/SValP.md,-,,0
+E-ST-40C,J.2.1<5>e,Partially compliant,"R14,H01",compliance/docs/SValP.md,-,,0
+E-ST-40C,J.2.1<6>a,Partially compliant,"R14,H01",compliance/docs/SValP.md,-,,0
+E-ST-40C,J.2.1<6>b,Partially compliant,"R14,H01",compliance/docs/SValP.md,-,,0
+E-ST-40C,J.2.1<6>c,Partially compliant,"R14,H01",compliance/docs/SValP.md,-,,0
+E-ST-40C,J.2.1<7>a,Partially compliant,"R14,H01",compliance/docs/SValP.md,-,,0
+E-ST-40C,J.2.1<7>b,Partially compliant,"R14,H01",compliance/docs/SValP.md,-,,0
+E-ST-40C,J.2.1<7>c,Partially compliant,"R14,H01",compliance/docs/SValP.md,-,,0
+E-ST-40C,J.2.1<8>a,Partially compliant,"R14,H01",compliance/docs/SValP.md,-,,0
+E-ST-40C,J.2.1<9>a,Partially compliant,"R14,H01",compliance/docs/SValP.md,-,,0
+E-ST-40C,K.2.1<1>a,Compliant,R14,"compliance/docs/SUITP.md, SUITP_test_cases.md section 1 (introduction)",inspection of the evidence,,0
+E-ST-40C,K.2.1<2>a,Compliant,R14,"compliance/docs/SUITP.md, SUITP_test_cases.md section 2 (applicable and reference documents)",inspection of the evidence,,0
+E-ST-40C,K.2.1<3>a,Compliant,R14,"compliance/docs/SUITP.md, SUITP_test_cases.md section 3 (terms)",inspection of the evidence,,0
+E-ST-40C,K.2.1<4>a,Partially compliant,"R14,H01","compliance/docs/SUITP.md, SUITP_test_cases.md",-,,0
+E-ST-40C,K.2.1<5.1>a,Partially compliant,"R14,H01","compliance/docs/SUITP.md, SUITP_test_cases.md",-,,0
+E-ST-40C,K.2.1<5.1>b,Partially compliant,"R14,H01","compliance/docs/SUITP.md, SUITP_test_cases.md",-,,0
+E-ST-40C,K.2.1<5.2>a,Partially compliant,"R14,H01","compliance/docs/SUITP.md, SUITP_test_cases.md",-,,0
+E-ST-40C,K.2.1<5.2>b,Partially compliant,"R14,H01","compliance/docs/SUITP.md, SUITP_test_cases.md",-,,0
+E-ST-40C,K.2.1<5.3>a,Partially compliant,"R14,H01","compliance/docs/SUITP.md, SUITP_test_cases.md",-,,0
+E-ST-40C,K.2.1<5.4>a,Partially compliant,"R14,H01","compliance/docs/SUITP.md, SUITP_test_cases.md",-,,0
+E-ST-40C,K.2.1<5.4>b,Partially compliant,"R14,H01","compliance/docs/SUITP.md, SUITP_test_cases.md",-,,0
+E-ST-40C,K.2.1<5.5>a,Partially compliant,"R14,H01","compliance/docs/SUITP.md, SUITP_test_cases.md",-,,0
+E-ST-40C,K.2.1<5.6>a,Partially compliant,"R14,H01","compliance/docs/SUITP.md, SUITP_test_cases.md",-,,0
+E-ST-40C,K.2.1<5.7>a,Partially compliant,"R14,H01","compliance/docs/SUITP.md, SUITP_test_cases.md",-,,0
+E-ST-40C,K.2.1<5.7>b,Partially compliant,"R14,H01","compliance/docs/SUITP.md, SUITP_test_cases.md",-,,0
+E-ST-40C,K.2.1<6>a,Partially compliant,"R14,H01","compliance/docs/SUITP.md, SUITP_test_cases.md",-,,0
+E-ST-40C,K.2.1<7.1>a,Partially compliant,"R14,H01","compliance/docs/SUITP.md, SUITP_test_cases.md",-,,0
+E-ST-40C,K.2.1<7.2>a,Partially compliant,"R14,H01","compliance/docs/SUITP.md, SUITP_test_cases.md",-,,0
+E-ST-40C,K.2.1<7.3>a,Partially compliant,"R14,H01","compliance/docs/SUITP.md, SUITP_test_cases.md",-,,0
+E-ST-40C,K.2.1<7.4>a,Partially compliant,"R14,H01","compliance/docs/SUITP.md, SUITP_test_cases.md",-,,0
+E-ST-40C,K.2.1<7.5>a,Partially compliant,"R14,H01","compliance/docs/SUITP.md, SUITP_test_cases.md",-,,0
+E-ST-40C,K.2.1<7.6>a,Partially compliant,"R14,H01","compliance/docs/SUITP.md, SUITP_test_cases.md",-,,0
+E-ST-40C,K.2.1<8.1>a,Partially compliant,"R14,H01","compliance/docs/SUITP.md, SUITP_test_cases.md",-,,0
+E-ST-40C,K.2.1<8.1>b,Partially compliant,"R14,H01","compliance/docs/SUITP.md, SUITP_test_cases.md",-,,0
+E-ST-40C,K.2.1<8.2.1>a,Partially compliant,"R14,H01","compliance/docs/SUITP.md, SUITP_test_cases.md",-,,0
+E-ST-40C,K.2.1<8.2.1>b,Partially compliant,"R14,H01","compliance/docs/SUITP.md, SUITP_test_cases.md",-,,0
+E-ST-40C,K.2.1<8.2.2>a,Partially compliant,"R14,H01","compliance/docs/SUITP.md, SUITP_test_cases.md",-,,0
+E-ST-40C,K.2.1<8.2.2>b,Partially compliant,"R14,H01","compliance/docs/SUITP.md, SUITP_test_cases.md",-,,0
+E-ST-40C,K.2.1<8.2.3>a,Partially compliant,"R14,H01","compliance/docs/SUITP.md, SUITP_test_cases.md",-,,0
+E-ST-40C,K.2.1<8.2.3>b,Partially compliant,"R14,H01","compliance/docs/SUITP.md, SUITP_test_cases.md",-,,0
+E-ST-40C,K.2.1<8.2.3>c,Partially compliant,"R14,H01","compliance/docs/SUITP.md, SUITP_test_cases.md",-,,0
+E-ST-40C,K.2.1<8.2.3>d,Partially compliant,"R14,H01","compliance/docs/SUITP.md, SUITP_test_cases.md",-,,0
+E-ST-40C,K.2.1<8.2.4>a,Partially compliant,"R14,H01","compliance/docs/SUITP.md, SUITP_test_cases.md",-,,0
+E-ST-40C,K.2.1<9.1>a,Partially compliant,"R14,H01","compliance/docs/SUITP.md, SUITP_test_cases.md",-,,0
+E-ST-40C,K.2.1<9.1>b,Partially compliant,"R14,H01","compliance/docs/SUITP.md, SUITP_test_cases.md",-,,0
+E-ST-40C,K.2.1<9.2.1>a,Partially compliant,"R14,H01","compliance/docs/SUITP.md, SUITP_test_cases.md",-,,0
+E-ST-40C,K.2.1<9.2.1>b,Partially compliant,"R14,H01","compliance/docs/SUITP.md, SUITP_test_cases.md",-,,0
+E-ST-40C,K.2.1<9.2.2>a,Partially compliant,"R14,H01","compliance/docs/SUITP.md, SUITP_test_cases.md",-,,0
+E-ST-40C,K.2.1<9.2.2>b,Partially compliant,"R14,H01","compliance/docs/SUITP.md, SUITP_test_cases.md",-,,0
+E-ST-40C,K.2.1<9.2.3>a,Partially compliant,"R14,H01","compliance/docs/SUITP.md, SUITP_test_cases.md",-,,0
+E-ST-40C,K.2.1<9.2.4>a,Partially compliant,"R14,H01","compliance/docs/SUITP.md, SUITP_test_cases.md",-,,0
+E-ST-40C,K.2.1<9.2.5>a,Partially compliant,"R14,H01","compliance/docs/SUITP.md, SUITP_test_cases.md",-,,0
+E-ST-40C,K.2.1<9.2.6>a,Partially compliant,"R14,H01","compliance/docs/SUITP.md, SUITP_test_cases.md",-,,0
+E-ST-40C,K.2.1<9.2.7>a,Partially compliant,"R14,H01","compliance/docs/SUITP.md, SUITP_test_cases.md",-,,0
+E-ST-40C,K.2.1<9.2.8>a,Partially compliant,"R14,H01","compliance/docs/SUITP.md, SUITP_test_cases.md",-,,0
+E-ST-40C,K.2.1<9.2.9>a,Partially compliant,"R14,H01","compliance/docs/SUITP.md, SUITP_test_cases.md",-,,0
+E-ST-40C,K.2.1<10.1>a,Partially compliant,"R14,H01","compliance/docs/SUITP.md, SUITP_test_cases.md",-,,0
+E-ST-40C,K.2.1<10.1>b,Partially compliant,"R14,H01","compliance/docs/SUITP.md, SUITP_test_cases.md",-,,0
+E-ST-40C,K.2.1<10.2.1>a,Partially compliant,"R14,H01","compliance/docs/SUITP.md, SUITP_test_cases.md",-,,0
+E-ST-40C,K.2.1<10.2.2>a,Partially compliant,"R14,H01","compliance/docs/SUITP.md, SUITP_test_cases.md",-,,0
+E-ST-40C,K.2.1<10.2.2>b,Partially compliant,"R14,H01","compliance/docs/SUITP.md, SUITP_test_cases.md",-,,0
+E-ST-40C,K.2.1<10.2.3>a,Partially compliant,"R14,H01","compliance/docs/SUITP.md, SUITP_test_cases.md",-,,0
+E-ST-40C,K.2.1<11>a,Partially compliant,"R14,H01","compliance/docs/SUITP.md, SUITP_test_cases.md",-,,0
+E-ST-40C,L.2.1<1>a,Compliant,R14,"compliance/docs/SVS.md, SVS_test_cases.md section 1 (introduction)",inspection of the evidence,,0
+E-ST-40C,L.2.1<2>a,Compliant,R14,"compliance/docs/SVS.md, SVS_test_cases.md section 2 (applicable and reference documents)",inspection of the evidence,,0
+E-ST-40C,L.2.1<3>a,Compliant,R14,"compliance/docs/SVS.md, SVS_test_cases.md section 3 (terms)",inspection of the evidence,,0
+E-ST-40C,L.2.1<4>a,Partially compliant,"R14,H01","compliance/docs/SVS.md, SVS_test_cases.md",-,,0
+E-ST-40C,L.2.1<5.1>a,Partially compliant,"R14,H01","compliance/docs/SVS.md, SVS_test_cases.md",-,,0
+E-ST-40C,L.2.1<5.2>a,Partially compliant,"R14,H01","compliance/docs/SVS.md, SVS_test_cases.md",-,,0
+E-ST-40C,L.2.1<5.3>a,Partially compliant,"R14,H01","compliance/docs/SVS.md, SVS_test_cases.md",-,,0
+E-ST-40C,L.2.1<5.4>a,Partially compliant,"R14,H01","compliance/docs/SVS.md, SVS_test_cases.md",-,,0
+E-ST-40C,L.2.1<5.5>a,Partially compliant,"R14,H01","compliance/docs/SVS.md, SVS_test_cases.md",-,,0
+E-ST-40C,L.2.1<5.5>b,Partially compliant,"R14,H01","compliance/docs/SVS.md, SVS_test_cases.md",-,,0
+E-ST-40C,L.2.1<5.5>c,Partially compliant,"R14,H01","compliance/docs/SVS.md, SVS_test_cases.md",-,,0
+E-ST-40C,L.2.1<5.6>a,Partially compliant,"R14,H01","compliance/docs/SVS.md, SVS_test_cases.md",-,,0
+E-ST-40C,L.2.1<6.1>a,Partially compliant,"R14,H01","compliance/docs/SVS.md, SVS_test_cases.md",-,,0
+E-ST-40C,L.2.1<6.1>b,Partially compliant,"R14,H01","compliance/docs/SVS.md, SVS_test_cases.md",-,,0
+E-ST-40C,L.2.1<6.2.1>a,Partially compliant,"R14,H01","compliance/docs/SVS.md, SVS_test_cases.md",-,,0
+E-ST-40C,L.2.1<6.2.2>a,Partially compliant,"R14,H01","compliance/docs/SVS.md, SVS_test_cases.md",-,,0
+E-ST-40C,L.2.1<6.2.2>b,Partially compliant,"R14,H01","compliance/docs/SVS.md, SVS_test_cases.md",-,,0
+E-ST-40C,L.2.1<6.2.3>a,Partially compliant,"R14,H01","compliance/docs/SVS.md, SVS_test_cases.md",-,,0
+E-ST-40C,L.2.1<6.2.3>b,Partially compliant,"R14,H01","compliance/docs/SVS.md, SVS_test_cases.md",-,,0
+E-ST-40C,L.2.1<6.2.3>c,Partially compliant,"R14,H01","compliance/docs/SVS.md, SVS_test_cases.md",-,,0
+E-ST-40C,L.2.1<6.2.3>d,Partially compliant,"R14,H01","compliance/docs/SVS.md, SVS_test_cases.md",-,,0
+E-ST-40C,L.2.1<7.1>a,Partially compliant,"R14,H01","compliance/docs/SVS.md, SVS_test_cases.md",-,,0
+E-ST-40C,L.2.1<7.1>b,Partially compliant,"R14,H01","compliance/docs/SVS.md, SVS_test_cases.md",-,,0
+E-ST-40C,L.2.1<7.2.1>a,Partially compliant,"R14,H01","compliance/docs/SVS.md, SVS_test_cases.md",-,,0
+E-ST-40C,L.2.1<7.2.1>b,Partially compliant,"R14,H01","compliance/docs/SVS.md, SVS_test_cases.md",-,,0
+E-ST-40C,L.2.1<7.2.2>a,Partially compliant,"R14,H01","compliance/docs/SVS.md, SVS_test_cases.md",-,,0
+E-ST-40C,L.2.1<7.2.3>a,Partially compliant,"R14,H01","compliance/docs/SVS.md, SVS_test_cases.md",-,,0
+E-ST-40C,L.2.1<7.2.4>a,Partially compliant,"R14,H01","compliance/docs/SVS.md, SVS_test_cases.md",-,,0
+E-ST-40C,L.2.1<7.2.5>a,Partially compliant,"R14,H01","compliance/docs/SVS.md, SVS_test_cases.md",-,,0
+E-ST-40C,L.2.1<7.2.6>a,Partially compliant,"R14,H01","compliance/docs/SVS.md, SVS_test_cases.md",-,,0
+E-ST-40C,L.2.1<7.2.7>a,Partially compliant,"R14,H01","compliance/docs/SVS.md, SVS_test_cases.md",-,,0
+E-ST-40C,L.2.1<8.1>a,Partially compliant,"R14,H01","compliance/docs/SVS.md, SVS_test_cases.md",-,,0
+E-ST-40C,L.2.1<8.1>b,Partially compliant,"R14,H01","compliance/docs/SVS.md, SVS_test_cases.md",-,,0
+E-ST-40C,L.2.1<8.1>c,Partially compliant,"R14,H01","compliance/docs/SVS.md, SVS_test_cases.md",-,,0
+E-ST-40C,L.2.1<8.2.1>a,Partially compliant,"R14,H01","compliance/docs/SVS.md, SVS_test_cases.md",-,,0
+E-ST-40C,L.2.1<8.2.2>a,Partially compliant,"R14,H01","compliance/docs/SVS.md, SVS_test_cases.md",-,,0
+E-ST-40C,L.2.1<8.2.2>b,Partially compliant,"R14,H01","compliance/docs/SVS.md, SVS_test_cases.md",-,,0
+E-ST-40C,L.2.1<8.2.3>a,Partially compliant,"R14,H01","compliance/docs/SVS.md, SVS_test_cases.md",-,,0
+E-ST-40C,L.2.1<8.2.4>a,Partially compliant,"R14,H01","compliance/docs/SVS.md, SVS_test_cases.md",-,,0
+E-ST-40C,L.2.1<9>a,Partially compliant,"R14,H01","compliance/docs/SVS.md, SVS_test_cases.md",-,,0
+E-ST-40C,L.2.1<10>a,Partially compliant,"R14,H01","compliance/docs/SVS.md, SVS_test_cases.md",-,,0
+E-ST-40C,L.2.1<11>a,Partially compliant,"R14,H01","compliance/docs/SVS.md, SVS_test_cases.md",-,,0
+E-ST-40C,M.2.1<1>a,Compliant,R14,compliance/docs/SVR.md section 1 (introduction),inspection of the evidence,,0
+E-ST-40C,M.2.1<2>a,Compliant,R14,compliance/docs/SVR.md section 2 (applicable and reference documents),inspection of the evidence,,0
+E-ST-40C,M.2.1<3>a,Compliant,R14,compliance/docs/SVR.md section 3 (terms),inspection of the evidence,,0
+E-ST-40C,M.2.1<4.1>a,Partially compliant,"R14,H01",compliance/docs/SVR.md,-,,0
+E-ST-40C,M.2.1<4.2>a,Partially compliant,"R14,H01",compliance/docs/SVR.md,-,,0
+E-ST-40C,M.2.1<4.2>b,Partially compliant,"R14,H01",compliance/docs/SVR.md,-,,0
+E-ST-40C,M.2.1<4.3.1>a,Partially compliant,"R14,H01",compliance/docs/SVR.md,-,,0
+E-ST-40C,M.2.1<4.3.2>a,Partially compliant,"R14,H01",compliance/docs/SVR.md,-,,0
+E-ST-40C,M.2.1<4.4>a,Partially compliant,"R14,H01",compliance/docs/SVR.md,-,,0
+E-ST-40C,M.2.1<4.5>a,Partially compliant,"R14,H01",compliance/docs/SVR.md,-,,0
+E-ST-40C,M.2.1<4.6>a,Partially compliant,"R14,H01",compliance/docs/SVR.md,-,,0
+E-ST-40C,M.2.1<4.7>a,Partially compliant,"R14,H01",compliance/docs/SVR.md,-,,0
+E-ST-40C,M.2.1<5.1>a,Partially compliant,"R14,H01",compliance/docs/SVR.md,-,,0
+E-ST-40C,M.2.1<5.2>a,Partially compliant,"R14,H01",compliance/docs/SVR.md,-,,0
+E-ST-40C,M.2.1<5.2>b,Partially compliant,"R14,H01",compliance/docs/SVR.md,-,,0
+E-ST-40C,M.2.1<5.2>c,Partially compliant,"R14,H01",compliance/docs/SVR.md,-,,0
+E-ST-40C,M.2.1<5.2>d,Partially compliant,"R14,H01",compliance/docs/SVR.md,-,,0
+E-ST-40C,M.2.1<5.3>a,Partially compliant,"R14,H01",compliance/docs/SVR.md,-,,0
+E-ST-40C,M.2.1<6>a,Partially compliant,"R14,H01",compliance/docs/SVR.md,-,,0
+E-ST-40C,M.2.1<7>a,Partially compliant,"R14,H01",compliance/docs/SVR.md,-,,0
+E-ST-40C,N.2.1<1>a,Compliant,R14,compliance/docs/SRF.md section 1 (introduction),inspection of the evidence,,0
+E-ST-40C,N.2.1<2>a,Compliant,R14,compliance/docs/SRF.md section 2 (applicable and reference documents),inspection of the evidence,,0
+E-ST-40C,N.2.1<3>a,Compliant,R14,compliance/docs/SRF.md section 3 (terms),inspection of the evidence,,0
+E-ST-40C,N.2.1<4>a,Partially compliant,"R14,H01",compliance/docs/SRF.md,-,,0
+E-ST-40C,N.2.1<4>b,Partially compliant,"R14,H01",compliance/docs/SRF.md,-,,0
+E-ST-40C,N.2.1<5>a,Partially compliant,"R14,H01",compliance/docs/SRF.md,-,,0
+E-ST-40C,N.2.1<5>b,Partially compliant,"R14,H01",compliance/docs/SRF.md,-,,0
+E-ST-40C,N.2.1<5>c,Partially compliant,"R14,H01",compliance/docs/SRF.md,-,,0
+E-ST-40C,N.2.1<6>a,Partially compliant,"R14,H01",compliance/docs/SRF.md,-,,0
+E-ST-40C,N.2.1<6>b,Partially compliant,"R14,H01",compliance/docs/SRF.md,-,,0
+E-ST-40C,N.2.1<7>a,Partially compliant,"R14,H01",compliance/docs/SRF.md,-,,0
+E-ST-40C,N.2.1<8>a,Partially compliant,"R14,H01",compliance/docs/SRF.md,-,,0
+E-ST-40C,N.2.1<8>b,Partially compliant,"R14,H01",compliance/docs/SRF.md,-,,0
+E-ST-40C,N.2.1<9>a,Partially compliant,"R14,H01",compliance/docs/SRF.md,-,,0
+E-ST-40C,O.2.1<1>a,Compliant,R14,compliance/docs/SDP.md section 1 (introduction),inspection of the evidence,,0
+E-ST-40C,O.2.1<2>a,Compliant,R14,compliance/docs/SDP.md section 2 (applicable and reference documents),inspection of the evidence,,0
+E-ST-40C,O.2.1<3>a,Compliant,R14,compliance/docs/SDP.md section 3 (terms),inspection of the evidence,,0
+E-ST-40C,O.2.1<4.1>a,Partially compliant,"R14,H01",compliance/docs/SDP.md,-,,0
+E-ST-40C,O.2.1<4.2>a,Partially compliant,"R14,H01",compliance/docs/SDP.md,-,,0
+E-ST-40C,O.2.1<4.3>a,Partially compliant,"R14,H01",compliance/docs/SDP.md,-,,0
+E-ST-40C,O.2.1<4.4>a,Partially compliant,"R14,H01",compliance/docs/SDP.md,-,,0
+E-ST-40C,O.2.1<4.5>a,Partially compliant,"R14,H01",compliance/docs/SDP.md,-,,0
+E-ST-40C,O.2.1<4.6>a,Partially compliant,"R14,H01",compliance/docs/SDP.md,-,,0
+E-ST-40C,O.2.1<4.7>a,Partially compliant,"R14,H01",compliance/docs/SDP.md,-,,0
+E-ST-40C,O.2.1<4.8>a,Partially compliant,"R14,H01",compliance/docs/SDP.md,-,,0
+E-ST-40C,O.2.1<4.9>a,Partially compliant,"R14,H01",compliance/docs/SDP.md,-,,0
+E-ST-40C,O.2.1<5.1>a,Partially compliant,"R14,H01",compliance/docs/SDP.md,-,,0
+E-ST-40C,O.2.1<5.2.1>a,Partially compliant,"R14,H01",compliance/docs/SDP.md,-,,0
+E-ST-40C,O.2.1<5.2.1>b,Partially compliant,"R14,H01",compliance/docs/SDP.md,-,,0
+E-ST-40C,O.2.1<5.2.1>c,Partially compliant,"R14,H01",compliance/docs/SDP.md,-,,0
+E-ST-40C,O.2.1<5.2.2>a,Partially compliant,"R14,H01",compliance/docs/SDP.md,-,,0
+E-ST-40C,O.2.1<5.2.3>a,Partially compliant,"R14,H01",compliance/docs/SDP.md,-,,0
+E-ST-40C,O.2.1<5.2.3>b,Partially compliant,"R14,H01",compliance/docs/SDP.md,-,,0
+E-ST-40C,O.2.1<5.2.3>c,Partially compliant,"R14,H01",compliance/docs/SDP.md,-,,0
+E-ST-40C,O.2.1<5.3>a,Partially compliant,"R14,H01",compliance/docs/SDP.md,-,,0
+E-ST-40C,O.2.1<5.3>b,Partially compliant,"R14,H01",compliance/docs/SDP.md,-,,0
+E-ST-40C,O.2.1<5.3>c,Partially compliant,"R14,H01",compliance/docs/SDP.md,-,,0
+E-ST-40C,O.2.1<5.3>d,Partially compliant,"R14,H01",compliance/docs/SDP.md,-,,0
+E-ST-40C,O.2.1<5.3>e,Partially compliant,"R14,H01",compliance/docs/SDP.md,-,,0
+E-ST-40C,O.2.1<5.3>f,Partially compliant,"R14,H01",compliance/docs/SDP.md,-,,0
+E-ST-40C,O.2.1<5.3>g,Partially compliant,"R14,H01",compliance/docs/SDP.md,-,,0
+E-ST-40C,O.2.1<5.3>h,Partially compliant,"R14,H01",compliance/docs/SDP.md,-,,0
+E-ST-40C,O.2.1<5.3>i,Partially compliant,"R14,H01",compliance/docs/SDP.md,-,,0
+E-ST-40C,O.2.1<5.4>a,Partially compliant,"R14,H01",compliance/docs/SDP.md,-,,0
+E-ST-40C,O.2.1<5.4>b,Partially compliant,"R14,H01",compliance/docs/SDP.md,-,,0
+E-ST-40C,O.2.1<5.4>c,Partially compliant,"R14,H01",compliance/docs/SDP.md,-,,0
+E-ST-40C,O.2.1<5.5.1>a,Partially compliant,"R14,H01",compliance/docs/SDP.md,-,,0
+E-ST-40C,O.2.1<5.5.2>a,Partially compliant,"R14,H01",compliance/docs/SDP.md,-,,0
+E-ST-40C,O.2.1<5.5.3>a,Partially compliant,"R14,H01",compliance/docs/SDP.md,-,,0
+E-ST-40C,O.2.1<5.5.3>b,Partially compliant,"R14,H01",compliance/docs/SDP.md,-,,0
+E-ST-40C,O.2.1<5.5.3>c,Partially compliant,"R14,H01",compliance/docs/SDP.md,-,,0
+E-ST-40C,O.2.1<5.5.4>a,Partially compliant,"R14,H01",compliance/docs/SDP.md,-,,0
+E-ST-40C,O.2.1<5.5.4>b,Partially compliant,"R14,H01",compliance/docs/SDP.md,-,,0
+E-ST-40C,O.2.1<5.6>a,Partially compliant,"R14,H01",compliance/docs/SDP.md,-,,0
+E-ST-40C,P.2.1<1>a,Non-compliant,"H01,H12",-,-,,0
+E-ST-40C,P.2.1<2>a,Non-compliant,"H01,H12",-,-,,0
+E-ST-40C,P.2.1<3>a,Non-compliant,"H01,H12",-,-,,0
+E-ST-40C,P.2.1<4.1>a,Non-compliant,"H01,H12",-,-,,0
+E-ST-40C,P.2.1<4.2>a,Non-compliant,"H01,H12",-,-,,0
+E-ST-40C,P.2.1<5>a,Non-compliant,"H01,H12",-,-,,0
+E-ST-40C,P.2.1<5>b,Non-compliant,"H01,H12",-,-,,0
+E-ST-40C,P.2.1<6>a,Non-compliant,"H01,H12",-,-,,0
+E-ST-40C,P.2.1<7>a,Non-compliant,"H01,H12",-,-,,0
+E-ST-40C,P.2.1<8>a,Non-compliant,"H01,H12",-,-,,0
+E-ST-40C,P.2.1<8>b,Non-compliant,"H01,H12",-,-,,0
+E-ST-40C,P.2.1<9>a,Non-compliant,"H01,H12",-,-,,0
+E-ST-40C,P.2.1<10>a,Non-compliant,"H01,H12",-,-,,0
+E-ST-40C,P.2.1<11>a,Non-compliant,"H01,H12",-,-,,0
+E-ST-40C,P.2.1<12>a,Non-compliant,"H01,H12",-,-,,0
+E-ST-40C,P.2.1<13>a,Non-compliant,"H01,H12",-,-,,0
 E-ST-40C,R.2a,Compliant,,compliance/phase0_tailoring.md; requirements/ECSS-E-ST-40C.csv crit_C,inspection of the evidence,,0
 E-ST-40C,R.2 (ECSS-E-ST-40_0860665),Compliant,,compliance/phase0_tailoring.md; requirements/ECSS-E-ST-40C.csv crit_C,inspection of the evidence,,0
-E-ST-40C,T.2.1<1>a,Non-compliant,R14,-,-,,0
-E-ST-40C,T.2.1<2>a,Non-compliant,R14,-,-,,0
-E-ST-40C,T.2.1<3>a,Non-compliant,R14,-,-,,0
-E-ST-40C,T.2.1<4>a,Non-compliant,R14,-,-,,0
-E-ST-40C,T.2.1<4>b,Non-compliant,R14,-,-,,0
-E-ST-40C,T.2.1<4>c,Non-compliant,R14,-,-,,0
-E-ST-40C,T.2.1<5>a,Non-compliant,R14,-,-,,0
-E-ST-40C,T.2.1<5>b,Non-compliant,R14,-,-,,0
-E-ST-40C,T.2.1<6.1>a,Non-compliant,R14,-,-,,0
-E-ST-40C,T.2.1<6.1>b,Non-compliant,R14,-,-,,0
-E-ST-40C,T.2.1<6.2>a,Non-compliant,R14,-,-,,0
-E-ST-40C,T.2.1<6.3>a,Non-compliant,R14,-,-,,0
-E-ST-40C,T.2.1<6.4>a,Non-compliant,R14,-,-,,0
-E-ST-40C,T.2.1<6.5>a,Non-compliant,R14,-,-,,0
-E-ST-40C,T.2.1<7.1>a,Non-compliant,R14,-,-,,0
-E-ST-40C,T.2.1<7.2>a,Non-compliant,R14,-,-,,0
-E-ST-40C,T.2.1<7.3>a,Non-compliant,R14,-,-,,0
-E-ST-40C,T.2.1<7.4>a,Non-compliant,R14,-,-,,0
-E-ST-40C,T.2.1<8>a,Non-compliant,R14,-,-,,0
-E-ST-40C,T.2.1<9.1>a,Non-compliant,R14,-,-,,0
-E-ST-40C,T.2.1<9.2>a,Non-compliant,R14,-,-,,0
-E-ST-40C,T.2.1<10.1>a,Non-compliant,R14,-,-,,0
-E-ST-40C,T.2.1<10.1>b,Non-compliant,R14,-,-,,0
-E-ST-40C,T.2.1<10.1>c,Non-compliant,R14,-,-,,0
-E-ST-40C,T.2.1<10.2>a,Non-compliant,R14,-,-,,0
-E-ST-40C,T.2.1<10.3>a,Non-compliant,R14,-,-,,0
-E-ST-40C,T.2.1<10.4>a,Non-compliant,R14,-,-,,0
-E-ST-40C,T.2.1<10.5>a,Non-compliant,R14,-,-,,0
-E-ST-40C,T.2.1<10.6>a,Non-compliant,R14,-,-,,0
-E-ST-40C,T.2.1<10.6>b,Non-compliant,R14,-,-,,0
-E-ST-40C,T.2.1<11>a,Non-compliant,R14,-,-,,0
-E-ST-40C,T.2.1<12>a,Non-compliant,R14,-,-,,0
-E-ST-40C,T.2.1<12>b,Non-compliant,R14,-,-,,0
-E-ST-40C,T.2.1<13>a,Non-compliant,R14,-,-,,0
-E-ST-40C,T.2.1<14>a,Non-compliant,R14,-,-,,0
-E-ST-40C,T.2.1<14>b,Non-compliant,R14,-,-,,0
-E-ST-40C,T.2.1<14>c,Non-compliant,R14,-,-,,0
-E-ST-40C,T.2.1<15>a,Non-compliant,R14,-,-,,0
+E-ST-40C,T.2.1<1>a,Compliant,R14,compliance/docs/SMP.md section 1 (introduction),inspection of the evidence,,0
+E-ST-40C,T.2.1<2>a,Compliant,R14,compliance/docs/SMP.md section 2 (applicable and reference documents),inspection of the evidence,,0
+E-ST-40C,T.2.1<3>a,Compliant,R14,compliance/docs/SMP.md section 3 (terms),inspection of the evidence,,0
+E-ST-40C,T.2.1<4>a,Partially compliant,"R14,H01",compliance/docs/SMP.md,-,,0
+E-ST-40C,T.2.1<4>b,Partially compliant,"R14,H01",compliance/docs/SMP.md,-,,0
+E-ST-40C,T.2.1<4>c,Partially compliant,"R14,H01",compliance/docs/SMP.md,-,,0
+E-ST-40C,T.2.1<5>a,Partially compliant,"R14,H01",compliance/docs/SMP.md,-,,0
+E-ST-40C,T.2.1<5>b,Partially compliant,"R14,H01",compliance/docs/SMP.md,-,,0
+E-ST-40C,T.2.1<6.1>a,Partially compliant,"R14,H01",compliance/docs/SMP.md,-,,0
+E-ST-40C,T.2.1<6.1>b,Partially compliant,"R14,H01",compliance/docs/SMP.md,-,,0
+E-ST-40C,T.2.1<6.2>a,Partially compliant,"R14,H01",compliance/docs/SMP.md,-,,0
+E-ST-40C,T.2.1<6.3>a,Partially compliant,"R14,H01",compliance/docs/SMP.md,-,,0
+E-ST-40C,T.2.1<6.4>a,Partially compliant,"R14,H01",compliance/docs/SMP.md,-,,0
+E-ST-40C,T.2.1<6.5>a,Partially compliant,"R14,H01",compliance/docs/SMP.md,-,,0
+E-ST-40C,T.2.1<7.1>a,Partially compliant,"R14,H01",compliance/docs/SMP.md,-,,0
+E-ST-40C,T.2.1<7.2>a,Partially compliant,"R14,H01",compliance/docs/SMP.md,-,,0
+E-ST-40C,T.2.1<7.3>a,Partially compliant,"R14,H01",compliance/docs/SMP.md,-,,0
+E-ST-40C,T.2.1<7.4>a,Partially compliant,"R14,H01",compliance/docs/SMP.md,-,,0
+E-ST-40C,T.2.1<8>a,Partially compliant,"R14,H01",compliance/docs/SMP.md,-,,0
+E-ST-40C,T.2.1<9.1>a,Partially compliant,"R14,H01",compliance/docs/SMP.md,-,,0
+E-ST-40C,T.2.1<9.2>a,Partially compliant,"R14,H01",compliance/docs/SMP.md,-,,0
+E-ST-40C,T.2.1<10.1>a,Partially compliant,"R14,H01",compliance/docs/SMP.md,-,,0
+E-ST-40C,T.2.1<10.1>b,Partially compliant,"R14,H01",compliance/docs/SMP.md,-,,0
+E-ST-40C,T.2.1<10.1>c,Partially compliant,"R14,H01",compliance/docs/SMP.md,-,,0
+E-ST-40C,T.2.1<10.2>a,Partially compliant,"R14,H01",compliance/docs/SMP.md,-,,0
+E-ST-40C,T.2.1<10.3>a,Partially compliant,"R14,H01",compliance/docs/SMP.md,-,,0
+E-ST-40C,T.2.1<10.4>a,Partially compliant,"R14,H01",compliance/docs/SMP.md,-,,0
+E-ST-40C,T.2.1<10.5>a,Partially compliant,"R14,H01",compliance/docs/SMP.md,-,,0
+E-ST-40C,T.2.1<10.6>a,Partially compliant,"R14,H01",compliance/docs/SMP.md,-,,0
+E-ST-40C,T.2.1<10.6>b,Partially compliant,"R14,H01",compliance/docs/SMP.md,-,,0
+E-ST-40C,T.2.1<11>a,Partially compliant,"R14,H01",compliance/docs/SMP.md,-,,0
+E-ST-40C,T.2.1<12>a,Partially compliant,"R14,H01",compliance/docs/SMP.md,-,,0
+E-ST-40C,T.2.1<12>b,Partially compliant,"R14,H01",compliance/docs/SMP.md,-,,0
+E-ST-40C,T.2.1<13>a,Partially compliant,"R14,H01",compliance/docs/SMP.md,-,,0
+E-ST-40C,T.2.1<14>a,Partially compliant,"R14,H01",compliance/docs/SMP.md,-,,0
+E-ST-40C,T.2.1<14>b,Partially compliant,"R14,H01",compliance/docs/SMP.md,-,,0
+E-ST-40C,T.2.1<14>c,Partially compliant,"R14,H01",compliance/docs/SMP.md,-,,0
+E-ST-40C,T.2.1<15>a,Partially compliant,"R14,H01",compliance/docs/SMP.md,-,,0
 Q-ST-80C,5.1.1a,Requires human or process action,H02,-,-,,0
 Q-ST-80C,5.1.2.1a,Requires human or process action,H02,-,-,,0
 Q-ST-80C,5.1.2.2a,Requires human or process action,H02,-,-,,0
@@ -885,26 +885,26 @@ Q-ST-80C,6.2.6.9a,Partially compliant,"R14,H06",tests/; ruff,-,,0
 Q-ST-80C,6.2.6.10a,Partially compliant,"R14,H06",tests/; ruff,-,,0
 Q-ST-80C,6.2.6.11a,Partially compliant,"R14,H06",tests/; ruff,-,,0
 Q-ST-80C,6.2.6.12a,Partially compliant,"R14,H06",tests/; ruff,-,,0
-Q-ST-80C,6.2.7.2a,Non-compliant,"R14,R01","R01: the reused Basilisk version is fixed (2.12.0), pinned and checked; runs record it.",test,tests/test_dependencies.py::test_basilisk_check_accepts_only_the_qualified_version; tests/test_dependencies.py::test_basilisk_check_reports_a_missing_basilisk; tests/test_dependencies.py::test_dependency_versions_lists_python_and_installed_packages; tests/test_dependencies.py::test_file_record_hashes_small_files_and_flags_missing_ones; tests/test_dependencies.py::test_installers_pin_the_qualified_basilisk_version; tests/test_dependencies.py::test_run_provenance_records_the_configuration,6
-Q-ST-80C,6.2.7.3a,Non-compliant,"R14,R01","R01: the reused Basilisk version is fixed (2.12.0), pinned and checked; runs record it.",test,tests/test_dependencies.py::test_basilisk_check_accepts_only_the_qualified_version; tests/test_dependencies.py::test_basilisk_check_reports_a_missing_basilisk; tests/test_dependencies.py::test_dependency_versions_lists_python_and_installed_packages; tests/test_dependencies.py::test_file_record_hashes_small_files_and_flags_missing_ones; tests/test_dependencies.py::test_installers_pin_the_qualified_basilisk_version; tests/test_dependencies.py::test_run_provenance_records_the_configuration,6
-Q-ST-80C,6.2.7.3b,Non-compliant,"R14,R01","R01: the reused Basilisk version is fixed (2.12.0), pinned and checked; runs record it.",test,tests/test_dependencies.py::test_basilisk_check_accepts_only_the_qualified_version; tests/test_dependencies.py::test_basilisk_check_reports_a_missing_basilisk; tests/test_dependencies.py::test_dependency_versions_lists_python_and_installed_packages; tests/test_dependencies.py::test_file_record_hashes_small_files_and_flags_missing_ones; tests/test_dependencies.py::test_installers_pin_the_qualified_basilisk_version; tests/test_dependencies.py::test_run_provenance_records_the_configuration,6
-Q-ST-80C,6.2.7.4a,Non-compliant,"R14,R01","R01: the reused Basilisk version is fixed (2.12.0), pinned and checked; runs record it.",test,tests/test_dependencies.py::test_basilisk_check_accepts_only_the_qualified_version; tests/test_dependencies.py::test_basilisk_check_reports_a_missing_basilisk; tests/test_dependencies.py::test_dependency_versions_lists_python_and_installed_packages; tests/test_dependencies.py::test_file_record_hashes_small_files_and_flags_missing_ones; tests/test_dependencies.py::test_installers_pin_the_qualified_basilisk_version; tests/test_dependencies.py::test_run_provenance_records_the_configuration,6
-Q-ST-80C,6.2.7.5a,Non-compliant,"R14,R01","R01: the reused Basilisk version is fixed (2.12.0), pinned and checked; runs record it.",test,tests/test_dependencies.py::test_basilisk_check_accepts_only_the_qualified_version; tests/test_dependencies.py::test_basilisk_check_reports_a_missing_basilisk; tests/test_dependencies.py::test_dependency_versions_lists_python_and_installed_packages; tests/test_dependencies.py::test_file_record_hashes_small_files_and_flags_missing_ones; tests/test_dependencies.py::test_installers_pin_the_qualified_basilisk_version; tests/test_dependencies.py::test_run_provenance_records_the_configuration,6
-Q-ST-80C,6.2.7.6a,Non-compliant,"R14,R01","R01: the reused Basilisk version is fixed (2.12.0), pinned and checked; runs record it.",test,tests/test_dependencies.py::test_basilisk_check_accepts_only_the_qualified_version; tests/test_dependencies.py::test_basilisk_check_reports_a_missing_basilisk; tests/test_dependencies.py::test_dependency_versions_lists_python_and_installed_packages; tests/test_dependencies.py::test_file_record_hashes_small_files_and_flags_missing_ones; tests/test_dependencies.py::test_installers_pin_the_qualified_basilisk_version; tests/test_dependencies.py::test_run_provenance_records_the_configuration,6
-Q-ST-80C,6.2.7.7a,Non-compliant,"R14,R01","R01: the reused Basilisk version is fixed (2.12.0), pinned and checked; runs record it.",test,tests/test_dependencies.py::test_basilisk_check_accepts_only_the_qualified_version; tests/test_dependencies.py::test_basilisk_check_reports_a_missing_basilisk; tests/test_dependencies.py::test_dependency_versions_lists_python_and_installed_packages; tests/test_dependencies.py::test_file_record_hashes_small_files_and_flags_missing_ones; tests/test_dependencies.py::test_installers_pin_the_qualified_basilisk_version; tests/test_dependencies.py::test_run_provenance_records_the_configuration,6
-Q-ST-80C,6.2.7.8a,Non-compliant,"R14,R01","R01: the reused Basilisk version is fixed (2.12.0), pinned and checked; runs record it.",test,tests/test_dependencies.py::test_basilisk_check_accepts_only_the_qualified_version; tests/test_dependencies.py::test_basilisk_check_reports_a_missing_basilisk; tests/test_dependencies.py::test_dependency_versions_lists_python_and_installed_packages; tests/test_dependencies.py::test_file_record_hashes_small_files_and_flags_missing_ones; tests/test_dependencies.py::test_installers_pin_the_qualified_basilisk_version; tests/test_dependencies.py::test_run_provenance_records_the_configuration,6
-Q-ST-80C,6.2.7.8b,Non-compliant,"R14,R01","R01: the reused Basilisk version is fixed (2.12.0), pinned and checked; runs record it.",test,tests/test_dependencies.py::test_basilisk_check_accepts_only_the_qualified_version; tests/test_dependencies.py::test_basilisk_check_reports_a_missing_basilisk; tests/test_dependencies.py::test_dependency_versions_lists_python_and_installed_packages; tests/test_dependencies.py::test_file_record_hashes_small_files_and_flags_missing_ones; tests/test_dependencies.py::test_installers_pin_the_qualified_basilisk_version; tests/test_dependencies.py::test_run_provenance_records_the_configuration,6
-Q-ST-80C,6.2.7.9a,Non-compliant,"R14,R01","R01: the reused Basilisk version is fixed (2.12.0), pinned and checked; runs record it.",test,tests/test_dependencies.py::test_basilisk_check_accepts_only_the_qualified_version; tests/test_dependencies.py::test_basilisk_check_reports_a_missing_basilisk; tests/test_dependencies.py::test_dependency_versions_lists_python_and_installed_packages; tests/test_dependencies.py::test_file_record_hashes_small_files_and_flags_missing_ones; tests/test_dependencies.py::test_installers_pin_the_qualified_basilisk_version; tests/test_dependencies.py::test_run_provenance_records_the_configuration,6
-Q-ST-80C,6.2.7.10a,Non-compliant,"R14,R01","R01: the reused Basilisk version is fixed (2.12.0), pinned and checked; runs record it.",test,tests/test_dependencies.py::test_basilisk_check_accepts_only_the_qualified_version; tests/test_dependencies.py::test_basilisk_check_reports_a_missing_basilisk; tests/test_dependencies.py::test_dependency_versions_lists_python_and_installed_packages; tests/test_dependencies.py::test_file_record_hashes_small_files_and_flags_missing_ones; tests/test_dependencies.py::test_installers_pin_the_qualified_basilisk_version; tests/test_dependencies.py::test_run_provenance_records_the_configuration,6
-Q-ST-80C,6.2.7.11a,Non-compliant,"R14,R01","R01: the reused Basilisk version is fixed (2.12.0), pinned and checked; runs record it.",test,tests/test_dependencies.py::test_basilisk_check_accepts_only_the_qualified_version; tests/test_dependencies.py::test_basilisk_check_reports_a_missing_basilisk; tests/test_dependencies.py::test_dependency_versions_lists_python_and_installed_packages; tests/test_dependencies.py::test_file_record_hashes_small_files_and_flags_missing_ones; tests/test_dependencies.py::test_installers_pin_the_qualified_basilisk_version; tests/test_dependencies.py::test_run_provenance_records_the_configuration,6
-Q-ST-80C,6.2.9.1a,Requires human or process action,R15,README.md (offline at runtime),-,,0
-Q-ST-80C,6.2.9.2a,Requires human or process action,R15,README.md (offline at runtime),-,,0
-Q-ST-80C,6.2.9.3a,Requires human or process action,R15,README.md (offline at runtime),-,,0
-Q-ST-80C,6.2.9.3b,Requires human or process action,R15,README.md (offline at runtime),-,,0
-Q-ST-80C,6.2.9.4a,Requires human or process action,R15,README.md (offline at runtime),-,,0
-Q-ST-80C,6.2.9.5a,Requires human or process action,R15,README.md (offline at runtime),-,,0
-Q-ST-80C,6.2.9.6a,Requires human or process action,R15,README.md (offline at runtime),-,,0
-Q-ST-80C,6.2.9.7a,Requires human or process action,R15,README.md (offline at runtime),-,,0
+Q-ST-80C,6.2.7.2a,Partially compliant,"R14,R01,H07",compliance/docs/SRF.md; R01 version pin and check; validation V-01 to V-08 of the reused models,test,tests/test_dependencies.py::test_basilisk_check_accepts_only_the_qualified_version; tests/test_dependencies.py::test_basilisk_check_reports_a_missing_basilisk; tests/test_dependencies.py::test_dependency_versions_lists_python_and_installed_packages; tests/test_dependencies.py::test_file_record_hashes_small_files_and_flags_missing_ones; tests/test_dependencies.py::test_installers_pin_the_qualified_basilisk_version; tests/test_dependencies.py::test_run_provenance_records_the_configuration,6
+Q-ST-80C,6.2.7.3a,Partially compliant,"R14,R01,H07",compliance/docs/SRF.md; R01 version pin and check; validation V-01 to V-08 of the reused models,test,tests/test_dependencies.py::test_basilisk_check_accepts_only_the_qualified_version; tests/test_dependencies.py::test_basilisk_check_reports_a_missing_basilisk; tests/test_dependencies.py::test_dependency_versions_lists_python_and_installed_packages; tests/test_dependencies.py::test_file_record_hashes_small_files_and_flags_missing_ones; tests/test_dependencies.py::test_installers_pin_the_qualified_basilisk_version; tests/test_dependencies.py::test_run_provenance_records_the_configuration,6
+Q-ST-80C,6.2.7.3b,Partially compliant,"R14,R01,H07",compliance/docs/SRF.md; R01 version pin and check; validation V-01 to V-08 of the reused models,test,tests/test_dependencies.py::test_basilisk_check_accepts_only_the_qualified_version; tests/test_dependencies.py::test_basilisk_check_reports_a_missing_basilisk; tests/test_dependencies.py::test_dependency_versions_lists_python_and_installed_packages; tests/test_dependencies.py::test_file_record_hashes_small_files_and_flags_missing_ones; tests/test_dependencies.py::test_installers_pin_the_qualified_basilisk_version; tests/test_dependencies.py::test_run_provenance_records_the_configuration,6
+Q-ST-80C,6.2.7.4a,Partially compliant,"R14,R01,H07",compliance/docs/SRF.md; R01 version pin and check; validation V-01 to V-08 of the reused models,test,tests/test_dependencies.py::test_basilisk_check_accepts_only_the_qualified_version; tests/test_dependencies.py::test_basilisk_check_reports_a_missing_basilisk; tests/test_dependencies.py::test_dependency_versions_lists_python_and_installed_packages; tests/test_dependencies.py::test_file_record_hashes_small_files_and_flags_missing_ones; tests/test_dependencies.py::test_installers_pin_the_qualified_basilisk_version; tests/test_dependencies.py::test_run_provenance_records_the_configuration,6
+Q-ST-80C,6.2.7.5a,Partially compliant,"R14,R01,H07",compliance/docs/SRF.md; R01 version pin and check; validation V-01 to V-08 of the reused models,test,tests/test_dependencies.py::test_basilisk_check_accepts_only_the_qualified_version; tests/test_dependencies.py::test_basilisk_check_reports_a_missing_basilisk; tests/test_dependencies.py::test_dependency_versions_lists_python_and_installed_packages; tests/test_dependencies.py::test_file_record_hashes_small_files_and_flags_missing_ones; tests/test_dependencies.py::test_installers_pin_the_qualified_basilisk_version; tests/test_dependencies.py::test_run_provenance_records_the_configuration,6
+Q-ST-80C,6.2.7.6a,Partially compliant,"R14,R01,H07",compliance/docs/SRF.md; R01 version pin and check; validation V-01 to V-08 of the reused models,test,tests/test_dependencies.py::test_basilisk_check_accepts_only_the_qualified_version; tests/test_dependencies.py::test_basilisk_check_reports_a_missing_basilisk; tests/test_dependencies.py::test_dependency_versions_lists_python_and_installed_packages; tests/test_dependencies.py::test_file_record_hashes_small_files_and_flags_missing_ones; tests/test_dependencies.py::test_installers_pin_the_qualified_basilisk_version; tests/test_dependencies.py::test_run_provenance_records_the_configuration,6
+Q-ST-80C,6.2.7.7a,Partially compliant,"R14,R01,H07",compliance/docs/SRF.md; R01 version pin and check; validation V-01 to V-08 of the reused models,test,tests/test_dependencies.py::test_basilisk_check_accepts_only_the_qualified_version; tests/test_dependencies.py::test_basilisk_check_reports_a_missing_basilisk; tests/test_dependencies.py::test_dependency_versions_lists_python_and_installed_packages; tests/test_dependencies.py::test_file_record_hashes_small_files_and_flags_missing_ones; tests/test_dependencies.py::test_installers_pin_the_qualified_basilisk_version; tests/test_dependencies.py::test_run_provenance_records_the_configuration,6
+Q-ST-80C,6.2.7.8a,Partially compliant,"R14,R01,H07",compliance/docs/SRF.md; R01 version pin and check; validation V-01 to V-08 of the reused models,test,tests/test_dependencies.py::test_basilisk_check_accepts_only_the_qualified_version; tests/test_dependencies.py::test_basilisk_check_reports_a_missing_basilisk; tests/test_dependencies.py::test_dependency_versions_lists_python_and_installed_packages; tests/test_dependencies.py::test_file_record_hashes_small_files_and_flags_missing_ones; tests/test_dependencies.py::test_installers_pin_the_qualified_basilisk_version; tests/test_dependencies.py::test_run_provenance_records_the_configuration,6
+Q-ST-80C,6.2.7.8b,Partially compliant,"R14,R01,H07",compliance/docs/SRF.md; R01 version pin and check; validation V-01 to V-08 of the reused models,test,tests/test_dependencies.py::test_basilisk_check_accepts_only_the_qualified_version; tests/test_dependencies.py::test_basilisk_check_reports_a_missing_basilisk; tests/test_dependencies.py::test_dependency_versions_lists_python_and_installed_packages; tests/test_dependencies.py::test_file_record_hashes_small_files_and_flags_missing_ones; tests/test_dependencies.py::test_installers_pin_the_qualified_basilisk_version; tests/test_dependencies.py::test_run_provenance_records_the_configuration,6
+Q-ST-80C,6.2.7.9a,Partially compliant,"R14,R01,H07",compliance/docs/SRF.md; R01 version pin and check; validation V-01 to V-08 of the reused models,test,tests/test_dependencies.py::test_basilisk_check_accepts_only_the_qualified_version; tests/test_dependencies.py::test_basilisk_check_reports_a_missing_basilisk; tests/test_dependencies.py::test_dependency_versions_lists_python_and_installed_packages; tests/test_dependencies.py::test_file_record_hashes_small_files_and_flags_missing_ones; tests/test_dependencies.py::test_installers_pin_the_qualified_basilisk_version; tests/test_dependencies.py::test_run_provenance_records_the_configuration,6
+Q-ST-80C,6.2.7.10a,Partially compliant,"R14,R01,H07",compliance/docs/SRF.md; R01 version pin and check; validation V-01 to V-08 of the reused models,test,tests/test_dependencies.py::test_basilisk_check_accepts_only_the_qualified_version; tests/test_dependencies.py::test_basilisk_check_reports_a_missing_basilisk; tests/test_dependencies.py::test_dependency_versions_lists_python_and_installed_packages; tests/test_dependencies.py::test_file_record_hashes_small_files_and_flags_missing_ones; tests/test_dependencies.py::test_installers_pin_the_qualified_basilisk_version; tests/test_dependencies.py::test_run_provenance_records_the_configuration,6
+Q-ST-80C,6.2.7.11a,Partially compliant,"R14,R01,H07",compliance/docs/SRF.md; R01 version pin and check; validation V-01 to V-08 of the reused models,test,tests/test_dependencies.py::test_basilisk_check_accepts_only_the_qualified_version; tests/test_dependencies.py::test_basilisk_check_reports_a_missing_basilisk; tests/test_dependencies.py::test_dependency_versions_lists_python_and_installed_packages; tests/test_dependencies.py::test_file_record_hashes_small_files_and_flags_missing_ones; tests/test_dependencies.py::test_installers_pin_the_qualified_basilisk_version; tests/test_dependencies.py::test_run_provenance_records_the_configuration,6
+Q-ST-80C,6.2.9.1a,Partially compliant,"R15,H02",compliance/docs/security_analysis.md; security level low (decision D8),-,,0
+Q-ST-80C,6.2.9.2a,Partially compliant,"R15,H02",compliance/docs/security_analysis.md; security level low (decision D8),-,,0
+Q-ST-80C,6.2.9.3a,Partially compliant,"R15,H02",compliance/docs/security_analysis.md; security level low (decision D8),-,,0
+Q-ST-80C,6.2.9.3b,Partially compliant,"R15,H02",compliance/docs/security_analysis.md; security level low (decision D8),-,,0
+Q-ST-80C,6.2.9.4a,Partially compliant,"R15,H02",compliance/docs/security_analysis.md; security level low (decision D8),-,,0
+Q-ST-80C,6.2.9.5a,Partially compliant,"R15,H02",compliance/docs/security_analysis.md; security level low (decision D8),-,,0
+Q-ST-80C,6.2.9.6a,Partially compliant,"R15,H02",compliance/docs/security_analysis.md; security level low (decision D8),-,,0
+Q-ST-80C,6.2.9.7a,Partially compliant,"R15,H02",compliance/docs/security_analysis.md; security level low (decision D8),-,,0
 Q-ST-80C,6.2.10.1a,Requires human or process action,R15,-,-,,0
 Q-ST-80C,6.2.10.1b,Requires human or process action,R15,-,-,,0
 Q-ST-80C,6.2.10.2a,Requires human or process action,R15,-,-,,0
@@ -1012,88 +1012,88 @@ Q-ST-80C,7.2.3.3a,Non-compliant,R14,-,-,,0
 Q-ST-80C,7.2.3.4a,Non-compliant,R14,-,-,,0
 Q-ST-80C,7.2.3.5a,Non-compliant,R14,-,-,,0
 Q-ST-80C,7.2.3.6a,Non-compliant,R14,-,-,,0
-Q-ST-80C,B.2.1<1>a,Non-compliant,R14,-,-,,0
-Q-ST-80C,B.2.1<2>a,Non-compliant,R14,-,-,,0
-Q-ST-80C,B.2.1<3>b,Non-compliant,R14,-,-,,0
-Q-ST-80C,B.2.1<4>a,Non-compliant,R14,-,-,,0
-Q-ST-80C,B.2.1<5.1>a,Non-compliant,R14,-,-,,0
-Q-ST-80C,B.2.1<5.1>b,Non-compliant,R14,-,-,,0
-Q-ST-80C,B.2.1<5.2>a,Non-compliant,R14,-,-,,0
-Q-ST-80C,B.2.1<5.3>a,Non-compliant,R14,-,-,,0
-Q-ST-80C,B.2.1<5.3>b,Non-compliant,R14,-,-,,0
-Q-ST-80C,B.2.1<5.4>a,Non-compliant,R14,-,-,,0
-Q-ST-80C,B.2.1<5.5>a,Non-compliant,R14,-,-,,0
-Q-ST-80C,B.2.1<5.6>a,Non-compliant,R14,-,-,,0
-Q-ST-80C,B.2.1<5.7>a,Non-compliant,R14,-,-,,0
-Q-ST-80C,B.2.1<5.8>a,Non-compliant,R14,-,-,,0
-Q-ST-80C,B.2.1<5.9>a,Non-compliant,R14,-,-,,0
-Q-ST-80C,B.2.1<5.9>b,Non-compliant,R14,-,-,,0
-Q-ST-80C,B.2.1<5.10>a,Non-compliant,R14,-,-,,0
-Q-ST-80C,B.2.1<6.1>a,Non-compliant,R14,-,-,,0
-Q-ST-80C,B.2.1<6.1>b,Non-compliant,R14,-,-,,0
-Q-ST-80C,B.2.1<6.1>c,Non-compliant,R14,-,-,,0
-Q-ST-80C,B.2.1<6.2>a,Non-compliant,R14,-,-,,0
-Q-ST-80C,B.2.1<6.2>b,Non-compliant,R14,-,-,,0
-Q-ST-80C,B.2.1<6.3>a,Non-compliant,R14,-,-,,0
-Q-ST-80C,B.2.1<6.4>a,Non-compliant,R14,-,-,,0
-Q-ST-80C,B.2.1<6.4>b,Non-compliant,R14,-,-,,0
-Q-ST-80C,B.2.1<6.5>a,Non-compliant,R14,-,-,,0
-Q-ST-80C,B.2.1<6.5>b,Non-compliant,R14,-,-,,0
-Q-ST-80C,B.2.1<6.5>c,Non-compliant,R14,-,-,,0
-Q-ST-80C,B.2.1<6.6>a,Non-compliant,R14,-,-,,0
-Q-ST-80C,B.2.1<6.7>a,Non-compliant,R14,-,-,,0
-Q-ST-80C,B.2.1<6.8>a,Non-compliant,R14,-,-,,0
-Q-ST-80C,B.2.1<6.9>a,Non-compliant,R14,-,-,,0
-Q-ST-80C,B.2.1<6.9>b,Non-compliant,R14,-,-,,0
-Q-ST-80C,B.2.1<6.9>c,Non-compliant,R14,-,-,,0
-Q-ST-80C,B.2.1<7>a,Non-compliant,R14,-,-,,0
-Q-ST-80C,B.2.1<7>b,Non-compliant,R14,-,-,,0
-Q-ST-80C,B.2.1<8>a,Non-compliant,R14,-,-,,0
-Q-ST-80C,B.2.1<8>b,Non-compliant,R14,-,-,,0
-Q-ST-80C,C.2.1<1>a,Requires human or process action,H02,-,-,,0
-Q-ST-80C,C.2.1<2>a,Requires human or process action,H02,-,-,,0
-Q-ST-80C,C.2.1<3>a,Requires human or process action,H02,-,-,,0
-Q-ST-80C,C.2.1<4>a,Requires human or process action,H02,-,-,,0
-Q-ST-80C,C.2.1<4>b,Requires human or process action,H02,-,-,,0
-Q-ST-80C,C.2.1<5>a,Requires human or process action,H02,-,-,,0
-Q-ST-80C,C.2.1<5>b,Requires human or process action,H02,-,-,,0
-Q-ST-80C,C.2.1<6>a,Requires human or process action,H02,-,-,,0
-Q-ST-80C,C.2.1<7>a,Requires human or process action,H02,-,-,,0
-Q-ST-80C,C.2.1<7>b,Requires human or process action,H02,-,-,,0
-Q-ST-80C,C.2.1<8>a,Requires human or process action,H02,-,-,,0
-Q-ST-80C,C.2.1<9>a,Requires human or process action,H02,-,-,,0
-Q-ST-80C,C.2.1<10>a,Requires human or process action,H02,-,-,,0
+Q-ST-80C,B.2.1<1>a,Compliant,R14,compliance/docs/SPAP.md (outline) section 1 (introduction),inspection of the evidence,,0
+Q-ST-80C,B.2.1<2>a,Compliant,R14,compliance/docs/SPAP.md (outline) section 2 (applicable and reference documents),inspection of the evidence,,0
+Q-ST-80C,B.2.1<3>b,Compliant,R14,compliance/docs/SPAP.md (outline) section 3 (terms),inspection of the evidence,,0
+Q-ST-80C,B.2.1<4>a,Partially compliant,"R14,H01",compliance/docs/SPAP.md (outline),-,,0
+Q-ST-80C,B.2.1<5.1>a,Partially compliant,"R14,H01",compliance/docs/SPAP.md (outline),-,,0
+Q-ST-80C,B.2.1<5.1>b,Partially compliant,"R14,H01",compliance/docs/SPAP.md (outline),-,,0
+Q-ST-80C,B.2.1<5.2>a,Partially compliant,"R14,H01",compliance/docs/SPAP.md (outline),-,,0
+Q-ST-80C,B.2.1<5.3>a,Partially compliant,"R14,H01",compliance/docs/SPAP.md (outline),-,,0
+Q-ST-80C,B.2.1<5.3>b,Partially compliant,"R14,H01",compliance/docs/SPAP.md (outline),-,,0
+Q-ST-80C,B.2.1<5.4>a,Partially compliant,"R14,H01",compliance/docs/SPAP.md (outline),-,,0
+Q-ST-80C,B.2.1<5.5>a,Partially compliant,"R14,H01",compliance/docs/SPAP.md (outline),-,,0
+Q-ST-80C,B.2.1<5.6>a,Partially compliant,"R14,H01",compliance/docs/SPAP.md (outline),-,,0
+Q-ST-80C,B.2.1<5.7>a,Partially compliant,"R14,H01",compliance/docs/SPAP.md (outline),-,,0
+Q-ST-80C,B.2.1<5.8>a,Partially compliant,"R14,H01",compliance/docs/SPAP.md (outline),-,,0
+Q-ST-80C,B.2.1<5.9>a,Partially compliant,"R14,H01",compliance/docs/SPAP.md (outline),-,,0
+Q-ST-80C,B.2.1<5.9>b,Partially compliant,"R14,H01",compliance/docs/SPAP.md (outline),-,,0
+Q-ST-80C,B.2.1<5.10>a,Partially compliant,"R14,H01",compliance/docs/SPAP.md (outline),-,,0
+Q-ST-80C,B.2.1<6.1>a,Partially compliant,"R14,H01",compliance/docs/SPAP.md (outline),-,,0
+Q-ST-80C,B.2.1<6.1>b,Partially compliant,"R14,H01",compliance/docs/SPAP.md (outline),-,,0
+Q-ST-80C,B.2.1<6.1>c,Partially compliant,"R14,H01",compliance/docs/SPAP.md (outline),-,,0
+Q-ST-80C,B.2.1<6.2>a,Partially compliant,"R14,H01",compliance/docs/SPAP.md (outline),-,,0
+Q-ST-80C,B.2.1<6.2>b,Partially compliant,"R14,H01",compliance/docs/SPAP.md (outline),-,,0
+Q-ST-80C,B.2.1<6.3>a,Partially compliant,"R14,H01",compliance/docs/SPAP.md (outline),-,,0
+Q-ST-80C,B.2.1<6.4>a,Partially compliant,"R14,H01",compliance/docs/SPAP.md (outline),-,,0
+Q-ST-80C,B.2.1<6.4>b,Partially compliant,"R14,H01",compliance/docs/SPAP.md (outline),-,,0
+Q-ST-80C,B.2.1<6.5>a,Partially compliant,"R14,H01",compliance/docs/SPAP.md (outline),-,,0
+Q-ST-80C,B.2.1<6.5>b,Partially compliant,"R14,H01",compliance/docs/SPAP.md (outline),-,,0
+Q-ST-80C,B.2.1<6.5>c,Partially compliant,"R14,H01",compliance/docs/SPAP.md (outline),-,,0
+Q-ST-80C,B.2.1<6.6>a,Partially compliant,"R14,H01",compliance/docs/SPAP.md (outline),-,,0
+Q-ST-80C,B.2.1<6.7>a,Partially compliant,"R14,H01",compliance/docs/SPAP.md (outline),-,,0
+Q-ST-80C,B.2.1<6.8>a,Partially compliant,"R14,H01",compliance/docs/SPAP.md (outline),-,,0
+Q-ST-80C,B.2.1<6.9>a,Partially compliant,"R14,H01",compliance/docs/SPAP.md (outline),-,,0
+Q-ST-80C,B.2.1<6.9>b,Partially compliant,"R14,H01",compliance/docs/SPAP.md (outline),-,,0
+Q-ST-80C,B.2.1<6.9>c,Partially compliant,"R14,H01",compliance/docs/SPAP.md (outline),-,,0
+Q-ST-80C,B.2.1<7>a,Partially compliant,"R14,H01",compliance/docs/SPAP.md (outline),-,,0
+Q-ST-80C,B.2.1<7>b,Partially compliant,"R14,H01",compliance/docs/SPAP.md (outline),-,,0
+Q-ST-80C,B.2.1<8>a,Partially compliant,"R14,H01",compliance/docs/SPAP.md (outline),-,,0
+Q-ST-80C,B.2.1<8>b,Partially compliant,"R14,H01",compliance/docs/SPAP.md (outline),-,,0
+Q-ST-80C,C.2.1<1>a,Compliant,R14,compliance/docs/SPAMR.md section 1 (introduction),inspection of the evidence,,0
+Q-ST-80C,C.2.1<2>a,Compliant,R14,compliance/docs/SPAMR.md section 2 (applicable and reference documents),inspection of the evidence,,0
+Q-ST-80C,C.2.1<3>a,Compliant,R14,compliance/docs/SPAMR.md section 3 (terms),inspection of the evidence,,0
+Q-ST-80C,C.2.1<4>a,Partially compliant,"R14,H01",compliance/docs/SPAMR.md,-,,0
+Q-ST-80C,C.2.1<4>b,Partially compliant,"R14,H01",compliance/docs/SPAMR.md,-,,0
+Q-ST-80C,C.2.1<5>a,Partially compliant,"R14,H01",compliance/docs/SPAMR.md,-,,0
+Q-ST-80C,C.2.1<5>b,Partially compliant,"R14,H01",compliance/docs/SPAMR.md,-,,0
+Q-ST-80C,C.2.1<6>a,Partially compliant,"R14,H01",compliance/docs/SPAMR.md,-,,0
+Q-ST-80C,C.2.1<7>a,Partially compliant,"R14,H01",compliance/docs/SPAMR.md,-,,0
+Q-ST-80C,C.2.1<7>b,Partially compliant,"R14,H01",compliance/docs/SPAMR.md,-,,0
+Q-ST-80C,C.2.1<8>a,Partially compliant,"R14,H01",compliance/docs/SPAMR.md,-,,0
+Q-ST-80C,C.2.1<9>a,Partially compliant,"R14,H01",compliance/docs/SPAMR.md,-,,0
+Q-ST-80C,C.2.1<10>a,Partially compliant,"R14,H01",compliance/docs/SPAMR.md,-,,0
 E-ST-10-09C,5.2.1a,Requires human or process action,H02,-,-,,0
-E-ST-10-09C,5.2.2a,Non-compliant,R14,-,-,,0
-E-ST-10-09C,5.2.2b,Non-compliant,R14,-,-,,0
+E-ST-10-09C,5.2.2a,Partially compliant,"R14,H01",compliance/docs/CSD.md (Annex A; under git),-,,0
+E-ST-10-09C,5.2.2b,Partially compliant,"R14,H01",compliance/docs/CSD.md (Annex A; under git),-,,0
 E-ST-10-09C,5.2.2c,Requires human or process action,H01,-,-,,0
 E-ST-10-09C,5.2.2d,Requires human or process action,H05,-,-,,0
 E-ST-10-09C,5.2.2e,Requires human or process action,H01,-,-,,0
-E-ST-10-09C,5.2.2f,Non-compliant,R14,-,-,,0
-E-ST-10-09C,5.2.3a,Partially compliant,"R02,R14","R02 (Phase 2): engine/frames.py (definitions: name, mnemonic, origin, axes, epoch, time scale; named transformations; per-series frames) and engine/time_system.py (UTC/TAI/TT/TDB via ERFA), written to every run's provenance.json; tests/test_frames.py, tests/test_time_system.py",-,,0
-E-ST-10-09C,5.2.3b,Partially compliant,"R02,R14","R02 (Phase 2): engine/frames.py (definitions: name, mnemonic, origin, axes, epoch, time scale; named transformations; per-series frames) and engine/time_system.py (UTC/TAI/TT/TDB via ERFA), written to every run's provenance.json; tests/test_frames.py, tests/test_time_system.py",-,,0
-E-ST-10-09C,5.2.3c,Partially compliant,"R02,R14","R02 (Phase 2): engine/frames.py (definitions: name, mnemonic, origin, axes, epoch, time scale; named transformations; per-series frames) and engine/time_system.py (UTC/TAI/TT/TDB via ERFA), written to every run's provenance.json; tests/test_frames.py, tests/test_time_system.py",-,,0
-E-ST-10-09C,5.2.3d,Partially compliant,"R02,R14","R02 (Phase 2): engine/frames.py (definitions: name, mnemonic, origin, axes, epoch, time scale; named transformations; per-series frames) and engine/time_system.py (UTC/TAI/TT/TDB via ERFA), written to every run's provenance.json; tests/test_frames.py, tests/test_time_system.py",-,,0
-E-ST-10-09C,5.3.1a,Non-compliant,R14,-,-,,0
+E-ST-10-09C,5.2.2f,Partially compliant,"R14,H01",compliance/docs/CSD.md (Annex A; under git),-,,0
+E-ST-10-09C,5.2.3a,Partially compliant,"R02,R14,H01","R02: engine/frames.py, engine/time_system.py, written to every run's provenance.json; compliance/docs/CSD.md sections 6, 8, 9 (inventory, transformation tree, detailed definitions); tests/test_frames.py, tests/test_time_system.py",-,,0
+E-ST-10-09C,5.2.3b,Partially compliant,"R02,R14,H01","R02: engine/frames.py, engine/time_system.py, written to every run's provenance.json; compliance/docs/CSD.md sections 6, 8, 9 (inventory, transformation tree, detailed definitions); tests/test_frames.py, tests/test_time_system.py",-,,0
+E-ST-10-09C,5.2.3c,Partially compliant,"R02,R14,H01","R02: engine/frames.py, engine/time_system.py, written to every run's provenance.json; compliance/docs/CSD.md sections 6, 8, 9 (inventory, transformation tree, detailed definitions); tests/test_frames.py, tests/test_time_system.py",-,,0
+E-ST-10-09C,5.2.3d,Partially compliant,"R02,R14,H01","R02: engine/frames.py, engine/time_system.py, written to every run's provenance.json; compliance/docs/CSD.md sections 6, 8, 9 (inventory, transformation tree, detailed definitions); tests/test_frames.py, tests/test_time_system.py",-,,0
+E-ST-10-09C,5.3.1a,Partially compliant,"R14,H01","compliance/docs/CSD.md section 3 (conventions: EME2000 as SPICE J2000, ITRF93 by NAIF PCKs, WGS-84, TEME, CCSDS REF_FRAME/TIME_SYSTEM)",-,,0
 E-ST-10-09C,5.3.1b,Compliant,R03,"R03 (Phase 2): engine/tle.py checks the TLE (length, line numbers, catalogue number, checksums), propagates it with SGP4 to the scenario epoch and rotates TEME of date -> EME2000 (IAU 1976 precession, IAU 1980 nutation, equation of the equinoxes without kinematic terms, via ERFA); engine/service.py ",test,tests/gui/test_orbit_ic_widget.py::test_tle_page_shows_the_tle_epoch_age_or_the_format_problem; tests/test_tle.py::test_malformed_tles_are_rejected_with_the_reason; tests/test_tle.py::test_precession_nutation_matches_spice_iau_1976_1980; tests/test_tle.py::test_service_uses_the_scenario_epoch_state; tests/test_tle.py::test_sgp4_failure_is_reported; tests/test_tle.py::test_state_is_propagated_to_the_scenario_epoch; tests/test_tle.py::test_timezone_aware_epoch_is_converted_to_utc; tests/test_tle.py::test_tle_warnings_flag_old_or_broken_tles; tests/test_tle.py::test_valid_tle_passes_the_checks_and_gives_its_epoch; tests/test_tle.py::test_vallado_teme_to_j2000_example,10
-E-ST-10-09C,5.3.1c,Partially compliant,"R03,R14","engine/tle.py module docstring specifies the TLE conversion (steps, models, frames, time scales); engine/time_system.py the UTC-offset conversion.",test,tests/test_tle.py::test_malformed_tles_are_rejected_with_the_reason; tests/test_tle.py::test_precession_nutation_matches_spice_iau_1976_1980; tests/test_tle.py::test_service_uses_the_scenario_epoch_state; tests/test_tle.py::test_sgp4_failure_is_reported; tests/test_tle.py::test_state_is_propagated_to_the_scenario_epoch; tests/test_tle.py::test_timezone_aware_epoch_is_converted_to_utc; tests/test_tle.py::test_tle_warnings_flag_old_or_broken_tles; tests/test_tle.py::test_valid_tle_passes_the_checks_and_gives_its_epoch; tests/test_tle.py::test_vallado_teme_to_j2000_example,9
+E-ST-10-09C,5.3.1c,Partially compliant,"R03,R14,H01",engine/tle.py docstring (full specification); compliance/docs/CSD.md sections 6 and 8 (TEME -> N chain),test,tests/test_tle.py::test_malformed_tles_are_rejected_with_the_reason; tests/test_tle.py::test_precession_nutation_matches_spice_iau_1976_1980; tests/test_tle.py::test_service_uses_the_scenario_epoch_state; tests/test_tle.py::test_sgp4_failure_is_reported; tests/test_tle.py::test_state_is_propagated_to_the_scenario_epoch; tests/test_tle.py::test_timezone_aware_epoch_is_converted_to_utc; tests/test_tle.py::test_tle_warnings_flag_old_or_broken_tles; tests/test_tle.py::test_valid_tle_passes_the_checks_and_gives_its_epoch; tests/test_tle.py::test_vallado_teme_to_j2000_example,9
 E-ST-10-09C,5.3.2a,Compliant,R02,"R02 (Phase 2): engine/frames.py (definitions: name, mnemonic, origin, axes, epoch, time scale; named transformations; per-series frames) and engine/time_system.py (UTC/TAI/TT/TDB via ERFA), written to every run's provenance.json; tests/test_frames.py, tests/test_time_system.py: every frame has a uni",test,tests/test_frames.py::test_a_gravity_field_without_iers_data_warns_of_its_accuracy; tests/test_frames.py::test_each_transformation_has_a_unique_name_between_defined_frames; tests/test_frames.py::test_every_frame_has_a_unique_name_mnemonic_and_origin; tests/test_frames.py::test_frame_rotations_are_orthonormal_and_right_handed; tests/test_frames.py::test_run_metadata_carries_frames_time_scales_and_units; tests/test_frames.py::test_series_frames_follow_the_naming_convention,6
 E-ST-10-09C,5.3.2b,Compliant,R02,"R02 (Phase 2): engine/frames.py (definitions: name, mnemonic, origin, axes, epoch, time scale; named transformations; per-series frames) and engine/time_system.py (UTC/TAI/TT/TDB via ERFA), written to every run's provenance.json; tests/test_frames.py, tests/test_time_system.py: recognised names used",test,tests/test_frames.py::test_every_frame_has_a_unique_name_mnemonic_and_origin,1
 E-ST-10-09C,5.3.2c,Compliant,R02,"R02 (Phase 2): engine/frames.py (definitions: name, mnemonic, origin, axes, epoch, time scale; named transformations; per-series frames) and engine/time_system.py (UTC/TAI/TT/TDB via ERFA), written to every run's provenance.json; tests/test_frames.py, tests/test_time_system.py: unique one-letter mne",test,tests/test_frames.py::test_every_frame_has_a_unique_name_mnemonic_and_origin,1
 E-ST-10-09C,5.3.2d,Compliant,R02,"R02 (Phase 2): engine/frames.py (definitions: name, mnemonic, origin, axes, epoch, time scale; named transformations; per-series frames) and engine/time_system.py (UTC/TAI/TT/TDB via ERFA), written to every run's provenance.json; tests/test_frames.py, tests/test_time_system.py: transformations named",test,tests/test_frames.py::test_each_transformation_has_a_unique_name_between_defined_frames,1
-E-ST-10-09C,5.3.2e,Partially compliant,"R02,R14","R02 (Phase 2): engine/frames.py (definitions: name, mnemonic, origin, axes, epoch, time scale; named transformations; per-series frames) and engine/time_system.py (UTC/TAI/TT/TDB via ERFA), written to every run's provenance.json; tests/test_frames.py, tests/test_time_system.py; naming, notation and ",-,,0
-E-ST-10-09C,5.3.2f,Partially compliant,"R02,R14","R02 (Phase 2): engine/frames.py (definitions: name, mnemonic, origin, axes, epoch, time scale; named transformations; per-series frames) and engine/time_system.py (UTC/TAI/TT/TDB via ERFA), written to every run's provenance.json; tests/test_frames.py, tests/test_time_system.py; naming, notation and ",-,,0
-E-ST-10-09C,5.3.2g,Partially compliant,"R02,R14","R02 (Phase 2): engine/frames.py (definitions: name, mnemonic, origin, axes, epoch, time scale; named transformations; per-series frames) and engine/time_system.py (UTC/TAI/TT/TDB via ERFA), written to every run's provenance.json; tests/test_frames.py, tests/test_time_system.py; naming, notation and ",-,,0
-E-ST-10-09C,5.3.3a,Non-compliant,R14,-,-,,0
-E-ST-10-09C,5.3.3b,Non-compliant,R14,-,-,,0
-E-ST-10-09C,5.3.3c,Non-compliant,R14,-,-,,0
-E-ST-10-09C,5.3.3d,Non-compliant,R14,-,-,,0
-E-ST-10-09C,5.3.3e,Non-compliant,R14,-,-,,0
-E-ST-10-09C,5.3.3f,Non-compliant,R14,-,-,,0
-E-ST-10-09C,5.3.3g,Non-compliant,R14,-,-,,0
+E-ST-10-09C,5.3.2e,Partially compliant,"R02,R14,H01","R02: engine/frames.py and engine/time_system.py, written to every run's provenance.json; compliance/docs/CSD.md section 3 (naming and notation)",-,,0
+E-ST-10-09C,5.3.2f,Partially compliant,"R02,R14,H01","R02: engine/frames.py and engine/time_system.py, written to every run's provenance.json; compliance/docs/CSD.md section 3 (naming and notation)",-,,0
+E-ST-10-09C,5.3.2g,Partially compliant,"R02,R14,H01","R02: engine/frames.py and engine/time_system.py, written to every run's provenance.json; compliance/docs/CSD.md section 3 (naming and notation)",-,,0
+E-ST-10-09C,5.3.3a,Partially compliant,"R14,H01",compliance/docs/CSD.md section 8 (text diagrams of the top-level and lower-level chains),-,,0
+E-ST-10-09C,5.3.3b,Partially compliant,"R14,H01",compliance/docs/CSD.md section 8 (text diagrams of the top-level and lower-level chains),-,,0
+E-ST-10-09C,5.3.3c,Partially compliant,"R14,H01",compliance/docs/CSD.md section 8 (text diagrams of the top-level and lower-level chains),-,,0
+E-ST-10-09C,5.3.3d,Partially compliant,"R14,H01",compliance/docs/CSD.md section 8 (text diagrams of the top-level and lower-level chains),-,,0
+E-ST-10-09C,5.3.3e,Partially compliant,"R14,H01",compliance/docs/CSD.md section 8 (text diagrams of the top-level and lower-level chains),-,,0
+E-ST-10-09C,5.3.3f,Partially compliant,"R14,H01",compliance/docs/CSD.md section 8 (text diagrams of the top-level and lower-level chains),-,,0
+E-ST-10-09C,5.3.3g,Partially compliant,"R14,H01",compliance/docs/CSD.md section 8 (text diagrams of the top-level and lower-level chains),-,,0
 E-ST-10-09C,5.4.1a,Compliant,R02,"R02 (Phase 2): engine/frames.py (definitions: name, mnemonic, origin, axes, epoch, time scale; named transformations; per-series frames) and engine/time_system.py (UTC/TAI/TT/TDB via ERFA), written to every run's provenance.json; tests/test_frames.py, tests/test_time_system.py: origin of every frame",test,tests/test_frames.py::test_a_gravity_field_without_iers_data_warns_of_its_accuracy; tests/test_frames.py::test_each_transformation_has_a_unique_name_between_defined_frames; tests/test_frames.py::test_every_frame_has_a_unique_name_mnemonic_and_origin; tests/test_frames.py::test_frame_rotations_are_orthonormal_and_right_handed; tests/test_frames.py::test_run_metadata_carries_frames_time_scales_and_units; tests/test_frames.py::test_series_frames_follow_the_naming_convention,6
-E-ST-10-09C,5.4.1b,Partially compliant,R14,"engine/service.py (spice_object.zeroBase = central body; Basilisk state names r_BN_N, sigma_BN); engine/kernels.py (naif0012, de430, pck00010)",-,,0
-E-ST-10-09C,5.4.1c,Partially compliant,R14,"engine/service.py (spice_object.zeroBase = central body; Basilisk state names r_BN_N, sigma_BN); engine/kernels.py (naif0012, de430, pck00010)",-,,0
+E-ST-10-09C,5.4.1b,Partially compliant,"R14,H01",engine/frames.py; compliance/docs/CSD.md section 9 (origin of each frame),-,,0
+E-ST-10-09C,5.4.1c,Partially compliant,"R14,H01",engine/frames.py; compliance/docs/CSD.md section 9 (axes of each frame),-,,0
 E-ST-10-09C,5.4.1d,Compliant,R14,"SPICE frames and Basilisk DCM/MRP algebra are orthonormal by construction; tests/test_osculating_elements.py, tests/test_two_body_validation.py exercise them",test,tests/test_frames.py::test_frame_rotations_are_orthonormal_and_right_handed,1
 E-ST-10-09C,5.4.1e,Compliant,R14,"All frames right-handed (SPICE, Basilisk B/N/Hill; facet normals in B)",test,tests/test_frames.py::test_frame_rotations_are_orthonormal_and_right_handed,1
 E-ST-10-09C,5.4.1f,Compliant,,"No left-handed frame is imported (inputs: classical elements, cartesian J2000 state, TLE)",test,tests/test_frames.py::test_frame_rotations_are_orthonormal_and_right_handed,1
@@ -1106,49 +1106,49 @@ E-ST-10-09C,5.4.4a,Compliant,R02,"R02 (Phase 2): engine/frames.py (definitions: 
 E-ST-10-09C,5.4.4b,Compliant,R02,"R02 (Phase 2): engine/frames.py (definitions: name, mnemonic, origin, axes, epoch, time scale; named transformations; per-series frames) and engine/time_system.py (UTC/TAI/TT/TDB via ERFA), written to every run's provenance.json; tests/test_frames.py, tests/test_time_system.py: UTC -> TAI (leap seco",test,tests/test_time_system.py::test_elapsed_simulation_time_converts_to_utc_across_a_leap_second; tests/test_time_system.py::test_elapsed_to_utc_round_trips_through_tdb; tests/test_time_system.py::test_j2000_epoch_in_utc_is_zero_tdb_seconds; tests/test_time_system.py::test_tai_minus_utc_follows_the_leap_second_table; tests/test_time_system.py::test_tdb_matches_spice_ephemeris_time; tests/validation/test_v01_time_scales.py::test_tdb_series_reproduces_sofas_own_test_value; tests/validation/test_v01_time_scales.py::test_time_scale_offsets_agree_with_gmat,7
 E-ST-10-09C,5.4.5a,Partially compliant,R14,SpacecraftConfig facets/sensors/actuators defined in B,-,,0
 E-ST-10-09C,5.4.6a,Compliant,R05,"R05 (Phase 2): engine/geodesy.py defines the reference surface (WGS-84 a = 6378137.0 m, 1/f = 298.257223563; sphere of the simulation radius for other bodies), longitude east positive from the body-fixed prime meridian, North Pole = +z of the body-fixed frame; engine/fsw.py places groundLocation wit",test,tests/test_geodesy.py::test_basilisk_ground_location_uses_the_wgs84_site; tests/test_geodesy.py::test_geocentric_latitude_differs_by_at_most_0_19_degrees; tests/test_geodesy.py::test_geodetic_elevation_azimuth_matches_an_independent_computation; tests/test_geodesy.py::test_geodetic_round_trip; tests/test_geodesy.py::test_spherical_bodies_keep_planetocentric_coordinates; tests/test_geodesy.py::test_the_atmosphere_proxy_carries_the_geodetic_altitude_and_latitude; tests/test_geodesy.py::test_wgs84_equator_and_pole_match_the_defining_constants; tests/test_geodesy.py::test_wgs84_point_at_45_degrees; tests/test_scenario_checks.py::test_template_19_passes_match_an_independent_propagation; tests/validation/test_v05_passes.py::test_pass_times_agree_with_gmat_contact_locator,10
-E-ST-10-09C,5.4.7a,Partially compliant,R14,"schema OrbitIC (classical elements, cartesian, TLE); results orbit_elements_* series (osculating via rv2elem, mean via clMeanOscMap)",-,,0
-E-ST-10-09C,5.4.7b,Partially compliant,R14,"schema OrbitIC (classical elements, cartesian, TLE); results orbit_elements_* series (osculating via rv2elem, mean via clMeanOscMap)",-,,0
-E-ST-10-09C,5.4.8a,Partially compliant,R14,"Basilisk MRP attitude (sigma_BN), DCMs; Euler 3-2-1 inputs in schema",-,,0
-E-ST-10-09C,5.4.8b,Partially compliant,R14,"Basilisk MRP attitude (sigma_BN), DCMs; Euler 3-2-1 inputs in schema",-,,0
-E-ST-10-09C,5.4.8c,Partially compliant,R14,"Basilisk MRP attitude (sigma_BN), DCMs; Euler 3-2-1 inputs in schema",-,,0
-E-ST-10-09C,5.4.8d,Partially compliant,R14,"Basilisk MRP attitude (sigma_BN), DCMs; Euler 3-2-1 inputs in schema",-,,0
-E-ST-10-09C,5.4.8e,Partially compliant,R14,"Basilisk MRP attitude (sigma_BN), DCMs; Euler 3-2-1 inputs in schema",-,,0
-E-ST-10-09C,5.4.8f,Partially compliant,R14,"Basilisk MRP attitude (sigma_BN), DCMs; Euler 3-2-1 inputs in schema",-,,0
-E-ST-10-09C,5.4.8g,Partially compliant,R14,"Basilisk MRP attitude (sigma_BN), DCMs; Euler 3-2-1 inputs in schema",-,,0
+E-ST-10-09C,5.4.7a,Partially compliant,"R14,H01",schema OrbitIC; compliance/docs/CSD.md section 7 (parameterisations within systems and transformations),-,,0
+E-ST-10-09C,5.4.7b,Partially compliant,"R14,H01",schema OrbitIC; compliance/docs/CSD.md section 7 (parameterisations within systems and transformations),-,,0
+E-ST-10-09C,5.4.8a,Partially compliant,"R14,H01","compliance/docs/CSD.md sections 3 and 7 (DCM convention dcm_XY, MRP sigma_XY with shadow set, right-handed; 3-2-1 Euler only for the Vizard model; no quaternions)",-,,0
+E-ST-10-09C,5.4.8b,Partially compliant,"R14,H01","compliance/docs/CSD.md sections 3 and 7 (DCM convention dcm_XY, MRP sigma_XY with shadow set, right-handed; 3-2-1 Euler only for the Vizard model; no quaternions)",-,,0
+E-ST-10-09C,5.4.8c,Partially compliant,"R14,H01","compliance/docs/CSD.md sections 3 and 7 (DCM convention dcm_XY, MRP sigma_XY with shadow set, right-handed; 3-2-1 Euler only for the Vizard model; no quaternions)",-,,0
+E-ST-10-09C,5.4.8d,Partially compliant,"R14,H01","compliance/docs/CSD.md sections 3 and 7 (DCM convention dcm_XY, MRP sigma_XY with shadow set, right-handed; 3-2-1 Euler only for the Vizard model; no quaternions)",-,,0
+E-ST-10-09C,5.4.8e,Partially compliant,"R14,H01","compliance/docs/CSD.md sections 3 and 7 (DCM convention dcm_XY, MRP sigma_XY with shadow set, right-handed; 3-2-1 Euler only for the Vizard model; no quaternions)",-,,0
+E-ST-10-09C,5.4.8f,Partially compliant,"R14,H01","compliance/docs/CSD.md sections 3 and 7 (DCM convention dcm_XY, MRP sigma_XY with shadow set, right-handed; 3-2-1 Euler only for the Vizard model; no quaternions)",-,,0
+E-ST-10-09C,5.4.8g,Partially compliant,"R14,H01","compliance/docs/CSD.md sections 3 and 7 (DCM convention dcm_XY, MRP sigma_XY with shadow set, right-handed; 3-2-1 Euler only for the Vizard model; no quaternions)",-,,0
 E-ST-10-09C,5.4.8h,Partially compliant,R02,"Basilisk outputs MRPs, not quaternions",-,,0
-E-ST-10-09C,5.4.8i,Partially compliant,R14,"Basilisk MRP attitude (sigma_BN), DCMs; Euler 3-2-1 inputs in schema",-,,0
-E-ST-10-09C,5.4.8j,Partially compliant,R14,"Basilisk MRP attitude (sigma_BN), DCMs; Euler 3-2-1 inputs in schema",-,,0
-E-ST-10-09C,5.4.9a,Non-compliant,"R02,R14",-,-,,0
-E-ST-10-09C,5.4.9b,Non-compliant,"R02,R14",-,-,,0
-E-ST-10-09C,5.4.9c,Non-compliant,"R02,R14",-,-,,0
-E-ST-10-09C,5.4.9d,Non-compliant,"R02,R14",-,-,,0
-E-ST-10-09C,5.4.9e,Non-compliant,"R02,R14",-,-,,0
+E-ST-10-09C,5.4.8i,Partially compliant,"R14,H01","compliance/docs/CSD.md sections 3 and 7 (DCM convention dcm_XY, MRP sigma_XY with shadow set, right-handed; 3-2-1 Euler only for the Vizard model; no quaternions)",-,,0
+E-ST-10-09C,5.4.8j,Partially compliant,"R14,H01","compliance/docs/CSD.md sections 3 and 7 (DCM convention dcm_XY, MRP sigma_XY with shadow set, right-handed; 3-2-1 Euler only for the Vizard model; no quaternions)",-,,0
+E-ST-10-09C,5.4.9a,Partially compliant,"R02,R14,H01","compliance/docs/CSD.md sections 6, 8, 9 (each transformation in words, its DCM/MRP parameterisation, time dependence, parent frame); engine/frames.py TRANSFORMATIONS in every provenance",-,,0
+E-ST-10-09C,5.4.9b,Partially compliant,"R02,R14,H01","compliance/docs/CSD.md sections 6, 8, 9 (each transformation in words, its DCM/MRP parameterisation, time dependence, parent frame); engine/frames.py TRANSFORMATIONS in every provenance",-,,0
+E-ST-10-09C,5.4.9c,Partially compliant,"R02,R14,H01","compliance/docs/CSD.md sections 6, 8, 9 (each transformation in words, its DCM/MRP parameterisation, time dependence, parent frame); engine/frames.py TRANSFORMATIONS in every provenance",-,,0
+E-ST-10-09C,5.4.9d,Partially compliant,"R02,R14,H01","compliance/docs/CSD.md sections 6, 8, 9 (each transformation in words, its DCM/MRP parameterisation, time dependence, parent frame); engine/frames.py TRANSFORMATIONS in every provenance",-,,0
+E-ST-10-09C,5.4.9e,Partially compliant,"R02,R14,H01","compliance/docs/CSD.md sections 6, 8, 9 (each transformation in words, its DCM/MRP parameterisation, time dependence, parent frame); engine/frames.py TRANSFORMATIONS in every provenance",-,,0
 E-ST-10-09C,5.4.9f,Compliant,R04,"R04 (Phase 2): engine/earth_orientation.py; with the NAIF Earth PCKs installed the Earth-fixed frame is SPICE ITRF93 (IAU 1976/1980 + IERS nutation corrections, UT1, polar motion; NAIF: 'several microradians' within the high-accuracy span) instead of IAU_EARTH (measured 1.5 mrad apart in 2026); plan",test,tests/gui/test_startup_fetch_dialog.py::test_earth_orientation_item_is_checked_only_when_needed; tests/test_earth_orientation.py::test_a_changed_file_is_not_used; tests/test_earth_orientation.py::test_a_file_that_is_not_a_binary_pck_is_refused; tests/test_earth_orientation.py::test_a_new_install_keeps_the_previous_files_for_rollback; tests/test_earth_orientation.py::test_a_run_uses_spice_itrf93_as_the_earth_frame; tests/test_earth_orientation.py::test_fetch_downloads_the_current_naif_files; tests/test_earth_orientation.py::test_import_writes_a_manifest_with_hash_and_last_datum; tests/test_earth_orientation.py::test_notes_name_the_fallback_and_the_predicted_span; tests/test_earth_orientation.py::test_parse_last_datum_reads_the_naif_comment; tests/test_earth_orientation.py::test_user_files_take_precedence_over_the_install_wide_ones; tests/validation/test_v02_earth_orientation.py::test_erfa_reproduces_the_published_vallado_example; tests/validation/test_v02_earth_orientation.py::test_tool_earth_frame_agrees_with_iers_c04; tests/validation/test_v02_earth_orientation.py::test_tool_earth_frame_reproduces_the_vallado_example,13
-E-ST-10-09C,5.4.9g,Non-compliant,"R02,R14",-,-,,0
-E-ST-10-09C,5.4.9h,Non-compliant,"R02,R14",-,-,,0
-E-ST-10-09C,5.4.9i,Non-compliant,"R02,R14",-,-,,0
-E-ST-10-09C,A.2.1<1>a,Non-compliant,R14,-,-,,0
-E-ST-10-09C,A.2.1<2>a,Non-compliant,R14,-,-,,0
-E-ST-10-09C,A.2.1<3>a,Non-compliant,R14,-,-,,0
-E-ST-10-09C,A.2.1<3>b,Non-compliant,R14,-,-,,0
-E-ST-10-09C,A.2.1<3>c,Non-compliant,R14,-,-,,0
-E-ST-10-09C,A.2.1<4>a,Non-compliant,R14,-,-,,0
-E-ST-10-09C,A.2.1<5>a,Non-compliant,R14,-,-,,0
-E-ST-10-09C,A.2.1<6>a,Non-compliant,R14,-,-,,0
-E-ST-10-09C,A.2.1<6>b,Non-compliant,R14,-,-,,0
-E-ST-10-09C,A.2.1<6>c,Non-compliant,R14,-,-,,0
-E-ST-10-09C,A.2.1<7>a,Non-compliant,R14,-,-,,0
-E-ST-10-09C,A.2.1<7>b,Non-compliant,R14,-,-,,0
-E-ST-10-09C,A.2.1<8>a,Non-compliant,R14,-,-,,0
-E-ST-10-09C,A.2.1<8>b,Non-compliant,R14,-,-,,0
-E-ST-10-09C,A.2.1<8>c,Non-compliant,R14,-,-,,0
-E-ST-10-09C,A.2.1<8>d,Non-compliant,R14,-,-,,0
-E-ST-10-09C,A.2.1<8>e,Non-compliant,R14,-,-,,0
-E-ST-10-09C,A.2.1<9>a,Non-compliant,R14,-,-,,0
-E-ST-10-09C,A.2.1<9>b,Non-compliant,R14,-,-,,0
-E-ST-10-09C,A.2.1<9>c,Non-compliant,R14,-,-,,0
-E-ST-10-09C,A.2.1<9>d,Non-compliant,R14,-,-,,0
-E-ST-10-09C,A.2.1<9>e,Non-compliant,R14,-,-,,0
+E-ST-10-09C,5.4.9g,Partially compliant,"R02,R14,H01","compliance/docs/CSD.md sections 6, 8, 9 (each transformation in words, its DCM/MRP parameterisation, time dependence, parent frame); engine/frames.py TRANSFORMATIONS in every provenance",-,,0
+E-ST-10-09C,5.4.9h,Partially compliant,"R02,R14,H01","compliance/docs/CSD.md sections 6, 8, 9 (each transformation in words, its DCM/MRP parameterisation, time dependence, parent frame); engine/frames.py TRANSFORMATIONS in every provenance",-,,0
+E-ST-10-09C,5.4.9i,Partially compliant,"R02,R14,H01","compliance/docs/CSD.md sections 6, 8, 9 (each transformation in words, its DCM/MRP parameterisation, time dependence, parent frame); engine/frames.py TRANSFORMATIONS in every provenance",-,,0
+E-ST-10-09C,A.2.1<1>a,Compliant,R14,compliance/docs/CSD.md section 1 (introduction),inspection of the evidence,,0
+E-ST-10-09C,A.2.1<2>a,Compliant,R14,compliance/docs/CSD.md section 2 (applicable and reference documents),inspection of the evidence,,0
+E-ST-10-09C,A.2.1<3>a,Compliant,R14,compliance/docs/CSD.md section 3 (terms),inspection of the evidence,,0
+E-ST-10-09C,A.2.1<3>b,Compliant,R14,compliance/docs/CSD.md section 3 (terms),inspection of the evidence,,0
+E-ST-10-09C,A.2.1<3>c,Compliant,R14,compliance/docs/CSD.md section 3 (terms),inspection of the evidence,,0
+E-ST-10-09C,A.2.1<4>a,Partially compliant,"R14,H01","compliance/docs/CSD.md (restates engine/frames.py, which writes the definitions into every run's provenance)",-,,0
+E-ST-10-09C,A.2.1<5>a,Partially compliant,"R14,H01","compliance/docs/CSD.md (restates engine/frames.py, which writes the definitions into every run's provenance)",-,,0
+E-ST-10-09C,A.2.1<6>a,Partially compliant,"R14,H01","compliance/docs/CSD.md (restates engine/frames.py, which writes the definitions into every run's provenance)",-,,0
+E-ST-10-09C,A.2.1<6>b,Partially compliant,"R14,H01","compliance/docs/CSD.md (restates engine/frames.py, which writes the definitions into every run's provenance)",-,,0
+E-ST-10-09C,A.2.1<6>c,Partially compliant,"R14,H01","compliance/docs/CSD.md (restates engine/frames.py, which writes the definitions into every run's provenance)",-,,0
+E-ST-10-09C,A.2.1<7>a,Partially compliant,"R14,H01","compliance/docs/CSD.md (restates engine/frames.py, which writes the definitions into every run's provenance)",-,,0
+E-ST-10-09C,A.2.1<7>b,Partially compliant,"R14,H01","compliance/docs/CSD.md (restates engine/frames.py, which writes the definitions into every run's provenance)",-,,0
+E-ST-10-09C,A.2.1<8>a,Partially compliant,"R14,H01","compliance/docs/CSD.md (restates engine/frames.py, which writes the definitions into every run's provenance)",-,,0
+E-ST-10-09C,A.2.1<8>b,Partially compliant,"R14,H01","compliance/docs/CSD.md (restates engine/frames.py, which writes the definitions into every run's provenance)",-,,0
+E-ST-10-09C,A.2.1<8>c,Partially compliant,"R14,H01","compliance/docs/CSD.md (restates engine/frames.py, which writes the definitions into every run's provenance)",-,,0
+E-ST-10-09C,A.2.1<8>d,Partially compliant,"R14,H01","compliance/docs/CSD.md (restates engine/frames.py, which writes the definitions into every run's provenance)",-,,0
+E-ST-10-09C,A.2.1<8>e,Partially compliant,"R14,H01","compliance/docs/CSD.md (restates engine/frames.py, which writes the definitions into every run's provenance)",-,,0
+E-ST-10-09C,A.2.1<9>a,Partially compliant,"R14,H01","compliance/docs/CSD.md (restates engine/frames.py, which writes the definitions into every run's provenance)",-,,0
+E-ST-10-09C,A.2.1<9>b,Partially compliant,"R14,H01","compliance/docs/CSD.md (restates engine/frames.py, which writes the definitions into every run's provenance)",-,,0
+E-ST-10-09C,A.2.1<9>c,Partially compliant,"R14,H01","compliance/docs/CSD.md (restates engine/frames.py, which writes the definitions into every run's provenance)",-,,0
+E-ST-10-09C,A.2.1<9>d,Partially compliant,"R14,H01","compliance/docs/CSD.md (restates engine/frames.py, which writes the definitions into every run's provenance)",-,,0
+E-ST-10-09C,A.2.1<9>e,Partially compliant,"R14,H01","compliance/docs/CSD.md (restates engine/frames.py, which writes the definitions into every run's provenance)",-,,0
 E-ST-10-04C,4.2.1a,Compliant,,"engine/service.py (gravity bodies: central body point mass or GGM03S spherical harmonics, optional Sun/Moon/planets from DE430); tests/test_two_body_validation.py, tests/test_gravity_gradient.py",test,tests/test_two_body_validation.py::test_two_body_orbit_elements_match_input_classical_elements; tests/test_two_body_validation.py::test_two_body_propagation_conserves_energy_and_angular_momentum; tests/test_two_body_validation.py::test_two_body_propagation_matches_analytical_kepler_solution,3
 E-ST-10-04C,4.2.1b,Partially compliant,R06,"R06 (Phase 2): engine/environment_models.py gravity_truncation_acceleration (Kaula's rule, actual J2) and srp_acceleration; scenario_checks warns when drag is modelled around a point-mass Earth and the Explain tab notes when the field's truncation leaves out more than SRP, with the degree that match",test,tests/test_environment_models.py::test_basilisk_2_12_sensor_thermal_constants_are_as_documented; tests/test_environment_models.py::test_corrected_sensor_thermal_reaches_the_standard_equilibrium; tests/test_environment_models.py::test_gravity_degree_above_the_field_maximum_is_rejected_by_the_schema; tests/test_environment_models.py::test_gravity_truncation_estimate; tests/test_environment_models.py::test_no_jacchia_bowman_model_can_be_mixed_with_nrlmsise_00; tests/test_environment_models.py::test_point_mass_with_drag_is_a_warning_and_srp_fidelity_a_note; tests/test_environment_models.py::test_solar_flux_follows_table_6_2; tests/test_environment_models.py::test_sun_distance_matches_de430; tests/test_environment_models.py::test_thermal_inputs_reproduce_the_standard_heat_balance,9
 E-ST-10-04C,4.2.1c,Compliant,R04,R04: the GGM03S field is evaluated in ITRF93 from IERS-based NAIF Earth PCKs when installed (engine/earth_orientation.py; tests/test_earth_orientation.py),test,tests/test_earth_orientation.py::test_a_changed_file_is_not_used; tests/test_earth_orientation.py::test_a_file_that_is_not_a_binary_pck_is_refused; tests/test_earth_orientation.py::test_a_new_install_keeps_the_previous_files_for_rollback; tests/test_earth_orientation.py::test_a_run_uses_spice_itrf93_as_the_earth_frame; tests/test_earth_orientation.py::test_fetch_downloads_the_current_naif_files; tests/test_earth_orientation.py::test_import_writes_a_manifest_with_hash_and_last_datum; tests/test_earth_orientation.py::test_notes_name_the_fallback_and_the_predicted_span; tests/test_earth_orientation.py::test_parse_last_datum_reads_the_naif_comment; tests/test_earth_orientation.py::test_user_files_take_precedence_over_the_install_wide_ones; tests/test_frames.py::test_a_gravity_field_without_iers_data_warns_of_its_accuracy; tests/validation/test_v02_earth_orientation.py::test_erfa_reproduces_the_published_vallado_example; tests/validation/test_v02_earth_orientation.py::test_tool_earth_frame_agrees_with_iers_c04; tests/validation/test_v02_earth_orientation.py::test_tool_earth_frame_reproduces_the_vallado_example,13

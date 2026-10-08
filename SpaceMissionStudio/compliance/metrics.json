@@ -1,25 +1,25 @@
 {
  "date": "2026-10-08",
  "size": {
-  "sloc_total": 28796,
+  "sloc_total": 29119,
   "sloc_by_package": {
-   "(top level)": 1199,
-   "engine": 12387,
-   "gui": 13143,
-   "schema": 2067
+   "(top level)": 1223,
+   "engine": 12558,
+   "gui": 13176,
+   "schema": 2162
   },
-  "test_sloc": 20144
+  "test_sloc": 20862
  },
  "complexity": {
   "tool": "ruff C901 (mccabe)",
-  "functions": 1077,
+  "functions": 1099,
   "median": 2,
-  "max": 78,
+  "max": 79,
   "limit": 15,
   "above_limit": [
    [
-    "spacemissionstudio/engine/service.py:645 build",
-    78
+    "spacemissionstudio/engine/service.py:647 build",
+    79
    ],
    [
     "spacemissionstudio/engine/fsw.py:1229 attach_sensors",
@@ -30,7 +30,7 @@
     34
    ],
    [
-    "spacemissionstudio/engine/service.py:1916 _extract_results",
+    "spacemissionstudio/engine/service.py:1925 _extract_results",
     33
    ],
    [
@@ -50,11 +50,11 @@
     25
    ],
    [
-    "spacemissionstudio/engine/ccsds_odm.py:207 read",
+    "spacemissionstudio/engine/ccsds_odm.py:208 read",
     24
    ],
    [
-    "spacemissionstudio/engine/ccsds_odm.py:508 _check_oem",
+    "spacemissionstudio/engine/ccsds_odm.py:513 _check_oem",
     22
    ],
    [
@@ -78,11 +78,11 @@
     18
    ],
    [
-    "spacemissionstudio/engine/mission_engine.py:367 _run_propagate_event",
+    "spacemissionstudio/engine/mission_engine.py:382 _run_propagate_event",
     17
    ],
    [
-    "spacemissionstudio/cli.py:79 cmd_run",
+    "spacemissionstudio/cli.py:97 cmd_run",
     16
    ],
    [
@@ -96,18 +96,24 @@
   ]
  },
  "tests": {
-  "test_functions": 1479,
-  "requirement_tagged_tests": 81
+  "test_functions": 1511,
+  "requirement_tagged_tests": 99
  },
  "fault_density": {
   "corrective_commits": 10,
-  "per_ksloc": 0.35,
+  "per_ksloc": 0.34,
   "note": "proxy: commit subjects starting with 'Fix' (no problem-report system yet, H05)"
  },
  "coverage": {
-  "statements": 15720,
-  "statement_percent": 91.4,
-  "branches": 3822,
-  "branch_percent": 81.4
+  "statements": 15916,
+  "statement_percent": 91.5,
+  "branches": 3878,
+  "branch_percent": 81.7
+ },
+ "failures": {
+  "tests": 2250,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 11
  }
 }
