@@ -142,6 +142,11 @@ _ASSIGNMENT_CONTROLLERS = {
 _ASSIGNMENT_ATTRIBUTES = {"thrust_n": "thrustN", "isp_s": "ispS"}
 
 
+# Radial velocity below which the first sample of a periapsis/apoapsis event
+# counts as starting on the apsis (finding F-10). Rounding leaves about
+# 1e-13 m/s there; one dynamics step changes it by of order 1 m/s in LEO.
+_APSIS_AT_START_M_S = 1.0e-6  # [m/s]
+
 class MissionEngineError(Exception):
     """Raised when a mission_sequence command fails to build or execute --
     always names the specific command (its path within mission_sequence,
@@ -441,6 +446,10 @@ class MissionEngine:
             previous = detector_state["prev_radial_velocity"]
             detector_state["prev_radial_velocity"] = radial_velocity
             if previous is None:
+                if abs(radial_velocity) < _APSIS_AT_START_M_S:
+                    # Starting on the apsis itself: it does not count, whatever the sign of the
+                    # rounding; seed the state as just past it, so the next one ends the run (F-10).
+                    detector_state["prev_radial_velocity"] = 1.0 if event_kind == "periapsis" else -1.0  # [m/s]
                 return False
             if event_kind == "periapsis":
                 return previous < 0.0 <= radial_velocity

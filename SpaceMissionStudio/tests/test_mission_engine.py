@@ -211,6 +211,36 @@ def test_propagate_event_periapsis_stops_near_zero_radial_velocity():
     assert abs(radial_velocity) < 20.0, f"expected near-zero radial velocity at periapsis, got {radial_velocity} m/s"
 
 
+@pytest.mark.parametrize("event_kind, start_anomaly_deg", [
+    ("periapsis", -1e-9), ("periapsis", 0.0), ("periapsis", 1e-9),
+    ("apoapsis", 180.0 - 1e-9), ("apoapsis", 180.0), ("apoapsis", 180.0 + 1e-9),
+])
+def test_propagate_to_an_apsis_from_that_apsis_flies_a_whole_orbit(event_kind, start_anomaly_deg):
+    """Finding F-10: starting at periapsis, the radial velocity is zero up
+    to rounding. When rounding made it slightly negative (on Windows, at
+    true anomaly 0), the first steps already "crossed" periapsis and the
+    propagate stopped after a second. The apsis the run starts on no longer
+    counts, whatever the sign of the rounding: the run stops at the next
+    one, a whole period later."""
+    from spacemissionstudio.engine.mission_engine import MissionEngine
+
+    orbit = _circular_orbit(eccentricity=0.05)
+    orbit.true_anomaly_deg = start_anomaly_deg
+    scenario = _scenario(
+        duration_days=1.0, dynamics_task_rate_s=1.0, orbit=orbit,
+        mission_sequence=[
+            Command(kind="propagate", params={
+                "stop_condition": "event", "event_kind": event_kind, "spacecraft": "sat-1",
+            }),
+        ],
+    )
+    result, _summary = MissionEngine(scenario).run()
+
+    period_s = 2.0 * np.pi * np.sqrt((7000.0e3) ** 3 / 3.986004415e14)  # [s] about 5829 s
+    flown_s = result.series["sat-1.position_N"].time_s[-1]
+    assert flown_s == pytest.approx(period_s, abs=5.0)  # [s] within a few 1 s checks
+
+
 def test_propagate_event_unknown_spacecraft_raises():
     """MissionEngine's own "unknown spacecraft" check in
     _run_propagate_event is unreachable through a normal Scenario, since
