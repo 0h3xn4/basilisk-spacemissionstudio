@@ -46,6 +46,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QProgressDialog,
+    QScrollArea,
     QSplitter,
     QToolBar,
 )
@@ -186,7 +187,10 @@ class MainWindow(QMainWindow):
         self.right_tabs.addTab(self.kernel_status_widget, "Kernel Status")
         self.right_tabs.addTab(self.scenario_explainer_widget, "Explain")
         self.right_tabs.addTab(self.lifetime_widget, "End of Life")
-        self.right_tabs.addTab(self.budget_widget, "Budget")
+        budget_scroll = QScrollArea()  # the budget, launch-delay and altitude tables together outgrow short windows
+        budget_scroll.setWidgetResizable(True)
+        budget_scroll.setWidget(self.budget_widget)
+        self.right_tabs.addTab(budget_scroll, "Budget")
         self._refresh_scenario_explainer()  # initial paint for the default scenario reset_to_default() just set up
 
         # "Load Scenario" first (index 0, so it's what a freshly launched

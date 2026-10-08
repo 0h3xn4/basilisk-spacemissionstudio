@@ -396,6 +396,16 @@ and the disposal is worked out again from each end of life. The worst
 launch date is in bold; pick any row for its full budget. Allow a
 minute or two.
 
+**Altitude trade** asks which orbit fits the tank: it runs the launch
+delays at several altitudes (type them in **Altitudes [km]**, or leave
+it empty for five around the spacecraft's own, 50 km apart) and shows
+each altitude's worst launch date, its propellant and whether that fits
+the tank. A Sun-synchronous orbit stays Sun-synchronous at every
+altitude. The lowest altitude that fits is in bold; pick a row for its
+launch dates. The altitudes run in parallel; allow about ten minutes.
+From the command line: `spacemissionstudio budget <scenario>
+--altitudes 400,450,500`.
+
 **You're not sure what a field in the Scenario Editor means.** Hover
 over it -- most fields have a tooltip explaining what it does in plain
 language. The validation message at the bottom of the Scenario Editor

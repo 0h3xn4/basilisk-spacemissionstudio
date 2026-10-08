@@ -396,7 +396,8 @@ estimate agrees with full Basilisk decay runs to within ~2% in seconds.
 the guideline's margins, residuals and iteration, simulated orbit control
 taken from the last run (or estimated from the drag), the disposal burn
 sized for a 5-year lifetime, and a launch-delay sweep for launches up to
-5 years late (`budget --launch-delays`); solar activity from NASA MSFC's
+5 years late (`budget --launch-delays`), and an altitude trade of that
+sweep against the tank (`budget --altitudes`, in parallel processes); solar activity from NASA MSFC's
 prediction at the 95th/50th percentile. Templates use AD10's operations
 drag coefficient, 3.0.
 

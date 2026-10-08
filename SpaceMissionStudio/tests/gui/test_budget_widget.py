@@ -136,3 +136,58 @@ def test_the_sweep_button_runs_in_the_background_and_reports_progress(qtbot, mon
     qtbot.waitUntil(lambda: widget._worker is None, timeout=30000)
     assert widget.sweep_button.text() == "Launch delays"
     assert "drag for the planned launch" in seen and seen[-1] == "done"
+
+
+def _stub_trade():
+    """Template 18's altitude trade with stubbed drag (falling 10x per 100 km)
+    and no disposal burn: 400 km misses the 2 kg tank, 500 km fits."""
+    from types import SimpleNamespace
+
+    from spacemissionstudio.engine import propellant_budget as pb
+    from spacemissionstudio.schema import load_scenario
+
+    def makeup(_s, spacecraft, start, *_a, **_k):
+        altitude_km = spacecraft.orbit.semi_major_axis_km - pb.REQ_EARTH_M / 1e3
+        return SimpleNamespace(delta_v_m_s=300.0 * 10.0 ** (-(altitude_km - 400.0) / 100.0)
+                               * (1.5 if start.year == 2033 else 1.0), altitude_km=altitude_km, warnings=[])
+
+    return pb.altitude_trade(load_scenario(_TEMPLATE_18), "leo-sat-1", [400.0, 500.0],
+                             reentry_solver=lambda *_a: (0.0, 400.0, 0.5, []), makeup=makeup)
+
+
+def test_the_trade_table_marks_the_lowest_fitting_altitude_and_drills_down(qtbot):
+    """One row per altitude; the lowest that fits the tank is bold and its
+    launch dates (worst first) fill the sweep table; another row shows its own."""
+    from spacemissionstudio.gui.budget_widget import BudgetWidget
+    from spacemissionstudio.schema import load_scenario
+
+    widget = BudgetWidget()
+    qtbot.addWidget(widget)
+    widget.set_scenario(load_scenario(_TEMPLATE_18))
+    assert widget.altitudes_edit.placeholderText() == "300, 350, 400, 450, 500 (default)"
+    widget._show_trade(_stub_trade())
+    assert widget.trade_group.isVisibleTo(widget) and widget.trade_table.rowCount() == 2
+    assert [widget.trade_table.item(r, 6).text() for r in range(2)] == ["no", "yes"]
+    assert widget.trade_table.item(1, 0).font().bold() and not widget.trade_table.item(0, 0).font().bold()
+    assert widget.sweep_table.item(3, 0).text() == "2033-01-01 (worst)"
+    assert widget.sweep_table.item(3, 2).text() == "45.0"  # 500 km's worst in-plane
+    def main_in_plane():
+        return next(widget.table.item(r, 2).text() for r in range(widget.table.rowCount())
+                    if widget.table.item(r, 1).text() == "In-plane orbit control")
+
+    assert main_in_plane() == "45.00"
+    widget.trade_table.selectRow(0)  # its worst launch is in the same row: the budget below must still change
+    assert widget.sweep_table.item(3, 2).text() == "450.0" and main_in_plane() == "450.00"
+    assert widget.status_label.text().startswith("400 km, Launch 2033-01-01 (3 years late)")
+
+
+def test_unreadable_altitudes_are_refused_before_any_work(qtbot):
+    from spacemissionstudio.gui.budget_widget import BudgetWidget
+    from spacemissionstudio.schema import load_scenario
+
+    widget = BudgetWidget()
+    qtbot.addWidget(widget)
+    widget.set_scenario(load_scenario(_TEMPLATE_18))
+    widget.altitudes_edit.setText("400, high")
+    widget.trade_button.click()
+    assert widget._worker is None and widget.status_label.text().startswith("Altitudes: numbers in km")

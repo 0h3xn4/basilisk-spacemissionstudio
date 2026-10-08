@@ -7745,3 +7745,26 @@ From 400 km no disposal burn is needed at any date. A launch three years late ne
 User requirement: the conservative setting follows the ESA guideline -- NASA MSFC's prediction at the 95th percentile -- not historical data.
 
 The old "conservative" drag margin held F10.7 and Ap constant at a percentile of the observed 1957-2025 record for a whole run. AD10 Sec. 5.9 instead takes the predicted solar cycle at the 95th percentile. That cycle still rises and falls, so a 2030 and a 2033 launch differ, as the launch-delay sweep shows. The constant mode is gone: `activity_level` and `activity_percentile` are removed (schema v4), and solar activity is one choice in Propagation setup -- Nominal (MSFC 50th), Conservative (95th, AD10 operations) or Low (5th). Observed days are always the observations. Saved scenarios migrate: "conservative" becomes the 95th percentile. Templates stay nominal.
+
+## Altitude trade
+
+User request: an altitude trade, after the launch-delay sweep showed template 18 at 400 km needing up to 16.5 kg against a 2 kg tank.
+
+`propellant_budget.altitude_trade`, the Budget tab's **Altitude trade** and `spacemissionstudio budget --altitudes [KM,...]` run the launch-delay sweep at each altitude (default: five around the spacecraft's own, 50 km apart, from 250 km) and hold each altitude's worst launch date against the tank (`tank_capacity_kg`, else the station-keeping propellant):
+* the orbit moves to the altitude, station keeping with it; a Sun-synchronous orbit gets the new altitude's SSO inclination;
+* an entered or flown in-plane figure belongs to the scenario's own altitude and planned launch, and is scaled by each case's drag against that one;
+* the altitudes run in parallel worker processes (spawned, not forked, so a GUI's threads are not copied); a sweep is sequential within one;
+* the GUI marks the lowest altitude that fits; picking a row shows its launch dates, and picking one of those its full budget.
+
+Template 18 (5-year mission, 95th percentile, Cd 3.0, no run; worst launch 2033 at every altitude):
+
+| Altitude [km] | 350 | 400 | 450 | 500 | 550 |
+|---|---|---|---|---|---|
+| Inclination [deg] | 96.85 | 97.03 | 97.21 | 97.40 | 97.59 |
+| In-plane control [m/s] | 3213 | 1450 | 690 | 342 | 175 |
+| Disposal [m/s] | 0 | 0 | 0 | 6.4 | 29.7 |
+| Propellant [kg] | 46.4 | 16.5 | 7.18 | 3.49 | 2.02 |
+
+None fits the template's 2 kg tank (550 km misses by 0.02 kg). 9 min on 3 processes; the disposal searches at 500-550 km (about a minute each) take most of it.
+
+**Fixed on the way:** picking an altitude whose worst launch sat in the same sweep-table row as the previous one left the previous altitude's budget below (the row was re-selected, so no selection change fired). The Budget tab now scrolls, as its three tables outgrow short windows.

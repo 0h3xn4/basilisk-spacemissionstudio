@@ -288,6 +288,38 @@ def cmd_lifetime(args: argparse.Namespace) -> int:
     return 0
 
 
+def _print_altitude_trade(pb, scenario, name, result, altitudes) -> int:
+    print(f"{name}: launch-delay sweep per altitude (several minutes; altitudes run in parallel)...")
+    try:
+        trade = pb.altitude_trade(scenario, name, altitudes or None, result)
+    except pb.BudgetError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 3
+    print(f"{'Altitude':>8} {'Incl.':>6} {'Worst launch':<12} {'In-plane dV':>12} {'Disposal dV':>12} "
+          f"{'Prop. [kg]':>10}  Fits tank")
+    for case in trade.altitudes:
+        worst = case.worst
+        fits = {True: "yes", False: "no", None: "-"}[trade.fits(case)]
+        print(f"{case.altitude_km:>6g}km {case.inclination_deg:>6.2f} {worst.launch_utc:%Y-%m-%d}   "
+              f"{worst.delta_v_of('Operations', 'In-plane'):>12.2f} {worst.delta_v_of('End of life', ''):>12.2f} "
+              f"{worst.budget.total_propellant_kg:>10.3f}  {fits}")
+    for note in trade.notes:
+        print(f"NOTE: {note}")
+    return 0
+
+
+def _altitudes_arg(text: str) -> list:
+    if text == "auto":
+        return []
+    try:
+        altitudes = [float(v) for v in text.split(",") if v.strip()]
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{text!r}: comma-separated altitudes in km, e.g. 400,450,500") from None
+    if not altitudes or any(not 150.0 <= a <= 2000.0 for a in altitudes):
+        raise argparse.ArgumentTypeError(f"{text!r}: altitudes between 150 and 2000 km")
+    return altitudes
+
+
 def _drag_coeff_arg(text: str) -> str:
     if text != "own":
         try:
@@ -319,6 +351,8 @@ def cmd_budget(args: argparse.Namespace) -> int:
         except Exception as exc:  # noqa: BLE001 -- report ANY run failure with a specific message
             print(f"ERROR: run failed: {exc}", file=sys.stderr)
             return 3
+    if args.altitudes is not None:
+        return _print_altitude_trade(pb, scenario, name, result, args.altitudes)
     if args.launch_delays:
         return _print_launch_delays(pb, scenario, name, result)
     try:
@@ -578,6 +612,10 @@ def build_parser() -> argparse.ArgumentParser:
                           help="run the scenario first, for orbit control and formation keeping")
     p_budget.add_argument("--launch-delays", action="store_true",
                           help="repeat the budget for launches 1-5 years late (ESA AD10 Sec. 5.5)")
+    p_budget.add_argument("--altitudes", nargs="?", const="auto", type=_altitudes_arg, default=None,
+                          metavar="KM,KM,...",
+                          help="launch-delay sweep at each altitude [km] (default: five around the "
+                               "spacecraft's own), against the tank")
     p_budget.set_defaults(func=cmd_budget)
 
     p_kernels = subparsers.add_parser("kernels-status", help="fetch/check SPICE kernel cache status")

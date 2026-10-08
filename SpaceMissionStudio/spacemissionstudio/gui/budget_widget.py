@@ -22,8 +22,9 @@
 * :class:`BudgetInputsGroup` -- the inputs, a tab of the spacecraft editor
   (saved with the spacecraft as ``propellant_budget``);
 * :class:`BudgetWidget` -- the "Budget" tab: the budget table for one
-  spacecraft, using the last run for the simulated contributors, and the
-  launch-delay sweep (AD10 Sec. 5.5: launches up to 5 years late).
+  spacecraft, using the last run for the simulated contributors; the
+  launch-delay sweep (AD10 Sec. 5.5: launches up to 5 years late); and
+  the altitude trade (that sweep at several altitudes, against the tank).
 """
 
 from __future__ import annotations
@@ -41,6 +42,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QLineEdit,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -224,16 +226,18 @@ def _titled(title: str, form: QFormLayout) -> QGroupBox:
 
 
 class _BudgetWorker(QThread):
-    """One budget, or with ``sweep`` the launch-delay sweep, off the GUI thread."""
+    """One budget, the launch-delay sweep or the altitude trade (``mode``
+    "budget", "sweep" or "trade"), off the GUI thread."""
 
-    finished_ok = Signal(object)  # engine.propellant_budget.Budget or LaunchDelaySweep
+    finished_ok = Signal(object)  # engine.propellant_budget.Budget, LaunchDelaySweep or AltitudeTrade
     failed = Signal(str)
     progressed = Signal(float, str)  # fraction [0, 1], what it is doing
 
-    def __init__(self, scenario, name, result, run_scenario, sweep=False, parent=None):
+    def __init__(self, scenario, name, result, run_scenario, mode="budget", altitudes_km=None, parent=None):
         super().__init__(parent)
         self._args = (scenario, name, result, run_scenario)
-        self._sweep = sweep
+        self.mode = mode
+        self._altitudes_km = altitudes_km
         self._cancelled = False
 
     def cancel(self) -> None:
@@ -246,11 +250,14 @@ class _BudgetWorker(QThread):
             self.failed.emit(f"the budget needs Basilisk ({exc})")
             return
         scenario, name, result, run_scenario = self._args
+        progress = lambda f, label: self.progressed.emit(f, label)  # noqa: E731
         try:
-            if self._sweep:
-                self.finished_ok.emit(pb.launch_delay_sweep(
-                    scenario, name, result, run_scenario, progress=lambda f, label: self.progressed.emit(f, label),
-                    should_cancel=lambda: self._cancelled))
+            if self.mode == "sweep":
+                self.finished_ok.emit(pb.launch_delay_sweep(scenario, name, result, run_scenario, progress=progress,
+                                                            should_cancel=lambda: self._cancelled))
+            elif self.mode == "trade":
+                self.finished_ok.emit(pb.altitude_trade(scenario, name, self._altitudes_km, result, run_scenario,
+                                                        progress=progress, should_cancel=lambda: self._cancelled))
             else:
                 self.finished_ok.emit(pb.compute_budget(scenario, name, result, run_scenario))
         except pb.BudgetError as exc:
@@ -260,6 +267,8 @@ class _BudgetWorker(QThread):
 
 
 _COLUMNS = ("Phase", "Contributor", "Delta-V [m/s]", "Propellant [kg]", "Margin", "From")
+_TRADE_COLUMNS = ("Altitude [km]", "Inclination [deg]", "Worst launch", "In-plane [m/s]", "Disposal [m/s]",
+                  "Propellant [kg]", "Fits tank")
 _SWEEP_COLUMNS = ("Launch", "Delay [y]", "In-plane [m/s]", "Disposal [m/s]", "Total [m/s]", "Propellant [kg]")
 
 
@@ -275,6 +284,7 @@ class BudgetWidget(QWidget):
         layout = QVBoxLayout(self)
         top = QHBoxLayout()
         self.spacecraft_combo = ComboBox()
+        self.spacecraft_combo.currentTextChanged.connect(lambda _name: self._update_altitude_hint())
         top.addWidget(QLabel("Spacecraft"))
         top.addWidget(self.spacecraft_combo, 1)
         self.compute_button = QPushButton("Compute budget")
@@ -290,12 +300,25 @@ class BudgetWidget(QWidget):
         self.copy_button.clicked.connect(self._copy)
         top.addWidget(self.copy_button)
         layout.addLayout(top)
+        trade_row = QHBoxLayout()
+        trade_row.addWidget(QLabel("Altitudes [km]"))
+        self.altitudes_edit = QLineEdit()
+        self.altitudes_edit.setToolTip("Comma-separated altitudes for the altitude trade; empty: five around "
+                                       "the spacecraft's own, 50 km apart.")
+        trade_row.addWidget(self.altitudes_edit, 1)
+        self.trade_button = QPushButton("Altitude trade")
+        self.trade_button.setToolTip("The launch-delay sweep at each altitude, against the tank. Ten minutes "
+                                     "or so; the altitudes run in parallel.")
+        self.trade_button.clicked.connect(self._trade_clicked)
+        trade_row.addWidget(self.trade_button)
+        layout.addLayout(trade_row)
         self.status_label = QLabel("Inputs: the spacecraft editor's Budget (AD10) tab. The last run supplies "
                                    "orbit control and formation keeping.")
         self.status_label.setWordWrap(True)
         self.status_label.setStyleSheet(f"color: {PALETTE['text_muted']};")
         layout.addWidget(self.status_label)
         self.table = QTableWidget(0, len(_COLUMNS))
+        self.table.setMinimumHeight(260)  # [px] a phase's rows stay readable when the result tables open below
         self.table.setHorizontalHeaderLabels(_COLUMNS)
         self.table.verticalHeader().setVisible(False)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -312,16 +335,23 @@ class BudgetWidget(QWidget):
         self.notes_label.setStyleSheet(f"color: {PALETTE['text_muted']};")
         layout.addWidget(self.notes_label)
 
+        self._trade = None
+        self.trade_group = QGroupBox("Altitude trade -- pick a row for its launch dates")
+        trade_layout = QVBoxLayout(self.trade_group)
+        self.trade_table = self._picker_table(_TRADE_COLUMNS)
+        self.trade_table.itemSelectionChanged.connect(self._trade_row_picked)
+        trade_layout.addWidget(self.trade_table)
+        self.trade_notes_label = QLabel("")
+        self.trade_notes_label.setWordWrap(True)
+        self.trade_notes_label.setStyleSheet(f"color: {PALETTE['text_muted']};")
+        trade_layout.addWidget(self.trade_notes_label)
+        self.trade_group.setVisible(False)
+        layout.addWidget(self.trade_group)
+
         self._sweep = None
         self.sweep_group = QGroupBox("Launch delays (AD10 Sec. 5.5) -- pick a row for its budget")
         sweep_layout = QVBoxLayout(self.sweep_group)
-        self.sweep_table = QTableWidget(0, len(_SWEEP_COLUMNS))
-        self.sweep_table.setHorizontalHeaderLabels(_SWEEP_COLUMNS)
-        self.sweep_table.verticalHeader().setVisible(False)
-        self.sweep_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.sweep_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.sweep_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self.sweep_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.sweep_table = self._picker_table(_SWEEP_COLUMNS)
         self.sweep_table.itemSelectionChanged.connect(self._sweep_row_picked)
         sweep_layout.addWidget(self.sweep_table)
         self.sweep_notes_label = QLabel("")
@@ -332,6 +362,37 @@ class BudgetWidget(QWidget):
         layout.addWidget(self.sweep_group)
         self._update_enabled()
 
+    @staticmethod
+    def _picker_table(columns) -> QTableWidget:
+        table = QTableWidget(0, len(columns))
+        table.setHorizontalHeaderLabels(columns)
+        table.verticalHeader().setVisible(False)
+        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        return table
+
+    @staticmethod
+    def _fill(table: QTableWidget, rows, bold_row: Optional[int]) -> None:
+        """``rows`` of cell texts into ``table`` (first column left-aligned,
+        the rest right), ``bold_row`` in bold, sized to show every row."""
+        bold = QFont()
+        bold.setBold(True)
+        table.blockSignals(True)
+        table.setRowCount(len(rows))
+        for row, values in enumerate(rows):
+            for column, text in enumerate(values):
+                item = QTableWidgetItem(text)
+                if column > 0:
+                    item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                if row == bold_row:
+                    item.setFont(bold)
+                table.setItem(row, column, item)
+        table.blockSignals(False)
+        table.setFixedHeight(table.horizontalHeader().height()
+                             + sum(table.rowHeight(r) for r in range(table.rowCount())) + 4)
+
     def set_scenario(self, scenario) -> None:
         self._scenario = scenario
         current = self.spacecraft_combo.currentText()
@@ -341,7 +402,20 @@ class BudgetWidget(QWidget):
             self.spacecraft_combo.addItems(names)
             if current in names:
                 self.spacecraft_combo.setCurrentText(current)
+        self._update_altitude_hint()
         self._update_enabled()
+
+    def _update_altitude_hint(self) -> None:
+        from ..engine.propellant_budget import REQ_EARTH_M, default_altitudes_km
+
+        name = self.spacecraft_combo.currentText()
+        spacecraft = next((sc for sc in self._scenario.spacecraft if sc.name == name), None) \
+            if self._scenario is not None else None
+        if spacecraft is None or spacecraft.orbit.type != "classical_elements":
+            self.altitudes_edit.setPlaceholderText("e.g. 400, 450, 500")
+            return
+        defaults = default_altitudes_km(spacecraft.orbit.semi_major_axis_km - REQ_EARTH_M / 1e3)
+        self.altitudes_edit.setPlaceholderText(", ".join(f"{a:g}" for a in defaults) + " (default)")
 
     def set_last_run(self, scenario, result) -> None:
         self._last_run = (scenario, result) if scenario is not None and result is not None else None
@@ -349,38 +423,62 @@ class BudgetWidget(QWidget):
     def _update_enabled(self) -> None:
         idle = self._worker is None
         has_spacecraft = self.spacecraft_combo.count() > 0
+        mode = None if idle else self._worker.mode
         self.compute_button.setEnabled(idle and has_spacecraft)
-        sweeping = not idle and self._worker._sweep
-        self.sweep_button.setText("Cancel" if sweeping else "Launch delays")
-        self.sweep_button.setEnabled(sweeping or (idle and has_spacecraft))
+        for button, own_mode, label in ((self.sweep_button, "sweep", "Launch delays"),
+                                        (self.trade_button, "trade", "Altitude trade")):
+            button.setText("Cancel" if mode == own_mode else label)
+            button.setEnabled(mode == own_mode or (idle and has_spacecraft))
 
     def compute(self) -> None:
-        self._start(sweep=False)
+        self._start("budget")
 
     def compute_sweep(self) -> None:
-        self._start(sweep=True)
+        self._start("sweep")
+
+    def compute_trade(self) -> None:
+        self._start("trade")
 
     def _sweep_clicked(self) -> None:
-        if self._worker is not None and self._worker._sweep:
+        self._start_or_cancel("sweep")
+
+    def _trade_clicked(self) -> None:
+        self._start_or_cancel("trade")
+
+    def _start_or_cancel(self, mode: str) -> None:
+        if self._worker is not None and self._worker.mode == mode:
             self._worker.cancel()
             self.status_label.setText("Cancelling...")
         else:
-            self.compute_sweep()
+            self._start(mode)
 
-    def _start(self, sweep: bool) -> None:
+    def _altitudes(self) -> Optional[list]:
+        """The altitudes typed in [km], [] for the default, None if unreadable."""
+        text = self.altitudes_edit.text().strip()
+        try:
+            return [float(v) for v in text.replace(";", ",").split(",") if v.strip()]
+        except ValueError:
+            return None
+
+    def _start(self, mode: str) -> None:
         name = self.spacecraft_combo.currentText()
         if self._scenario is None or not name or self._worker is not None:
+            return
+        altitudes = self._altitudes() if mode == "trade" else None
+        if mode == "trade" and altitudes is None:
+            self._show_error("Altitudes: numbers in km separated by commas, e.g. 400, 450, 500")
             return
         run_scenario, result = self._last_run if self._last_run is not None else (None, None)
         if run_scenario is not None and name not in {sc.name for sc in run_scenario.spacecraft}:
             run_scenario = result = None
-        self._worker = _BudgetWorker(self._scenario, name, result, run_scenario, sweep, self)
-        self._worker.finished_ok.connect(self._show_sweep if sweep else self._show)
+        self._worker = _BudgetWorker(self._scenario, name, result, run_scenario, mode, altitudes, self)
+        self._worker.finished_ok.connect({"sweep": self._show_sweep, "trade": self._show_trade}.get(mode, self._show))
         self._worker.failed.connect(self._show_error)
         self._worker.progressed.connect(self._show_progress)
         self._worker.finished.connect(self._worker_done)
-        self.status_label.setText("Computing six launch dates (several minutes)..." if sweep
-                                  else "Computing (the disposal search can take a minute)...")
+        self.status_label.setText({"sweep": "Computing six launch dates (a minute or two)...",
+                                   "trade": "Computing six launch dates per altitude (ten minutes or so)..."}.get(
+            mode, "Computing (the disposal search can take a minute)..."))
         self._update_enabled()
         self._worker.start()
 
@@ -398,31 +496,41 @@ class BudgetWidget(QWidget):
     def _show_error(self, message: str) -> None:
         self.status_label.setText(message)
 
+    def _show_trade(self, trade) -> None:
+        self._trade = trade
+        best = trade.lowest_fitting
+        rows = []
+        for case in trade.altitudes:
+            worst = case.worst
+            fits = {True: "yes", False: "no", None: "-"}[trade.fits(case)]
+            rows.append((f"{case.altitude_km:g}", f"{case.inclination_deg:.2f}", f"{worst.launch_utc:%Y-%m-%d}",
+                         f"{worst.delta_v_of('Operations', 'In-plane'):.1f}",
+                         f"{worst.delta_v_of('End of life', ''):.1f}", f"{worst.budget.total_propellant_kg:.2f}",
+                         fits))
+        self._fill(self.trade_table, rows, trade.altitudes.index(best) if best is not None else None)
+        self.trade_notes_label.setText("\n".join(f"- {n}" for n in trade.notes))
+        self.trade_group.setVisible(True)
+        self.trade_table.clearSelection()
+        self.trade_table.selectRow(trade.altitudes.index(best) if best is not None else len(trade.altitudes) - 1)
+
+    def _trade_row_picked(self) -> None:
+        rows = self.trade_table.selectionModel().selectedRows() if self._trade is not None else []
+        if rows:
+            case = self._trade.altitudes[rows[0].row()]
+            self._show_sweep(case.sweep)
+            self.status_label.setText(f"{case.altitude_km:g} km, " + self.status_label.text())
+
     def _show_sweep(self, sweep) -> None:
         self._sweep = sweep
         worst = sweep.worst
-        bold = QFont()
-        bold.setBold(True)
-        self.sweep_table.blockSignals(True)
-        self.sweep_table.setRowCount(len(sweep.cases))
-        for row, case in enumerate(sweep.cases):
-            values = (f"{case.launch_utc:%Y-%m-%d}" + (" (worst)" if case is worst else ""),
-                      f"{case.delay_years:g}", f"{case.delta_v_of('Operations', 'In-plane'):.1f}",
-                      f"{case.delta_v_of('End of life', ''):.1f}", f"{case.budget.total_delta_v_m_s:.1f}",
-                      f"{case.budget.total_propellant_kg:.2f}")
-            for column, text in enumerate(values):
-                item = QTableWidgetItem(text)
-                if column > 0:
-                    item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-                if case is worst:
-                    item.setFont(bold)
-                self.sweep_table.setItem(row, column, item)
-        self.sweep_table.blockSignals(False)
-        rows = self.sweep_table.rowCount()
-        self.sweep_table.setFixedHeight(self.sweep_table.horizontalHeader().height()
-                                        + sum(self.sweep_table.rowHeight(r) for r in range(rows)) + 4)
+        rows = [(f"{case.launch_utc:%Y-%m-%d}" + (" (worst)" if case is worst else ""), f"{case.delay_years:g}",
+                 f"{case.delta_v_of('Operations', 'In-plane'):.1f}", f"{case.delta_v_of('End of life', ''):.1f}",
+                 f"{case.budget.total_delta_v_m_s:.1f}", f"{case.budget.total_propellant_kg:.2f}")
+                for case in sweep.cases]
+        self._fill(self.sweep_table, rows, sweep.cases.index(worst))
         self.sweep_notes_label.setText("\n".join(f"- {n}" for n in sweep.notes))
         self.sweep_group.setVisible(True)
+        self.sweep_table.clearSelection()  # so re-selecting the same row still shows this sweep's budget
         self.sweep_table.selectRow(sweep.cases.index(worst))  # shows the worst case's budget
 
     def _sweep_row_picked(self) -> None:

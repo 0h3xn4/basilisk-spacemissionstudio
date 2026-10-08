@@ -590,3 +590,39 @@ def test_lifetime_drag_coefficient_defaults_to_ad10s_end_of_life_value():
     assert parser.parse_args(["lifetime", "s.json", "--drag-coeff", "own"]).drag_coeff == "own"
     with pytest.raises(SystemExit):
         parser.parse_args(["lifetime", "s.json", "--drag-coeff", "-1"])
+
+
+@pytest.mark.requires_basilisk
+def test_budget_altitudes_prints_one_row_per_altitude(capsys, monkeypatch):
+    """``budget --altitudes 400,500``: the worst launch date per altitude and
+    whether it fits the tank (drag and disposal stubbed)."""
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    from spacemissionstudio.engine import propellant_budget as pb
+
+    original = pb.altitude_trade
+
+    def makeup(_s, spacecraft, start, *_a):
+        altitude_km = spacecraft.orbit.semi_major_axis_km - pb.REQ_EARTH_M / 1e3
+        return SimpleNamespace(delta_v_m_s=(400.0 if altitude_km < 450.0 else 100.0) * (2.0 if start.year == 2032 else 1.0),
+                               altitude_km=altitude_km, warnings=[])
+
+    monkeypatch.setattr(pb, "altitude_trade", lambda scenario, name, altitudes, result=None: original(
+        scenario, name, altitudes, result, reentry_solver=lambda *_a: (0.0, 400.0, 0.5, []), makeup=makeup))
+    path = Path(__file__).resolve().parent.parent / "spacemissionstudio" / "scenarios" / "templates" \
+        / "18_leo_station_keeping.json"
+    assert cli.main(["budget", str(path), "--altitudes", "400,500"]) == 0
+    out = capsys.readouterr().out
+    rows = [line.split() for line in out.splitlines() if line.strip().endswith(("yes", "no"))]
+    assert [(r[0], r[2], r[-1]) for r in rows] == [("400km", "2032-01-01", "no"), ("500km", "2032-01-01", "yes")]
+    assert "NOTE: lowest altitude whose worst launch fits the 2 kg tank: 500 km" in out
+
+
+def test_budget_altitudes_parse():
+    parser = cli.build_parser()
+    assert parser.parse_args(["budget", "s.json"]).altitudes is None
+    assert parser.parse_args(["budget", "s.json", "--altitudes"]).altitudes == []
+    assert parser.parse_args(["budget", "s.json", "--altitudes", "400, 450"]).altitudes == [400.0, 450.0]
+    with pytest.raises(SystemExit):
+        parser.parse_args(["budget", "s.json", "--altitudes", "40"])
