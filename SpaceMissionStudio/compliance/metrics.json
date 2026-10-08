@@ -1,0 +1,113 @@
+{
+ "date": "2026-10-08",
+ "size": {
+  "sloc_total": 28796,
+  "sloc_by_package": {
+   "(top level)": 1199,
+   "engine": 12387,
+   "gui": 13143,
+   "schema": 2067
+  },
+  "test_sloc": 20144
+ },
+ "complexity": {
+  "tool": "ruff C901 (mccabe)",
+  "functions": 1077,
+  "median": 2,
+  "max": 78,
+  "limit": 15,
+  "above_limit": [
+   [
+    "spacemissionstudio/engine/service.py:645 build",
+    78
+   ],
+   [
+    "spacemissionstudio/engine/fsw.py:1229 attach_sensors",
+    40
+   ],
+   [
+    "spacemissionstudio/engine/orbit_maintenance.py:1190 UpdateState",
+    34
+   ],
+   [
+    "spacemissionstudio/engine/service.py:1916 _extract_results",
+    33
+   ],
+   [
+    "spacemissionstudio/schema/scenario.py:993 validate",
+    31
+   ],
+   [
+    "spacemissionstudio/gui/spacecraft_editor.py:238 __init__",
+    30
+   ],
+   [
+    "spacemissionstudio/engine/propellant_budget.py:298 compute_budget",
+    28
+   ],
+   [
+    "spacemissionstudio/engine/vizard.py:630 enable_vizard",
+    25
+   ],
+   [
+    "spacemissionstudio/engine/ccsds_odm.py:207 read",
+    24
+   ],
+   [
+    "spacemissionstudio/engine/ccsds_odm.py:508 _check_oem",
+    22
+   ],
+   [
+    "spacemissionstudio/schema/scenario.py:1659 validate",
+    22
+   ],
+   [
+    "spacemissionstudio/engine/series_names.py:42 _spacecraft_series",
+    21
+   ],
+   [
+    "spacemissionstudio/engine/geo_station_keeping.py:188 UpdateState",
+    19
+   ],
+   [
+    "spacemissionstudio/engine/propellant_budget.py:514 launch_delay_sweep",
+    19
+   ],
+   [
+    "spacemissionstudio/engine/orbit_maintenance.py:580 UpdateState",
+    18
+   ],
+   [
+    "spacemissionstudio/engine/mission_engine.py:367 _run_propagate_event",
+    17
+   ],
+   [
+    "spacemissionstudio/cli.py:79 cmd_run",
+    16
+   ],
+   [
+    "spacemissionstudio/engine/propellant_budget.py:686 altitude_trade",
+    16
+   ],
+   [
+    "spacemissionstudio/gui/mission_output_widget.py:208 _refresh_table",
+    16
+   ]
+  ]
+ },
+ "tests": {
+  "test_functions": 1479,
+  "requirement_tagged_tests": 81
+ },
+ "fault_density": {
+  "corrective_commits": 10,
+  "per_ksloc": 0.35,
+  "note": "proxy: commit subjects starting with 'Fix' (no problem-report system yet, H05)"
+ },
+ "coverage": {
+  "statements": 15720,
+  "statement_percent": 91.4,
+  "branches": 3822,
+  "branch_percent": 81.4
+ }
+}

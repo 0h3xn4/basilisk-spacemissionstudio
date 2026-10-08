@@ -110,13 +110,16 @@ SOFTWARE_RULES = [
      "SUM per Annex H (Phase 4), reusing USER_MANUAL.md.", "M", "no", "R14"),
     ("E-ST-40C", "5.5.2.9a", "N", "-", "No unit/integration test plan.", "SUITP (Phase 4).", "M", "no", "R14"),
     ("E-ST-40C", "5.5.2.10a", _H, "-", "No DDR.", _REVIEW_FIX, "S", "no", "H01"),
-    ("E-ST-40C", "5.5.3.1a", "P", "spacemissionstudio/ source; pyproject.toml build", "Code and build exist; "
-     "no coding standard documented, no build procedure in a release document.", "Coding standard (R10), "
-     "SRelD (Phase 4).", "S", "no", "R10,R14"),
-    ("E-ST-40C", "5.5.3.2*", "P", "tests/ (1403 test functions, 98 files; Basilisk-backed tests marked "
-     "requires_basilisk)", "Unit tests exist but are not traced to requirements, boundary-value coverage is not "
-     "systematic, and unit test reports are not produced.", "Requirement-tagged tests (R12), coverage (R11), "
-     "test reports.", "M", "no", "R11,R12"),
+    ("E-ST-40C", "5.5.3.1a", "P", "spacemissionstudio/ source; R10 (Phase 2): compliance/docs/coding_standard.md (rules C-1 to C-15); "
+     "build and install steps in pyproject.toml and the CI workflow .github/workflows/spacemissionstudio.yml", "Coding standard and an automated "
+     "build exist; the build procedure is not yet in a release document.", "SRelD (Phase 4).", "S", "no",
+     "R10,R14"),
+    ("E-ST-40C", "5.5.3.2*", "P", "tests/ (1479 test functions; Basilisk-backed tests marked requires_basilisk); "
+     "R11/R12 (Phase 2): requirement markers traced by compliance/tools/build_traceability.py "
+     "(compliance/traceability_matrix.csv), JUnit test report and coverage produced by .github/workflows/spacemissionstudio.yml", "Unit tests "
+     "are traced and reported, but boundary values (5.5.3.2c) are tested only where a rule needs them, not "
+     "systematically for every unit, and the test procedures are not in a SUITP.", "SUITP (Phase 4); "
+     "boundary-value tests under coding standard rule C-9 as units change.", "M", "no", "R11,R12,R14"),
     ("E-ST-40C", "5.5.4.*", "P", "tests/ integration tests against Basilisk 2.12 (test_service_*, "
      "test_template_claims.py)", "Integration testing happens but is not planned or reported.",
      "SUITP integration part; reports.", "S", "no", "R12,R14"),
@@ -150,17 +153,25 @@ SOFTWARE_RULES = [
      "After the SRS: customer verification.", "S", "no", "H03"),
     ("E-ST-40C", "5.8.3.*", "N", "-", "No verification of TS/architecture/design/documentation recorded.",
      "SVR (Phase 3-4).", "M", "no", "R14"),
-    ("E-ST-40C", "5.8.3.5a", "P", "ruff static checks (no config); tests", "Code verified by tests and lint "
-     "only; no recorded code verification against the design.", "Code verification in the SVR.", "M", "no",
-     "R10,R14"),
-    ("E-ST-40C", "5.8.3.5b", "N", "-", "Code coverage not measured (no coverage tool installed).",
-     "pytest-cov in CI; report statement/branch coverage against the category C target of Table R-1's note.",
-     "S", "no", "R11"),
-    ("E-ST-40C", "5.8.3.5c", "N", "-", "Coverage not measured.", "R11.", "S", "no", "R11"),
-    ("E-ST-40C", "5.8.3.5d", "N", "-", "Coverage not measured.", "R11.", "S", "no", "R11"),
+    ("E-ST-40C", "5.8.3.5a", "P", "R10 (Phase 2): ruff rule set configured in pyproject.toml, zero findings, run "
+     "by .github/workflows/spacemissionstudio.yml; tests", "Code verified by tests and static analysis; no recorded code verification against "
+     "the design and no independent human review.", "Code verification in the SVR; human review (H06).", "M",
+     "no", "R10,R14,H06"),
+    ("E-ST-40C", "5.8.3.5b", "P", "R11 (Phase 2): statement and branch coverage measured by pytest-cov in "
+     ".github/workflows/spacemissionstudio.yml (statement coverage >= 90 % enforced by metrics.py --fail-under 90) and reported in compliance/metrics.md", "Coverage is measured and "
+     "enforced, but Table 5-1 gives 'TBA' for category C: the 90 % target of coding standard rule C-10 is "
+     "the supplier's proposal, not an agreed figure.", "Customer agrees the coverage target (H09).", "S", "no",
+     "R11,H09"),
+    ("E-ST-40C", "5.8.3.5c", "C", "R11 (Phase 2): coverage measured from the execution of the test suite "
+     "(pytest-cov, .github/workflows/spacemissionstudio.yml; compliance/metrics.md)", "-", "-", "S", "no", "R11"),
+    ("E-ST-40C", "5.8.3.5d", "P", "R11 (Phase 2): coding standard rule C-10 requires inspection of code not "
+     "reached by tests", "The uncovered code has not yet been inspected and justified.", "Coverage analysis "
+     "of the uncovered lines in the SVR (Phase 4).", "S", "no", "R11,R14"),
     ("E-ST-40C", "5.8.3.5e", "NA", "-", "Python source is executed directly; no object code.", "-", "S", "no", ""),
-    ("E-ST-40C", "5.8.3.5f", "P", "ruff (pyflakes-level checks)", "Static analysis exists but is minimal and "
-     "unconfigured.", "R10: configured static analysis (ruff rule set, type checking).", "S", "no", "R10"),
+    ("E-ST-40C", "5.8.3.5f", "P", "R10 (Phase 2): ruff (pyflakes, pycodestyle, bugbear; complexity C901) "
+     "configured in pyproject.toml, zero findings, run in .github/workflows/spacemissionstudio.yml; security rules (ruff S) reviewed in R15",
+     "Robustness is checked by static analysis; the robustness verification report (SVR) is not written and "
+     "no type checker is used.", "SVR (Phase 4).", "S", "no", "R10,R14"),
     ("E-ST-40C", "5.8.3.11*", "NA", "-", "Schedulability: no real-time software.", "-", "S", "no", ""),
     ("E-ST-40C", "5.8.3.12*", "N", "-", "Technical budgets (CPU/memory) not estimated or tracked.", "As 5.3.8.",
      "S", "no", "R14"),
@@ -241,7 +252,15 @@ SOFTWARE_RULES = [
      "Basilisk version and qualification, dependency versions, scenario SHA-256 and reference data files "
      "(tests/test_dependencies.py)", "No SCMP; no tagged releases of this tool.",
      "SCMP description (Phase 4); tag releases.", "S", "yes (Basilisk version control)", "R01,R14"),
-    ("Q-ST-80C", "6.2.5*", "N", "-", "No process metrics.", "R11 (metrics collected in CI).", "S", "no", "R11"),
+    ("Q-ST-80C", "6.2.5*", "P", "R11 (Phase 2): compliance/tools/metrics.py run in .github/workflows/spacemissionstudio.yml (size, complexity, "
+     "coverage, failures, corrective-commit count as a problem proxy) -> compliance/metrics.md", "Product "
+     "metrics are collected on every change; process metrics against a plan and their analysis are not.",
+     "Metrics section of the SPAP and PA reports (Phase 4).", "S", "no", "R11,R14"),
+    ("Q-ST-80C", "6.2.5.3a", "H", "-", "Duration and effort against a planned schedule need a schedule and "
+     "effort records, which only the project can keep.", "Keep a schedule and effort log (H02).", "S", "no",
+     "H02"),
+    ("Q-ST-80C", "6.2.5.5a", "N", "compliance/metrics.md", "No software product assurance report yet.",
+     "PA report (Phase 4).", "S", "no", "R14"),
     ("Q-ST-80C", "6.2.6.*", "P", "tests/; ruff", "Verification by tests; no verification plan or reports, no "
      "human review record of AI-written code.", "SVerP/SVR; documented human code review.", "M", "no",
      "R14,H06"),
@@ -258,9 +277,26 @@ SOFTWARE_RULES = [
      "As ECSS-E-ST-40C 5.2.", "S", "no", "H03"),
     ("Q-ST-80C", "6.3.2*", "N", "-", "No SRS.", "SRS (Phase 4).", "M", "no", "R14"),
     ("Q-ST-80C", "6.3.3*", "P", "README.md, docstrings", "No SDD.", "SDD (Phase 4).", "M", "no", "R14"),
-    ("Q-ST-80C", "6.3.4*", "P", "AGENTS.md (repository rules: units on literals, Basilisk coding guidelines, "
-     "PEP 8); ruff", "No coding standard written for this tool; static analysis unconfigured.",
-     "R10: written coding standard + configured ruff + CI.", "S", "no", "R10"),
+    ("Q-ST-80C", "6.3.4*", "P", "R10 (Phase 2): compliance/docs/coding_standard.md (naming, comment, security rules C-1 to C-15; tools; "
+     "code evaluation); ruff configured in pyproject.toml; .github/workflows/spacemissionstudio.yml", "The standard is written and checked "
+     "automatically where a tool can; rules C-4 and C-5 have not been re-checked on the existing code, and "
+     "no product quality requirements (SRS) exist to check it against.", "Review in H06; SRS (Phase 4).",
+     "S", "no", "R10,R14,H06"),
+    ("Q-ST-80C", "6.3.4.3a", "P", "R10 (Phase 2): tools identified in compliance/docs/coding_standard.md section 3", "The tools are "
+     "identified in the coding standard, not yet in a SPAP.", "SPAP (Phase 4).", "S", "no", "R10,R14"),
+    ("Q-ST-80C", "6.3.4.4a", "H", "compliance/docs/coding_standard.md", "The coding standard has not been reviewed with the customer.",
+     "Customer review of the coding standard (H09).", "S", "no", "H09"),
+    ("Q-ST-80C", "6.3.4.5a", "C", "compliance/docs/coding_standard.md rule C-1: no low-level language is used (Python only; C/C++ only "
+     "inside reused Basilisk)", "-", "-", "S", "no", "R10"),
+    ("Q-ST-80C", "6.3.4.6a", "C", "compliance/docs/coding_standard.md: measurements and criteria (C-7 complexity <= 15, C-8 zero ruff "
+     "findings, C-10 coverage >= 90 %) and tools (section 3); compliance/tools/metrics.py", "-", "-", "S",
+     "no", "R10,R11"),
+    ("Q-ST-80C", "6.3.4.6b", "C", ".github/workflows/spacemissionstudio.yml evaluates the code (ruff, tests, coverage, metrics) on every push "
+     "and pull request touching the tool", "-", "-", "S", "no", "R10"),
+    ("Q-ST-80C", "6.3.4.7a", "N", "compliance/metrics.md", "No software product assurance report yet.",
+     "PA report (Phase 4).", "S", "no", "R14"),
+    ("Q-ST-80C", "6.3.4.8a", "C", "git; compliance/docs/coding_standard.md rule C-15 (branch work, CI green before merge); .github/workflows/spacemissionstudio.yml", "-", "-",
+     "S", "no", "R10"),
     ("Q-ST-80C", "6.3.5.*", "P", "tests/ (1403 functions)", "Testing exists; not planned, not traced, no "
      "coverage, no reports.", "R11, R12, SVS/SVR.", "M", "no", "R11,R12,R14"),
     ("Q-ST-80C", "6.3.5.20a", "NA", "-", "Flight software on flight equipment.", "-", "S", "no", ""),
@@ -270,8 +306,18 @@ SOFTWARE_RULES = [
     ("Q-ST-80C", "6.3.8*", "P", "USER_MANUAL.md", "Operations support informal.", "SUM; operation support "
      "(H05).", "S", "no", "H05"),
     ("Q-ST-80C", "6.3.9*", _H, "git; HISTORY.md", "No maintenance process.", "SMP; H05.", "S", "no", "H05,R14"),
-    ("Q-ST-80C", "7.1.*", "N", "-", "No product quality objectives or metrics.", "R11 (metrics), quality "
-     "requirements in the SRS.", "M", "no", "R11"),
+    ("Q-ST-80C", "7.1.*", "P", "R11 (Phase 2): quantitative code criteria in compliance/docs/coding_standard.md (C-7, C-10); "
+     "compliance/tools/metrics.py in .github/workflows/spacemissionstudio.yml", "Metrics are collected; product quality requirements derived "
+     "from system level and a metrication programme in a SPAP do not exist.", "Quality requirements in the "
+     "SRS, metrication in the SPAP (Phase 4).", "M", "no", "R11,R14"),
+    ("Q-ST-80C", "7.1.1a", "H", "-", "Quality requirements derive from system-level requirements the customer "
+     "has not stated.", "Customer states system-level quality requirements (H03).", "S", "no", "H03"),
+    ("Q-ST-80C", "7.1.5a", "P", "R11 (Phase 2): compliance/metrics.md: size (SLOC), complexity (ruff C901), "
+     "test coverage, number of failed tests; fault density by a corrective-commit proxy", "Fault density and "
+     "failure intensity need problem reports from verification and use, which do not exist (H05).",
+     "Problem reporting (H05) feeds metrics.py.", "S", "no", "R11,H05"),
+    ("Q-ST-80C", "7.1.6a", "N", "compliance/metrics.md", "No software product assurance report yet.",
+     "PA report (Phase 4).", "S", "no", "R14"),
     ("Q-ST-80C", "7.1.7*", "P", "HISTORY.md accuracy checks (lifetime +/-1-2% vs Basilisk; drag estimate "
      "-5% vs 5-year runs; budget formulas vs hand calculations)", "Numerical accuracy checked case by case; "
      "no accuracy requirements or systematic verification.", "Accuracy requirements in the SRS; Phase 3 "
