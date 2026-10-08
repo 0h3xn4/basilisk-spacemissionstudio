@@ -200,8 +200,8 @@ not modified.
 | B5 | No IGRF; WMM only | 10-04C 5.2.1a | D2 / R08 |
 | B6 | No external magnetic field model | 10-04C 5.2.2a | D-05 |
 | B7 | Zero-wind model only (no HWM) | 10-04C 7.2.2a | D-02 |
-| B8 | sensorThermal: solar constant 1366 (src), 0 K sink, Stefan-Boltzmann 5.76051e-8 | 10-04C 6.2.1a/c | R06 (measure on 2.12, set where exposed) / D-06; report upstream |
-| B9 | GM values from astroConstants / DE-403, not IERS 2010 | 10-04C 4.2.2d | R06 (set `mu`) or D-07 |
+| B8 | sensorThermal: solar constant 1366 at any distance, 0 K sink, Stefan-Boltzmann 5.76051e-8 (all measured on 2.12, none settable) | 10-04C 6.2.1a/c | R06 (done): inputs scaled so the heat balance uses 1361/r^2 and CODATA sigma; 0 K sink: D-06; report upstream |
+| B9 | GM values from astroConstants / DE-403, not IERS 2010 | 10-04C 4.2.2d | D-07 (TN36 not supplied, not reachable); set `mu` when TN36 is supplied |
 | B10 | `nanoToSec()` loses precision past 2^53 ns (~104 days) | long runs | already handled: segmented runs (engine/long_run.py) |
 | B11 | Repository Basilisk 2.13.0b0 vs installed 2.12.0 | Q-ST-80C 6.2.4, 6.2.7 | D5 / R01 (done): 2.12.0 qualified, pinned in the installers, checked at start-up, recorded per run |
 
@@ -255,7 +255,7 @@ the requirement IDs they address.
 | D-03 | 10-04C 4.2.2b (tides) | No solid-Earth or ocean tides | Basilisk has none; tidal accelerations (~1e-7 m/s^2 in LEO) are far below drag/SRP for mission analysis |
 | D-04 | 10-04C 5.2.1a, 5.2.1.1a | WMM2025 instead of IGRF-12 | IGRF-12 predicts only to 2020; WMM2025 is a current main-field model of comparable fidelity |
 | D-05 | 10-04C 5.2.2a | No external field model | Internal field dominates in LEO for magnetometer and torque-rod analysis; not in Basilisk |
-| D-06 | 10-04C 6.2.1a/c (thermal) | Basilisk sensorThermal constants (solar constant, 0 K sink) | Effect of a 3 K sink is negligible (~(3/T)^4); solar-constant difference 0.4% |
+| D-06 | 10-04C 6.2.1c (thermal) | Basilisk sensorThermal radiates to a 0 K sink, not 3 K (its solar constant and Stefan-Boltzmann value are corrected by R06) | Effect of a 3 K sink is negligible: (3/T)^4 ~ 1e-8 of the radiated power at 300 K |
 | D-07 | 10-04C 4.2.2d | Basilisk/DE-403 GM values | Only if D4 is "no"; relative differences ~1e-8 |
 | D-08 | E-ST-40C/Q-ST-80C process items not executed | Any review or plan you decide not to run for a single-person ground tool | To be decided per item |
 

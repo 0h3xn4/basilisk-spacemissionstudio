@@ -46,7 +46,7 @@ from typing import List, Optional
 
 import numpy as np
 
-from . import geodesy, tle
+from . import environment_models, geodesy, tle
 
 _MU_M3_S2 = 3.986004415e14  # [m^3/s^2] Earth, as Basilisk's simIncludeGravBody uses
 _R_EARTH_M = 6378.1366e3  # [m] equatorial radius, as engine.service gives groundLocation
@@ -242,7 +242,7 @@ def scenario_warnings(scenario) -> List[str]:
     """Short warnings for setups that can't do what they're configured
     for. Never raises."""
     warnings: List[str] = []
-    for check in (_pass_warnings, _recording_warnings, _tle_warnings):
+    for check in (_pass_warnings, _recording_warnings, _tle_warnings, _gravity_warnings):
         try:
             warnings += check(scenario)
         except Exception:  # noqa: BLE001 -- a half-edited scenario must never break the Explain tab
@@ -278,6 +278,52 @@ def _tle_warnings(scenario) -> List[str]:
             warnings.append(f"{sc.name}: TLE epoch is {abs(age_days):.1f} d {side} the scenario epoch -- "
                             "SGP4 accuracy drops with TLE age")
     return warnings
+
+
+def _gravity_warnings(scenario) -> List[str]:
+    """Drag modelled around a point-mass Earth: J2 (~1e-2 m/s^2 in LEO) is
+    left out while a far smaller acceleration is modelled."""
+    gravity = scenario.gravity
+    if getattr(gravity, "central_body", "earth") != "earth" or (gravity.central_body_degree or 0) >= 2:
+        return []
+    return [f"{sc.name}: drag is modelled but gravity is a point mass -- J2 is far larger; set the gravity "
+            "degree to 2 or more" for sc in scenario.spacecraft if sc.enable_drag]
+
+
+def gravity_fidelity_notes(scenario) -> List[str]:
+    """ECSS-E-ST-10-04C 4.2.1b: the gravity field's truncation should leave
+    out no more than the non-gravitational accelerations modelled. One line
+    when the field leaves out more than SRP (Earth only; Kaula's-rule
+    estimate from :mod:`engine.environment_models`). Never raises."""
+    try:
+        gravity = scenario.gravity
+        if getattr(gravity, "central_body", "earth") != "earth":
+            return []
+        degree = gravity.central_body_degree or 0
+        flux = environment_models.solar_flux_w_m2(scenario.epoch_utc)
+        short = []
+        for sc in scenario.spacecraft:
+            if not sc.enable_srp:
+                continue
+            try:
+                elements = _initial_elements(sc.orbit, scenario.epoch_utc)
+            except tle.TLEError:
+                elements = None
+            if elements is None:
+                continue
+            perigee_m = elements[0] * (1.0 - elements[1])  # [m]
+            srp = environment_models.srp_acceleration(sc.srp_coeff, sc.srp_area_m2, sc.dry_mass_kg, flux)
+            omitted = environment_models.gravity_truncation_acceleration(degree, perigee_m)
+            if omitted > srp:
+                short.append((sc.name, omitted, srp, environment_models.degree_for(perigee_m, srp)))
+    except Exception:  # noqa: BLE001 -- a half-edited scenario must never break the Explain tab
+        return []
+    if not short:
+        return []
+    who = short[0][0] if len(short) == 1 else f"{len(short)} spacecraft"
+    return [f"{who}: gravity degree {degree} leaves out ~{max(s[1] for s in short):.0e} m/s^2, more than SRP "
+            f"({min(s[2] for s in short):.0e} m/s^2); degree {max(s[3] for s in short)} matches it "
+            "(ECSS-E-ST-10-04C 4.2.1b)"]
 
 
 def _recording_warnings(scenario) -> List[str]:

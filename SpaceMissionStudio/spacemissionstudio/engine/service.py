@@ -167,7 +167,7 @@ from Basilisk.utilities.supportDataTools.dataFetcher import DataFile, get_path
 from .. import __version__ as _SPACEMISSIONSTUDIO_VERSION
 from .. import dependencies
 from ..schema.scenario import OrbitIC, Scenario
-from . import fsw, geodesy, kernels, link_budget, long_run, orbit_maintenance, time_system, tle, vizard
+from . import environment_models, fsw, geodesy, kernels, link_budget, long_run, orbit_maintenance, time_system, tle, vizard
 from .results import ResultSet, RunProvenance, TimeSeries, conservation_drift_warnings
 from .vizard import VizardRequest
 
@@ -1035,6 +1035,7 @@ class SimulationService:
                         self.scSim, dyn_task_name, sc_config.name, sc_object, sc_config.sensors,
                         sun_state_out_msg=self._sun_state_out_msg, mag_field_model=self._mag_field_model,
                         sun_eclipse_in_msg=sc_eclipse_out_msg,
+                        solar_flux_w_m2=environment_models.solar_flux_w_m2(scenario.epoch_utc),
                     )
                 except fsw.FswError as exc:
                     raise SimulationServiceError(str(exc)) from exc

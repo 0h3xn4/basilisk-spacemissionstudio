@@ -185,7 +185,7 @@ from Basilisk.simulation import (
 from Basilisk.utilities import macros, simIncludeRW, simIncludeThruster
 
 from ..schema.scenario import SUPPORTED_FSW_MODES, GroundStationConfig, RFLinkConfig
-from . import geodesy, link_budget
+from . import environment_models, geodesy, link_budget
 from .orbit_maintenance import LogThinner
 
 DEFAULT_MRP_GAINS: Dict[str, float] = {"K": 3.5, "P": 30.0}
@@ -1227,7 +1227,8 @@ def build_magnetic_field_wmm(scSim, task_name: str, planet_state_out_msg, centra
 
 
 def attach_sensors(scSim, task_name: str, tag: str, sc_object, sensor_configs: List,
-                    sun_state_out_msg=None, mag_field_model=None, sun_eclipse_in_msg=None) -> Dict[str, object]:
+                    sun_state_out_msg=None, mag_field_model=None, sun_eclipse_in_msg=None,
+                    solar_flux_w_m2: float = environment_models.TOTAL_SOLAR_IRRADIANCE_W_M2) -> Dict[str, object]:
     """Builds every :class:`schema.scenario.SensorConfig` entry for one
     spacecraft and returns ``{sensor.name: output_message}`` for
     :class:`~spacemissionstudio.engine.results.ResultSet` recording.
@@ -1468,6 +1469,16 @@ def attach_sensors(scSim, task_name: str, tag: str, sc_object, sensor_configs: L
                 mod.T_0 = float(params["initial_temp_c"])
             if "power_draw_w" in params:
                 mod.sensorPowerDraw = float(params["power_draw_w"])
+            # sensorThermal's own constants (1366 W/m^2 at any distance,
+            # sigma 5.76051e-8) are not settable: scale its inputs so the
+            # heat balance uses the scenario epoch's solar flux and the
+            # CODATA sigma (ECSS-E-ST-10-04C 6.2.1a; engine.environment_models).
+            corrected = environment_models.sensor_thermal_inputs(
+                mod.sensorAbsorptivity, mod.sensorEmissivity, mod.sensorPowerDraw, mod.sensorMass, solar_flux_w_m2)
+            mod.sensorAbsorptivity = corrected.absorptivity
+            mod.sensorEmissivity = corrected.emissivity
+            mod.sensorPowerDraw = corrected.power_draw_w
+            mod.sensorMass = corrected.mass_kg
             mod.sunInMsg.subscribeTo(sun_state_out_msg)
             mod.stateInMsg.subscribeTo(sc_object.scStateOutMsg)
             # Optional, confirmed directly against sensorThermal.cpp's own

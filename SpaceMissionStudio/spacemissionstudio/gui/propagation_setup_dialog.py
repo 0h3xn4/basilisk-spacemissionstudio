@@ -93,6 +93,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..schema.scenario import (
+    MAX_GRAVITY_DEGREE,
     SUPPORTED_CENTRAL_BODIES,
     SUPPORTED_INTEGRATORS,
     SUPPORTED_SPACE_WEATHER_SOURCES,
@@ -204,7 +205,7 @@ class PropagationSetupDialog(QDialog):
         form.addRow(self.enable_harmonics_check)
 
         self.central_body_degree_spin = SpinBox()
-        self.central_body_degree_spin.setRange(0, 360)
+        self.central_body_degree_spin.setRange(0, MAX_GRAVITY_DEGREE)
         self.central_body_degree_spin.setValue(
             gravity.central_body_degree if gravity.central_body_degree > 0 else _DEFAULT_HARMONICS_DEGREE
         )
@@ -212,7 +213,9 @@ class PropagationSetupDialog(QDialog):
             "How many terms of the real gravity field to include -- higher captures finer "
             "mass-distribution detail at the cost of more compute per step. Degree 2 alone "
             "already captures J2 (by far the dominant term); low double digits (e.g. 8-10) is "
-            "a common practical choice for most mission-design work."
+            "a common practical choice for most mission-design work.\n"
+            "ECSS-E-ST-10-04C 4.2.2a: Earth orbits need degree and order 70 or more (GGM03S goes to 180). "
+            "The Explain tab notes when the degree leaves out more than the SRP acceleration (4.2.1b)."
         )
         form.addRow("Degree/order", self.central_body_degree_spin)
 

@@ -57,7 +57,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List
 
 from .orbit_design import sun_synchronous_inclination_deg
-from .scenario_checks import pass_summary, scenario_warnings
+from .scenario_checks import gravity_fidelity_notes, pass_summary, scenario_warnings
 
 _EARTH_REQUATOR_KM = 6378.1366  # [km] -- same reference value as engine.orbit_design's own
 
@@ -271,7 +271,7 @@ def _environment_section(scenario) -> ExplanationSection | None:
         badges.append(Badge("Facet model (drag/SRP torques)", "accent"))
     if not badges:
         return None
-    return ExplanationSection(title="Environment", badges=badges)
+    return ExplanationSection(title="Environment", badges=badges, notes=gravity_fidelity_notes(scenario))
 
 
 def _power_comms_section(scenario) -> ExplanationSection | None:

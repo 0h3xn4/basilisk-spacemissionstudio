@@ -1372,6 +1372,8 @@ class GravityConfig:
         _require(self.central_body in SUPPORTED_CENTRAL_BODIES,
                   f"gravity.central_body {self.central_body!r} must be one of {SUPPORTED_CENTRAL_BODIES}")
         _require(self.central_body_degree >= 0, "gravity.central_body_degree must be >= 0")
+        _require(self.central_body_degree <= MAX_GRAVITY_DEGREE,
+                 f"gravity.central_body_degree must be <= {MAX_GRAVITY_DEGREE} (the GGM03S field's maximum)")
         # engine.service.SimulationService.build() only has spherical
         # -harmonics gravity-field data (GGM03S) for Earth, and raises
         # SimulationServiceError for any other central_body with
@@ -1416,6 +1418,7 @@ class GroundStationConfig:
         _require(self.system_noise_temp_k > 0, f"{self.name}: system_noise_temp_k must be > 0")
 
 
+MAX_GRAVITY_DEGREE = 180  # GGM03S, the Earth field engine.service loads
 SUPPORTED_SPACE_WEATHER_SOURCES = ("bundled", "local_file")
 SUPPORTED_FORECAST_PERCENTILES = (95.0, 50.0, 5.0)  # [%] MSFC's published columns
 

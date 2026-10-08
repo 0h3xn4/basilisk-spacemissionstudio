@@ -168,18 +168,22 @@ TECHNICAL_RULES = [
     ("E-ST-10-04C", "4.2.1a", "C", "engine/service.py (gravity bodies: central body point mass or GGM03S "
      "spherical harmonics, optional Sun/Moon/planets from DE430); tests/test_two_body_validation.py, "
      "tests/test_gravity_gradient.py", "-", "-", "S", "yes", ""),
-    ("E-ST-10-04C", "4.2.1b", "P", "schema GravityConfig.central_body_degree (user-selected)",
-     "Gravity truncation is left to the user; no guidance or check relates it to the accuracy needed or to "
-     "the non-gravitational perturbations modelled (drag, SRP).",
-     "Document truncation guidance; warn when degree is below the order of the active non-gravitational "
-     "accelerations.", "S", "no", "R06"),
+    ("E-ST-10-04C", "4.2.1b", "P", "R06 (Phase 2): engine/environment_models.py gravity_truncation_acceleration "
+     "(Kaula's rule, actual J2) and srp_acceleration; scenario_checks warns when drag is modelled around a "
+     "point-mass Earth and the Explain tab notes when the field's truncation leaves out more than SRP, with "
+     "the degree that matches it; tests/test_environment_models.py",
+     "Relating truncation to the orbit/attitude accuracy REQUIREMENTS stays the analyst's task (the tool has "
+     "no accuracy requirement input); drag is only compared for the point-mass case. Five bundled templates "
+     "(04, 05, 07, 08, 21) use degree 2-10 with SRP on and get the note.",
+     "Decide whether the templates move to the matching degree (slower runs).", "S", "no", "R06"),
     ("E-ST-10-04C", "4.2.1c", "P", "engine/kernels.py pck00010 (IAU_EARTH)",
      "High-degree gravity is evaluated in IAU_EARTH, a lower-accuracy Earth orientation than the IERS one.",
      "Earth orientation from IERS data (R04).", "M", "yes", "R04"),
     ("E-ST-10-04C", "4.2.2a", "P", "engine/kernels.py LocalGravData.GGM03S (GRACE-based, static, ICGEM, degree "
-     "180)", "GGM03S satisfies items 1-4 as a model; templates apply it truncated at degree 10, and degree is "
-     "not enforced >= 70 where the requirement is applied strictly.",
-     "Document that degree >= 70 is needed for compliance (performance cost); offer it as an option.", "S",
+     "180); R06: schema caps the degree at 180, the GUI tooltip states the 70 x 70 requirement",
+     "GGM03S satisfies items 1-4 as a model; the degree is the user's choice and templates use 0-10, below the "
+     "70 x 70 the requirement asks for.",
+     "Use degree >= 70 for compliant analyses (performance cost); template decision as 4.2.1b.", "S",
      "yes", "R06"),
     ("E-ST-10-04C", "4.2.2b", "N", "-",
      "No tides (Basilisk has no tide model) and no IERS Earth orientation parameters (IAU_EARTH from pck00010).",
@@ -189,10 +193,11 @@ TECHNICAL_RULES = [
      "-", "-", "S", "yes", ""),
     ("E-ST-10-04C", "4.2.2d", "N", "B2.12 astroConstants (MU_EARTH 398600.436 km^3/s^2 ...), "
      "simIncludeGravBody; de-403-masses.tpc",
-     "Planetary GM values are Basilisk's/DE-403's, not the IERS 2010 (TN36) standards. IERS TN36 was not "
-     "supplied, so the exact values could not be checked here.",
-     "Set gravBody.mu from IERS TN36 in the tool (public attribute) once TN36 is available; or deviation.", "S",
-     "yes (configures Basilisk objects)", "R06"),
+     "Planetary GM values are Basilisk's/DE-403's, not the IERS 2010 (TN36) standards. D4: IERS TN36 was not "
+     "supplied and could not be fetched (iers.org and iers-conventions.obspm.fr blocked, 2026-10-08), so "
+     "deviation D-07 applies.",
+     "Human action: supply IERS TN36 Table 1.1; then set gravBody.mu from it (public attribute).", "S",
+     "yes (configures Basilisk objects)", "D-07"),
     ("E-ST-10-04C", "5.2.1a", "N", "engine/fsw.py build_magnetic_field_wmm (Basilisk magneticFieldWMM, "
      "WMM2025)", "WMM is used, not IGRF-12. IGRF-12 (2015) only predicts to 2020; for 2025+ epochs its use "
      "is questionable.",
@@ -208,12 +213,14 @@ TECHNICAL_RULES = [
     ("E-ST-10-04C", "5.3a", "P", "WMM2025 (higher fidelity than a dipole)", "Recommendation to use IGRF not "
      "followed (see 5.2.1a).", "As 5.2.1a.", "S", "yes", "R08"),
     ("E-ST-10-04C", "5.3b", "NA", "-", "Permission (may).", "-", "S", "no", ""),
-    ("E-ST-10-04C", "6.2.1a", "P", "B2.12 solarFlux: 1361.0 W/m^2 at 1 AU (measured: compliance/PROGRESS.md); "
-     "SRP, facet SRP and solar panels use it",
-     "Basilisk sensorThermal uses its own solar constant (src: S = 1366 W/m^2, not settable in B2.12) and a "
-     "Stefan-Boltzmann value of 5.76051e-8 (physical 5.670374e-8, ~1.6% high).",
-     "Measure B2.12 sensorThermal constants; set them where exposed; otherwise deviation and upstream report.",
-     "S", "yes (Basilisk module constants)", "R06,D-06"),
+    ("E-ST-10-04C", "6.2.1a", "C", "Table 6-2 values: B2.12 solarFlux 1361.0 W/m^2 at 1 AU with 1/r^2 (SRP, "
+     "facet SRP, solar panels); R06: engine/environment_models.py TSI 1361 W/m^2, Earth-Sun distance, and "
+     "sensor_thermal_inputs, which corrects Basilisk sensorThermal's fixed 1366 W/m^2 and sigma 5.76051e-8 "
+     "(both measured on 2.12) through its public inputs; tests/test_environment_models.py (Table 6-2 "
+     "perihelion/aphelion values, DE430 distance, Basilisk equilibrium = standard equilibrium to 0.01 K)",
+     "The thermal sensor's flux is set at the scenario epoch's Sun distance; over a multi-month run the real "
+     "flux changes by up to 3.4 % (1316-1407 W/m^2) while the sensor keeps the epoch value.", "-", "S",
+     "yes (configures Basilisk inputs; Basilisk unchanged)", "R06"),
     ("E-ST-10-04C", "6.2.1b", "NA", "-", "No spectral solar modelling (total irradiance only).", "-", "S", "no", ""),
     ("E-ST-10-04C", "6.2.1c", "N", "src sensorThermal.cpp radiates to 0 K", "No 3 K space sink in the "
      "thermal sensor model.", "Deviation D-06 (effect ~ (3/T)^4, negligible) or tool-side correction.", "S",
@@ -236,9 +243,9 @@ TECHNICAL_RULES = [
      "Table A-1.", "Decision D1.", "M", "no", "R07,D-01"),
     ("E-ST-10-04C", "6.3*", "N", "-", "Tables 6-2 to 6-4 are data for 6.2.1/6.2.2: TSI 1361 W/m^2 is used "
      "(SRP); Tables 6-3/6-4 are not available in the tool.", "See 6.2.1a, 6.2.2b-d.", "S", "no", "R07"),
-    ("E-ST-10-04C", "6.3 (ECSS-E-ST-10-04_0760115)", "P", "B2.12 solarFlux 1361.0 W/m^2",
-     "TSI used by SRP; aphelion/perihelion values follow from 1/r^2 scaling in Basilisk; sensorThermal uses "
-     "its own constant.", "See 6.2.1a.", "S", "yes", "R06"),
+    ("E-ST-10-04C", "6.3 (ECSS-E-ST-10-04_0760115)", "C", "As 6.2.1a: 1361 W/m^2 at 1 AU, 1/r^2 scaling "
+     "(1316/1407 W/m^2 at aphelion/perihelion, tested).", "Thermal sensor: epoch distance only (see 6.2.1a).",
+     "-", "S", "yes", "R06"),
     ("E-ST-10-04C", "7.2.1.1a", "C", "engine/service.py msisAtmosphere (Basilisk NRLMSISE-00), default "
      "atmosphere_model; tests/test_lifetime.py (density matches the simulation's)",
      "The exponential model can also be chosen; the tool warns that it is far too thin above ~150 km.",
