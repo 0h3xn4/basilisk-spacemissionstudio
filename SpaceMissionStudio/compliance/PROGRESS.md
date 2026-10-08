@@ -83,6 +83,10 @@ Result: **2055 passed, 11 skipped, 0 failed** (245 s, 3 workers). Every later ph
 15. 2026-10-08, user (H09): statement coverage >= 90 % and decision
     (branch) coverage >= 80 %, both enforced in CI; MC/DC not required;
     complexity <= 15 for new code and the metric set of `metrics.py` kept.
+16. 2026-10-08, user (H10): the user reports F-01 and F-07 to the Basilisk
+    developers; a workaround is removed only in the requalification of a
+    Basilisk release that fixes its defect, with V-04 showing the results
+    stay within tolerance.
 
 ## Phase 1 test run
 

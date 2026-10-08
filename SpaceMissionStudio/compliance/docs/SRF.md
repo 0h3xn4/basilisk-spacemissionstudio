@@ -206,7 +206,7 @@ The findings F-01 to F-08 and their analyses are in RD2.
 | Version pin and start-up check | Configuration of the reused baseline | `dependencies.py`: `QUALIFIED_BASILISK_VERSION = "2.12.0"`; warning on any other version; `basilisk_qualified` in every provenance | `tests/test_dependencies.py` |
 | Warning without EOP files | F-06 | `engine/service.py` warns: ~160 m/day at degree 20 | `tests/test_frames.py::test_a_gravity_field_without_iers_data_warns_of_its_accuracy` |
 | OEM version 1.0 and Lagrange for GMAT | F-08 | `--oem-interpolation lagrange`; GMAT reads only v1.0 OEMs | V-06 |
-| Report upstream | F-01, F-07 | **Not done: human action H10.** The workarounds are removed once a qualified Basilisk release fixes the defects (SRS-M-02). | – |
+| Report upstream | F-01, F-07 | **Not done yet:** the user reports them to the Basilisk developers (decision 16, H10). The workarounds are removed in the requalification of a Basilisk release that fixes the defects (SRS-M-02, SMP 8). | – |
 
 ## 9 Configuration status (N.2.1<9>)
 
