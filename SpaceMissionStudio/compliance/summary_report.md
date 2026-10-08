@@ -57,10 +57,11 @@ ESA AD10 (EOP-FM/2024-07-177 v3.0) is cited by identifier only.
 - Security analysis.
 
 **Not written:**
-- SSS and IRD: customer documents (H03).
-- SRevP (H12).
-- SCMP: its DRD is in ECSS-M-ST-40C, which was not supplied (H12).
-- Software security management plan (H02).
+- SSS and IRD: customer documents, waived (decision 9, D-11).
+- SRevP: not wanted, covered by the review waiver D-08 (decision 18).
+- SCMP: its DRD is in ECSS-M-ST-40C, which will not be supplied; the
+  configuration management is described in SDP 6 (decision 18).
+- Software security management plan: waived (decision 8, D-10).
 
 ## 3 Compliance status
 
