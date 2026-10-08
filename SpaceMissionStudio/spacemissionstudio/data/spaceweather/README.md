@@ -1,7 +1,7 @@
 # Space weather data
 
 `SW-All.txt` is CelesTrak's space-weather file (CSSI format, version 1.2),
-unmodified:
+unmodified except for line endings (stored with LF):
 
 * source: <https://celestrak.org/SpaceData/SW-All.txt>
   (format: <https://celestrak.org/SpaceData/SpaceWx-format.php>);
