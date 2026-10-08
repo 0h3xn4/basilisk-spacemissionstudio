@@ -55,6 +55,7 @@ def test_the_shipped_record_parses_as_published():
     assert data.long_term_ap == pytest.approx(np.mean(observed)) == pytest.approx(12.83, abs=0.01)
 
 
+@pytest.mark.requirement("E-ST-10-04C 6.2.3b")
 def test_a_past_run_gets_the_observed_days_unchanged(tmp_path):
     """The 2003 Halloween storms, as observed."""
     resolved = sw.resolve("bundled", datetime(2003, 10, 28), datetime(2003, 11, 2), cache_dir=tmp_path)
@@ -66,6 +67,7 @@ def test_a_past_run_gets_the_observed_days_unchanged(tmp_path):
     assert sw.validate_file(resolved.path, datetime(2003, 10, 28), datetime(2003, 11, 2)).ok
 
 
+@pytest.mark.requirement("E-ST-10-04C 6.2.3b", "E-ST-10-04C 7.2.1.2e")
 def test_a_future_run_uses_msfcs_prediction_at_the_chosen_percentile(tmp_path):
     """January 2030 from MSFC's October 2026 table: 74.2 sfu / Ap 11.5 at
     the 50th percentile, 78.7 / 16.2 at the 95th (AD10: operations)."""

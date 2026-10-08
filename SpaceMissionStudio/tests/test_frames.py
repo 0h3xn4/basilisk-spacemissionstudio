@@ -31,6 +31,7 @@ pytestmark = pytest.mark.requirement("E-ST-10-09C 5.4.1a", "E-ST-10-09C 5.4.1h",
 _TEMPLATES = Path(__file__).resolve().parent.parent / "spacemissionstudio" / "scenarios" / "templates"
 
 
+@pytest.mark.requirement("E-ST-10-09C 5.3.2b", "E-ST-10-09C 5.3.2c")
 def test_every_frame_has_a_unique_name_mnemonic_and_origin():
     """Each frame is named, has a unique mnemonic and an origin; the
     inertial frame states its epoch and time scale."""
@@ -54,7 +55,8 @@ def test_series_frames_follow_the_naming_convention():
 
 
 @pytest.mark.requires_basilisk
-@pytest.mark.requirement("E-ST-10-09C 5.4.2a", "E-ST-10-09C 5.4.3a", "E-ST-10-09C 5.4.3b")
+@pytest.mark.requirement("E-ST-10-09C 5.4.2a", "E-ST-10-09C 5.4.2b", "E-ST-10-09C 5.4.3a", "E-ST-10-09C 5.4.3b",
+                         "E-ST-10-09C 5.4.4a")
 def test_run_metadata_carries_frames_time_scales_and_units(tmp_path):
     """A real run's provenance.json names the time variable and the frames
     of its series, and every series has units ('-' when dimensionless)."""
@@ -71,3 +73,43 @@ def test_run_metadata_carries_frames_time_scales_and_units(tmp_path):
     assert provenance["series_frames"]["berlin-gs.access_to_leo-comms-1.elevation"] == "L"
     assert "N -> P" in provenance["transformations"]
     assert all(series.units and str(series.units).strip() for series in result.series.values())
+
+
+@pytest.mark.requirement("E-ST-10-09C 5.3.2d")
+def test_each_transformation_has_a_unique_name_between_defined_frames():
+    """Transformations are named "Y -> X" once each, between frames that
+    :func:`frames.definitions` defines."""
+    mnemonics = set(frames.definitions("earth", "ITRF93"))
+    pairs = [tuple(name.split(" -> ")) for name in frames.TRANSFORMATIONS]
+    assert len(set(pairs)) == len(pairs)
+    assert all(len(pair) == 2 and set(pair) <= mnemonics for pair in pairs)
+
+
+@pytest.mark.requirement("E-ST-10-09C 5.4.1d", "E-ST-10-09C 5.4.1e", "E-ST-10-09C 5.4.1f")
+def test_frame_rotations_are_orthonormal_and_right_handed():
+    """TEME -> N (the only imported frame) is a proper rotation
+    (orthonormal, determinant +1); the topocentric frame is South-East-
+    Zenith (S x E = Z) with azimuth from North to East, and its geodetic
+    tilt keeps lengths. Orbit inputs are only classical elements,
+    cartesian N states and TLEs (TEME), none of them left-handed."""
+    import math
+    from datetime import datetime
+
+    import numpy as np
+
+    from spacemissionstudio.engine import geodesy, tle
+    from spacemissionstudio.schema.scenario import ORBIT_IC_TYPES
+
+    teme = tle.teme_to_eme2000_matrix(datetime(2026, 10, 8))
+    np.testing.assert_allclose(teme @ teme.T, np.eye(3), atol=1e-15)
+    assert np.linalg.det(teme) == pytest.approx(1.0, abs=1e-15)
+    south, east, zenith = np.eye(3)
+    np.testing.assert_array_equal(np.cross(south, east), zenith)
+    elevation, azimuth = geodesy.geodetic_elevation_azimuth([zenith, -south, east], 0.9, 0.9)
+    np.testing.assert_allclose(elevation, [math.pi / 2, 0.0, 0.0], atol=1e-15)
+    np.testing.assert_allclose(azimuth[1:], [0.0, math.pi / 2], atol=1e-15)  # North 0, East +90 deg
+    theta = 0.003  # [rad] geocentric - geodetic latitude
+    tilted_zenith = [math.sin(theta), 0.0, math.cos(theta)]
+    elevation, _ = geodesy.geodetic_elevation_azimuth([tilted_zenith], 0.9 + theta, 0.9)
+    assert elevation[0] == pytest.approx(math.pi / 2, abs=1e-7)
+    assert ORBIT_IC_TYPES == ("classical_elements", "cartesian", "tle")

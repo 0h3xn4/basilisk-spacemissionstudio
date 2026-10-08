@@ -25,7 +25,7 @@ import pytest
 
 from spacemissionstudio.schema import load_scenario
 
-pytestmark = pytest.mark.requires_basilisk
+pytestmark = [pytest.mark.requires_basilisk, pytest.mark.requirement("E-ST-10-04C 4.2.1a")]
 
 SCENARIO_PATH = Path(__file__).resolve().parent.parent / "spacemissionstudio" / "scenarios" / "two_body_validation.json"
 

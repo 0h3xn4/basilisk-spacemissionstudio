@@ -52,6 +52,7 @@ def _errors(text):
     return [issue for issue in odm.validate(text) if issue.level == "error"]
 
 
+@pytest.mark.requirement("CCSDS-502.0-B-3 3.1.1", "CCSDS-502.0-B-3 3.1.2", "CCSDS-502.0-B-3 3.1.5", "CCSDS-502.0-B-3 3.2.4.1", "CCSDS-502.0-B-3 3.2.4.4", "CCSDS-502.0-B-3 3.2.4.10", "CCSDS-502.0-B-3 3.2.4.12", "CCSDS-502.0-B-3 4.1.1", "CCSDS-502.0-B-3 4.1.5", "CCSDS-502.0-B-3 4.2.4.4", "CCSDS-502.0-B-3 4.2.4.5", "CCSDS-502.0-B-3 4.2.4.10", "CCSDS-502.0-B-3 5.1.1", "CCSDS-502.0-B-3 5.2.1.1", "CCSDS-502.0-B-3 5.2.1.2", "CCSDS-502.0-B-3 5.2.3.3", "CCSDS-502.0-B-3 5.2.4.2", "CCSDS-502.0-B-3 5.2.4.3", "CCSDS-502.0-B-3 5.2.4.6", "CCSDS-502.0-B-3 5.2.5.2", "CCSDS-502.0-B-3 5.2.5.5", "CCSDS-502.0-B-3 7.3.1", "CCSDS-502.0-B-3 7.3.5", "CCSDS-502.0-B-3 7.4.1", "CCSDS-502.0-B-3 7.4.1.1", "CCSDS-502.0-B-3 7.4.1.2", "CCSDS-502.0-B-3 7.4.1.3", "CCSDS-502.0-B-3 7.7.1.1", "CCSDS-502.0-B-3 7.8.3", "CCSDS-502.0-B-3 7.8.5", "CCSDS-502.0-B-3 7.8.6")
 @pytest.mark.parametrize("name", sorted(p.name for p in _DATA.glob("*.txt")))
 def test_every_annex_g_example_reads_and_conforms(name):
     """Figures G-1 to G-4, G-7 to G-9 and G-11 to G-13 have no errors."""
@@ -61,12 +62,14 @@ def test_every_annex_g_example_reads_and_conforms(name):
     assert message.kind == name[:3].upper()
 
 
+@pytest.mark.requirement("CCSDS-502.0-B-3 3.2.3.3")
 def test_a_frame_outside_the_recommended_set_is_a_warning():
     """G-3 uses ITRF1997, not in 3.2.3.3: a warning (needs an ICD), not an error."""
     issues = odm.validate(_example("opm_g3.txt"))
     assert [(i.level, i.clause) for i in issues] == [("warning", "3.2.3.3")]
 
 
+@pytest.mark.requirement("CCSDS-502.0-B-3 5.2.3.3", "CCSDS-502.0-B-3 5.2.4.6", "CCSDS-502.0-B-3 5.2.5.3", "CCSDS-502.0-B-3 7.7.2.1", "CCSDS-502.0-B-3 7.7.2.2")
 def test_oem_example_content_is_read():
     """G-11 has two segments; the first starts at 2019-12-18T12:00:00.331
     with the state (2789.619, -280.045, -1746.755) km; G-13 carries two
@@ -106,12 +109,14 @@ def g1():
     ("X =              6503.514000", "X =\t6503.514000", "7.3.4"),
     ("COMMENT          GEOCENTRIC", "COMMENT " + "x" * 260 + " GEOCENTRIC", "7.3.2"),
 ])
+@pytest.mark.requirement("CCSDS-502.0-B-3 3.2.3.1", "CCSDS-502.0-B-3 3.2.4.2", "CCSDS-502.0-B-3 7.3.2", "CCSDS-502.0-B-3 7.3.4", "CCSDS-502.0-B-3 7.4.8", "CCSDS-502.0-B-3 7.5.3", "CCSDS-502.0-B-3 7.5.6", "CCSDS-502.0-B-3 7.5.7", "CCSDS-502.0-B-3 7.5.10", "CCSDS-502.0-B-3 7.7.1.1", "CCSDS-502.0-B-3 7.7.1.3", "CCSDS-502.0-B-3 7.8.7", "CCSDS-502.0-B-3 7.9.2.1")
 def test_each_opm_rule_is_enforced(g1, old, new, clause):
     """A G-1 OPM broken in one way gives an error citing the rule."""
     errors = _errors(_replace(g1, old, new))
     assert errors and any(clause in e.clause for e in errors), [str(e) for e in errors]
 
 
+@pytest.mark.requirement("CCSDS-502.0-B-3 3.1.2", "CCSDS-502.0-B-3 3.2.4.7", "CCSDS-502.0-B-3 3.2.4.8", "CCSDS-502.0-B-3 3.2.4.9", "CCSDS-502.0-B-3 3.2.4.10")
 def test_opm_block_rules():
     """Keplerian elements and covariance are all-or-none; a maneuver needs
     MASS and all its parameters; MAN_DELTA_MASS must be negative."""
@@ -128,12 +133,14 @@ def test_opm_block_rules():
                                                                 "")))
 
 
+@pytest.mark.requirement("CCSDS-502.0-B-3 7.3.6")
 def test_the_first_line_must_be_the_version():
     """7.3.6: anything before CCSDS_xxx_VERS is refused."""
     issues = odm.validate("ORIGINATOR = X\n" + _example("opm_g1.txt"))
     assert issues and issues[0].level == "error" and "7.3.6" in issues[0].message
 
 
+@pytest.mark.requirement("CCSDS-502.0-B-3 4.2.4.6")
 def test_tle_based_omm_conventions():
     """4.2.4.6: a TLE-based OMM needs EARTH, TEME, UTC and MEAN_MOTION."""
     g7 = _example("omm_g7.txt")
@@ -150,12 +157,14 @@ def test_tle_based_omm_conventions():
     ("STOP_TIME            = 2019-12-30T01:28:02.267", "STOP_TIME            = 2019-12-29T00:00:00", "Table 5-3"),
     ("INTERPOLATION_DEGREE = 7\nMETA_STOP\nCOMMENT  This file", "META_STOP\nCOMMENT  This file", "Table 5-3"),
 ])
+@pytest.mark.requirement("CCSDS-502.0-B-3 5.2.3.2", "CCSDS-502.0-B-3 5.2.4.1", "CCSDS-502.0-B-3 5.2.4.2", "CCSDS-502.0-B-3 5.2.4.5", "CCSDS-502.0-B-3 7.8.9", "CCSDS-502.0-B-3 7.9.2.3")
 def test_each_oem_rule_is_enforced(old, new, clause):
     """A G-11 OEM broken in one way gives an error citing the rule."""
     errors = _errors(_replace(_example("oem_g11.txt"), old, new))
     assert errors and any(clause in e.clause for e in errors), [str(e) for e in errors]
 
 
+@pytest.mark.requirement("CCSDS-502.0-B-3 5.2.5.4")
 def test_oem_covariance_shape_is_checked():
     """5.2.5.4: six lower-triangular rows."""
     g13 = _example("oem_g13.txt")
@@ -163,6 +172,7 @@ def test_oem_covariance_shape_is_checked():
     assert any(e.clause == "5.2.5.4" for e in _errors(broken))
 
 
+@pytest.mark.requirement("CCSDS-502.0-B-3 3.1.3", "CCSDS-502.0-B-3 4.1.2", "CCSDS-502.0-B-3 4.1.3")
 def test_tle_to_omm_to_tle_reproduces_figure_g6():
     """The G-6 TLE becomes an OMM with its elements and converts back to
     the identical two lines; the standard's own G-7 OMM gives G-6's lines
@@ -179,6 +189,7 @@ def test_tle_to_omm_to_tle_reproduces_figure_g6():
     assert line1[:18] + line1[20:68] == _G6[0][:18] + _G6[0][20:68]
 
 
+@pytest.mark.requirement("CCSDS-502.0-B-3 3.1.2", "CCSDS-502.0-B-3 3.1.3", "CCSDS-502.0-B-3 4.1.3")
 def test_opm_round_trip_and_elements_match_figure_g2():
     """write_opm -> state_from_opm returns the state; with the G-2 state
     and GM the written elements equal G-2's a, e, i, RAAN, argument of
@@ -212,6 +223,7 @@ def test_opm_epochs_in_other_time_systems_are_converted_to_utc():
         odm.state_from_opm(odm.read(_example("opm_g1.txt")))
 
 
+@pytest.mark.requirement("CCSDS-502.0-B-3 7.5.6", "CCSDS-502.0-B-3 7.5.7")
 def test_written_values_read_back_exactly():
     """The writer's numbers are the shortest text that reads back as the
     same double, in 7.5.6/7.5.7 form."""
@@ -227,6 +239,7 @@ def test_orbit_ic_from_omm_is_a_tle_orbit():
     assert orbit.tle_line2 == _G6[1]
 
 
+@pytest.mark.requirement("CCSDS-502.0-B-3 5.1.1", "CCSDS-502.0-B-3 7.7.2.1", "CCSDS-502.0-B-3 7.8.1", "CCSDS-502.0-B-3 7.8.2")
 @pytest.mark.requires_basilisk
 def test_oem_from_a_run_conforms_and_carries_the_ephemeris(tmp_path):
     """An OEM written from a real run conforms, uses EME2000/UTC, and its
@@ -249,6 +262,7 @@ def test_oem_from_a_run_conforms_and_carries_the_ephemeris(tmp_path):
     np.testing.assert_allclose(segment.states[-1][:3], np.asarray(position.data)[-1] / 1e3, atol=1e-6)  # last state
     utc = time_system.elapsed_to_utc(scenario.epoch_utc, position.time_s[::5])
     assert segment.epochs[1] == odm.format_time(utc[1])
+    assert any("SpaceMissionStudio" in c for c in segment.comments)  # provenance comment (7.8.1, 7.8.2)
 
 
 def test_cli_validate_reports_conformance(capsys, tmp_path):
@@ -294,6 +308,7 @@ def test_cli_export_writes_conforming_opms(tmp_path):
     assert math.isclose(odm.read(text).number("GM"), odm.EARTH_GM_KM3_S2)
 
 
+@pytest.mark.requirement("CCSDS-502.0-B-3 5.1.3", "CCSDS-502.0-B-3 5.2.4.7", "CCSDS-502.0-B-3 7.5.9")
 def test_more_oem_rules_and_text_equivalence():
     """5.1.3 one object per OEM; 5.2.4.7 enough records for the stated
     interpolation; 7.5.9 underscores equal blanks in text values."""
@@ -333,3 +348,59 @@ def test_every_ics_keyword_is_read_and_validated():
         if keyword not in ("N/A", "…") and not keyword.startswith("USER_DE") and keyword not in known:
             missing.append((item["ID"], keyword))
     assert len(items) == 176 and missing == []
+
+
+@pytest.mark.requirement("CCSDS-502.0-B-3 7.3.5", "CCSDS-502.0-B-3 7.3.7", "CCSDS-502.0-B-3 7.4.5",
+                         "CCSDS-502.0-B-3 7.4.6", "CCSDS-502.0-B-3 7.4.7", "CCSDS-502.0-B-3 5.2.4.3")
+def test_line_endings_blank_lines_and_white_space_carry_no_meaning():
+    """CR, LF or CR LF endings, extra blank lines and white space around
+    keywords, the equals sign and line ends read as the same message."""
+    g1 = _example("opm_g1.txt")
+    reference = odm.read(g1)
+    variants = [g1.replace("\n", "\r\n"), g1.replace("\n", "\r"), g1.replace("\n", "\n\n"),
+                g1.replace("X =              6503.514000", "   X   =   6503.514000   ")]
+    for text in variants:
+        assert _errors(text) == []
+        message = odm.read(text)
+        assert message.number("X") == reference.number("X") and message.get("OBJECT_NAME") == "OSPREY 5"
+    g13 = _example("oem_g13.txt")
+    spaced = _replace(g13, " -2432.166 -063.042", "     -2432.166    -063.042")
+    assert _errors(spaced) == []
+    assert odm.read(spaced).segments[0].states[0][:2] == [-2432.166, -63.042]
+
+
+@pytest.mark.parametrize("example, old, new, clause", [
+    ("opm_g1.txt", "X =              6503.514000", "X = 6503.514000 Y = 1239.647", "7.5"),  # 7.4.3: one per line
+    ("opm_g1.txt", "X_DOT =", "X DOT =", "7"),  # 7.4.4: no blanks in keywords
+    ("opm_g1.txt", "X =  ", "x =  ", "Table 3-3"),  # 7.4.4: uppercase
+    ("opm_g1.txt", "OBJECT_NAME    = OSPREY 5", "OBJECT_NAME    =", "7.5.1"),
+    ("oem_g11.txt", "INTERPOLATION_DEGREE = 7", "INTERPOLATION_DEGREE = 7.0", "7.5.4"),
+    ("opm_g1.txt", "6503.514000", "6503. 514000", "7.5"),  # 7.5.8: no blanks in numbers
+    ("opm_g1.txt", "COMMENT          GEOCENTRIC", "COMMENTGEOCENTRIC", "7"),  # 7.8.5
+    ("opm_g1.txt", "TIME_SYSTEM    = UTC", "TIME_SYSTEM    = XYZ", "3.2.3.2"),
+    ("omm_g7.txt", "TIME_SYSTEM    = UTC", "TIME_SYSTEM    = UTC\nFOO = 1", "Table 4-3, 7.9.2"),  # 4.2.3.2
+    ("omm_g7.txt", "MEAN_MOTION       = 1.00273272", "MEAN_MOTION       = 1.00273272\nFOO = 1",
+     "Table 4-3, 7.9.2"),
+    ("omm_g7.txt", "ORIGINATOR     = NOAA\n", "", "Table 4-1"),
+    ("oem_g11.txt", "INTERPOLATION_DEGREE = 7\nMETA_STOP", "INTERPOLATION_DEGREE = 7\nFOO = 1\nMETA_STOP",
+     "Table 5-3, 7.9.2"),
+    ("oem_g11.txt", "ORIGINATOR = NASA/JPL\n", "", "Table 5-2"),
+    ("omm_g7.txt", "MEAN_MOTION       = 1.00273272", "COMMENT x\nMEAN_MOTION       = 1.00273272", "7.8.8"),
+    ("oem_g11.txt", "2019-12-28T21:59:02.267 -2445.234", "EPOCH = 2019-12-28T21:59:02.267 -2445.234", "7"),
+    ("oem_g11.txt", "USEABLE_START_TIME   = 2019-12-28T22:08:02.5", "USEABLE_START_TIME   = 2019-12-28T20:00:00",
+     "5.2.4.4"),
+    ("oem_g13.txt", "EPOCH = 2019-12-29T21:00:00", "EPOCH = 2019-12-28T21:00:00", "5.2.5.7"),
+    ("oem_g13.txt", "EPOCH = 2019-12-29T21:00:00\n", "", "5.2.5"),  # 5.2.5.3: each matrix has its EPOCH
+])
+@pytest.mark.requirement("CCSDS-502.0-B-3 7.4.3", "CCSDS-502.0-B-3 7.4.4", "CCSDS-502.0-B-3 7.5.1",
+                         "CCSDS-502.0-B-3 7.5.4", "CCSDS-502.0-B-3 7.5.8", "CCSDS-502.0-B-3 7.8.5",
+                         "CCSDS-502.0-B-3 3.2.3.2", "CCSDS-502.0-B-3 4.2.2.1", "CCSDS-502.0-B-3 4.2.3.2",
+                         "CCSDS-502.0-B-3 4.2.4.2", "CCSDS-502.0-B-3 5.2.2.1", "CCSDS-502.0-B-3 5.2.3.2",
+                         "CCSDS-502.0-B-3 7.4.1.2", "CCSDS-502.0-B-3 7.8.8", "CCSDS-502.0-B-3 7.9.2.2",
+                         "CCSDS-502.0-B-3 7.9.2.3", "CCSDS-502.0-B-3 5.2.4.4", "CCSDS-502.0-B-3 5.2.5.3",
+                         "CCSDS-502.0-B-3 5.2.5.7")
+def test_each_kvn_syntax_and_segment_rule_is_enforced(example, old, new, clause):
+    """An Annex G example broken in one way gives an issue citing the rule
+    (TIME_SYSTEM outside the 3.2.3.2 set is a warning: it needs an ICD)."""
+    issues = [i for i in odm.validate(_replace(_example(example), old, new)) if i.level in ("error", "warning")]
+    assert issues and any(i.clause.startswith(clause) for i in issues), [str(i) for i in issues]

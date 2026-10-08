@@ -91,6 +91,7 @@ def _template_18(altitude_km, duration_days=1.0):
 
 
 @pytest.mark.requires_basilisk
+@pytest.mark.requirement("E-ST-10-04C 7.2.1.1a")
 def test_density_matches_the_simulations_own_atmosphere():
     """The standalone NRLMSISE-00 evaluator against the density a
     simulation of the same orbit feeds its drag model (within 1.4% in a

@@ -37,6 +37,7 @@ pytestmark = pytest.mark.requirement("E-ST-10-04C 6.2.1a", "E-ST-10-04C 4.2.1b")
 _AU_M = 149597870700.0  # [m]
 
 
+@pytest.mark.requirement("E-ST-10-04C 6.3 (ECSS-E-ST-10-04_0760115)")
 def test_solar_flux_follows_table_6_2():
     """1361 W/m^2 at 1 AU; near perihelion (early January) and aphelion
     (early July) the 1/r^2 flux matches Table 6-2's 1407 and 1316 W/m^2."""
@@ -46,13 +47,18 @@ def test_solar_flux_follows_table_6_2():
 
 
 @pytest.mark.requires_basilisk
+@pytest.mark.requirement("E-ST-10-04C 4.2.2c")
 def test_sun_distance_matches_de430():
     """The almanac formula agrees with the DE430 Earth-Sun distance to
-    2e-4 AU (0.04 % in flux) across a year."""
+    2e-4 AU (0.04 % in flux) across a year; DE430 is the planetary
+    ephemeris every run loads for third bodies."""
     from Basilisk.topLevelModules import pyswice
     from Basilisk.utilities.supportDataTools.dataFetcher import DataFile, get_path
 
+    from spacemissionstudio.engine import kernels
     from spacemissionstudio.engine.time_system import utc_iso_to_spice_string
+
+    assert DataFile.EphemerisData.de430 in kernels.DEFAULT_KERNELS
 
     for kernel in (DataFile.EphemerisData.naif0012, DataFile.EphemerisData.de430):
         pyswice.furnsh_c(str(get_path(kernel)))
@@ -185,3 +191,14 @@ def test_gravity_degree_above_the_field_maximum_is_rejected_by_the_schema():
     GravityConfig(central_body="earth", central_body_degree=180).validate()
     with pytest.raises(ScenarioValidationError, match="central_body_degree must be <= 180"):
         GravityConfig(central_body="earth", central_body_degree=181).validate()
+
+
+@pytest.mark.requirement("E-ST-10-04C 7.2.1.2a")
+def test_no_jacchia_bowman_model_can_be_mixed_with_nrlmsise_00():
+    """The only atmospheres are NRLMSISE-00 and Basilisk's exponential
+    model; a JB-2006/JB-2008 choice is rejected."""
+    from spacemissionstudio.schema.scenario import ScenarioValidationError, SpaceWeatherConfig
+
+    for model in ("jb2006", "jb2008"):
+        with pytest.raises(ScenarioValidationError, match="must be 'nrlmsise00' or 'exponential'"):
+            SpaceWeatherConfig(atmosphere_model=model).validate()
