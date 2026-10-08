@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import collections
 import csv
+import re
 import sys
 from pathlib import Path
 
@@ -100,6 +101,10 @@ def build() -> int:
                     continue
                 used.add((standard, rule[1]))
                 _std, match, status, evidence, gap, fix, effort, near, remediation = rule
+                deviations = re.findall(r"D-0\d", remediation)
+                if deviations and status in ("N", "P"):
+                    fix = (f"Deviation {', '.join(deviations)} selected by the user 2026-10-08 "
+                           "(compliance/deviations.md; signature pending)")
                 row.update(status=STATUS[status], evidence=evidence, gap=gap, proposed_fix=fix, effort=effort,
                            near_basilisk=near, remediation=remediation, assessed_by=f"rule {match}")
             rows.append(row)
