@@ -36,6 +36,9 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers", "requires_gui: test needs PySide6 (the 'gui' extra; auto-skipped without it)"
     )
+    config.addinivalue_line(
+        "markers", "requirement(*ids): ECSS/CCSDS requirement IDs the test verifies (compliance/ traceability)"
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -71,6 +74,21 @@ def _isolate_logging_setup(tmp_path, monkeypatch):
     # test observe this fixture's stand-in instead of the function it's
     # meant to test.
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    # Same isolation for the space-weather cache, whose default directory
+    # is computed from Path.home() once, at import time -- often during
+    # test COLLECTION, before the patch above. Real bug: a real user's
+    # full run then saw their actual ~/.cache startup-fetch CSV, and 20
+    # template round-trip tests failed (they caught a real dialog bug, but
+    # no test should depend on what is in the user's real cache).
+    from spacemissionstudio.engine import spaceweather
+
+    monkeypatch.setattr(spaceweather, "DEFAULT_CACHE_DIR", tmp_path / ".cache" / "SpaceMissionStudio" / "spaceweather")
+    # The same for the Earth orientation files (engine.earth_orientation):
+    # a test run never picks up the user's installed EOP kernels.
+    from spacemissionstudio.engine import earth_orientation
+
+    monkeypatch.setattr(earth_orientation, "DEFAULT_DIR", tmp_path / ".cache" / "SpaceMissionStudio" / "earth_orientation")
+    monkeypatch.setattr(earth_orientation, "SYSTEM_DIR", tmp_path / "share" / "earth_orientation")
 
     root_logger = logging.getLogger()
     original_handlers = list(root_logger.handlers)

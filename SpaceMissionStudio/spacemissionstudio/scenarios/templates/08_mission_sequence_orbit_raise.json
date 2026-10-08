@@ -30,15 +30,15 @@
       },
       "dry_mass_kg": 500.0,
       "inertia_kg_m2": [
-        10.0,
+        166.7,
         0.0,
         0.0,
         0.0,
-        10.0,
+        166.7,
         0.0,
         0.0,
         0.0,
-        10.0
+        120.0
       ],
       "sigma_bn_init": [
         0.0,
@@ -51,11 +51,12 @@
         0.0
       ],
       "enable_drag": true,
-      "drag_coeff": 2.2,
+      "drag_coeff": 3.0,
       "drag_area_m2": 1.0,
       "enable_srp": true,
       "srp_coeff": 1.3,
       "srp_area_m2": 1.0,
+      "facets": [],
       "enable_gravity_gradient": false,
       "sensors": [],
       "actuators": [],
@@ -66,11 +67,13 @@
       "rf_link": null,
       "comms_pointing": null,
       "station_keeping": null,
+      "geo_station_keeping": null,
       "phasing_keeping": null,
       "constant_thrust": null,
       "momentum_dumping": null,
       "magnetic_momentum_management": null,
       "fuel_tank": null,
+      "propellant_budget": null,
       "vizard_model_path": null,
       "vizard_model_offset_m": [
         0.0,
@@ -91,17 +94,18 @@
   ],
   "ground_stations": [],
   "space_weather": {
-    "source": "synthetic",
+    "source": "bundled",
     "local_file_path": null,
     "cache_dir": null,
     "atmosphere_model": "nrlmsise00",
-    "activity_level": "nominal",
-    "activity_percentile": 95.0
+    "forecast_percentile": 50.0,
+    "msfc_file_path": null
   },
   "sim_settings": {
     "duration_days": 1.0,
     "dynamics_task_rate_s": 10.0,
-    "integrator": "rkf78"
+    "integrator": "rkf78",
+    "record_interval_s": 0.0
   },
   "monte_carlo": {
     "enabled": false,
@@ -160,6 +164,6 @@
       "children": []
     }
   ],
-  "description": "Introduces the Mission Sequence layer (Resources/Mission Sequence/Output -- see this project's HISTORY.md, 'What Phase 6 (Mission Sequence architecture) adds'): rather than one single propagate-to-duration run, this scenario is a time-ordered list of commands, editable as a tree in the GUI's 'Mission sequence' panel: coast, snapshot the orbit state, apply a single prograde impulsive delta-V, coast again, snapshot again. The maneuver command applies delta_v_m_s in the 'vnb' frame (velocity/normal/binormal -- 'inertial' applies it directly in the N frame instead, useful when you already know the exact inertial-frame vector you want), so [50, 0, 0] here means '+50 m/s prograde', the simplest kind of orbit-raising burn.\n\nWhat to look at: run it and check the 'Mission Output' tab (or, from the CLI, command_summary.csv) -- the two 'report' commands snapshot sat-1.position_N/velocity_N before and after the burn. A prograde burn on a circular orbit raises the OPPOSITE side of the orbit into an ellipse -- the orbit is no longer circular after the burn, with a higher apoapsis where the spacecraft now moves slower and a periapsis back at the original altitude.\n\nTry changing: delta_v_m_s's magnitude (bigger burn = bigger apoapsis raise) or sign (negative = retrograde, LOWERS the opposite side of the orbit instead), or add a second maneuver command half an orbit later to circularize at the new higher altitude -- a genuine two-burn Hohmann transfer, built entirely from this project's own mission -sequence commands.\n\nUpdated to include 10th-degree spherical-harmonics gravity, Sun/Moon third-body gravity, atmospheric drag, and solar radiation pressure -- physically relevant at 400 km, and this template's own lesson (the Mission Sequence command layer / maneuver mechanics) doesn't depend on a clean two-body baseline the way '01'/'09' deliberately do. Drag uses a nominal, SYNTHETIC (solar-cycle-shaped, not a real forecast) space-weather profile, generated entirely locally, no network access needed (see engine/spaceweather.py's own 'Closed-off/offline policy' docstring -- see template 04's own description for how to restore a real historical-data CONSERVATIVE margin via a self-supplied local CelesTrak CSV).",
-  "schema_version": 2
+  "description": "Introduces the Mission Sequence: coast, take a snapshot, burn +50 m/s prograde, coast, take another snapshot -- instead of one plain propagation.\n\nWhat to look at:\n- The Mission Output tab: the snapshots before and after the burn.\n- The orbit turns into an ellipse: apoapsis raised opposite the burn, periapsis unchanged.\n\nTry changing:\n- Burn size (bigger raises apoapsis more) or sign (negative lowers it).\n- Add a second burn half an orbit later to circularize: a Hohmann transfer.",
+  "schema_version": 4
 }

@@ -25,9 +25,23 @@ maps 1:1 onto an ``OrbitIC`` field -- no separate GUI-only representation.
 from __future__ import annotations
 
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QComboBox, QDoubleSpinBox, QFormLayout, QLineEdit, QStackedWidget, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QDoubleSpinBox,
+    QFormLayout,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QPushButton,
+    QStackedWidget,
+    QVBoxLayout,
+    QWidget,
+)
 
+from ..engine import tle
+from ..engine.orbit_design import DEFAULT_LTAN_HOUR, raan_for_ltan_deg, sun_synchronous_inclination_deg
 from ..schema.scenario import ANOMALY_TYPES, ORBIT_IC_TYPES, OrbitIC
+from .widgets import ComboBox, PreciseDoubleSpinBox
 
 _ANOMALY_TYPE_LABELS = {
     "true": "True anomaly [deg]",
@@ -42,12 +56,20 @@ _TYPE_LABELS = {
 
 
 def _spin(minimum: float, maximum: float, decimals: int = 6, step: float = 1.0, value: float = 0.0) -> QDoubleSpinBox:
-    box = QDoubleSpinBox()
+    box = PreciseDoubleSpinBox()
     box.setRange(minimum, maximum)
     box.setDecimals(decimals)
     box.setSingleStep(step)
     box.setValue(value)
     return box
+
+
+def _frame_label(kind: str) -> QLabel:
+    """Frame and time scale of an orbit input (ECSS-E-ST-10-09C 5.4.1)."""
+    label = QLabel("EME2000 (SPICE J2000), central body, at the scenario epoch (UTC)")
+    label.setToolTip(f"The {kind} are given in the inertial frame N: Earth mean equator and equinox of "
+                     "J2000 (SPICE J2000), centred on the scenario's central body, at the scenario epoch.")
+    return label
 
 
 class OrbitIcWidget(QWidget):
@@ -59,10 +81,19 @@ class OrbitIcWidget(QWidget):
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
+        # Set by the owning dialog (see set_epoch_provider) so the
+        # "Compute RAAN for LTAN..." button below always uses this
+        # scenario's CURRENT epoch -- same provider pattern as
+        # gui.spacecraft_editor.SpacecraftListWidget's own
+        # set_central_body_provider/set_ground_station_names_provider.
+        # Falls back to a fixed placeholder epoch when unset (e.g. this
+        # widget used standalone in a test).
+        self._epoch_provider = None
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        self.type_combo = QComboBox()
+        self.type_combo = ComboBox()
         for orbit_type in ORBIT_IC_TYPES:
             self.type_combo.addItem(_TYPE_LABELS[orbit_type], userData=orbit_type)
         self.type_combo.setToolTip(
@@ -85,6 +116,15 @@ class OrbitIcWidget(QWidget):
 
         self.type_combo.currentIndexChanged.connect(self.stack.setCurrentIndex)
         self.type_combo.currentIndexChanged.connect(self.changed)
+
+    def set_epoch_provider(self, provider) -> None:
+        """``provider`` is a zero-argument callable returning this
+        scenario's current ``epoch_utc`` string, e.g.
+        ``lambda: self.epoch_edit.text().strip()`` from
+        ``ScenarioEditorWidget`` (plumbed down through
+        ``SpacecraftEditorDialog``/``SpacecraftListWidget``).
+        """
+        self._epoch_provider = provider
 
     def _build_classical_elements_page(self) -> None:
         page = QWidget()
@@ -125,9 +165,49 @@ class OrbitIcWidget(QWidget):
             "relative to the ascending node. Has no effect for a circular orbit (eccentricity "
             "0), since a circle has no distinct closest point."
         )
+        form.addRow("Frame", _frame_label("osculating Keplerian elements"))
         form.addRow("Semi-major axis [km]", self.sma_km)
         form.addRow("Eccentricity [-]", self.ecc)
         form.addRow("Inclination [deg]", self.inc_deg)
+
+        # Sun-synchronous helper (Phase 6 audit fix): previously, the only
+        # way to reproduce 12 of the 20 bundled templates' own
+        # Sun-synchronous orbit by hand was to read this project's own
+        # generator-script source -- sun_synchronous_inclination_deg()/
+        # raan_for_ltan_deg() (engine.orbit_design, Basilisk-free) were
+        # never exposed anywhere in the GUI. These buttons compute a
+        # value and WRITE it into the existing spin box above/below --
+        # still editable afterward, same "compute a sane starting point,
+        # let the user keep tweaking" spirit as this app's other
+        # generator dialogs (e.g. "Generate Walker constellation...").
+        sso_incl_button = QPushButton("Compute Sun-sync inclination for this altitude")
+        sso_incl_button.setToolTip(
+            "Overwrites Inclination above with the exact value whose J2 secular nodal "
+            "regression rate matches the Sun's own apparent motion, computed from the "
+            "Semi-major axis and Eccentricity above (engine.orbit_design"
+            ".sun_synchronous_inclination_deg())."
+        )
+        sso_incl_button.clicked.connect(self._on_compute_sso_inclination)
+        form.addRow(sso_incl_button)
+
+        raan_ltan_row = QHBoxLayout()
+        sso_raan_button = QPushButton("Compute RAAN for LTAN...")
+        sso_raan_button.setToolTip(
+            "Overwrites RAAN below with the value that puts this orbit's ascending node at "
+            "the local time of ascending node (LTAN) entered here, at this scenario's own "
+            "epoch (engine.orbit_design.raan_for_ltan_deg())."
+        )
+        sso_raan_button.clicked.connect(self._on_compute_sso_raan)
+        self.sso_ltan_hour = _spin(0.0, 24.0, decimals=2, step=0.5, value=DEFAULT_LTAN_HOUR)
+        self.sso_ltan_hour.setSuffix(" h LTAN")
+        self.sso_ltan_hour.setToolTip(
+            "Local time of ascending node (24h clock) -- 10.5 (10:30 AM) is the most common "
+            "real choice for an Earth-observation/commercial smallsat."
+        )
+        raan_ltan_row.addWidget(sso_raan_button)
+        raan_ltan_row.addWidget(self.sso_ltan_hour)
+        form.addRow(raan_ltan_row)
+
         form.addRow("RAAN [deg]", self.raan_deg)
         form.addRow("Argument of periapsis [deg]", self.aop_deg)
 
@@ -137,7 +217,7 @@ class OrbitIcWidget(QWidget):
         # convert the displayed value, since true and mean anomaly aren't
         # numerically close in general and silently reinterpreting a typed
         # number would be more confusing than resetting it to 0.
-        self.anomaly_type_combo = QComboBox()
+        self.anomaly_type_combo = ComboBox()
         for anomaly_type in ANOMALY_TYPES:
             self.anomaly_type_combo.addItem(_ANOMALY_TYPE_LABELS[anomaly_type], userData=anomaly_type)
         self.anomaly_type_combo.setToolTip(
@@ -185,6 +265,7 @@ class OrbitIcWidget(QWidget):
                 "you intended (e.g. a mismatched speed turns a circular orbit into a highly "
                 "elliptical, or escaping, one)."
             )
+        form.addRow("Frame", _frame_label("position and velocity"))
         form.addRow("Position X [km]", self.pos_x_km)
         form.addRow("Position Y [km]", self.pos_y_km)
         form.addRow("Position Z [km]", self.pos_z_km)
@@ -215,9 +296,59 @@ class OrbitIcWidget(QWidget):
         )
         form.addRow("TLE line 1", self.tle_line1)
         form.addRow("TLE line 2", self.tle_line2)
-        self.tle_line1.textChanged.connect(self.changed)
-        self.tle_line2.textChanged.connect(self.changed)
+        frame_note = QLabel("TEME (SGP4) -> EME2000, propagated to the scenario epoch")
+        frame_note.setToolTip("SGP4 propagates the TLE from its own epoch to the scenario epoch; the state "
+                              "is then rotated from TEME of date to EME2000 (IAU 1976/1980).")
+        form.addRow("Frame", frame_note)
+        self.tle_status = QLabel("")
+        self.tle_status.setWordWrap(True)
+        form.addRow("TLE epoch", self.tle_status)
+        for line in (self.tle_line1, self.tle_line2):
+            line.textChanged.connect(self.changed)
+            line.textChanged.connect(self._refresh_tle_status)
         self.stack.addWidget(page)
+
+    def _refresh_tle_status(self) -> None:
+        """TLE epoch and its distance from the scenario epoch, or the format
+        problem (checksum, length, line numbers)."""
+        line1, line2 = self.tle_line1.text().strip(), self.tle_line2.text().strip()
+        if not line1 or not line2:
+            self.tle_status.setText("")
+            return
+        try:
+            epoch = tle.tle_epoch_utc(tle.parse(line1, line2))
+        except tle.TLEError as exc:
+            self.tle_status.setText(str(exc))
+            return
+        text = f"{epoch:%Y-%m-%d %H:%M:%S} UTC"
+        epoch_utc = (self._epoch_provider() if self._epoch_provider else "").strip()
+        if epoch_utc:
+            try:
+                age_days = tle.state_at(line1, line2, epoch_utc).age_days
+                text += f" ({abs(age_days):.1f} d {'before' if age_days >= 0 else 'after'} the scenario epoch)"
+            except (tle.TLEError, ValueError) as exc:
+                text += f" -- {exc}"
+        self.tle_status.setText(text)
+
+    def _on_compute_sso_inclination(self) -> None:
+        value = sun_synchronous_inclination_deg(self.sma_km.value(), self.ecc.value())
+        self.inc_deg.setValue(value)
+
+    def _on_compute_sso_raan(self) -> None:
+        epoch_utc = (self._epoch_provider() if self._epoch_provider else "").strip()
+        if not epoch_utc:
+            QMessageBox.warning(self, "No epoch set",
+                                 "This scenario's Epoch (UTC) field is empty -- set a valid "
+                                 "ISO 8601 epoch before computing a RAAN for LTAN.")
+            return
+        try:
+            value = raan_for_ltan_deg(epoch_utc, self.sso_ltan_hour.value())
+        except ValueError as exc:
+            QMessageBox.warning(self, "Invalid epoch",
+                                 f"Could not parse this scenario's Epoch (UTC) {epoch_utc!r} as a "
+                                 f"valid ISO 8601 date/time: {exc}")
+            return
+        self.raan_deg.setValue(value)
 
     def to_dataclass(self) -> OrbitIC:
         orbit_type = self.type_combo.currentData()

@@ -120,6 +120,13 @@ from spacemissionstudio.engine import kernels
 kernels.require_kernels()
 " 2>/dev/null; then
         kernel_status="Support data pre-fetched -- SpaceMissionStudio will not need network access again."
+        if python3 -m spacemissionstudio.cli earth-orientation --fetch >/dev/null 2>&1; then
+            kernel_status="$kernel_status
+Earth orientation files (NAIF ITRF93) fetched."
+        else
+            kernel_status="$kernel_status
+Earth orientation files not fetched -- runs use IAU_EARTH until 'spacemissionstudio earth-orientation --fetch'."
+        fi
     else
         kernel_status="Could not pre-fetch support data (no internet access right now?) -- run
 'spacemissionstudio kernels-status' once WITH internet access before your first real run."

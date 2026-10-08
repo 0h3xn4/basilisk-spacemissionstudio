@@ -36,7 +36,6 @@ from __future__ import annotations
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QCheckBox,
-    QComboBox,
     QDialog,
     QDialogButtonBox,
     QDoubleSpinBox,
@@ -48,17 +47,17 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMessageBox,
     QPushButton,
-    QSpinBox,
     QVBoxLayout,
     QWidget,
 )
 
 from ..schema.scenario import DISPERSION_KINDS_BY_QUANTITY, DISPERSION_QUANTITIES, DispersionConfig, MonteCarloConfig
 from .feedback import show_toast
+from .widgets import ComboBox, PreciseDoubleSpinBox, SpinBox
 
 
 def _spin(minimum: float, maximum: float, decimals: int = 4, step: float = 1.0, value: float = 0.0) -> QDoubleSpinBox:
-    box = QDoubleSpinBox()
+    box = PreciseDoubleSpinBox()
     box.setRange(minimum, maximum)
     box.setDecimals(decimals)
     box.setSingleStep(step)
@@ -74,7 +73,7 @@ class _DispersionEditorDialog(QDialog):
         layout = QVBoxLayout(self)
         form = QFormLayout()
 
-        self.spacecraft_combo = QComboBox()
+        self.spacecraft_combo = ComboBox()
         for name in spacecraft_names:
             self.spacecraft_combo.addItem(name, userData=name)
         if item is not None:
@@ -96,7 +95,7 @@ class _DispersionEditorDialog(QDialog):
                 self.spacecraft_combo.setCurrentIndex(self.spacecraft_combo.count() - 1)
         form.addRow("Spacecraft", self.spacecraft_combo)
 
-        self.quantity_combo = QComboBox()
+        self.quantity_combo = ComboBox()
         self.quantity_combo.setToolTip(
             "Which initial-condition quantity gets randomized, independently, on each Monte "
             "Carlo run -- e.g. a real uncertainty in orbit insertion or initial attitude. Every "
@@ -106,7 +105,7 @@ class _DispersionEditorDialog(QDialog):
         self.quantity_combo.currentTextChanged.connect(self._refresh_kind_choices)
         form.addRow("Quantity", self.quantity_combo)
 
-        self.kind_combo = QComboBox()
+        self.kind_combo = ComboBox()
         self.kind_combo.setToolTip(
             "The probability distribution each run's random draw is taken from -- 'uniform' "
             "needs Bounds below (every value in range equally likely); 'normal' needs Mean/Std "
@@ -338,7 +337,7 @@ class MonteCarloGroupWidget(QGroupBox):
         self.enabled_check.toggled.connect(self.changed)
         form.addRow(self.enabled_check)
 
-        self.num_runs_spin = QSpinBox()
+        self.num_runs_spin = SpinBox()
         self.num_runs_spin.setRange(1, 1_000_000)
         self.num_runs_spin.setValue(10)
         self.num_runs_spin.setToolTip(
@@ -349,7 +348,7 @@ class MonteCarloGroupWidget(QGroupBox):
         self.num_runs_spin.valueChanged.connect(self.changed)
         form.addRow("Number of runs", self.num_runs_spin)
 
-        self.thread_count_spin = QSpinBox()
+        self.thread_count_spin = SpinBox()
         self.thread_count_spin.setRange(1, 256)
         self.thread_count_spin.setValue(1)
         self.thread_count_spin.setToolTip(

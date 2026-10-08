@@ -58,7 +58,8 @@ def test_fetch_now_button_accepts_the_dialog(qtbot):
     assert dialog.result() == QDialog.DialogCode.Accepted
 
 
-def _mock_dialog_exec(monkeypatch, *, accept: bool, fetch_kernels: bool = True, fetch_space_weather: bool = True):
+def _mock_dialog_exec(monkeypatch, *, accept: bool, fetch_kernels: bool = True, fetch_space_weather: bool = True,
+                      fetch_earth_orientation: bool = False):
     from PySide6.QtWidgets import QDialog
 
     from spacemissionstudio.gui import startup_fetch_dialog as module
@@ -66,6 +67,7 @@ def _mock_dialog_exec(monkeypatch, *, accept: bool, fetch_kernels: bool = True, 
     def _exec(self):
         self.kernels_checkbox.setChecked(fetch_kernels)
         self.space_weather_checkbox.setChecked(fetch_space_weather)
+        self.earth_orientation_checkbox.setChecked(fetch_earth_orientation)
         return QDialog.DialogCode.Accepted if accept else QDialog.DialogCode.Rejected
 
     monkeypatch.setattr(module.StartupFetchDialog, "exec", _exec)
@@ -234,9 +236,50 @@ def test_worker_run_always_emits_even_if_a_helper_raises_unexpectedly(qtbot, mon
     worker = StartupFetchWorker(fetch_kernels=True, fetch_space_weather=False)
     with qtbot.waitSignal(worker.finished_all, timeout=5000) as blocker:
         worker.start()
+    assert worker.wait(5000)  # join it: GC of a still-running QThread aborts the process
 
     result = blocker.args[0]
     assert "error" in result
     ok, message = result["error"]
     assert ok is False
     assert "something nobody expected" in message
+
+
+@pytest.mark.requirement("E-ST-10-09C 5.4.9f")
+def test_earth_orientation_item_is_checked_only_when_needed(qtbot, tmp_path, monkeypatch):
+    """Checked when no Earth orientation files are installed; unchecked
+    while the installed files are still within their high-accuracy span.
+    The tooltip names the source."""
+    from datetime import datetime
+
+    from spacemissionstudio.engine import earth_orientation as eo
+    from spacemissionstudio.gui.startup_fetch_dialog import StartupFetchDialog
+
+    dialog = StartupFetchDialog()
+    qtbot.addWidget(dialog)
+    assert dialog.selected_earth_orientation() is True
+    assert eo.NAIF_PCK_URL in dialog.earth_orientation_checkbox.toolTip()
+
+    fake = eo.EOPKernel(role="high_precision", path=str(tmp_path / "x.bpc"), source="test", size_bytes=1,
+                        sha256="0", installed_utc="", last_datum_utc=datetime.utcnow().isoformat())
+    monkeypatch.setattr(eo, "installed", lambda directory=None: [fake])
+    fresh = StartupFetchDialog()
+    qtbot.addWidget(fresh)
+    assert fresh.selected_earth_orientation() is False
+
+
+def test_maybe_run_reports_the_earth_orientation_fetch(qtbot, monkeypatch):
+    """A selected Earth orientation fetch runs and its result is summarised."""
+    from spacemissionstudio.gui import startup_fetch_dialog as module
+
+    _mock_dialog_exec(monkeypatch, accept=True, fetch_kernels=False, fetch_space_weather=False,
+                      fetch_earth_orientation=True)
+    monkeypatch.setattr(module.StartupFetchWorker, "_fetch_earth_orientation",
+                        staticmethod(lambda: (True, "2 file(s), ITRF93, high accuracy until 2026-12-16")))
+    monkeypatch.setattr(module.StartupFetchWorker, "start", lambda self: self.run())
+    shown = []
+    monkeypatch.setattr(module.QMessageBox, "information", lambda parent, title, text: shown.append(text))
+
+    module.maybe_run_startup_fetch(None)
+
+    assert shown == ["Earth orientation: 2 file(s), ITRF93, high accuracy until 2026-12-16"]

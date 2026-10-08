@@ -149,11 +149,15 @@ installed version happens to add.
 
 from __future__ import annotations
 
+import dataclasses
+import hashlib
+import json
 import logging
+import math
 import os
-import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
 import numpy as np
@@ -164,8 +168,10 @@ from Basilisk.utilities import SimulationBaseClass, macros, orbitalMotion, simHe
 from Basilisk.utilities.supportDataTools.dataFetcher import DataFile, get_path
 
 from .. import __version__ as _SPACEMISSIONSTUDIO_VERSION
+from .. import dependencies
 from ..schema.scenario import OrbitIC, Scenario
-from . import fsw, kernels, link_budget, orbit_maintenance, time_system, vizard
+from . import (earth_orientation, environment_models, frames, fsw, geodesy, geodetic_atmosphere, kernels,
+               link_budget, long_run, orbit_maintenance, planet_rotation, time_system, tle, vizard)
 from .results import ResultSet, RunProvenance, TimeSeries, conservation_drift_warnings
 from .vizard import VizardRequest
 
@@ -198,6 +204,12 @@ _INTEGRATORS = {
 _LIVE_DEFAULT_FRAMES = 60
 
 _logger = logging.getLogger(__name__)
+
+
+_REENTRY_ALTITUDE_M = 100e3  # [m] below this a spacecraft is flagged as re-entered
+_REENTRY_CHECK_S = 6.0 * 3600.0  # [s] between re-entry checks, perigee high
+_REENTRY_NEAR_PERIGEE_M = 200e3  # [m] below this perigee altitude, check often
+_REENTRY_NEAR_CHECK_S = 300.0  # [s] between re-entry checks, perigee low
 
 
 class SimulationServiceError(Exception):
@@ -280,6 +292,12 @@ class SimulationCancelled(Exception):
         self.partial_result = partial_result
 
 
+def _unit_vector(values) -> List[float]:
+    """``values`` normalized (schema validation guarantees non-zero and finite)."""
+    vector = np.asarray(values, dtype=float)
+    return list(vector / np.linalg.norm(vector))
+
+
 def _is_two_body_only(scenario: Scenario, sc_config) -> bool:
     """``True`` only when NOTHING in this scenario/spacecraft can
     legitimately change this spacecraft's own orbital energy/angular
@@ -318,11 +336,16 @@ def _is_two_body_only(scenario: Scenario, sc_config) -> bool:
     return True
 
 
-def _orbit_ic_to_rv(mu: float, orbit: OrbitIC):
+def _orbit_ic_to_rv(mu: float, orbit: OrbitIC, epoch_utc: Optional[str] = None):
     """(r_N, v_N) [m], [m/s] from a schema.OrbitIC, for any of its three
     forms. ``orbit.validate()`` is assumed to have already been called
     (Scenario.validate() does this) -- this function trusts the fields for
     ``orbit.type`` are populated.
+
+    A TLE is propagated by SGP4 to ``epoch_utc`` (the scenario epoch) and
+    rotated from TEME to EME2000 (:mod:`engine.tle`); without ``epoch_utc``
+    its state at the TLE's own epoch is returned (only for callers that use
+    the orbit's shape, not its timing).
     """
     if orbit.type == "classical_elements":
         oe = orbitalMotion.ClassicElements()
@@ -348,27 +371,19 @@ def _orbit_ic_to_rv(mu: float, orbit: OrbitIC):
         return r_N, v_N
 
     if orbit.type == "tle":
-        # tleHandling.satTle2elem() reads from a FILE (one or more TLEs),
-        # not raw line strings -- the schema stores the two lines directly
-        # for JSON readability, so bridge that with a short-lived temp file.
-        from Basilisk.utilities import tleHandling
-
-        fd, tmp_path = tempfile.mkstemp(suffix=".tle")
         try:
-            with os.fdopen(fd, "w") as f:
-                f.write(orbit.tle_line1.rstrip("\n") + "\n")
-                f.write(orbit.tle_line2.rstrip("\n") + "\n")
-            elements_list, _metadata_list = tleHandling.satTle2elem(tmp_path)
-        finally:
-            os.unlink(tmp_path)
-        if not elements_list:
-            raise SimulationServiceError("TLE parsing (tleHandling.satTle2elem) returned no elements")
-        return orbitalMotion.elem2rv(mu, elements_list[0])
+            if epoch_utc is None:
+                epoch_utc = tle.tle_epoch_utc(tle.parse(orbit.tle_line1, orbit.tle_line2)).isoformat()
+            state = tle.state_at(orbit.tle_line1, orbit.tle_line2, epoch_utc)
+        except tle.TLEError as exc:
+            raise SimulationServiceError(str(exc)) from exc
+        return state.r_m, state.v_m_s
 
     raise SimulationServiceError(f"unknown orbit IC type {orbit.type!r}")  # unreachable if orbit.validate() passed
 
 
-def _osculating_elements(mu: float, r_bn_n: np.ndarray, v_bn_n: np.ndarray) -> Dict[str, np.ndarray]:
+def _osculating_elements(mu: float, r_bn_n: np.ndarray, v_bn_n: np.ndarray,
+                         first_sample_index: int = 0) -> Dict[str, np.ndarray]:
     """Osculating classical orbital elements (a [m], e [-], i/raan/argp/
     true_anomaly [rad]) at every recorded (r, v) sample, via
     ``orbitalMotion.rv2elem`` -- the exact inverse of ``_orbit_ic_to_rv``'s
@@ -398,6 +413,10 @@ def _osculating_elements(mu: float, r_bn_n: np.ndarray, v_bn_n: np.ndarray) -> D
     which is what a spacecraft whose translational state actually
     diverged used to surface as (an upstream Basilisk bug, not fixed
     here, but worked around so it never gets reached).
+
+    ``first_sample_index`` is the recorded index of ``r_bn_n[0]``, for the
+    error message when only new samples are passed (see
+    ``SimulationService._orbit_elements``).
     """
     n = r_bn_n.shape[0]
     a = np.empty(n)
@@ -410,7 +429,7 @@ def _osculating_elements(mu: float, r_bn_n: np.ndarray, v_bn_n: np.ndarray) -> D
         if not (np.all(np.isfinite(r_bn_n[k])) and np.all(np.isfinite(v_bn_n[k]))):
             raise SimulationServiceError(
                 f"the simulated position/velocity became non-physical (NaN/inf) at recorded sample "
-                f"{k} of {n} -- the propagated dynamics went numerically unstable partway through this "
+                f"{first_sample_index + k} of {first_sample_index + n} -- the propagated dynamics went numerically unstable partway through this "
                 f"run. Common causes: attitude control gains too aggressive for the spacecraft's "
                 f"inertia/initial body rates, an actuator commanding excessive torque/thrust, or "
                 f"sim_settings.dynamics_task_rate_s too coarse for how fast the dynamics involved "
@@ -424,6 +443,9 @@ def _osculating_elements(mu: float, r_bn_n: np.ndarray, v_bn_n: np.ndarray) -> D
         argp[k] = oe.omega
         true_anomaly[k] = oe.f
     return {"a": a, "e": e, "i": i, "raan": raan, "argp": argp, "true_anomaly": true_anomaly}
+
+
+_MEAN_ELEMENTS_MIN_INCLINATION_RAD = 1.0e-9  # [rad]
 
 
 def _mean_elements(oe: Dict[str, np.ndarray], req: float, j2: float) -> Dict[str, np.ndarray]:
@@ -464,11 +486,25 @@ def _mean_elements(oe: Dict[str, np.ndarray], req: float, j2: float) -> Dict[str
     for k in range(n):
         osc.a = oe["a"][k]
         osc.e = oe["e"][k]
-        osc.i = oe["i"][k]
+        # clMeanOscMap divides by tan(i), so an EXACTLY equatorial sample
+        # (e.g. a GEO scenario's first sample at i = 0) came back as NaN
+        # mean inclination and RAAN. Keep i a hair off 0/180 deg: 1e-9 rad
+        # changes no plotted or reported value.
+        osc.i = min(max(oe["i"][k], _MEAN_ELEMENTS_MIN_INCLINATION_RAD),
+                    math.pi - _MEAN_ELEMENTS_MIN_INCLINATION_RAD)
         osc.Omega = oe["raan"][k]
         osc.omega = oe["argp"][k]
         osc.f = oe["true_anomaly"][k]
-        orbitalMotion.clMeanOscMap(req, j2, osc, mean, -1)
+        try:
+            if not (0.0 <= osc.e < 1.0 and osc.a > 0.0):
+                raise ValueError("not a closed orbit")
+            orbitalMotion.clMeanOscMap(req, j2, osc, mean, -1)
+        except ValueError:
+            # a spacecraft past re-entry, inside the Earth: no closed
+            # orbit, or none once J2's terms are removed (clMeanOscMap's
+            # Kepler solve raises for e >= 1)
+            a[k] = e[k] = i[k] = raan[k] = argp[k] = true_anomaly[k] = np.nan
+            continue
         a[k] = mean.a
         e[k] = mean.e
         i[k] = mean.i
@@ -487,6 +523,7 @@ class _SpacecraftHandle:
     nav_recorder: Optional[object] = None
     control_torque_recorder: Optional[object] = None
     rw_speed_recorder: Optional[object] = None
+    rw_speed_out_msg: Optional[object] = None  # the wheels' own speed message, read for segmented runs
     num_rw: int = 0
     thruster_on_time_recorder: Optional[object] = None
     num_thrusters: int = 0
@@ -503,6 +540,7 @@ class _SpacecraftHandle:
     battery_recorder: Optional[object] = None  # Phase 4: only set if sc_config.power was configured
     battery_module: Optional[object] = None  # Phase 4: the simpleBattery.SimpleBattery itself, for engine.vizard
     station_keeping_controller: Optional[object] = None  # Phase 4: only set if sc_config.station_keeping was configured
+    geo_station_keeping_controller: Optional[object] = None  # only set if sc_config.geo_station_keeping is
     eclipse_out_msg: Optional[object] = None  # Phase 4: only set if power or station_keeping was configured
     phasing_keeping_controller: Optional[object] = None  # Phase 4: only set if sc_config.phasing_keeping was configured
     constant_thrust_controller: Optional[object] = None  # Phase 5: only set if sc_config.constant_thrust was configured
@@ -533,6 +571,14 @@ class SimulationService:
         self.vizard_request = vizard_request
         self.scSim: Optional[SimulationBaseClass.SimBaseClass] = None
         self.mu: Optional[float] = None
+        # (spacecraft name, t [s]) once a spacecraft with drag re-entered;
+        # the run stopped there rather than integrate it through the Earth
+        self.reentry: Optional[tuple] = None
+        self._space_weather_warnings: List[str] = []  # what the resolved space weather is built from
+        self._data_files: Dict[str, Dict[str, object]] = {}  # reference data used, for RunProvenance
+        self._earth_orientation_notes: List[str] = []
+        self._geodetic_proxies: List = []
+        self.earth_frame = "IAU_EARTH"
         self._run_started_utc: Optional[str] = None  # set by build() -- see RunProvenance
         # Set below, during gravity setup, only when a real J2 term is
         # actually being modeled for the central body -- see that
@@ -543,6 +589,9 @@ class SimulationService:
         self.mean_elements_req: Optional[float] = None
         self.mean_elements_j2: Optional[float] = None
         self._handles: Dict[str, _SpacecraftHandle] = {}
+        # Per-spacecraft (sample count, osculating elements, mean elements)
+        # already computed -- see _orbit_elements.
+        self._element_cache: Dict[str, tuple] = {}
         # thrMomentumManagement modules (one per spacecraft with
         # momentum_dumping configured) that build() must re-Reset() after
         # priming one real dynamics tick -- see build()'s own comment and
@@ -560,6 +609,7 @@ class SimulationService:
         self._ground_locations: Dict[str, object] = {}
         self._mag_field_model = None
         self._access_recorders: Dict[tuple, object] = {}  # (ground_station_name, spacecraft_name) -> recorder
+        self._ground_station_latitudes: Dict[str, tuple] = {}  # name -> (geocentric, geodetic) [rad]
         self._access_out_msgs: Dict[tuple, object] = {}  # (ground_station_name, spacecraft_name) -> accessOutMsg, for engine.vizard
         self._eclipse_object = None  # Phase 4: only built if some spacecraft has power or station_keeping configured
         # Phase 4: retains the vizInterface module enable_vizard() returns,
@@ -621,6 +671,12 @@ class SimulationService:
         # run()/run_live()/MissionEngine.run() -- see RunProvenance's own
         # docstring for why this matters).
         self._run_started_utc = datetime.now(timezone.utc).isoformat()
+        self._dependency_versions = dependencies.dependency_versions()
+        self._scenario_sha256 = hashlib.sha256(
+            json.dumps(self.scenario.to_dict(), sort_keys=True).encode("utf-8")).hexdigest()
+        version_note = dependencies.basilisk_check(Basilisk.__version__)
+        if version_note:
+            _logger.warning("%s", version_note)
 
         scenario = self.scenario
         scenario.validate()  # re-validate: the scenario object may have been mutated after load
@@ -634,26 +690,18 @@ class SimulationService:
                 f"(known: {sorted(_INTEGRATORS)})"
             )
 
-        # sim_settings.dynamics_task_rate_s is not just a logging/output
-        # cadence -- it also bounds how often the SPICE-derived central-body
-        # state (position AND rotation, used directly in the gravity force
-        # computation) gets refreshed, since self.spice_object below runs on
-        # this SAME task. Basilisk only linearly (Euler-step) extrapolates
-        # that state BETWEEN refreshes (see GravBodyData::computeGravityInertial()
-        # and getEulerSteppedGravBodyPosition() in gravityEffector.cpp), so a
-        # coarse rate here introduces a real force-accuracy error even though
-        # the integrator itself (see _INTEGRATORS below) may be far more
-        # accurate than that. Confirmed empirically, not guessed: holding
-        # everything else fixed and only varying this rate on
-        # scenarios/two_body_validation.json made its analytical-comparison
-        # position error scale roughly with the SQUARE of this value (~202 m
-        # at 30 s, ~22 m at 10 s, ~2 m at 3 s, ~0.22 m at 1 s) -- exactly the
-        # signature of a first-order truncation error, and completely
-        # insensitive to the RKF78 integrator's own relative tolerance
-        # (tested directly at both 1e-4 and 1e-14 with no change whatsoever).
-        # That two-body validation scenario uses 1.0 s for exactly this
-        # reason; scenarios that need tighter absolute accuracy than a 30 s
-        # rate provides should do the same.
+        # sim_settings.dynamics_task_rate_s is also how often the SPICE
+        # planet states the gravity model uses are refreshed (the SPICE
+        # interface runs on this task). Inside a step Basilisk extrapolates
+        # the planet orientation linearly (GravBodyData::computeGravityInertial),
+        # which is not a rotation and stretched every gravity evaluation by
+        # about (omega dt)^2 / 2: in two-body runs the error grew with the
+        # square of this rate (Phase 3: 148 m after one day at 10 s, 1.2 km
+        # at 30 s, in a 400 km orbit) whatever the integrator tolerance.
+        # engine.planet_rotation now gives the gravity model the mid-step
+        # orientation instead (two-body at 10 s: < 1 mm per day against
+        # Kepler); the planet positions need no correction because zeroBase
+        # puts the central body at the origin.
         self.scSim = SimulationBaseClass.SimBaseClass()
         dyn_process = self.scSim.CreateNewProcess("dynProcess", priority=100)
         dyn_task_name = "dynTask"
@@ -678,12 +726,13 @@ class SimulationService:
                     "gravity.central_body_degree == 0 (point-mass) until engine.service is extended "
                     "with that body's gravity-field file."
                 )
-            central_body.useSphericalHarmonicsGravityModel(
-                str(get_path(DataFile.LocalGravData.GGM03S)), gravity.central_body_degree
-            )
+            gravity_file = get_path(DataFile.LocalGravData.GGM03S)
+            central_body.useSphericalHarmonicsGravityModel(str(gravity_file), gravity.central_body_degree)
+            self._data_files["gravity_field"] = dependencies.file_record(gravity_file)
         mu = central_body.mu
         self.mu = mu
         self.grav_factory = grav_factory
+        self.central_radius_m = central_body.radEquator  # [m] for the re-entry warning
 
         if gravity.central_body == "earth" and gravity.central_body_degree >= 2:
             # A real J2 (degree-2 zonal) term is only actually present in
@@ -705,6 +754,34 @@ class SimulationService:
 
         spice_time_string = time_system.utc_iso_to_spice_string(scenario.epoch_utc)
         self.spice_object = kernels.build_spice_interface(grav_factory, spice_time_string, epoch_in_msg=True)
+        for status in kernels.ensure_kernels(kernels.DEFAULT_KERNELS):
+            self._data_files[f"spice:{status.filename}"] = dependencies.file_record(status.path)
+        # Earth-fixed frame: ITRF93 from the IERS-based NAIF Earth PCKs when
+        # installed (engine.earth_orientation, ECSS-E-ST-10-09C 5.4.9f),
+        # else Basilisk's default IAU_EARTH. Combined file first, so the
+        # high-precision one, loaded last, takes precedence.
+        self.earth_frame = earth_orientation.FALLBACK_EARTH_FRAME
+        if "earth" in body_names:
+            eop_kernels = earth_orientation.installed()
+            for eop in eop_kernels:
+                eop_path = Path(eop.path)
+                self.spice_object.loadSpiceKernel(eop_path.name, str(eop_path.parent) + os.sep)
+                self._data_files[f"earth_orientation:{eop_path.name}"] = {
+                    "path": eop.path, "size_bytes": eop.size_bytes, "sha256": eop.sha256, "source": eop.source,
+                    "last_datum_utc": eop.last_datum_utc}
+            if eop_kernels:
+                self.earth_frame = earth_orientation.EARTH_FIXED_FRAME
+                self.spice_object.planetFrames = [self.earth_frame if name == "earth" else "" for name in body_names]
+            start_utc = datetime.fromisoformat(scenario.epoch_utc)
+            if start_utc.tzinfo is not None:
+                start_utc = start_utc.astimezone(timezone.utc).replace(tzinfo=None)
+            self._earth_orientation_notes = earth_orientation.notes(
+                start_utc, start_utc + timedelta(days=sim_settings.duration_days), eop_kernels)
+            if not eop_kernels and gravity.central_body == "earth" and gravity.central_body_degree > 0:
+                # Phase 3 V-04: degree 20 at 400 km is ~160 m from GMAT after a day with IAU_EARTH
+                self._earth_orientation_notes.append(
+                    "Earth gravity field oriented by the IAU model (no IERS data): ~160 m/day "
+                    "position error at degree 20, 400 km")
         # Re-zero every SPICE ephemeris output on the central body (SPICE's
         # own observer/"zeroBase" concept -- see spiceInterface.cpp's
         # spkezr_c call, which queries each body's state relative to
@@ -729,6 +806,11 @@ class SimulationService:
         # gravity.central_body value used here resolves the same way).
         self.spice_object.zeroBase = gravity.central_body
         self.scSim.AddModelToTask(dyn_task_name, self.spice_object, 500)
+        # The gravity model reads the planet orientation at mid-step, not
+        # Basilisk's linear extrapolation of it (engine.planet_rotation).
+        self._planet_orientation_modules = planet_rotation.attach(
+            self.scSim, dyn_task_name, self.spice_object, grav_factory.gravBodies, body_names,
+            sim_settings.dynamics_task_rate_s)
 
         # -- Phase 2 shared (scenario-level) infrastructure, built once before
         # the per-spacecraft loop below: the "sun" SPICE ephemeris message
@@ -760,9 +842,16 @@ class SimulationService:
         for gs_config in scenario.ground_stations:
             ground_location = fsw.build_ground_location(
                 self.scSim, dyn_task_name, gs_config, central_body.radEquator,
-                central_body_state_out_msg, sc_state_out_msgs=[],
+                central_body_state_out_msg, sc_state_out_msgs=[], central_body=gravity.central_body,
             )
             self._ground_locations[gs_config.name] = ground_location
+            ellipsoid = geodesy.ellipsoid_for(gravity.central_body, central_body.radEquator)
+            r_LP_P = geodesy.geodetic_to_pcpf(math.radians(gs_config.latitude_deg),
+                                              math.radians(gs_config.longitude_deg), gs_config.altitude_m, ellipsoid)
+            # (geocentric, geodetic) latitude: Basilisk reports geocentric
+            # elevation/azimuth; the recorded series are geodetic.
+            self._ground_station_latitudes[gs_config.name] = (geodesy.geocentric_latitude(r_LP_P),
+                                                              math.radians(gs_config.latitude_deg))
 
         needs_magnetometer = any(
             sensor.kind == "magnetometer" for sc in scenario.spacecraft for sensor in sc.sensors
@@ -771,6 +860,7 @@ class SimulationService:
             self._mag_field_model = fsw.build_magnetic_field_wmm(
                 self.scSim, dyn_task_name, central_body_state_out_msg, central_body.radEquator
             )
+            self._data_files["magnetic_field"] = dependencies.file_record(get_path(DataFile.MagneticFieldData.WMM))
 
         # Phase 4: power budget (schema.scenario.PowerConfig),
         # station-keeping's eclipse-gated reboost burn
@@ -870,13 +960,9 @@ class SimulationService:
                 start_utc = datetime.fromisoformat(scenario.epoch_utc)
                 end_utc = start_utc + timedelta(days=sim_settings.duration_days)
                 try:
-                    resolved_sw = sw.resolve(
-                        scenario.space_weather.source, start_utc, end_utc,
-                        local_file_path=scenario.space_weather.local_file_path,
-                        cache_dir=scenario.space_weather.cache_dir,
-                        activity_level=scenario.space_weather.activity_level,
-                        activity_percentile=scenario.space_weather.activity_percentile,
-                    )
+                    resolved_sw = sw.resolve_for(scenario.space_weather, start_utc, end_utc)
+                    self._space_weather_warnings = list(resolved_sw.warnings)
+                    self._data_files["space_weather"] = dependencies.file_record(resolved_sw.data_file)
                 except sw.SpaceWeatherError as exc:
                     raise SimulationServiceError(
                         f"could not resolve space weather for atmospheric drag: {exc}") from exc
@@ -916,6 +1002,8 @@ class SimulationService:
             initial_mass_kg = sc_config.dry_mass_kg
             if sc_config.station_keeping is not None:
                 initial_mass_kg += sc_config.station_keeping.propellant_kg
+            if sc_config.geo_station_keeping is not None:
+                initial_mass_kg += sc_config.geo_station_keeping.propellant_kg
             if sc_config.constant_thrust is not None:
                 initial_mass_kg += sc_config.constant_thrust.propellant_kg
             sc_object.hub.mHub = initial_mass_kg
@@ -923,7 +1011,12 @@ class SimulationService:
             sc_object.hub.sigma_BNInit = [[v] for v in sc_config.sigma_bn_init]
             sc_object.hub.omega_BN_BInit = [[v] for v in sc_config.omega_bn_b_init_rad_s]
 
-            r_N, v_N = _orbit_ic_to_rv(mu, sc_config.orbit)
+            r_N, v_N = _orbit_ic_to_rv(mu, sc_config.orbit, scenario.epoch_utc)
+            if sc_config.orbit.type == "tle":
+                age_days = tle.state_at(sc_config.orbit.tle_line1, sc_config.orbit.tle_line2,
+                                        scenario.epoch_utc).age_days
+                _logger.info("%s: TLE propagated by SGP4 %.2f d to the scenario epoch, TEME -> EME2000",
+                            sc_config.name, age_days)
             sc_object.hub.r_CN_NInit = r_N
             sc_object.hub.v_CN_NInit = v_N
 
@@ -931,7 +1024,7 @@ class SimulationService:
             grav_factory.addBodiesTo(sc_object)
             self.scSim.AddModelToTask(dyn_task_name, sc_object, 10)
 
-            recorder = sc_object.scStateOutMsg.recorder()
+            recorder = self._record(sc_object.scStateOutMsg)
             self.scSim.AddModelToTask(dyn_task_name, recorder)
 
             handle = _SpacecraftHandle(sc_config.name, sc_object, recorder)
@@ -972,11 +1065,12 @@ class SimulationService:
                         self.scSim, dyn_task_name, sc_config.name, sc_object, sc_config.sensors,
                         sun_state_out_msg=self._sun_state_out_msg, mag_field_model=self._mag_field_model,
                         sun_eclipse_in_msg=sc_eclipse_out_msg,
+                        solar_flux_w_m2=environment_models.solar_flux_w_m2(scenario.epoch_utc),
                     )
                 except fsw.FswError as exc:
                     raise SimulationServiceError(str(exc)) from exc
                 for sensor in sc_config.sensors:
-                    handle.sensor_recorders[sensor.name] = (sensor.kind, sensor_out_msgs[sensor.name].recorder())
+                    handle.sensor_recorders[sensor.name] = (sensor.kind, self._record(sensor_out_msgs[sensor.name]))
                     self.scSim.AddModelToTask(dyn_task_name, handle.sensor_recorders[sensor.name][1])
 
             # -- Phase 4: power budget, independent of fsw_mode/sensors like
@@ -1019,7 +1113,7 @@ class SimulationService:
                 # this tick's fresh generation/load values, not last tick's.
                 self.scSim.AddModelToTask(dyn_task_name, battery, 40)
 
-                handle.battery_recorder = battery.batPowerOutMsg.recorder()
+                handle.battery_recorder = self._record(battery.batPowerOutMsg)
                 self.scSim.AddModelToTask(dyn_task_name, handle.battery_recorder)
                 handle.battery_module = battery
 
@@ -1030,6 +1124,17 @@ class SimulationService:
                 handle.station_keeping_controller = orbit_maintenance.build_station_keeping(
                     self.scSim, dyn_task_name, sc_config.name, sc_object, mu, central_body.radEquator,
                     sc_config.dry_mass_kg, sc_config.station_keeping, eclipse_out_msg=sc_eclipse_out_msg,
+                )
+
+            # GEO east-west/north-south station-keeping
+            # (schema.scenario.GeoStationKeepingConfig): measured in the
+            # central body's own rotating frame, from its SPICE state.
+            if sc_config.geo_station_keeping is not None:
+                from .geo_station_keeping import build_geo_station_keeping
+
+                handle.geo_station_keeping_controller = build_geo_station_keeping(
+                    self.scSim, dyn_task_name, sc_config.name, sc_object, mu, central_body.radEquator,
+                    sc_config.dry_mass_kg, sc_config.geo_station_keeping, central_body_state_out_msg,
                 )
 
             # -- Phase 5: continuous constant-frame thrust
@@ -1050,14 +1155,29 @@ class SimulationService:
             # called for spacecraft that enable it, so drag_index stays in
             # lockstep with atmo_module.envOutMsgs/wind_model.envOutMsgs.
             if sc_config.enable_drag:
-                from Basilisk.simulation import dragDynamicEffector
+                if sc_config.facets:
+                    # Attitude-dependent drag and its torque: each facet
+                    # facing the flow pushes at its own centre of pressure.
+                    from Basilisk.simulation import facetDragDynamicEffector
 
-                drag_effector = dragDynamicEffector.DragDynamicEffector()
+                    drag_effector = facetDragDynamicEffector.FacetDragDynamicEffector()
+                    for facet in sc_config.facets:
+                        drag_effector.addFacet(float(facet.area_m2), float(facet.drag_coeff),
+                                               _unit_vector(facet.normal_b), [float(v) for v in facet.location_b])
+                else:
+                    from Basilisk.simulation import dragDynamicEffector
+
+                    drag_effector = dragDynamicEffector.DragDynamicEffector()
+                    drag_effector.coreParams.projectedArea = sc_config.drag_area_m2  # [m^2]
+                    drag_effector.coreParams.dragCoeff = sc_config.drag_coeff  # [-]
                 drag_effector.ModelTag = f"{sc_config.name}Drag"
-                drag_effector.coreParams.projectedArea = sc_config.drag_area_m2  # [m^2]
-                drag_effector.coreParams.dragCoeff = sc_config.drag_coeff  # [-]
                 sc_object.addDynamicEffector(drag_effector)
-                atmo_module.addSpacecraftToModel(sc_object.scStateOutMsg)
+                # Density at the WGS-84 geodetic altitude and latitude (engine.geodetic_atmosphere);
+                # the wind and the drag force use the real state.
+                proxy = geodetic_atmosphere.attach(self.scSim, dyn_task_name, sc_config.name, sc_object.scStateOutMsg,
+                                                   central_body_state_out_msg, atmo_module.planetRadius)
+                self._geodetic_proxies.append(proxy)
+                atmo_module.addSpacecraftToModel(proxy.scStateOutMsg)
                 wind_model.addSpacecraftToModel(sc_object.scStateOutMsg)
                 drag_effector.atmoDensInMsg.subscribeTo(atmo_module.envOutMsgs[drag_index])
                 drag_effector.windVelInMsg.subscribeTo(wind_model.envOutMsgs[drag_index])
@@ -1070,14 +1190,29 @@ class SimulationService:
             # above this loop already includes enable_srp, so
             # sc_eclipse_out_msg is non-None whenever this branch runs).
             if sc_config.enable_srp:
-                from Basilisk.simulation import radiationPressure
+                if sc_config.facets:
+                    # Attitude-dependent SRP and its torque, from each lit
+                    # facet's own reflection fractions. Fixed facets: no
+                    # articulation, so each facet frame is the body frame.
+                    from Basilisk.simulation import facetSRPDynamicEffector
 
-                srp_effector = radiationPressure.RadiationPressure()
+                    srp_effector = facetSRPDynamicEffector.FacetSRPDynamicEffector()
+                    srp_effector.setNumFacets(len(sc_config.facets))
+                    srp_effector.setNumArticulatedFacets(0)
+                    for facet in sc_config.facets:
+                        srp_effector.addFacet(float(facet.area_m2), np.eye(3), _unit_vector(facet.normal_b),
+                                              [0.0, 0.0, 0.0], [float(v) for v in facet.location_b],
+                                              float(facet.diffuse_coeff), float(facet.specular_coeff))
+                    srp_effector.sunInMsg.subscribeTo(self._sun_state_out_msg)
+                else:
+                    from Basilisk.simulation import radiationPressure
+
+                    srp_effector = radiationPressure.RadiationPressure()
+                    srp_effector.area = sc_config.srp_area_m2  # [m^2]
+                    srp_effector.coefficientReflection = sc_config.srp_coeff  # [-]
+                    srp_effector.sunEphmInMsg.subscribeTo(self._sun_state_out_msg)
                 srp_effector.ModelTag = f"{sc_config.name}Srp"
-                srp_effector.area = sc_config.srp_area_m2  # [m^2]
-                srp_effector.coefficientReflection = sc_config.srp_coeff  # [-]
                 sc_object.addDynamicEffector(srp_effector)
-                srp_effector.sunEphmInMsg.subscribeTo(self._sun_state_out_msg)
                 srp_effector.sunEclipseInMsg.subscribeTo(sc_eclipse_out_msg)
                 self.scSim.AddModelToTask(dyn_task_name, srp_effector, 100)
 
@@ -1168,7 +1303,7 @@ class SimulationService:
                     # Must outlive build() -- see engine.fsw.build_css_sun_estimation's
                     # docstring and self._css_estimation_devices's own comment.
                     self._css_estimation_devices.append(css_devices)
-                    handle.css_sun_estimate_recorder = sun_direction_override_msg.recorder()
+                    handle.css_sun_estimate_recorder = self._record(sun_direction_override_msg)
                     self.scSim.AddModelToTask(dyn_task_name, handle.css_sun_estimate_recorder)
 
                 target_body_eph_msg = None
@@ -1206,7 +1341,8 @@ class SimulationService:
                     rw_motor_torque_mod = fsw.build_rw_motor_torque(
                         self.scSim, dyn_task_name, sc_config.name, mrp, rw_config_msg, rw_state_effector
                     )
-                    handle.rw_speed_recorder = rw_state_effector.rwSpeedOutMsg.recorder()
+                    handle.rw_speed_recorder = self._record(rw_state_effector.rwSpeedOutMsg)
+                    handle.rw_speed_out_msg = rw_state_effector.rwSpeedOutMsg
                     self.scSim.AddModelToTask(dyn_task_name, handle.rw_speed_recorder)
                     rw_effector_for_viz = rw_state_effector
 
@@ -1222,7 +1358,7 @@ class SimulationService:
                         self.scSim, dyn_task_name, sc_config.name, rw_state_effector, rw_actuators
                     )
                     for actuator_name, temp_msg in rw_thermal_out_msgs.items():
-                        handle.rw_motor_thermal_recorders[actuator_name] = temp_msg.recorder()
+                        handle.rw_motor_thermal_recorders[actuator_name] = self._record(temp_msg)
                         self.scSim.AddModelToTask(dyn_task_name, handle.rw_motor_thermal_recorders[actuator_name])
 
                     # Reaction-wheel momentum desaturation via thrusters
@@ -1246,7 +1382,7 @@ class SimulationService:
                         self._desat_controls.append(desat_control)
                         thr_effector_for_viz = desat_thruster_effector
                         handle.num_thrusters = len(desat_thruster_actuators)
-                        handle.thruster_on_time_recorder = desat_dumping.thrusterOnTimeOutMsg.recorder()
+                        handle.thruster_on_time_recorder = self._record(desat_dumping.thrusterOnTimeOutMsg)
                         self.scSim.AddModelToTask(dyn_task_name, handle.thruster_on_time_recorder)
                         if sc_config.fuel_tank is not None:
                             fuel_tank_effector = fsw.build_fuel_tank(
@@ -1254,7 +1390,7 @@ class SimulationService:
                                 sc_config.fuel_tank,
                             )
                             handle.fuel_tank_effector = fuel_tank_effector
-                            handle.fuel_tank_recorder = fuel_tank_effector.fuelTankOutMsg.recorder()
+                            handle.fuel_tank_recorder = self._record(fuel_tank_effector.fuelTankOutMsg)
                             self.scSim.AddModelToTask(dyn_task_name, handle.fuel_tank_recorder)
 
                     # Reaction-wheel momentum management via magnetic torque
@@ -1272,7 +1408,7 @@ class SimulationService:
                             sc_config.magnetic_momentum_management,
                         )
                         handle.num_mtb = len(mtb_actuators)
-                        handle.mtb_dipole_recorder = mtb_management.mtbCmdOutMsg.recorder()
+                        handle.mtb_dipole_recorder = self._record(mtb_management.mtbCmdOutMsg)
                         self.scSim.AddModelToTask(dyn_task_name, handle.mtb_dipole_recorder)
                 else:
                     thruster_actuators = [a for a in sc_config.actuators if a.kind == "thruster"]
@@ -1289,7 +1425,7 @@ class SimulationService:
                             self.scSim, dyn_task_name, sc_config.name, mrp, thr_config_msg, veh_config_msg,
                             thruster_effector,
                         )
-                        handle.thruster_on_time_recorder = firing_logic.onTimeOutMsg.recorder()
+                        handle.thruster_on_time_recorder = self._record(firing_logic.onTimeOutMsg)
                         self.scSim.AddModelToTask(dyn_task_name, handle.thruster_on_time_recorder)
                         thr_effector_for_viz = thruster_effector
                         if sc_config.fuel_tank is not None:
@@ -1298,7 +1434,7 @@ class SimulationService:
                                 sc_config.fuel_tank,
                             )
                             handle.fuel_tank_effector = fuel_tank_effector
-                            handle.fuel_tank_recorder = fuel_tank_effector.fuelTankOutMsg.recorder()
+                            handle.fuel_tank_recorder = self._record(fuel_tank_effector.fuelTankOutMsg)
                             self.scSim.AddModelToTask(dyn_task_name, handle.fuel_tank_recorder)
                     else:
                         mrp = fsw.build_mrp_feedback(
@@ -1307,8 +1443,8 @@ class SimulationService:
                         )
                         fsw.build_idealized_actuation(self.scSim, dyn_task_name, sc_config.name, sc_object, mrp)
 
-                handle.nav_recorder = nav.attOutMsg.recorder()
-                handle.control_torque_recorder = mrp.cmdTorqueOutMsg.recorder()
+                handle.nav_recorder = self._record(nav.attOutMsg)
+                handle.control_torque_recorder = self._record(mrp.cmdTorqueOutMsg)
                 self.scSim.AddModelToTask(dyn_task_name, handle.nav_recorder)
                 self.scSim.AddModelToTask(dyn_task_name, handle.control_torque_recorder)
 
@@ -1379,7 +1515,7 @@ class SimulationService:
                 handle.comms_nav = nav
                 handle.comms_veh_config_msg = veh_config_msg
                 handle.comms_power_sink = comms_power_sink
-                handle.nav_recorder = nav.attOutMsg.recorder()
+                handle.nav_recorder = self._record(nav.attOutMsg)
                 self.scSim.AddModelToTask(dyn_task_name, handle.nav_recorder)
 
             rw_effectors_in_order.append(rw_effector_for_viz)
@@ -1414,6 +1550,7 @@ class SimulationService:
                 follower_eclipse_out_msg=follower_handle.eclipse_out_msg,
                 chief_semi_major_axis_km=chief_config.orbit.semi_major_axis_km,
                 config=sc_config.phasing_keeping,
+                chief_station_keeping_controller=chief_handle.station_keeping_controller,
             )
 
         # Phase 3: access analysis -- every ground station sees every
@@ -1425,7 +1562,7 @@ class SimulationService:
             fsw.add_access_analysis(ground_location, sc_objects_in_order)
             for index, sc_object in enumerate(sc_objects_in_order):
                 access_out_msg = ground_location.accessOutMsgs[index]
-                recorder = access_out_msg.recorder()
+                recorder = self._record(access_out_msg)
                 self.scSim.AddModelToTask(dyn_task_name, recorder)
                 self._access_recorders[(gs_name, sc_object.ModelTag)] = recorder
                 self._access_out_msgs[(gs_name, sc_object.ModelTag)] = access_out_msg
@@ -1463,7 +1600,7 @@ class SimulationService:
                 sc_config.control_params, inertia_kg_m2=sc_config.inertia_kg_m2,
             )
             fsw.build_idealized_actuation(self.scSim, dyn_task_name, sc_config.name, handle.sc_object, mrp)
-            handle.control_torque_recorder = mrp.cmdTorqueOutMsg.recorder()
+            handle.control_torque_recorder = self._record(mrp.cmdTorqueOutMsg)
             self.scSim.AddModelToTask(dyn_task_name, handle.control_torque_recorder)
 
         if self.vizard_request is not None:
@@ -1518,6 +1655,15 @@ class SimulationService:
             except vizard.VizardError as exc:
                 raise SimulationServiceError(str(exc)) from exc
 
+        # Every controller's own Python-side telemetry thins to the same
+        # sim_settings.record_interval_s as the Basilisk recorders above.
+        for handle in self._handles.values():
+            for controller in (handle.station_keeping_controller, handle.geo_station_keeping_controller,
+                               handle.phasing_keeping_controller, handle.constant_thrust_controller,
+                               handle.comms_pointing_arbitrator):
+                if controller is not None:
+                    controller.logThinner.intervalS = sim_settings.record_interval_s
+
         self.dyn_task_name = dyn_task_name
         if initialize:
             self.scSim.InitializeSimulation()
@@ -1546,6 +1692,18 @@ class SimulationService:
                     desat_control.Reset(priming_time_ns)
             self.scSim.ConfigureStopTime(macros.sec2nano(stop_time_s))
 
+    def _record(self, msg):
+        """A recorder for ``msg`` sampling every
+        ``sim_settings.record_interval_s`` (0: every dynamics step)."""
+        interval_s = self.scenario.sim_settings.record_interval_s  # [s]
+        return msg.recorder(macros.sec2nano(interval_s)) if interval_s > 0.0 else msg.recorder()
+
+    def _run_segmented(self, on_progress=None, should_cancel=None) -> ResultSet:
+        try:
+            return long_run.run_segmented(self.scenario, on_progress, should_cancel, self.vizard_request)
+        except long_run.LongRunError as exc:
+            raise SimulationServiceError(str(exc)) from None
+
     def run(self) -> ResultSet:
         """Build (if not already built) and execute the simulation, then
         extract every spacecraft's logged time histories into a
@@ -1561,11 +1719,16 @@ class SimulationService:
         See :meth:`run_live` for a variant that streams intermediate
         results back while the simulation is still running (e.g. to drive
         a live-updating plot), rather than only once at the end.
+
+        A run longer than ``SimSettings._MAX_SINGLE_RUN_DAYS`` is split
+        into a chain of shorter simulations (see :mod:`.long_run`).
         """
+        if self.scSim is None and long_run.needs_segments(self.scenario):
+            return self._run_segmented()
         if self.scSim is None:
             self.build()
         try:
-            self.scSim.ExecuteSimulation()
+            self._execute_until(macros.sec2nano(self.scenario.sim_settings.duration_days * 86400.0))
         except RuntimeError as exc:
             self.log_last_known_state()
             raise_clear_execution_error(exc)
@@ -1625,7 +1788,11 @@ class SimulationService:
                 already does for plot-update smoothness. ``None`` (the
                 default) means never cancel, matching every existing
                 caller's behavior unchanged.
+
+        Longer than ``SimSettings._MAX_SINGLE_RUN_DAYS``: as :meth:`run`.
         """
+        if self.scSim is None and long_run.needs_segments(self.scenario):
+            return self._run_segmented(on_progress, should_cancel)
         if self.scSim is None:
             self.build()
 
@@ -1652,9 +1819,8 @@ class SimulationService:
 
         next_stop_ns = min(step_ns, stop_time_ns)
         while True:
-            self.scSim.ConfigureStopTime(next_stop_ns)
             try:
-                self.scSim.ExecuteSimulation()
+                finished = self._execute_until(next_stop_ns)
             except RuntimeError as exc:
                 # Log how far the run actually got before this -- see
                 # raise_clear_execution_error's own docstring for why this
@@ -1669,7 +1835,7 @@ class SimulationService:
                 )
                 self.log_last_known_state()
                 raise_clear_execution_error(exc)
-            fraction_complete = min(1.0, next_stop_ns / stop_time_ns)
+            fraction_complete = 1.0 if not finished else min(1.0, next_stop_ns / stop_time_ns)
             _logger.info(
                 "run_live: %.1f%% complete (t=%.1f s of %.1f s)",
                 100.0 * fraction_complete, next_stop_ns * macros.NANO2SEC, stop_time_s,
@@ -1678,11 +1844,83 @@ class SimulationService:
             on_progress(partial_result, fraction_complete)
             if should_cancel is not None and should_cancel():
                 raise SimulationCancelled(partial_result)
-            if next_stop_ns >= stop_time_ns:
+            if next_stop_ns >= stop_time_ns or not finished:
                 break
             next_stop_ns = min(next_stop_ns + step_ns, stop_time_ns)
 
         return self._extract_results()
+
+    def _execute_until(self, stop_ns: int) -> bool:
+        """Runs to ``stop_ns``. With drag, in chunks: every 6 h, or every
+        5 minutes once a perigee is below 200 km, and stops early (setting
+        :attr:`reentry`, returning False) once a spacecraft is below
+        100 km -- integrating it on through the Earth goes non-physical
+        and would lose the whole run."""
+        watched = [(name, handle) for name, handle in self._handles.items()
+                   if self._sc_has_drag(name)] if self.reentry is None else []
+        if not watched:
+            if self.reentry is not None:
+                return False
+            self.scSim.ConfigureStopTime(stop_ns)
+            self.scSim.ExecuteSimulation()
+            return True
+        now_ns = self.scSim.TotalSim.CurrentNanos
+        while now_ns < stop_ns:
+            step_s = _REENTRY_CHECK_S  # [s]
+            for name, handle in watched:
+                state = handle.sc_object.scStateOutMsg.read()
+                r_m, v_m_s = np.array(state.r_BN_N), np.array(state.v_BN_N)
+                radius_m = float(np.linalg.norm(r_m))
+                if radius_m - self.central_radius_m < _REENTRY_ALTITUDE_M:
+                    self.reentry = (name, now_ns * macros.NANO2SEC)
+                    _logger.warning("%s re-entered at t=%.0f s; stopping the run there", name, self.reentry[1])
+                    return False
+                energy = 0.5 * float(v_m_s @ v_m_s) - self.mu / radius_m  # [m^2/s^2]
+                if energy < 0.0:
+                    a_m = -self.mu / (2.0 * energy)
+                    h2 = float(np.sum(np.cross(r_m, v_m_s) ** 2))
+                    e = math.sqrt(max(0.0, 1.0 - h2 / (self.mu * a_m)))
+                    if a_m * (1.0 - e) - self.central_radius_m < _REENTRY_NEAR_PERIGEE_M:
+                        step_s = _REENTRY_NEAR_CHECK_S
+            next_ns = min(stop_ns, now_ns + macros.sec2nano(step_s))
+            self.scSim.ConfigureStopTime(next_ns)
+            self.scSim.ExecuteSimulation()
+            now_ns = next_ns
+        return True
+
+    def _sc_has_drag(self, name: str) -> bool:
+        sc_config = next((sc for sc in self.scenario.spacecraft if sc.name == name), None)
+        return sc_config is not None and sc_config.enable_drag
+
+    def _orbit_elements(self, name: str, r_bn_n: np.ndarray, v_bn_n: np.ndarray):
+        """Osculating (and, when enabled, mean) elements for every recorded
+        sample, computed only for samples not already computed by an
+        earlier call. Real performance bug, found in a real user's 30-day
+        run log: :meth:`run_live` extracts results 60 times per run, and
+        recomputing every sample's elements each time (a Python loop of
+        ``rv2elem``/``clMeanOscMap`` calls, ~13 s per spacecraft for 30
+        days) made the run's cost grow with the square of its duration --
+        the last progress steps took ~22 s each against ~3 s at the start.
+        Both mappings are pointwise, so extending is exact.
+        """
+        count, oe, mean_oe = self._element_cache.get(name, (0, None, None))
+        n = r_bn_n.shape[0]
+        if n < count:  # fewer samples than before (a recorder was reset): start over
+            count, oe, mean_oe = 0, None, None
+        if n > count:
+            new_oe = _osculating_elements(self.mu, r_bn_n[count:], v_bn_n[count:], first_sample_index=count)
+            new_mean = (_mean_elements(new_oe, self.mean_elements_req, self.mean_elements_j2)
+                        if self.mean_elements_req is not None else None)
+            oe = new_oe if oe is None else {key: np.concatenate([oe[key], new_oe[key]]) for key in oe}
+            if new_mean is not None:
+                mean_oe = new_mean if mean_oe is None else {
+                    key: np.concatenate([mean_oe[key], new_mean[key]]) for key in mean_oe}
+            self._element_cache[name] = (n, oe, mean_oe)
+        if oe is None:  # no samples yet
+            oe = _osculating_elements(self.mu, r_bn_n, v_bn_n)
+            mean_oe = (_mean_elements(oe, self.mean_elements_req, self.mean_elements_j2)
+                       if self.mean_elements_req is not None else None)
+        return oe, mean_oe
 
     def _extract_results(self) -> ResultSet:
         """Reads every recorder currently attached in ``self._handles``
@@ -1697,12 +1935,30 @@ class SimulationService:
                 run_started_utc=self._run_started_utc,
                 integrator=self.scenario.sim_settings.integrator,
                 dynamics_task_rate_s=self.scenario.sim_settings.dynamics_task_rate_s,
+                qualified_basilisk_version=dependencies.QUALIFIED_BASILISK_VERSION,
+                basilisk_qualified=Basilisk.__version__ == dependencies.QUALIFIED_BASILISK_VERSION,
+                dependency_versions=self._dependency_versions,
+                scenario_sha256=self._scenario_sha256,
+                data_files=dict(self._data_files),
+                time_system=time_system.time_scales(self.scenario.epoch_utc),
+                frames=frames.definitions(self.scenario.gravity.central_body, self.earth_frame),
+                transformations=dict(frames.TRANSFORMATIONS),
             )
+        result.warnings.extend(self._space_weather_warnings)
+        result.warnings.extend(note for note in self._earth_orientation_notes if "no IERS data" in note)
         spacecraft_by_name = {sc_config.name: sc_config for sc_config in self.scenario.spacecraft}
         for name, handle in self._handles.items():
             t_s = handle.recorder.times() * macros.NANO2SEC
             result.add(TimeSeries(f"{name}.position_N", t_s, ("x", "y", "z"), handle.recorder.r_BN_N, units="m"))
             result.add(TimeSeries(f"{name}.velocity_N", t_s, ("x", "y", "z"), handle.recorder.v_BN_N, units="m/s"))
+            altitude_m = np.linalg.norm(np.asarray(handle.recorder.r_BN_N).reshape(-1, 3), axis=1) - self.central_radius_m
+            below = np.nonzero(altitude_m < _REENTRY_ALTITUDE_M)[0]
+            if self.reentry is not None and self.reentry[0] == name:
+                result.warnings.append(f"{name} re-entered: below {_REENTRY_ALTITUDE_M / 1e3:g} km at "
+                                       f"t = {self.reentry[1] / 86400.0:.2f} days -- the run stopped there")
+            elif len(below):
+                result.warnings.append(f"{name} re-entered: below {_REENTRY_ALTITUDE_M / 1e3:g} km from "
+                                       f"t = {t_s[below[0]] / 86400.0:.2f} days -- later results are not physical")
 
             # Conservation/drift diagnostic -- see _is_two_body_only's own
             # docstring for the (deliberately conservative) gate, and
@@ -1720,7 +1976,8 @@ class SimulationService:
             # TimeSeries per element (not one combined series), matching
             # this method's own convention for mixed-unit quantities below
             # (e.g. station_keeping's separate .burn_on/.delta_v series).
-            oe = _osculating_elements(self.mu, handle.recorder.r_BN_N, handle.recorder.v_BN_N)
+            oe, mean_oe = self._orbit_elements(name, np.asarray(handle.recorder.r_BN_N),
+                                               np.asarray(handle.recorder.v_BN_N))
             result.add(TimeSeries(f"{name}.orbit_elements.semi_major_axis", t_s, ("a",), oe["a"], units="m"))
             result.add(TimeSeries(f"{name}.orbit_elements.eccentricity", t_s, ("e",), oe["e"], units="-"))
             result.add(TimeSeries(f"{name}.orbit_elements.inclination", t_s, ("i",), oe["i"], units="rad"))
@@ -1735,8 +1992,7 @@ class SimulationService:
             # assignment above for when it's actually computed. Per-user
             # request: "plots of averaged orbital elements, not only the
             # 'true' ones".
-            if self.mean_elements_req is not None:
-                mean_oe = _mean_elements(oe, self.mean_elements_req, self.mean_elements_j2)
+            if mean_oe is not None:
                 result.add(TimeSeries(f"{name}.orbit_elements_mean.semi_major_axis", t_s, ("a",),
                                        mean_oe["a"], units="m"))
                 result.add(TimeSeries(f"{name}.orbit_elements_mean.eccentricity", t_s, ("e",),
@@ -1758,6 +2014,15 @@ class SimulationService:
                                        handle.nav_recorder.omega_BN_B, units="rad/s"))
                 result.add(TimeSeries(f"{name}.sun_heading_body", nav_t_s, ("x", "y", "z"),
                                        handle.nav_recorder.vehSunPntBdy, units="-"))
+            elif self.scenario.simulation_mode == "full_attitude":
+                # No attitude control, so no navigation recorder -- but the
+                # attitude still evolves (template 10's gravity-gradient
+                # drift), and the spacecraft-state message already carries
+                # it. Without this the drift could only be seen in Vizard.
+                result.add(TimeSeries(f"{name}.attitude_sigma_BN", t_s, ("s1", "s2", "s3"),
+                                       handle.recorder.sigma_BN, units="-"))
+                result.add(TimeSeries(f"{name}.body_rate_omega_BN_B", t_s, ("x", "y", "z"),
+                                       handle.recorder.omega_BN_B, units="rad/s"))
             if handle.css_sun_estimate_recorder is not None:
                 css_t_s = handle.css_sun_estimate_recorder.times() * macros.NANO2SEC
                 result.add(TimeSeries(f"{name}.sun_heading_body_estimated", css_t_s, ("x", "y", "z"),
@@ -1829,6 +2094,26 @@ class SimulationService:
                 result.add(TimeSeries(f"{name}.station_keeping.delta_v", sk_t_s, ("cumulative_delta_v",),
                                        np.asarray(controller.deltaVLog), units="m/s"))
 
+            if handle.geo_station_keeping_controller is not None:
+                geo = handle.geo_station_keeping_controller
+                geo_t_s = np.asarray(geo.tLog)
+                result.add(TimeSeries(f"{name}.geo_station_keeping.longitude", geo_t_s, ("raw", "smoothed"),
+                                       np.column_stack([geo.lonLog, geo.smoothLonLog]), units="rad"))
+                result.add(TimeSeries(f"{name}.geo_station_keeping.inclination", geo_t_s, ("inclination",),
+                                       np.asarray(geo.inclinationLog).reshape(-1, 1), units="rad"))
+                result.add(TimeSeries(f"{name}.geo_station_keeping.burn_on", geo_t_s,
+                                       ("east_west", "north_south"),
+                                       np.column_stack([geo.ewBurnLog, geo.nsBurnLog]), units="-"))
+                result.add(TimeSeries(f"{name}.geo_station_keeping.propellant_remaining", geo_t_s,
+                                       ("propellant_remaining",), np.asarray(geo.propellantLog), units="kg"))
+                result.add(TimeSeries(f"{name}.geo_station_keeping.delta_v", geo_t_s, ("cumulative_delta_v",),
+                                       np.asarray(geo.deltaVLog), units="m/s"))
+                # split for budgets (ESA AD10 Sec. 6.2.2 reports in- and out-of-plane control apart)
+                result.add(TimeSeries(f"{name}.geo_station_keeping.east_west.delta_v", geo_t_s,
+                                       ("cumulative_delta_v",), np.asarray(geo.ewDeltaVLog), units="m/s"))
+                result.add(TimeSeries(f"{name}.geo_station_keeping.north_south.delta_v", geo_t_s,
+                                       ("cumulative_delta_v",), np.asarray(geo.nsDeltaVLog), units="m/s"))
+
             if handle.phasing_keeping_controller is not None:
                 phase_controller = handle.phasing_keeping_controller
                 pk_t_s = np.asarray(phase_controller.tLog)
@@ -1846,6 +2131,13 @@ class SimulationService:
                 # {name}.station_keeping.delta_v's.
                 result.add(TimeSeries(f"{name}.phasing_keeping.delta_v", pk_t_s, ("cumulative_delta_v",),
                                        np.asarray(phase_controller.deltaVLog), units="m/s"))
+                # One-orbit-mean (follower - chief) semi-major axis -- the
+                # quantity that actually sets the formation's along-track
+                # drift rate (~0.14 km/day of drift per metre of mismatch
+                # at a ~550 km LEO altitude).
+                result.add(TimeSeries(f"{name}.phasing_keeping.relative_semi_major_axis", pk_t_s,
+                                       ("relative_semi_major_axis",),
+                                       np.asarray(phase_controller.relativeSmaLog), units="m"))
 
             if handle.constant_thrust_controller is not None:
                 ct_controller = handle.constant_thrust_controller
@@ -1871,10 +2163,14 @@ class SimulationService:
                                    recorder.hasAccess, units="-"))
             result.add(TimeSeries(f"{series_name}.slant_range", access_t_s, ("slant_range",),
                                    recorder.slantRange, units="m"))
+            # Basilisk measures elevation/azimuth from the site's geocentric
+            # direction; convert to the geodetic (WGS-84 normal) horizon.
+            elevation, azimuth = geodesy.geodetic_elevation_azimuth(
+                np.asarray(recorder.r_BL_L).reshape(-1, 3), *self._ground_station_latitudes[gs_name])
             result.add(TimeSeries(f"{series_name}.elevation", access_t_s, ("elevation",),
-                                   recorder.elevation, units="rad"))
+                                   elevation, units="rad"))
             result.add(TimeSeries(f"{series_name}.azimuth", access_t_s, ("azimuth",),
-                                   recorder.azimuth, units="rad"))
+                                   azimuth, units="rad"))
 
         # Phase 4: link-budget margin -- a reported estimate computed from
         # the access-analysis series just added above (see
@@ -1891,6 +2187,9 @@ class SimulationService:
                     result, gs_config.name, sc_config.name, sc_config.rf_link, gs_config,
                     comms_pointing_target_ground_station=comms_target,
                 ))
+        if result.provenance is not None:
+            result.provenance = dataclasses.replace(result.provenance,
+                                                    series_frames=frames.series_frames(result.series))
         return result
 
     def log_last_known_state(self) -> None:
@@ -1932,22 +2231,28 @@ class SimulationService:
             except Exception:
                 _logger.exception("%s: failed to read last recorded position/velocity for diagnostics", name)
 
-            controller = handle.station_keeping_controller
-            if controller is not None and controller.tLog:
-                _logger.error(
-                    "%s: station_keeping last tick -- t=%.3f s, alt=%.1f m (smoothed %.1f m), burn_on=%s, "
-                    "propellant=%.4f kg, cumulative_dv=%.4f m/s",
-                    name, controller.tLog[-1], controller.altLog[-1], controller.smoothAltLog[-1],
-                    bool(controller.burnLog[-1]), controller.propellantLog[-1], controller.deltaVLog[-1],
-                )
+            # Guarded too, not just the recorder read above: this method's
+            # whole contract is "never raises", and a controller log read
+            # can fail just as well (e.g. one list shorter than another).
+            try:
+                controller = handle.station_keeping_controller
+                if controller is not None and controller.tLog:
+                    _logger.error(
+                        "%s: station_keeping last tick -- t=%.3f s, alt=%.1f m (smoothed %.1f m), burn_on=%s, "
+                        "propellant=%.4f kg, cumulative_dv=%.4f m/s",
+                        name, controller.tLog[-1], controller.altLog[-1], controller.smoothAltLog[-1],
+                        bool(controller.burnLog[-1]), controller.propellantLog[-1], controller.deltaVLog[-1],
+                    )
 
-            phase_controller = handle.phasing_keeping_controller
-            if phase_controller is not None and phase_controller.tLog:
-                state_names = {0: "IDLE", 1: "BURN_OUT", 2: "DRIFT", 3: "BURN_RESTORE"}
-                _logger.error(
-                    "%s: phasing_keeping last tick -- t=%.3f s, error=%.4f deg, state=%s, propellant=%.4f kg, "
-                    "cumulative_dv=%.4f m/s",
-                    name, phase_controller.tLog[-1], phase_controller.errorDegLog[-1],
-                    state_names.get(phase_controller.stateLog[-1], phase_controller.stateLog[-1]),
-                    phase_controller.propellantLog[-1], phase_controller.deltaVLog[-1],
-                )
+                phase_controller = handle.phasing_keeping_controller
+                if phase_controller is not None and phase_controller.tLog:
+                    state_names = {0: "IDLE", 1: "BURN_OUT", 2: "DRIFT", 3: "BURN_RESTORE"}
+                    _logger.error(
+                        "%s: phasing_keeping last tick -- t=%.3f s, error=%.4f deg, state=%s, propellant=%.4f kg, "
+                        "cumulative_dv=%.4f m/s",
+                        name, phase_controller.tLog[-1], phase_controller.errorDegLog[-1],
+                        state_names.get(phase_controller.stateLog[-1], phase_controller.stateLog[-1]),
+                        phase_controller.propellantLog[-1], phase_controller.deltaVLog[-1],
+                    )
+            except Exception:
+                _logger.exception("%s: failed to read the orbit-maintenance controller logs for diagnostics", name)

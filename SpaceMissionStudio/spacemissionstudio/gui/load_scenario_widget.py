@@ -33,34 +33,38 @@ that knows how to open a scenario file, matching how every other
 GUI-vs-``schema``/``engine`` split in this app works (see this module's
 own class docstring).
 
-Also offers one dedicated "Customize: <template name>..." button per
-template with a registered ``gui.template_wizard.TemplateWizardSpec`` --
-runs a guided, multi-step wizard over just that template's own curated
-"Try changing:" parameters (see ``gui.template_wizard``'s own docstring)
-and emits the resulting in-memory ``Scenario`` via
-:attr:`scenario_customized`, instead of a path (there is no file yet --
-see ``MainWindow._on_load_scenario_customized`` for how that's opened
+Also offers a "Customize..." button on the list row of every template
+with a registered ``gui.template_wizard.TemplateWizardSpec`` -- runs a
+guided, multi-step wizard over just that template's own curated "Try
+changing:" parameters (see ``gui.template_wizard``'s own docstring) and
+emits the resulting in-memory ``Scenario`` via :attr:`scenario_customized`,
+instead of a path (there is no file yet -- see
+``MainWindow._on_load_scenario_customized`` for how that's opened
 without ever touching the original template file on disk).
 
-Deliberately one STANDALONE, self-describing button per template --
-built in response to direct feedback that an earlier version (one
-generic "Customize..." button, enabled only once a template was already
-selected in the list above) was too easy to miss entirely -- rather than
-a single context-dependent button. Matches the existing
-``gui.spacecraft_editor.SpacecraftListWidget``'s own "Generate Walker
-constellation.../Generate phasing formation..." buttons: always visible,
-each one a complete, nameable action on its own, not conditional on
-some other widget's current selection.
+Each row's button is always visible and acts on THAT row's template,
+never on the list's current selection -- built in response to direct
+feedback that an earlier version (one generic "Customize..." button,
+enabled only once a template was already selected) was too easy to miss
+entirely. An intermediate version then added a second, full-width
+"Customize: <whole template title>..." button per template below the
+list; that duplicated every title and, at up to ~670 px wide, forced the
+whole left pane into a horizontal scrollbar at the default window size
+(clipping the intro text and this tab's own action buttons). One
+compact button per row keeps the discoverability without the clutter.
 """
 
 from __future__ import annotations
+
+import html
 
 import functools
 import logging
 from pathlib import Path
 from typing import Dict, Optional
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtGui import QPainter
 from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
@@ -70,6 +74,10 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
+    QSplitter,
+    QStyle,
+    QStyledItemDelegate,
     QVBoxLayout,
     QWidget,
 )
@@ -78,6 +86,7 @@ import spacemissionstudio
 
 from ..schema import load_scenario
 from .template_wizard import TemplateCustomizeWizard, get_wizard_spec
+from .theme import PALETTE
 
 _logger = logging.getLogger(__name__)
 
@@ -91,6 +100,99 @@ TEMPLATES_DIR = Path(spacemissionstudio.__file__).resolve().parent / "scenarios"
 _FILE_FILTER = "SpaceMissionStudio scenario (*.json)"
 
 
+
+def description_html(text: str) -> str:
+    """A template description as rich text: paragraphs separated by a
+    blank line, a paragraph whose first line ends with ":" as a heading,
+    and "- " lines as a bullet list (see scripts/_template_descriptions.py).
+    A real user called the old plain-text block "just awful UI/UX"."""
+    parts = []
+    for paragraph in text.strip().split("\n\n"):
+        lines = paragraph.splitlines()
+        heading = lines[0] if lines and lines[0].endswith(":") and not lines[0].startswith("- ") else None
+        body = lines[1:] if heading else lines
+        if heading:
+            parts.append(f"<p style='margin: 10px 0 2px 0;'><b>{html.escape(heading[:-1])}</b></p>")
+        bullets = [line[2:] for line in body if line.startswith("- ")]
+        prose = [line for line in body if not line.startswith("- ")]
+        if prose:
+            parts.append(f"<p style='margin: 0 0 4px 0;'>{html.escape(' '.join(prose))}</p>")
+        if bullets:
+            parts.append("<ul style='margin: 0; -qt-list-indent: 1;'>"
+                         + "".join(f"<li>{html.escape(item)}</li>" for item in bullets) + "</ul>")
+    return "".join(parts)
+
+class _BackgroundOnlyDelegate(QStyledItemDelegate):
+    """Paints each row's background/selection/hover exactly as the theme
+    styles them, but not its text -- the row's own ``_TemplateRow`` widget
+    (``setItemWidget``) draws the visible, elided title instead. Keeps
+    ``item.text()`` as the template's real name for every lookup.
+    """
+
+    def paint(self, painter, option, index):
+        opt = option.__class__(option)
+        self.initStyleOption(opt, index)
+        opt.text = ""
+        widget = opt.widget
+        style = widget.style() if widget is not None else None
+        if style is not None:
+            style.drawControl(QStyle.ControlElement.CE_ItemViewItem, opt, painter, widget)
+
+
+class _ElidedLabel(QLabel):
+    """A single-line label that elides with "..." instead of demanding
+    its full text width as a minimum -- lets a long template title shrink
+    gracefully with the pane rather than forcing a horizontal scrollbar.
+    """
+
+    def __init__(self, text: str, parent: QWidget | None = None):
+        super().__init__(text, parent)
+        self._full_text = text
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        self.setToolTip(text)
+
+    def minimumSizeHint(self) -> QSize:
+        return QSize(0, super().minimumSizeHint().height())
+
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        painter.setPen(self.palette().color(self.foregroundRole()))
+        elided = self.fontMetrics().elidedText(self._full_text, Qt.TextElideMode.ElideRight, self.width())
+        painter.drawText(self.rect(), int(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft), elided)
+
+
+class _TemplateRow(QWidget):
+    """One template list row: its title, plus (if it has a wizard spec) a
+    compact "Customize..." button acting on THIS template only."""
+
+    def __init__(self, name: str, on_customize=None, parent: QWidget | None = None):
+        super().__init__(parent)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(8, 1, 4, 1)
+        layout.setSpacing(8)
+        self.title_label = _ElidedLabel(name)
+        layout.addWidget(self.title_label, 1)
+        self.customize_button: Optional[QPushButton] = None
+        if on_customize is not None:
+            button = QPushButton("Customize...")
+            button.setObjectName("rowCustomizeButton")
+            button.setAccessibleName(f"Customize: {name}")
+            button.setToolTip(
+                f"Customize '{name}': a short, guided wizard over just this template's own key tunable "
+                "parameters, then opens the result in the Scenario Editor -- the original template file "
+                "is never modified."
+            )
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.clicked.connect(on_customize)
+            layout.addWidget(button)
+            self.customize_button = button
+        self.set_selected(False)
+
+    def set_selected(self, selected: bool) -> None:
+        color = PALETTE["on_accent"] if selected else PALETTE["text"]
+        self.title_label.setStyleSheet(f"color: {color};")
+
+
 class LoadScenarioWidget(QWidget):
     path_chosen = Signal(object)  # pathlib.Path
     scenario_customized = Signal(object)  # schema.scenario.Scenario, built by TemplateCustomizeWizard
@@ -99,63 +201,23 @@ class LoadScenarioWidget(QWidget):
         super().__init__(parent)
         self._template_paths: Dict[str, Path] = {}
 
-        # This tab's own natural content height (18 template rows, the
-        # description label, and one standalone "Customize: ..." button
-        # per template -- see _build_customize_buttons()) now comfortably
-        # exceeds what fits in a real, non-maximized window on a modest
-        # display, and can exceed even a maximized one. Without this
-        # QScrollArea, squeezing this widget's content into less height
-        # than it needs doesn't just clip cleanly: QLabel does not clip
-        # wrapped text to its own allocated rect, so description_label
-        # (and the intro label above the list) paint their overflow text
-        # past their own boundary and visibly overlap the sibling widget
-        # above/below them -- confirmed from a real user screenshot taken
-        # while resizing/maximizing the main window, where this showed up
-        # as garbled, overlapping text right at the template list /
-        # description label boundary. A QScrollArea never squeezes its
-        # inner widget below its own size hint -- it scrolls instead --
-        # which is exactly what ScenarioEditorWidget's own top-level
-        # QScrollArea (scenario_editor.py) and spacecraft_editor.py's
-        # per-tab _scrollable() already do for this same reason; this
-        # widget is the one tab-page-sized widget in the app that was
-        # still missing it.
-        outer_layout = QVBoxLayout(self)
-        outer_layout.setContentsMargins(0, 0, 0, 0)
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-        outer_layout.addWidget(scroll)
-
-        content = QWidget()
-        scroll.setWidget(content)
-        layout = QVBoxLayout(content)
-        intro = QLabel(
-            "Start from one of SpaceMissionStudio's built-in template missions -- each demonstrates one "
-            "concept in isolation and is a good starting point for your own scenario (see the "
-            "description below once one is selected) -- or browse for any other scenario file."
-        )
+        # Layout: intro and buttons on top, then the template list and the
+        # selected template's description card, split by a draggable
+        # divider, each scrolling on its own. Real user feedback ("just
+        # awful UI/UX"): the description used to sit below the 20-row list,
+        # off-screen until the whole tab was scrolled, as one grey block of
+        # prose. Its own scroll area also keeps the wrapped text from ever
+        # being squeezed and painting over its neighbours (an earlier,
+        # real overlapping-text bug).
+        layout = QVBoxLayout(self)
+        intro = QLabel("Pick a built-in template mission, or open your own scenario file.")
         intro.setWordWrap(True)
         layout.addWidget(intro)
-
-        # No stretch factor: with one, this list claims and keeps every
-        # pixel of extra vertical space the pane has, whether or not it
-        # has enough rows to use it -- 9 short rows in a tall pane left a
-        # few hundred pixels of visibly empty white box. Sized to its own
-        # content instead (see _size_list_to_contents(), called once
-        # populated below), with the leftover space collected in one
-        # addStretch(1) at the very bottom -- ordinary, expected blank
-        # space below a compact form, not an oversized near-empty widget.
-        self.list_widget = QListWidget()
-        layout.addWidget(self.list_widget)
-
-        self.description_label = QLabel()
-        self.description_label.setWordWrap(True)
-        self.description_label.setStyleSheet("color: palette(mid);")
-        layout.addWidget(self.description_label)
 
         button_row = QHBoxLayout()
         self.open_template_button = QPushButton("Open Template")
         self.open_template_button.setEnabled(False)
+        self.open_template_button.setProperty("primary", True)
         self.open_template_button.clicked.connect(self._on_open_template_clicked)
         button_row.addWidget(self.open_template_button)
         self.browse_button = QPushButton("Browse for a file...")
@@ -164,67 +226,45 @@ class LoadScenarioWidget(QWidget):
         button_row.addStretch(1)
         layout.addLayout(button_row)
 
+        hint = QLabel("Double-click to open. Customize... changes settings first.")
+        hint.setWordWrap(True)
+        hint.setStyleSheet(f"color: {PALETTE['text_muted']};")
+        layout.addWidget(hint)
+
+        self.list_widget = QListWidget()
+        self.list_widget.setItemDelegate(_BackgroundOnlyDelegate(self.list_widget))
+        self.list_widget.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._rows: Dict[str, _TemplateRow] = {}
+
+        self.description_title = QLabel()
+        self.description_title.setStyleSheet("font-weight: 600; font-size: 115%;")
+        self.description_title.setWordWrap(True)
+        self.description_label = QLabel()
+        self.description_label.setWordWrap(True)
+        self.description_label.setTextFormat(Qt.TextFormat.RichText)
+        self.description_label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+        card = QWidget()
+        card_layout = QVBoxLayout(card)
+        card_layout.addWidget(self.description_title)
+        card_layout.addWidget(self.description_label)
+        card_layout.addStretch(1)
+        self.description_scroll = QScrollArea()
+        self.description_scroll.setWidgetResizable(True)
+        self.description_scroll.setWidget(card)
+
+        splitter = QSplitter(Qt.Orientation.Vertical)
+        splitter.addWidget(self.list_widget)
+        splitter.addWidget(self.description_scroll)
+        splitter.setChildrenCollapsible(False)
+        splitter.setStretchFactor(0, 1)
+        splitter.setStretchFactor(1, 1)
+        splitter.setSizes([300, 360])  # roughly half each; the divider stays draggable
+        layout.addWidget(splitter, 1)
+
         self.list_widget.currentItemChanged.connect(self._on_selection_changed)
         self.list_widget.itemDoubleClicked.connect(lambda _item: self._on_open_template_clicked())
 
         self._populate_templates()
-        self._size_list_to_contents()
-        self._build_customize_buttons(layout)
-        layout.addStretch(1)
-
-    def _build_customize_buttons(self, layout: QVBoxLayout) -> None:
-        """One standalone "Customize: <template name>..." button per
-        template with a registered ``template_wizard`` spec -- see this
-        module's own docstring for why these are always-visible, named
-        buttons (matching ``SpacecraftListWidget``'s own "Generate Walker
-        constellation.../Generate phasing formation..." pattern) rather
-        than a single button whose target depends on the list selection
-        above. Vertically stacked, not a row: `SpacecraftListWidget`'s own
-        comment on its 5-button row already found that this app's left
-        pane reliably gets less width than several full-sentence button
-        labels need side by side.
-        """
-        customize_specs = [
-            (path, spec) for path, spec in
-            sorted(
-                ((path, get_wizard_spec(path.name)) for path in self._template_paths.values()),
-                key=lambda item: item[0].name,
-            )
-            if spec is not None
-        ]
-        if not customize_specs:
-            return
-        header = QLabel("Or run a guided wizard over one template's own key parameters:")
-        header.setWordWrap(True)
-        layout.addWidget(header)
-        for path, spec in customize_specs:
-            scenario_name = next(name for name, p in self._template_paths.items() if p == path)
-            button = QPushButton(f"Customize: {scenario_name}...")
-            button.setToolTip(
-                "Runs a short, guided wizard over just this template's own key tunable parameters, "
-                "then opens the result in the Scenario Editor -- the original template file is never "
-                "modified."
-            )
-            button.clicked.connect(functools.partial(self._on_customize_template_clicked, path, spec))
-            layout.addWidget(button)
-
-    def _size_list_to_contents(self) -> None:
-        count = self.list_widget.count()
-        if count == 0:
-            return
-        row_height = self.list_widget.sizeHintForRow(0)
-        frame = 2 * self.list_widget.frameWidth()
-        # setFixedHeight(), not setMaximumHeight(): QListWidget's own
-        # sizeHint() is a generic Qt default, NOT based on its actual
-        # item count, and the layout's trailing addStretch(1) greedily
-        # claims every pixel beyond whatever sizeHint() this widget
-        # reports (stretch=0 items are pinned at their sizeHint, not
-        # grown toward their maximumHeight, when a sibling stretch item
-        # is competing for the same leftover space) -- so a maximum
-        # alone was silently never reached. +2 rows of slack so the list
-        # doesn't need its own scrollbar for a couple of future additions
-        # to the bundled template set.
-        self.list_widget.setFixedHeight(row_height * (count + 2) + frame)
 
     def _populate_templates(self) -> None:
         if not TEMPLATES_DIR.is_dir():
@@ -240,9 +280,23 @@ class LoadScenarioWidget(QWidget):
             item.setData(Qt.ItemDataRole.UserRole, scenario.description)
             self.list_widget.addItem(item)
 
-    def _on_selection_changed(self, current: Optional[QListWidgetItem], _previous) -> None:
+            spec = get_wizard_spec(path.name)
+            on_customize = (functools.partial(self._on_customize_template_clicked, path, spec)
+                            if spec is not None else None)
+            row = _TemplateRow(scenario.name, on_customize)
+            item.setSizeHint(QSize(0, max(row.sizeHint().height(), 28)))
+            self.list_widget.setItemWidget(item, row)
+            self._rows[scenario.name] = row
+
+    def _on_selection_changed(self, current: Optional[QListWidgetItem], previous) -> None:
         self.open_template_button.setEnabled(current is not None)
-        self.description_label.setText(current.data(Qt.ItemDataRole.UserRole) if current is not None else "")
+        self.description_title.setText(current.text() if current is not None else "")
+        self.description_label.setText(
+            description_html(current.data(Qt.ItemDataRole.UserRole) or "") if current is not None else "")
+        for item, selected in ((previous, False), (current, True)):
+            row = self._rows.get(item.text()) if item is not None else None
+            if row is not None:
+                row.set_selected(selected)
 
     def _on_open_template_clicked(self) -> None:
         item = self.list_widget.currentItem()
@@ -253,11 +307,11 @@ class LoadScenarioWidget(QWidget):
             self.path_chosen.emit(path)
 
     def _on_customize_template_clicked(self, path: Path, spec) -> None:
-        """One of the standalone "Customize: <template name>..." buttons
-        (see _build_customize_buttons) -- unlike _on_open_template_clicked,
-        this never reads self.list_widget.currentItem(): each button
-        already knows exactly which template/spec it's for, regardless of
-        whatever (if anything) is currently selected in the list above.
+        """A row's own "Customize..." button -- unlike
+        _on_open_template_clicked, this never reads
+        self.list_widget.currentItem(): each button already knows exactly
+        which template/spec it's for, regardless of whatever (if anything)
+        is currently selected in the list.
         """
         try:
             scenario = load_scenario(path)

@@ -61,7 +61,21 @@ def _run_and_get_sigma_history(enable_gravity_gradient: bool) -> np.ndarray:
     # inertia tensor of the form k*Identity -- an elongated principal
     # -inertia spread is required for this effector to produce a nonzero
     # torque at all, not a test-construction choice.
-    sc.inertia_kg_m2 = [5.0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 20.0]
+    #
+    # Real bug, found on a real (newer) Basilisk build that added
+    # HubEffector::validateConfiguration() -> eigenIsValidInertiaMatrix()
+    # (src/architecture/utilities/avsEigenSupport.cpp): a rigid body's
+    # three principal moments must satisfy the triangle inequality (the
+    # largest can be no more than the sum of the other two) -- this
+    # test's original (5, 10, 20) violated it (5+10=15 < 20), which the
+    # Basilisk version this project was built/verified against (2.12.0)
+    # never actually checked at runtime, so it went unnoticed here; a
+    # newer Basilisk now correctly rejects it as an unphysical inertia
+    # tensor ("IHubPntBc_B is not a valid inertia tensor") during
+    # InitializeSimulation(). (5, 8, 10) is still clearly non-spherical
+    # (the actual requirement above) while comfortably satisfying the
+    # triangle inequality (5+8=13 > 10).
+    sc.inertia_kg_m2 = [5.0, 0.0, 0.0, 0.0, 8.0, 0.0, 0.0, 0.0, 10.0]
     sc.enable_gravity_gradient = enable_gravity_gradient
     assert sc.fsw_mode is None, "test assumes the bundled scenario has no attitude control loop"
 

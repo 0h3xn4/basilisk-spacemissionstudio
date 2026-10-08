@@ -1,6 +1,6 @@
 {
   "name": "19 - Sun-pointing spacecraft with automatic ground-station comms link",
-  "epoch_utc": "2030-01-01T00:00:00",
+  "epoch_utc": "2030-01-01T08:30:00",
   "simulation_mode": "full_attitude",
   "gravity": {
     "central_body": "earth",
@@ -18,7 +18,7 @@
         "semi_major_axis_km": 6928.0,
         "eccentricity": 0.0,
         "inclination_deg": 97.59,
-        "raan_deg": 259.03,
+        "raan_deg": 259.42,
         "arg_periapsis_deg": 0.0,
         "anomaly_type": "true",
         "true_anomaly_deg": 0.0,
@@ -28,17 +28,17 @@
         "tle_line1": null,
         "tle_line2": null
       },
-      "dry_mass_kg": 60.0,
+      "dry_mass_kg": 150.0,
       "inertia_kg_m2": [
-        12.5,
+        20.5,
         0.0,
         0.0,
         0.0,
-        12.5,
+        20.5,
         0.0,
         0.0,
         0.0,
-        7.5
+        16.0
       ],
       "sigma_bn_init": [
         0.2,
@@ -56,6 +56,7 @@
       "enable_srp": false,
       "srp_coeff": 1.3,
       "srp_area_m2": 1.0,
+      "facets": [],
       "enable_gravity_gradient": false,
       "sensors": [],
       "actuators": [],
@@ -94,11 +95,13 @@
         "comms_power_w": 15.0
       },
       "station_keeping": null,
+      "geo_station_keeping": null,
       "phasing_keeping": null,
       "constant_thrust": null,
       "momentum_dumping": null,
       "magnetic_momentum_management": null,
       "fuel_tank": null,
+      "propellant_budget": null,
       "vizard_model_path": null,
       "vizard_model_offset_m": [
         0.0,
@@ -129,17 +132,18 @@
     }
   ],
   "space_weather": {
-    "source": "synthetic",
+    "source": "bundled",
     "local_file_path": null,
     "cache_dir": null,
     "atmosphere_model": "nrlmsise00",
-    "activity_level": "nominal",
-    "activity_percentile": 95.0
+    "forecast_percentile": 50.0,
+    "msfc_file_path": null
   },
   "sim_settings": {
-    "duration_days": 0.5,
+    "duration_days": 0.09375,
     "dynamics_task_rate_s": 0.1,
-    "integrator": "rkf78"
+    "integrator": "rkf78",
+    "record_interval_s": 0.0
   },
   "monte_carlo": {
     "enabled": false,
@@ -149,6 +153,6 @@
     "dispersions": []
   },
   "mission_sequence": [],
-  "description": "An integrated small-satellite mission: 'leo-comms-1' normally points its solar panel normal at the real, live Sun (fsw_mode-equivalent 'sunSafePoint' behavior, continuously tracking the actual Sun direction, never a fixed inertial attitude) to maximize power generation. Whenever this spacecraft comes into REAL, geometry-driven access of the 'berlin-gs' ground station (Basilisk's own groundLocation.GroundLocation elevation-mask access analysis -- never a manually-specified time window), comms_pointing (schema.scenario.CommsPointingConfig) automatically takes over and re-points the spacecraft's antenna boresight at the ground station instead, switching back to Sun-pointing the instant access ends. This is schema_version's newest capability: see engine.fsw.build_comms_pointing()'s docstring for how the switch works -- only the attitude REFERENCE changes; the spacecraft's own integrated attitude state is never reset, so the existing closed-loop mrpFeedback controller physically SLEWS between the two targets across every transition (watch sat.attitude_sigma_BN step continuously across an access-start/access-end boundary -- never jump) rather than snapping instantly.\n\nPower (schema.scenario.PowerConfig) and an RF downlink (schema.scenario.RFLinkConfig, with a beamwidth-dependent antenna-pointing-loss term) respond to this real, simulated behavior, not independent canned numbers: solar generation depends on the spacecraft's actual attitude (panel-to-sun angle) and real eclipse state every tick; the comms transmitter's extra comms_power_w draws from the SAME battery only while ground-station -pointing is actually active; and the downlink's link margin (engine.link_budget) is computed from the REAL simulated slant range AND the spacecraft's own actually-achieved antenna pointing error -- not an assumption of perfect boresight. Crucially, the link margin series is gated on BOTH real geometric access (gs.access_to_sat.has_access) AND the spacecraft having actually switched into ground-station-pointing mode (sat.comms_pointing.active_mode) -- so a margin value only appears once there's an actual attempted link, and during the slew right after a pass begins, the still-large antenna pointing error can legitimately show a DEGRADED or even negative margin even though hasAccess is already true: this is the 'geometric visibility vs actual RF link availability' distinction made concrete, not just asserted.\n\nWhat to look at: after running, find one access window in 'berlin-gs.access_to_leo-comms-1.has_access' and, across that SAME window, cross-plot: 'leo-comms-1.comms_pointing.active_mode' (0 -> 1 at access start, back to 0 at access end), 'leo-comms-1.comms_pointing.pointing_error_deg' (large right at the transition, decaying toward ~0 as the slew converges), 'leo-comms-1.power.battery_soc' (dips a bit faster while comms_power_w is drawing, recovers once Sun-pointing resumes and the panel is well-illuminated), and 'berlin-gs.access_to_leo-comms-1.link_margin_db' (should be poor/undefined right at the transition, then settle to a healthy positive margin once pointing converges, and should also visibly worsen as elevation drops toward the pass's edges -- real free-space-path-loss growing with slant range). Compare against a window with NO access at all, where active_mode should stay continuously 0 and link_margin_db should be entirely NaN (no link attempted).\n\nTry changing: berlin-gs's min_elevation_deg (lower = longer, more frequent but lower -quality passes), rf_link.antenna_beamwidth_deg (narrower = pointing error matters MORE, a bigger dip in margin during each transition's slew), comms_pointing.comms_power_w (higher = a more visible battery drain during each pass), or sim_settings.duration_days (longer = more passes, at the cost of a bigger recorded dataset -- see the generator script's own comment on why this template doesn't go beyond 0.5 days by default).\n\nKnown, deliberately-not-used upgrade path: Basilisk's own source tree has a more physically-complete, compiled antenna + link-budget pair (src/simulation/communication/simpleAntenna, .../linkBudget -- a real 2D-Gaussian-beam antenna pattern computing pointing loss from true 3D spacecraft/ground antenna geometry, plus FSPL and ITU-R P.676 atmospheric attenuation). This template deliberately does NOT use it: no example scenario anywhere in this checkout exercises those modules yet, so there's no reference usage to confirm the wiring against -- unlike every other module this project uses. This template's simplified, already-proven, Basilisk-free engine.link_budget.py is used instead (now extended with its own, textbook parabolic -pattern pointing-loss approximation, not the real antenna geometry). A real future upgrade would swap this template's RFLinkConfig/link_budget wiring for those native modules once a reference example exists to validate the integration against.",
-  "schema_version": 2
+  "description": "leo-comms-1 points its solar panel at the Sun, and slews its antenna to the Berlin ground station whenever the station is in view, then back. Power and the radio link follow what actually happens.\n\nThe run starts at 08:30 UTC, just before Berlin passes under the orbit: a high pass (about 60 deg) around 10-18 min in, and a low one (about 15 deg) one orbit later, around 107-112 min in.\n\nWhat to look at, across each pass:\n- berlin-gs.access_to_leo-comms-1.has_access: the passes themselves.\n- leo-comms-1.comms_pointing.active_mode: 1 during the pass.\n- leo-comms-1.comms_pointing.pointing_error_deg: large at the switch, then settling.\n- leo-comms-1.battery_charge: dips while transmitting.\n- berlin-gs.access_to_leo-comms-1.link_margin_db: poor during the slew, healthy once pointed, worse at low elevation, empty outside passes.\n\nTry changing:\n- The station's minimum elevation.\n- Antenna beamwidth: narrower makes pointing error matter more.\n- Comms power, or the duration (Berlin's next passes come about 13 h later, around 23:00 local time).\n\nLimitations:\n- The link budget uses a simplified antenna pattern, not Basilisk's antenna and link-budget modules.",
+  "schema_version": 4
 }

@@ -174,14 +174,15 @@ environment issue.
 * **Everything Basilisk-independent** (`spacemissionstudio/schema/`,
   `engine/spaceweather.py`, `engine/results.py`, `engine/link_budget.py`,
   `engine/constellation.py`, `engine/spacecraft_templates.py`,
-  `engine/propellant_bookkeeping.py`, `cli.py`, and the entire
-  `spacemissionstudio/gui/` package) has no Basilisk import and is fully
-  exercised either way -- `pytest tests/` runs and passes 1007 tests
-  with or without Basilisk installed (see "Running the tests" below).
+  `engine/propellant_bookkeeping.py`, `engine/time_system.py`,
+  `engine/orbit_design.py`, `engine/scenario_explainer.py`, `engine/scenario_checks.py`, `cli.py`, and
+  the entire `spacemissionstudio/gui/` package) has no Basilisk import
+  and is fully exercised either way -- `pytest tests/` runs and passes
+  1305 tests without Basilisk installed (see "Running the tests" below).
   That includes the PySide6 GUI: built, run headless, and driven with
   `pytest-qt` for real -- every form field, every menu action, every
   dialog -- not asserted about in the abstract.
-* **Everything Basilisk-dependent** (`time_system.py`, `kernels.py`,
+* **Everything Basilisk-dependent** (`kernels.py`,
   `service.py`, `fsw.py`/`vizard.py`, `monte_carlo.py`,
   `orbit_maintenance.py`, `mission_engine.py`) has been confirmed
   against a real `pip install "bsk[all]"` Basilisk build, including a
@@ -264,16 +265,11 @@ actually modeled (Earth with spherical-harmonics degree >= 2), MEAN
 (first-order-J2, osc -> mean) elements alongside the osculating ones,
 via Basilisk's own `orbitalMotion.clMeanOscMap` (the same tool its
 `meanOEFeedback` FSW module uses -- not a bespoke implementation).
-NRLMSISE-00 drag can also use a
-CONSERVATIVE, sustained-worst-case margin (a chosen percentile -- e.g.
-95th -- of REAL historical F10.7/Ap data YOU supply as a local file,
-held constant across the whole scenario, never a fabricated number)
-instead of ordinary resolved space weather -- see
-`engine/spaceweather.py`'s own docstring, "Conservative ('worst-case')
-drag margin". SpaceMissionStudio makes no network calls at runtime (see
-"Closed-off/offline policy" below), so this app can no longer fetch that
-historical data itself; download a CelesTrak CSV yourself, outside this
-app, and point `local_file_path` at it.
+NRLMSISE-00 drag takes its solar activity at one of three levels:
+nominal (NASA MSFC's 50th-percentile prediction), conservative (its 95th
+percentile, ESA AD10's operations case) or low (its 5th). The
+conservative case follows the predicted solar cycle; it is not a
+constant.
 
 **Attitude, sensors & actuators** -- every `fsw_mode` maps to a real
 Basilisk FSW module chain (attitude nav/guidance/control), idealized or
@@ -291,7 +287,8 @@ ambient dissipation) via the `motor_thermal_*` params. See template '20'.
 
 **Mission planning** -- a GMAT/FreeFlyer-inspired Resources / Mission
 Sequence / Output architecture: `propagate` (duration, epoch, or
-periapsis/apoapsis-event stop conditions), `maneuver` (impulsive
+event stop conditions: periapsis, apoapsis, or the start/end of the next
+ground-station pass), `maneuver` (impulsive
 delta-V, inertial/VNB/RTN), `lambert_transfer` (solves for the
 impulsive delta-V that reaches a target position after a given time of
 flight, via Basilisk's own `lambertPlanner`/`lambertSolver`/
@@ -327,7 +324,9 @@ access AND the spacecraft having actually switched modes, can show a
 real "geometrically visible but not yet actually linked" period right at
 each transition. See template '19' (below).
 
-**Orbit maintenance** -- altitude/semi-major-axis station-keeping and
+**Orbit maintenance** -- altitude/semi-major-axis station-keeping, GEO
+east-west (longitude box) and north-south (inclination limit)
+station-keeping measured in Earth's own rotating frame, and
 constellation-wide phasing maintenance, both with real delta-V/
 propellant bookkeeping (rocket-equation mass depletion fed back into
 simulated spacecraft mass every tick) and eclipse-gated burns; a
@@ -372,10 +371,11 @@ to download AVS's own pre-built binary automatically if none can be
 found -- see "Running the CLI" above), not just configures what feeds
 it.
 
-**Reusable starting points** -- three spacecraft "bus" templates
-(passive CubeSat, 3-axis-stabilized CubeSat, ESPA-class smallsat) and
-twenty complete example scenarios, eighteen covering one major concept
-each in isolation plus two integrated demonstrations (see "Template
+**Reusable starting points** -- four spacecraft "bus" templates
+(100 kg ESPA-class, 150 kg microsatellite, 300 kg and 500 kg small
+satellites) and
+twenty-one complete example scenarios, nineteen covering one major
+concept each in isolation plus two integrated demonstrations (see "Template
 missions" below).
 
 **Safe cancellation** -- **Abort Simulation** cooperatively cancels an
@@ -384,10 +384,27 @@ simulation chunks or commands, keeping whatever partial results were
 already produced -- never a forced kill that could leave Basilisk's C++
 state mid-mutation.
 
+**Long runs and end of life** -- runs of up to about 10 years, chained
+past Basilisk's ~104-day limit, with a "Record every" setting to keep
+them in memory; and an **End of Life** tab (and `spacemissionstudio
+lifetime`) estimating when a spacecraft re-enters, with or without a
+deorbit burn, checked against the 5- and 25-year disposal rules. The
+estimate agrees with full Basilisk decay runs to within ~2% in seconds.
+
+**Propellant budgets (ESA AD10 style)** -- a Budget tab and
+`spacemissionstudio budget`: delta-V and propellant per mission phase with
+the guideline's margins, residuals and iteration, simulated orbit control
+taken from the last run (or estimated from the drag), the disposal burn
+sized for a 5-year lifetime, and a launch-delay sweep for launches up to
+5 years late (`budget --launch-delays`), and an altitude trade of that
+sweep against the tank (`budget --altitudes`, in parallel processes); solar activity from NASA MSFC's
+prediction at the 95th/50th percentile. Templates use AD10's operations
+drag coefficient, 3.0.
+
 **GUI & CLI** -- a full PySide6 desktop shell (scenario editor,
 Monte Carlo, live progress feedback, a real visual theme/icon/
 toolbar) and an equivalent headless CLI (`spacemissionstudio validate/run/
-monte-carlo/kernels-status/generate-constellation/gui`), both built on
+monte-carlo/lifetime/budget/kernels-status/generate-constellation/gui`), both built on
 the exact same `schema`/`engine` layer -- neither is a thin wrapper
 around the other. Result plots are Plotly figures (a validated,
 colorblind-safe categorical palette; a unified hover tooltip; plain
@@ -418,6 +435,7 @@ SpaceMissionStudio/
   spacemissionstudio/
     cli.py                           -- batch/headless CLI + GUI launcher
     logging_setup.py                 -- file-backed logging (so a GUI crash leaves more than one bare line)
+    plot_categories.py               -- per-series display metadata (title, axis label, unit, display-only conversion)
     schema/
       scenario.py                    -- Scenario and friends, validation, save/load
       migrations.py                  -- schema-version migration registry
@@ -425,9 +443,9 @@ SpaceMissionStudio/
       references.py                  -- Phase 6: reference-integrity (find/rename) for resources + commands
       validation.py                  -- Phase 6: validate_all() -- fully-collecting scenario-wide validation
     engine/
-      time_system.py                 -- UTC/TAI/TT/ET, single source of truth (needs Basilisk)
+      time_system.py                 -- UTC epoch -> SPICE time string for Basilisk (locale-independent; no Basilisk import)
       kernels.py                     -- SPICE kernel fetch/status (needs Basilisk; network only at install time/startup prompt)
-      spaceweather.py                -- local-file/synthetic resolve+validate (no network); fetch() is opt-in only (no Basilisk needed)
+      spaceweather.py                -- real CelesTrak data (bundled or local file) resolve+validate (no network); fetch() is opt-in only (no Basilisk needed)
       results.py                     -- TimeSeries/ResultSet, CSV export (no Basilisk needed)
       service.py                     -- SimulationService (needs Basilisk)
       fsw.py                         -- Phase 2: attitude nav/guidance/control/actuation chain (needs Basilisk)
@@ -436,22 +454,31 @@ SpaceMissionStudio/
       link_budget.py                 -- Phase 4: downlink RF link-margin estimate (no Basilisk needed)
       device_catalog.py              -- real, sourced, European-manufactured sensor/actuator device presets for gui/sensor_actuator_editor.py (no Basilisk needed)
       orbit_maintenance.py           -- Phase 4/5: station-keeping + phasing-keeping + constant-frame-thrust controllers, delta-V/propellant bookkeeping (needs Basilisk)
+      geo_station_keeping.py         -- GEO east-west (longitude box) and north-south (inclination) station-keeping (needs Basilisk)
       propellant_bookkeeping.py      -- Phase 5: shared per-tick mass/propellant delta math (no Basilisk needed)
       constellation.py               -- Phase 4: Walker-pattern constellation generator + SeparationSchedule (no Basilisk needed)
       formation.py                   -- phasing-formation generator: chief + Hill-frame (R/T/N) offset -> follower spacecraft (needs Basilisk)
       spacecraft_templates.py        -- Phase 5: reusable spacecraft "bus" templates (no Basilisk needed)
+      facets.py                      -- flat-plate facet models (box + solar array) for attitude-dependent drag/SRP (no Basilisk needed)
       mission_engine.py              -- Phase 6: MissionEngine -- walks mission_sequence against a SimulationService (needs Basilisk)
+      orbit_design.py                -- Sun-synchronous orbit design helpers (sun_synchronous_inclination_deg/raan_for_ltan_deg) -- Basilisk-free
+      scenario_explainer.py          -- explain(scenario) -> a structured, always-current "recipe" summary (stat tiles/badges/table) -- Basilisk-free
+      scenario_checks.py             -- pre-run checks: ground-station pass prediction from the initial orbits, and warnings for setups that can't work as configured -- Basilisk-free
     gui/
       app.py                         -- QApplication entry point
       theme.py                       -- Phase 5: app-wide QSS stylesheet + palette
+      assets/                        -- SVG glyphs: combo/spin arrows, check marks (theme.py) + toolbar line icons (icons.py)
+      widgets.py                     -- PreciseDoubleSpinBox (stores full precision, not just its display decimals) + exact_number_text()
+      autosave.py                    -- crash-recovery autosave of in-progress scenario edits
       feedback.py                    -- toast notifications + inline (per-field) validation highlighting
-      icons.py                       -- Phase 5: procedurally-drawn app icon
+      badges.py                      -- colored pill/badge QLabel styling helper, shared by mission_dashboard_widget.py and scenario_explainer_widget.py
+      icons.py                       -- Phase 5: procedurally-drawn app icon + toolbar_icon() for the toolbar SVGs
       main_window.py                 -- MainWindow: File/Run/Help menus + toolbar, ties everything together
       load_scenario_widget.py        -- "Load Scenario" tab: built-in template picker + browse-for-a-file
       template_wizard.py             -- "Customize: <template name>..." guided wizard spec registry + dialog
       scenario_editor.py             -- the full scenario form + live validation
       mission_sequence_editor.py     -- Phase 6: mission_sequence tree editor (Command Add/Edit/Remove/nesting)
-      mission_output_widget.py       -- Phase 6: "Mission Output" debug-console tab (CommandSummary/ReportEntry display) + CSV export
+      mission_output_widget.py       -- Phase 6: "Mission Output" tab (report values as a quantity x report table) + CSV export
       propagation_setup_dialog.py    -- Phase 5: gravity/perturbations + integrator + space weather, one dedicated window
       spacecraft_editor.py           -- spacecraft list + add/edit/remove dialog (tabbed: orbit, sensors/actuators, FSW, power/propulsion/link budget)
       sensor_actuator_editor.py      -- Phase 2: generic sensor/actuator list + add/edit/remove dialog, with a "select from catalog" picker (engine/device_catalog.py) alongside the fully custom editor
@@ -466,11 +493,13 @@ SpaceMissionStudio/
       spacecraft_template_dialog.py  -- Phase 5: "New from template" picker dialog
       kernel_status_widget.py        -- SPICE kernel status panel
       results_widget.py              -- Plotly results plot (QWebEngineView) + CSV export + save-plot-as-PNG
+      flow_layout.py                 -- wrapping chip layout (the Results tab's "Suggested" series)
       mission_dashboard_widget.py    -- "Mission Dashboard" tab: live operating-state/attitude/power/RF-link telemetry for a comms_pointing spacecraft
+      scenario_explainer_widget.py   -- "Explain" tab: renders engine/scenario_explainer.py's output as stat tiles/badges/a per-spacecraft table, live-updated from ScenarioEditorWidget.changed
+      formation_diagram_widget.py    -- QPainter-drawn along-track formation-geometry diagram (target separation + trigger/restore tolerance bands) for the Explain tab
       run_worker.py                  -- SimulationService/Monte Carlo on a background QThread
     scenarios/
       two_body_validation.json       -- the Phase 0 validation scenario
-      diagnostic_05*.json             -- one-off diagnostic scenarios from '05's own station-keeping/constant-thrust investigation (see HISTORY.md); diagnostic_05f_* is the only one a test (test_vizard.py) still reads
       templates/                     -- education/starter-template scenarios -- see that directory's own README
         README.md                    -- the template catalog: what each one teaches, how to open/run one
         01_two_body_circular_orbit.json
@@ -524,7 +553,14 @@ SpaceMissionStudio/
     test_cli.py
     test_two_body_validation.py      -- requires_basilisk
     test_mission_engine.py           -- Phase 6, requires_basilisk
-    test_time_system.py              -- requires_basilisk
+    test_time_system.py              -- UTC -> SPICE epoch string (locale-independent), no Basilisk needed
+    test_orbit_design.py             -- Sun-synchronous inclination / RAAN-for-LTAN helpers, no Basilisk needed
+    test_scenario_explainer.py       -- explain(): structure, short strings, never raises on any template
+    test_scenario_checks.py          -- pass prediction (vs. an independent propagation) and pre-run warnings, no Basilisk needed
+    test_autosave.py                 -- crash-recovery autosave (Qt-free half)
+    test_conservation_check.py       -- when the two-body energy/momentum drift check applies
+    test_orbit_maintenance_j2_regression.py -- phasing/station-keeping regressions under real J2 gravity, requires_basilisk
+    test_formation_keeping_regression.py -- follower mirrors the chief's reboosts; closed-loop relative SMA, requires_basilisk
     test_gravity_gradient.py         -- GravityGradientEffector wiring, requires_basilisk
     test_thruster_control.py         -- real "thruster" actuator control path, requires_basilisk
     test_momentum_dumping.py         -- RW momentum desaturation via thrusters, requires_basilisk
@@ -540,6 +576,8 @@ SpaceMissionStudio/
     test_orbit_maintenance.py        -- station-keeping/phasing-keeping/constant-frame-thrust VNB/RTN math, requires_basilisk
     test_orbit_maintenance_true_mass.py -- delta-V estimate accounts for fuel-tank mass too
     test_spacecraft_templates.py     -- reusable spacecraft "bus" templates
+    test_facets.py                   -- facet models: schema, box generator, facet drag/SRP physics in Basilisk
+    test_geo_station_keeping.py      -- GEO station-keeping: true-equator placement, schema, J22 drift, drift fit
     test_formation.py                -- phasing-formation generator (chief + R/T/N offset), requires_basilisk
     test_monte_carlo.py              -- Basilisk.utilities.MonteCarlo bridge, requires_basilisk
     test_service_execution_errors.py -- clear error message for a real ExecuteSimulation() crash class
@@ -547,11 +585,19 @@ SpaceMissionStudio/
     test_vizard.py                   -- Vizard GenericStorage/GenericSensor dangling-pointer regression, requires_basilisk
     test_vizard_labels.py            -- Vizard RTN panel label helpers, no Basilisk needed
     test_logging_setup.py            -- file-backed logging so a GUI crash leaves more than one bare line
+    data/
+      vizard_station_keeping_crash_regression.json -- input scenario for test_vizard.py
     gui/
+      conftest.py                    -- joins every QThread a test started (a GC'd running QThread aborts the process)
       test_app.py
+      test_widgets.py                -- PreciseDoubleSpinBox / exact_number_text
+      test_feedback.py               -- toast + inline-validation helpers
+      test_mission_dashboard_widget.py
+      test_scenario_explainer_widget.py
+      test_formation_diagram_widget.py
       test_theme.py
       test_icons.py
-      test_scenario_templates_gui.py -- every template round-trips through ScenarioEditorWidget too
+      test_scenario_templates_gui.py -- every template round-trips through ScenarioEditorWidget and every editor dialog unchanged
       test_orbit_ic_widget.py
       test_spacecraft_editor.py
       test_spacecraft_template_dialog.py
@@ -583,14 +629,21 @@ python3 -m pip install -e ".[dev,gui]"
 python3 -m pytest tests/ -v
 ```
 
-Without Basilisk on `PYTHONPATH`, this runs 1007 tests (schema, space
-weather, results, link budget, constellation generation, CLI, and the
-full PySide6 GUI, run headless) and skips 130 whose premise is
-specifically "Basilisk is unavailable" (marked `requires_basilisk`), per
-`tests/conftest.py`.
+The suite has 2015 tests. Without Basilisk on `PYTHONPATH`, 1749 of
+them run and pass (schema, space weather, results, link budget,
+constellation generation, CLI, and the full PySide6 GUI, run headless),
+and the 266 that need a real Basilisk build (marked `requires_basilisk`,
+or skipped on a Basilisk-availability check, per `tests/conftest.py`)
+are skipped.
 
 With Basilisk installed (`pip install "bsk[all]"` -- see "Getting
-started" above), the 130 skips above run for real instead of skipping.
+started" above), those tests run for real: 2004 pass and 11 skip (the
+ones whose premise is specifically "Basilisk is unavailable"). The
+first run needs internet access once, so Basilisk can download its
+SPICE ephemeris kernels; without them, the ~45 kernel-dependent tests
+fail with `KernelError`.
+`pip install pytest-xdist` and `pytest tests/ -n auto` runs the suite
+on all CPU cores.
 See "Verification status" above for how thoroughly that's actually been
 exercised -- short version: yes, including a real full multi-day run.
 
@@ -632,15 +685,12 @@ scenario.save("my_scenario.json")
 from datetime import datetime
 from spacemissionstudio.engine import spaceweather as sw
 
-# resolve() itself never touches the network -- "celestrak" is not a
-# valid source. Use "local_file" with your own downloaded CSV (or one
-# fetched via the GUI's startup prompt -- see sw.fetch()/
-# sw.cached_fetch_path(), both consent-gated, never automatic), or
-# "synthetic" (the default) for a locally-generated, solar-cycle-shaped
-# profile that needs no file at all.
-resolved = sw.resolve("local_file", datetime(2030, 1, 1), datetime(2030, 4, 1),
-                       local_file_path="/path/to/your/SW-All.csv")  # your own CelesTrak download
-print(resolved.path, resolved.is_synthetic, resolved.warnings)
+# Real data only, and resolve() never touches the network. "bundled" (the
+# default) is CelesTrak's SW-All shipped with the app (or a newer copy the
+# GUI's consent-gated startup prompt downloaded); "local_file" is your own
+# CelesTrak .txt/.csv download.
+resolved = sw.resolve("bundled", datetime(2030, 1, 1), datetime(2030, 4, 1))
+print(resolved.path, resolved.data_file, resolved.warnings)
 ```
 
 ## Running a scenario (requires a Basilisk build)
@@ -682,6 +732,8 @@ spacemissionstudio spaceweather-resolve spacemissionstudio/scenarios/two_body_va
 spacemissionstudio run spacemissionstudio/scenarios/two_body_validation.json --out-dir results/
 spacemissionstudio run scenario_with_fsw.json --out-dir results/ --vizard-save-file results/viz.bin
 spacemissionstudio monte-carlo scenario_with_dispersions.json --archive-dir mc_results/
+spacemissionstudio lifetime scenario.json --deorbit-perigee-km 250
+spacemissionstudio budget scenario.json --run
 spacemissionstudio kernels-status
 
 # launches the PySide6 GUI (needs the 'gui' extra; does NOT need Basilisk
@@ -720,16 +772,16 @@ spacemissionstudio gui
 ```
 
 The GUI opens on its **Load Scenario** tab (left pane) -- pick one of the
-twenty built-in template missions (see "Template missions" below) or
+twenty-one built-in template missions (see "Template missions" below) or
 browse for any other scenario file; either one switches you to the
 **Scenario Editor** tab next to it with that scenario loaded and ready to
-edit. Below the template list, a standalone **"Customize: \<template
-name\>..."** button for every one of the twenty templates is always
-visible: a short, multi-step walkthrough of just that template's own key
+edit. Every row of the template list carries its own **Customize...**
+button (always enabled, no selection needed; its accessible name is
+"Customize: \<template name\>"): a short, multi-step walkthrough of just that template's own key
 tunable parameters (pre-filled with its current values), ending in the
 same Scenario Editor tab with those changes already applied -- a faster
 path than the full editor form for someone who wants "GEO
-station-keeping, but with a tighter deadband and twice the propellant"
+station-keeping, but with a tighter longitude box and twice the propellant"
 rather than every field on every spacecraft. The
 original template file is never modified either way (both still need
 File > Save As to write anywhere). File > New/Open/Save/Save As work against the same
@@ -741,7 +793,7 @@ label updates live as you type, including its Monte Carlo section
 by name). Run > Run Simulation runs `SimulationService` on a background
 thread (the UI stays responsive) and switches to the Results tab when
 done, with a plot per result series, a CSV export button (every series
-at once), and a "Save plot as PNG..." button (just the currently
+at once), and "Save PNG..."/"Save SVG..." buttons (just the currently
 displayed plot, to a user-chosen location via a native Save As dialog --
 rendered client-side through the same `plotly.js` already on the page,
 not a new `kaleido` dependency). A
@@ -756,7 +808,7 @@ clear error (not a crash) if Basilisk isn't installed/built.
 
 ## Template missions for learning and for starting your own
 
-`spacemissionstudio/scenarios/templates/` has twenty ready-to-run scenario
+`spacemissionstudio/scenarios/templates/` has twenty-one ready-to-run scenario
 files, each demonstrating one SpaceMissionStudio concept in isolation (except
 the last two, which deliberately integrate several) --
 two-body orbits, J2/third-body perturbations, GEO station-keeping,
@@ -800,7 +852,7 @@ and hasn't been run for real.
 
 **Built into the GUI itself** (not just files you'd have to know the path
 to): the GUI's **Load Scenario** tab (`gui/load_scenario_widget.py`,
-see "Running the GUI" above) lists all twenty by name with their
+see "Running the GUI" above) lists all twenty-one by name with their
 description shown on selection, no file-browsing needed -- "Open
 Template" or a double-click loads one and switches straight to the
 Scenario Editor tab. The same tab's "Browse for a file..." button covers
@@ -841,6 +893,55 @@ install from a wheel file already on disk. `--basilisk-wheel` accepts any
 string `pip install` would (a path, a URL, or a plain requirement
 specifier like `"bsk[all]==2.12.0"`), not literally only a `.whl` file.
 
+### Qualified Basilisk version
+
+SpaceMissionStudio is verified against **Basilisk 2.12.0**
+(`spacemissionstudio.dependencies.QUALIFIED_BASILISK_VERSION`; ECSS
+compliance decision D5). The `.deb` and Windows installers install
+`bsk[all]==2.12.0`. Another version still runs, but the GUI status bar and
+`spacemissionstudio run` say so, and every run's `provenance.json` records
+the Basilisk version, whether it is the qualified one, the other dependency
+versions, a SHA-256 of the scenario and the reference data files used
+(SPICE kernels, gravity field, magnetic model, space weather). The Basilisk
+sources in this repository (`../src`, currently 2.13.0b0) are not the
+qualified version.
+
+### CCSDS orbit data messages
+
+SpaceMissionStudio reads, validates and writes CCSDS 502.0-B-3 (April 2023)
+Orbit Parameter, Mean-Elements and Ephemeris Messages in KVN
+(`spacemissionstudio/engine/ccsds_odm.py`; the OCM and the XML form are not
+supported):
+
+* `spacemissionstudio ccsds-validate FILE...` checks files against the
+  standard; every breach of a "shall" is an error and of a "should" a
+  warning, each with its clause.
+* `spacemissionstudio run SCENARIO --oem` also writes each spacecraft's
+  ephemeris as an OEM (EME2000, UTC; `--oem-stride N` thins it).
+* `spacemissionstudio ccsds-export SCENARIO --out DIR` writes each
+  spacecraft's initial state as an OPM (with osculating elements and GM for
+  Earth), or a TLE spacecraft's elements as an OMM.
+* `spacemissionstudio ccsds-import FILE SCENARIO --spacecraft NAME` sets a
+  spacecraft's orbit from an OPM (EME2000, ICRF or GCRF; UTC, TAI, TT or
+  TDB; `--set-epoch` moves the scenario epoch to the OPM's) or from a
+  TLE-based OMM (converted to the TLE it represents).
+
+`compliance/ics_ccsds_502.csv` is the Implementation Conformance Statement
+(Annex A) for the three messages.
+
+### Earth orientation
+
+With NAIF's IERS-based Earth PCKs installed, the Earth-fixed frame of a run
+is **ITRF93** (precession, nutation with IERS corrections, UT1, polar
+motion); without them it is SPICE's `IAU_EARTH` rotation model (about
+1.5 mrad, roughly 10 km at the surface, away from ITRF93 in 2026) and every
+Earth run says so. The files (about 36 MB from naif.jpl.nasa.gov) are
+fetched by the installers, by the startup prompt when you agree, or with
+`spacemissionstudio earth-orientation --fetch`; `--import FILE` installs
+them from disk and `--rollback` restores the previous set. After the files'
+last measured data plus about ten weeks the orientation is NAIF's
+long-term prediction, which the Explain tab notes.
+
 ## Closed-off/offline policy
 
 SpaceMissionStudio makes **no network calls implicitly**. Nothing here ever
@@ -875,18 +976,23 @@ network access can happen, all opt-in:
   published links) is always available alongside it.
 
 `engine.spaceweather.resolve()` itself -- the function actually called
-while a scenario runs -- still never touches the network under any
-circumstance: `source` is only ever `"local_file"` (a CSV you point it at,
-whether fetched via the startup prompt or supplied some other way) or
-`"synthetic"` (a locally-generated, solar-cycle-shaped profile, no file or
-network needed). There is no `"celestrak"` source value -- `fetch()` is a
-separate, explicitly-invoked utility that produces an ordinary local file,
-not a new value `source` can take. The `activity_level="conservative"`
-worst-case-percentile margin is `local_file`-only for the same reason; the
-bundled templates that used to default to it (04, 05, 07, 08, 18) ship
-`nominal`/`synthetic` instead, with their own `description` explaining how
-to restore the real-historical-data margin (fetch it via the startup
-prompt, or supply your own local CSV).
+while a scenario runs -- never touches the network. Space weather is real
+data only: `source` is `"bundled"` (the default: CelesTrak's SW-All file
+shipped in `spacemissionstudio/data/spaceweather/`, or a newer copy the
+startup prompt downloaded) or `"local_file"` (your own CelesTrak file).
+The shipped file (updated 2025-07-21; <https://celestrak.org/SpaceData/>)
+holds observed daily F10.7 and Ap from 1957-10-01 and CelesTrak's 45-day
+forecast. Beyond that, solar activity comes from NASA MSFC's October 2026
+prediction (also shipped; F10.7 and Ap at the 95th/50th/5th percentiles,
+2026-04 to 2041-10, the last 132 months repeated after that), as ESA's
+AD10 guideline (EOP-FM/2024-07-177, Sec. 5.9) prescribes. "Solar
+activity" picks the column: Nominal (50th) by default, Conservative
+(95th) as AD10 asks for operations budgets, the 50th for end of life. Months before MSFC's
+first use NOAA's monthly F10.7 with Ap at the observed mean (12.8). Runs
+say which data they used in their warnings. The earlier `"synthetic"` profile was
+removed; older scenario files are migrated to `"bundled"`. So was the
+old "conservative" margin (a constant percentile of the observed
+record): schema v4 turns it into the 95th percentile.
 
 ## Known limitations
 

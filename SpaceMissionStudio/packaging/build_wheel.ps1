@@ -63,3 +63,8 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host ""
 Write-Host "Built:"
 Get-ChildItem (Join-Path $DistDir "spacemissionstudio-*") | ForEach-Object { Write-Host $_.Name }
+# Release checksums (security_analysis.md S-07), in sha256sum's format.
+Get-ChildItem (Join-Path $DistDir "spacemissionstudio-*") | ForEach-Object {
+    "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name
+} | Set-Content -Encoding ascii (Join-Path $DistDir "SHA256SUMS")
+Write-Host "Checksums: $(Join-Path $DistDir 'SHA256SUMS')"

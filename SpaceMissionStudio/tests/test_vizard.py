@@ -26,12 +26,7 @@ from spacemissionstudio.schema import load_scenario
 
 pytestmark = pytest.mark.requires_basilisk
 
-SCENARIO_PATH = (
-    Path(__file__).resolve().parent.parent
-    / "spacemissionstudio"
-    / "scenarios"
-    / "diagnostic_05f_station_keeping_fixed_step_integrator.json"
-)
+SCENARIO_PATH = Path(__file__).resolve().parent / "data" / "vizard_station_keeping_crash_regression.json"
 
 
 def test_station_keeping_with_vizard_save_file_does_not_crash(tmp_path):
@@ -41,7 +36,7 @@ def test_station_keeping_with_vizard_save_file_does_not_crash(tmp_path):
     crash within the first couple of dynamics ticks with a
     ``SimulationServiceError`` wrapping ``std::length_error``/
     ``std::bad_alloc`` from VizInterface's background write thread. This
-    scenario is diagnostic_05f, a real, previously-reproducing crash --
+    scenario (originally diagnostic_05f) is a real, previously-reproducing crash --
     run() completing at all (an unhandled RuntimeError would otherwise
     propagate straight out of run()) is the actual regression check.
     """
@@ -213,3 +208,72 @@ def test_enable_vizard_with_comms_pointing_builds_the_three_new_panels():
     assert storage_list[0][0].label == "Pointing Error"
     sensor_labels = {sensor.label for sensor in sensor_list[0]}
     assert sensor_labels == {"Mode", "Link status"}
+
+
+@pytest.mark.parametrize("trail, ground_tracks", [(False, False), (True, True)])
+def test_trail_and_ground_tracks_are_off_unless_asked_for(trail, ground_tracks):
+    """Real user feedback on a 26-day formation run in Vizard: "visually
+    this is very confusing and not really clear" -- a solid cyan band
+    built from hundreds of overlapping flown-path/ground-track lines.
+    Each line type is now set explicitly on (1) or off (-1); 0 would
+    leave it to Vizard's own default."""
+    import tempfile
+
+    from Basilisk.simulation import spacecraft
+    from Basilisk.utilities import SimulationBaseClass, macros
+
+    from spacemissionstudio.engine.vizard import VizardRequest, enable_vizard
+
+    scSim = SimulationBaseClass.SimBaseClass()
+    scSim.CreateNewProcess("dynProc").addTask(scSim.CreateNewTask("dynTask", macros.sec2nano(1.0)))
+    sc_object = spacecraft.Spacecraft()
+    sc_object.ModelTag = "sat-1"
+    scSim.AddModelToTask("dynTask", sc_object)
+    request = VizardRequest(save_file=str(Path(tempfile.mkdtemp()) / "lines.viz.bin"),
+                            show_trajectory_trail=trail, show_ground_tracks=ground_tracks)
+    viz = enable_vizard(scSim, "dynTask", [sc_object], request)[0]
+
+    on = {True: 1, False: -1}
+    assert viz.settings.orbitLinesOn == 1  # each spacecraft's current orbit stays on by default
+    assert viz.settings.trueTrajectoryLinesOn == on[trail]
+    assert viz.settings.showTruePathGroundTrackLines == on[ground_tracks]
+    assert viz.settings.showOsculatingGroundTrackLines == -1
+
+
+def test_ground_station_cone_reaches_the_highest_orbit():
+    """Without a range, Vizard drew each station's cone 0.4 planet radii
+    tall, so a ~160 deg cone's rim reached ~2.3 radii out: a disc wider
+    than Earth around every station (Vizard's FullLocationMethods.cs).
+    The cone now gets the slant range to the highest spacecraft's orbit
+    at the station's minimum elevation, so it is drawn as a dome reaching
+    exactly the orbit."""
+    import math
+    import tempfile
+
+    from Basilisk.simulation import groundLocation, spacecraft
+    from Basilisk.utilities import SimulationBaseClass, macros
+
+    from spacemissionstudio.engine.vizard import VizardRequest, _slant_range_m, enable_vizard
+
+    scSim = SimulationBaseClass.SimBaseClass()
+    scSim.CreateNewProcess("dynProc").addTask(scSim.CreateNewTask("dynTask", macros.sec2nano(1.0)))
+    sats = []
+    for name, radius in (("low", 6878.0e3), ("high", 6928.0e3)):  # [m]
+        sc_object = spacecraft.Spacecraft()
+        sc_object.ModelTag = name
+        sc_object.hub.r_CN_NInit = [[radius], [0.0], [0.0]]
+        scSim.AddModelToTask("dynTask", sc_object)
+        sats.append(sc_object)
+    gl = groundLocation.GroundLocation()
+    gl.ModelTag = "gs-1"
+    gl.planetRadius = 6378136.6  # [m]
+    gl.minimumElevation = math.radians(10.0)
+    gl.specifyLocation(math.radians(52.5), math.radians(13.4), 34.0)
+    scSim.AddModelToTask("dynTask", gl)
+    viz = enable_vizard(scSim, "dynTask", sats,
+                        VizardRequest(save_file=str(Path(tempfile.mkdtemp()) / "cone.viz.bin")),
+                        ground_stations={"gs-1": gl})[0]
+
+    expected = _slant_range_m(6378136.6, 6928.0e3, math.radians(10.0))
+    assert viz.locations[0].range == pytest.approx(expected)
+    assert 1.5e6 < expected < 2.2e6  # [m] a LEO station's reach, not planet-sized

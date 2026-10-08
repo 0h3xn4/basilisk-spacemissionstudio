@@ -49,3 +49,55 @@ def test_apply_theme_is_idempotent(qapp):
     apply_theme(qapp)
     apply_theme(qapp)
     assert qapp.styleSheet().strip() != ""
+
+
+def test_every_asset_the_stylesheet_references_exists():
+    """The combo/spin arrows and check marks are SVG files (see theme.py's
+    _ASSETS_DIR comment) -- a renamed or unpackaged one would silently
+    bring back arrow-less combo boxes rather than raise anything.
+    """
+    import re
+    from pathlib import Path
+
+    from spacemissionstudio.gui.theme import _qss
+
+    referenced = re.findall(r"url\(([^)]+)\)", _qss())
+    assert referenced, "expected the stylesheet to reference its SVG assets"
+    for path in referenced:
+        assert Path(path).is_file(), path
+
+
+def test_svg_asset_colors_match_the_palette():
+    """The glyph SVGs hard-code their colors (QSS can't recolor an image),
+    so they must be kept in step with PALETTE by hand -- this catches drift.
+    """
+    from pathlib import Path
+
+    from spacemissionstudio.gui.theme import PALETTE, _ASSETS_DIR
+
+    expected = {
+        "chevron-down.svg": PALETTE["text_muted"],
+        "chevron-up.svg": PALETTE["text_muted"],
+        "chevron-down-disabled.svg": PALETTE["text_disabled"],
+        "chevron-up-disabled.svg": PALETTE["text_disabled"],
+        "check.svg": PALETTE["on_accent"],
+        "radio-dot.svg": PALETTE["on_accent"],
+        "tb-run.svg": PALETTE["on_accent"],
+        "tb-abort.svg": PALETTE["danger"],
+    }
+    for name, color in expected.items():
+        assert color.upper() in Path(_ASSETS_DIR / name).read_text().upper(), name
+
+
+def test_every_toolbar_action_has_an_icon(qtbot):
+    from spacemissionstudio.gui.main_window import MainWindow
+
+    window = MainWindow(prompt_startup_fetch=False, check_autosave_recovery=False)
+    qtbot.addWidget(window)
+    from PySide6.QtWidgets import QToolBar
+
+    for toolbar in window.findChildren(QToolBar):
+        for action in toolbar.actions():
+            if action.isSeparator():
+                continue
+            assert not action.icon().isNull(), action.text()

@@ -16,164 +16,169 @@
 #  OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 #
 
-r"""
-Single source of truth for time/epoch handling.
+"""Time scales of a run (ECSS-E-ST-10-09C 5.4.2a, 5.4.4a/b; remediation R02)
+and epoch string formatting.
+
+**Time scales and their relationships** (all computed with ERFA, the SOFA
+library; cross-checked against SPICE in ``tests/test_time_system.py``):
+
+* **UTC** -- the scenario epoch (``Scenario.epoch_utc``) and every calendar
+  date shown to the user.
+* **TAI** = UTC + (TAI - UTC), the leap-second count (37 s since
+  2017-01-01, the last leap second in both ERFA's table and naif0012.tls;
+  later leap seconds, if any are announced, are not modelled).
+* **TT** = TAI + 32.184 s.
+* **TDB** = TT + (TDB - TT), the periodic relativistic term (|TDB - TT| <
+  1.7 ms; ERFA ``dtdb`` at the geocentre).
+
+**The simulation's time variable** is TDB: Basilisk's spiceInterface sets
+SPICE ephemeris time (ET, TDB seconds past J2000) to ET(epoch) + t, so every
+result series' ``time_s`` is **TDB seconds since the scenario epoch**.
+:func:`elapsed_to_utc` converts it back to UTC for display.
+
+**Epoch string formatting:**
 
 ``schema.scenario.Scenario.epoch_utc`` (an ISO 8601 UTC string) is the ONE
-stored representation of a scenario's epoch -- every other representation
-(SPICE ET, TAI, TT, or a Basilisk ``EpochMsg``) is DERIVED from it by this
-module, on demand, rather than separately stored anywhere (schema, GUI
-state, ...) and left free to drift out of sync. Every other part of
-SpaceMissionStudio that needs a time conversion should call into this module,
-not roll its own SPICE/datetime math.
+stored representation of a scenario's epoch. Basilisk's SPICE-backed
+modules want it as a SPICE time string instead; :func:`utc_iso_to_spice_string`
+is the single place that conversion happens (``engine.service`` feeds its
+result to ``spiceInterface``/``simHelpers``, which do the actual ET math).
 
-Requires a Basilisk build (imports ``Basilisk.architecture.messaging`` and
-the ``pyswice`` CSPICE wrapper).
-
-Verification status (updated after this project's first genuine access to
-a working Basilisk build, via ``pip install "bsk[all]"`` -- see
-``SpaceMissionStudio/README.md``'s "Getting started" section): the exact
-``furnsh_c``/``str2et_c``/``doubleArray``/``et2utc_c``/``unload_c``/
-``unitim_c`` call sequence below was run for real against
-``Basilisk.topLevelModules.pyswice`` (round-tripping
-``"2030-01-01T00:00:00"`` -> ET -> back to the identical ISO string, and
-producing sane TAI/TT offsets from ET). One real bug was caught doing
-this: the module-level import used to be a bare ``import pyswice``, which
-worked against this checkout's own source layout but not against the
-published ``bsk`` package on PyPI, where the module lives at
-``Basilisk.topLevelModules.pyswice`` (confirmed by reading
-``Basilisk.utilities.simHelpers``'s own import of it) -- fixed below.
-``get_path()``/kernel-fetching itself (as opposed to the SPICE calls that
-consume an already-loaded kernel) could not be exercised end-to-end in
-that same environment, because its network egress to NAIF's kernel host
-was blocked -- see ``engine/kernels.py``'s own note.
-
-Provenance of the SPICE call sequence below
---------------------------------------------
-:func:`utc_to_et` and :func:`et_to_utc_iso` copy the exact
-``furnsh_c``/``str2et_c``/``doubleArray``/``et2utc_c``/``unload_c`` call
-sequence from ``Basilisk.utilities.simHelpers.timeStringToGregorianUTCMsg``
-(verified by directly reading that function's source in this checkout, not
-from memory) -- that is the one place in this codebase known to call
-``pyswice`` correctly, including the easy-to-get-wrong ``doubleArray``
-marshalling ``str2et_c`` needs for its output-pointer argument.
-
-:func:`epoch_times`'s TAI/TT conversions use ``pyswice.unitim_c()``, whose
-exposure was confirmed by reading ``src/topLevelModules/pyswice/pyswice.i``
-directly (that file wraps the *entire* public CSPICE API via
-``#include "SpiceUsr.h"``, excluding only four unrelated functions) before
-it was ALSO exercised directly against a real build, per the verification
-note above.
+Basilisk-free: pure ``datetime`` formatting. This module used to also
+carry its own SPICE ET/TAI/TT conversion helpers (``utc_to_et``,
+``epoch_times``, ``build_epoch_msg``, ...), but nothing in the app ever
+called them, and their module-level ``pyswice`` import made even this one
+live function un-importable without a Basilisk build.
 """
 
 from __future__ import annotations
 
-import contextlib
-from dataclasses import dataclass
+import warnings
 from datetime import datetime, timezone
+from typing import Dict, Sequence
 
-from Basilisk.utilities.supportDataTools.dataFetcher import DataFile, get_path
+import erfa
+import numpy as np
 
-try:
-    from Basilisk.topLevelModules import pyswice
-except ImportError as exc:  # pragma: no cover - only hit without a Basilisk build
-    raise ImportError(
-        "spacemissionstudio.engine.time_system requires the pyswice CSPICE wrapper, which ships "
-        "with a Basilisk build. Build Basilisk (see SpaceMissionStudio/README.md) before using this module."
-    ) from exc
+# Fixed English month abbreviations -- NOT strftime("%b"), which follows
+# the process's LC_TIME locale. QApplication calls setlocale(LC_ALL, "")
+# at construction on Linux, so under e.g. a German desktop locale "%b"
+# yields "Mär"/"Mai"/"Okt"/"Dez", which SPICE's time parser rejects --
+# every GUI run with an epoch in one of those months would fail.
+_MONTH_ABBREVIATIONS = ("JAN", "FEB", "MAR", "APR", "MAY", "JUN",
+                        "JUL", "AUG", "SEP", "OCT", "NOV", "DEC")
 
 
 def utc_iso_to_spice_string(epoch_utc: str) -> str:
     """``'2030-01-01T00:00:00'`` -> a SPICE-recognizable time string
-    (``'2030 JAN 01 00:00:00.000 (UTC)'``), matching the exact format
-    ``missionAnalysis/mission_config.py``'s ``EPOCH_SPICE_STRING`` already
-    uses elsewhere in this repo. Any sub-second precision in ``epoch_utc``
-    (schema.scenario.Scenario.validate() only requires it to parse as ISO
-    8601, not to be a whole second) is preserved to millisecond
-    resolution -- ``dt.microsecond`` rounded down to milliseconds, not a
-    literal ``.000`` that would silently discard it.
+    (``'2030 JAN 01 00:00:00.000 (UTC)'``). Any sub-second precision in
+    ``epoch_utc`` (schema.scenario.Scenario.validate() only requires it to
+    parse as ISO 8601, not to be a whole second) is preserved to
+    millisecond resolution -- ``dt.microsecond`` rounded down to
+    milliseconds, not a literal ``.000`` that would silently discard it.
     """
     dt = datetime.fromisoformat(epoch_utc)
     if dt.tzinfo is not None:
         # Scenario.validate() only requires epoch_utc to parse via
         # datetime.fromisoformat() -- it does not reject a timezone-aware
-        # string (e.g. "...+05:00" or "...Z"). Every other representation
-        # this module derives treats epoch_utc as already being UTC, so a
+        # string (e.g. "...+05:00"). The output is labeled "(UTC)", so a
         # tz-aware value must be CONVERTED to UTC here, not have its offset
-        # silently dropped -- doing the latter would format the original
-        # (non-UTC) wall-clock time and still label it "(UTC)", silently
-        # off by the offset amount.
+        # silently dropped (which would format the original wall-clock time
+        # under a UTC label, off by the offset amount).
         dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
     millis = dt.microsecond // 1000
-    return (dt.strftime("%Y %b %d %H:%M:%S") + f".{millis:03d} (UTC)").upper()
+    month = _MONTH_ABBREVIATIONS[dt.month - 1]
+    return f"{dt.year:04d} {month} {dt.day:02d} {dt.hour:02d}:{dt.minute:02d}:{dt.second:02d}.{millis:03d} (UTC)"
 
 
-@contextlib.contextmanager
-def _leap_second_kernel_loaded():
-    """Load ``naif0012.tls`` for the duration of the ``with`` block, then
-    unload it -- mirrors ``simHelpers.timeStringToGregorianUTCMsg()``'s
-    own ``furnsh_c``/``unload_c`` pairing exactly, so repeated calls in one
-    process don't leak kernel-pool entries.
-    """
-    lsk_path = str(get_path(DataFile.EphemerisData.naif0012))
-    pyswice.furnsh_c(lsk_path)
-    try:
-        yield
-    finally:
-        pyswice.unload_c(lsk_path)
+TT_MINUS_TAI_S = 32.184  # [s] by definition
+LAST_LEAP_SECOND_UTC = "2017-01-01"  # in ERFA's table and naif0012.tls
+_J2000_JD = 2451545.0  # [day]
 
 
-def utc_to_et(epoch_utc: str) -> float:
-    """UTC ISO 8601 string -> ET (TDB seconds past the J2000 epoch)."""
-    spice_string = utc_iso_to_spice_string(epoch_utc)
-    with _leap_second_kernel_loaded():
-        et_out = pyswice.new_doubleArray(1)
-        try:
-            pyswice.str2et_c(spice_string, et_out)
-            return pyswice.doubleArray_getitem(et_out, 0)
-        finally:
-            pyswice.delete_doubleArray(et_out)  # free the SWIG-allocated array (leaked otherwise)
+def _naive_utc(epoch_utc) -> datetime:
+    epoch = datetime.fromisoformat(epoch_utc) if isinstance(epoch_utc, str) else epoch_utc
+    if epoch.tzinfo is not None:
+        epoch = epoch.astimezone(timezone.utc).replace(tzinfo=None)
+    return epoch
 
 
-def et_to_utc_iso(et: float) -> str:
-    """ET (TDB seconds past J2000) -> UTC ISO 8601 string, e.g.
-    ``'2030-01-01T00:00:00.000000'``.
-    """
-    with _leap_second_kernel_loaded():
-        return pyswice.et2utc_c(et, "ISOC", 6, 255, "Yo")
+def _quiet(function, *args):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", erfa.ErfaWarning)  # "dubious year" for epochs past ERFA's table
+        return function(*args)
 
 
-@dataclass
-class EpochTimes:
-    """All the standard time-system representations of one epoch, computed
-    together so the GUI/CLI never has to re-derive (or accidentally
-    re-diverge) any of them relative to each other.
-    """
-
-    utc_iso: str
-    et_s: float   # Ephemeris Time / Barycentric Dynamical Time (TDB), seconds past J2000
-    tai_s: float  # International Atomic Time, seconds past J2000
-    tt_s: float   # Terrestrial Time, seconds past J2000 (CSPICE calls this "TDT")
+def tai_minus_utc_s(epoch_utc) -> float:
+    """Leap-second count TAI - UTC [s] on ``epoch_utc``."""
+    epoch = _naive_utc(epoch_utc)
+    return float(_quiet(erfa.dat, epoch.year, epoch.month, epoch.day, 0.0))
 
 
-def epoch_times(epoch_utc: str) -> EpochTimes:
-    """Compute ET/TAI/TT for a UTC epoch. See the module docstring for the
-    TAI/TT conversion's verification status.
-    """
-    et = utc_to_et(epoch_utc)
-    with _leap_second_kernel_loaded():
-        tai = pyswice.unitim_c(et, "ET", "TAI")
-        tt = pyswice.unitim_c(et, "ET", "TDT")
-    return EpochTimes(utc_iso=epoch_utc, et_s=et, tai_s=tai, tt_s=tt)
+def utc_to_tdb_jd(epoch_utc):
+    """Two-part TDB Julian date of a UTC epoch (ISO string or naive datetime)."""
+    epoch = _naive_utc(epoch_utc)
+    u1, u2 = _quiet(erfa.dtf2d, "UTC", epoch.year, epoch.month, epoch.day, epoch.hour, epoch.minute,
+                    epoch.second + epoch.microsecond / 1e6)
+    a1, a2 = _quiet(erfa.utctai, u1, u2)
+    t1, t2 = erfa.taitt(a1, a2)
+    return erfa.tttdb(t1, t2, _tdb_minus_tt_s(t1, t2))
 
 
-def build_epoch_msg(epoch_utc: str):
-    """Build a standalone Basilisk ``EpochMsg`` for the given UTC epoch.
-    Thin wrapper over ``simHelpers.timeStringToGregorianUTCMsg()`` -- kept
-    here so every other SpaceMissionStudio module asks THIS module for it
-    instead of importing ``simHelpers`` directly (single source of truth,
-    see module docstring).
-    """
-    from Basilisk.utilities import simHelpers
+def _tdb_minus_tt_s(t1, t2):
+    """TDB - TT [s] at the geocentre (scalar or array two-part TT date)."""
+    fraction = ((np.asarray(t1) - 0.5) % 1.0 + t2) % 1.0  # [day] fraction of the day, adequate here
+    return erfa.dtdb(t1, t2, fraction, 0.0, 0.0, 0.0)
 
-    return simHelpers.timeStringToGregorianUTCMsg(utc_iso_to_spice_string(epoch_utc))
+
+def tdb_seconds_past_j2000(epoch_utc) -> float:
+    """SPICE ephemeris time (TDB seconds past J2000) of a UTC epoch."""
+    d1, d2 = utc_to_tdb_jd(epoch_utc)
+    return ((d1 - _J2000_JD) + d2) * 86400.0
+
+
+def elapsed_to_utc(epoch_utc, elapsed_tdb_s: Sequence[float]):
+    """UTC datetimes of simulation times (TDB seconds since ``epoch_utc``):
+    epoch + t minus the change of (TDB - UTC) since the epoch, i.e. of the
+    periodic TDB - TT term and of the leap-second count."""
+    epoch = _naive_utc(epoch_utc)
+    t = np.atleast_1d(np.asarray(elapsed_tdb_s, dtype=float))  # [s]
+    base = np.datetime64(epoch, "us")
+    approx = base + np.round(t * 1e6).astype(np.int64).astype("timedelta64[us]")
+    # TDB - TT has no daily terms at the geocentre: evaluated every 6 h and
+    # interpolated linearly (error < 0.1 us).
+    tt1, tt2 = _quiet(erfa.utctai, *_quiet(erfa.dtf2d, "UTC", epoch.year, epoch.month, epoch.day, epoch.hour,
+                                           epoch.minute, epoch.second + epoch.microsecond / 1e6))
+    tt1, tt2 = erfa.taitt(tt1, tt2)
+    days = t / 86400.0  # [day]
+    grid = np.linspace(days.min(), days.max(), max(2, int((days.max() - days.min()) * 4) + 2))  # [day]
+    grid_offset = _tdb_minus_tt_s(np.full_like(grid, tt1), tt2 + grid)  # [s]
+    tdb_change = np.interp(days, grid, grid_offset) - _tdb_minus_tt_s(tt1, tt2)  # [s]
+    dates = approx.astype("datetime64[D]")
+    years = dates.astype("datetime64[Y]").astype(np.int64) + 1970
+    months = dates.astype("datetime64[M]").astype(np.int64) % 12 + 1
+    day_of_month = (dates - dates.astype("datetime64[M]")).astype(np.int64) + 1
+    leap_change = _quiet(erfa.dat, years, months, day_of_month, 0.0) - tai_minus_utc_s(epoch)  # [s]
+    correction = np.round((tdb_change + leap_change) * 1e6).astype(np.int64).astype("timedelta64[us]")
+    return (approx - correction).astype(object)
+
+
+def time_scales(epoch_utc) -> Dict[str, object]:
+    """The scenario epoch on every scale and the offsets between them, for
+    output metadata."""
+    epoch = _naive_utc(epoch_utc)
+    u1, u2 = _quiet(erfa.dtf2d, "UTC", epoch.year, epoch.month, epoch.day, epoch.hour, epoch.minute,
+                    epoch.second + epoch.microsecond / 1e6)
+    a1, a2 = _quiet(erfa.utctai, u1, u2)
+    t1, t2 = erfa.taitt(a1, a2)
+    tdb_minus_tt = _tdb_minus_tt_s(t1, t2)
+    return {
+        "time_variable": "TDB seconds since the scenario epoch",
+        "epoch_utc": epoch.isoformat(),
+        "epoch_tdb_seconds_past_j2000": tdb_seconds_past_j2000(epoch),
+        "tai_minus_utc_s": tai_minus_utc_s(epoch),
+        "tt_minus_tai_s": TT_MINUS_TAI_S,
+        "tdb_minus_tt_s": float(tdb_minus_tt),
+        "last_leap_second_utc": LAST_LEAP_SECOND_UTC,
+        "conversions": "ERFA (SOFA): dat, utctai, taitt, dtdb",
+    }

@@ -84,6 +84,24 @@ class RunProvenance:
         "SysModel RNGSeed (0x1badcad1) -- seeds are only ever dispersed during a Monte Carlo batch, "
         "which does not produce a ResultSet"
     )
+    # Configuration record (ECSS-Q-ST-80C 6.2.4, 6.2.7; remediation R01):
+    # the Basilisk version the tool is qualified with and whether this run
+    # used it, the other runtime dependencies, a hash of the scenario as
+    # run, and the reference data files (SPICE kernels, gravity field,
+    # magnetic model, space weather) with their sizes and SHA-256.
+    qualified_basilisk_version: str = ""
+    basilisk_qualified: bool = False
+    dependency_versions: Dict[str, str] = field(default_factory=dict)
+    scenario_sha256: str = ""
+    data_files: Dict[str, Dict[str, object]] = field(default_factory=dict)
+    # Frames and time scales (ECSS-E-ST-10-09C 5.4.1, 5.4.2a, 5.4.4;
+    # remediation R02): engine.time_system.time_scales(),
+    # engine.frames.definitions()/TRANSFORMATIONS and the frame of each
+    # series that has one.
+    time_system: Dict[str, object] = field(default_factory=dict)
+    frames: Dict[str, Dict[str, str]] = field(default_factory=dict)
+    transformations: Dict[str, str] = field(default_factory=dict)
+    series_frames: Dict[str, str] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -191,20 +209,16 @@ def conservation_drift_warnings(name: str, mu: float, r_m: np.ndarray, v_m: np.n
     energy_drift = float(np.max(np.abs(specific_energy - specific_energy[0]))) / energy_scale
     if energy_drift > energy_tol:
         warnings.append(
-            f"{name}: specific orbital energy drifted {energy_drift:.1%} from its initial value over "
-            f"this run (tolerance {energy_tol:.0%}) -- this spacecraft's gravity/perturbation config is "
-            "two-body-only, so energy should stay constant; a drift this large usually means a "
-            "numerical-integration problem (try a finer sim_settings.dynamics_task_rate_s or a "
-            "higher-order integrator), not real physics."
+            f"{name}: orbital energy drifted {energy_drift:.1%} (limit {energy_tol:.0%}) -- "
+            "try a smaller dynamics step or a higher-order integrator"
         )
 
     momentum_scale = max(float(h_mag[0]), 1e-12)
     momentum_drift = float(np.max(np.abs(h_mag - h_mag[0]))) / momentum_scale
     if momentum_drift > momentum_tol:
         warnings.append(
-            f"{name}: orbital angular momentum magnitude drifted {momentum_drift:.1%} from its initial "
-            f"value over this run (tolerance {momentum_tol:.0%}) -- same two-body-only reasoning as the "
-            "energy check above."
+            f"{name}: angular momentum drifted {momentum_drift:.1%} (limit {momentum_tol:.0%}) -- "
+            "try a smaller dynamics step or a higher-order integrator"
         )
     return warnings
 

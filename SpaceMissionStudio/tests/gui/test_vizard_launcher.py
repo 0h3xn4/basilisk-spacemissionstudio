@@ -8,8 +8,7 @@ see that function's own docstring).
 """
 
 import io
-import subprocess
-import sys
+import os
 import zipfile
 
 import pytest
@@ -184,15 +183,24 @@ def test_launch_raises_a_clear_error_for_an_empty_macos_bundle(tmp_path, monkeyp
 
 # -- fetch_vizard() -- downloading and extracting a pre-built Vizard -------
 
-def test_download_url_for_platform_covers_all_three():
+def test_download_url_for_platform_covers_all_three(monkeypatch):
+    """Each platform gets its own Vizard download. ``vizard_launcher.sys``
+    is ``sys`` itself, so the platform is set through monkeypatch, which
+    restores the real value (an earlier version of this test left
+    ``sys.platform`` at "linux" for every later test in the process)."""
     from spacemissionstudio.gui import vizard_launcher
 
     for platform_value, expected_substring in (("darwin", "macOS"), ("win32", "Windows"), ("linux", "Linux")):
-        vizard_launcher.sys.platform = platform_value
-        try:
-            assert expected_substring in vizard_launcher._download_url_for_platform()
-        finally:
-            vizard_launcher.sys.platform = sys.platform  # restore -- this one doesn't use monkeypatch
+        monkeypatch.setattr(vizard_launcher.sys, "platform", platform_value)
+        assert expected_substring in vizard_launcher._download_url_for_platform()
+
+
+def _as_linux_build(monkeypatch, vizard_launcher):
+    """Make ``fetch_vizard()`` take the Linux path on any OS: the platform
+    it downloads for, and the executable name it then searches for, which
+    the module fixes at import from the real platform."""
+    monkeypatch.setattr(vizard_launcher.sys, "platform", "linux")
+    monkeypatch.setattr(vizard_launcher, "_EXECUTABLE_NAME", "Vizard.x86_64")
 
 
 class _FakeUrlResponse:
@@ -237,7 +245,7 @@ def _make_vizard_zip(zip_path, *, executable_name, wrapper_folder=None):
 def test_fetch_vizard_downloads_extracts_and_finds_the_executable(tmp_path, monkeypatch):
     from spacemissionstudio.gui import vizard_launcher
 
-    monkeypatch.setattr(vizard_launcher.sys, "platform", "linux")
+    _as_linux_build(monkeypatch, vizard_launcher)
     zip_buf = io.BytesIO()
     zip_name = tmp_path / "staging.zip"
     _make_vizard_zip(zip_name, executable_name="Vizard.x86_64")
@@ -260,7 +268,7 @@ def test_fetch_vizard_sends_a_browser_like_user_agent(tmp_path, monkeypatch):
     """
     from spacemissionstudio.gui import vizard_launcher
 
-    monkeypatch.setattr(vizard_launcher.sys, "platform", "linux")
+    _as_linux_build(monkeypatch, vizard_launcher)
     zip_name = tmp_path / "staging.zip"
     _make_vizard_zip(zip_name, executable_name="Vizard.x86_64")
     captured = {}
@@ -283,15 +291,25 @@ def test_fetch_vizard_sends_a_browser_like_user_agent(tmp_path, monkeypatch):
 def test_fetch_vizard_sets_the_executable_bit_on_non_windows(tmp_path, monkeypatch):
     from spacemissionstudio.gui import vizard_launcher
 
-    monkeypatch.setattr(vizard_launcher.sys, "platform", "linux")
+    _as_linux_build(monkeypatch, vizard_launcher)
     zip_name = tmp_path / "staging.zip"
     _make_vizard_zip(zip_name, executable_name="Vizard.x86_64")
     monkeypatch.setattr(vizard_launcher.urllib.request, "urlopen",
                          lambda *a, **k: _FakeUrlResponse(zip_name.read_bytes()))
 
+    requested = []
+    real_chmod = vizard_launcher.Path.chmod
+
+    def spy_chmod(path, mode, *args, **kwargs):
+        requested.append(mode)
+        return real_chmod(path, mode, *args, **kwargs)
+
+    monkeypatch.setattr(vizard_launcher.Path, "chmod", spy_chmod)
     executable = vizard_launcher.fetch_vizard(dest_dir=tmp_path)
 
-    assert executable.stat().st_mode & vizard_launcher.stat.S_IXUSR
+    assert requested and requested[-1] & vizard_launcher.stat.S_IXUSR
+    if os.name == "posix":  # Windows has no executable bit to read back
+        assert executable.stat().st_mode & vizard_launcher.stat.S_IXUSR
 
 
 def test_fetch_vizard_reports_network_failure(tmp_path, monkeypatch):
@@ -319,7 +337,7 @@ def test_fetch_vizard_reports_a_corrupt_zip(tmp_path, monkeypatch):
 def test_fetch_vizard_reports_a_zip_with_no_recognizable_executable(tmp_path, monkeypatch):
     from spacemissionstudio.gui import vizard_launcher
 
-    monkeypatch.setattr(vizard_launcher.sys, "platform", "linux")
+    _as_linux_build(monkeypatch, vizard_launcher)
     zip_name = tmp_path / "staging.zip"
     with zipfile.ZipFile(zip_name, "w") as zf:
         zf.writestr("readme.txt", b"no executable in here")
@@ -354,7 +372,7 @@ def test_fetch_vizard_rejects_a_response_over_the_size_cap(tmp_path, monkeypatch
 def test_fetch_vizard_reports_progress_status(tmp_path, monkeypatch):
     from spacemissionstudio.gui import vizard_launcher
 
-    monkeypatch.setattr(vizard_launcher.sys, "platform", "linux")
+    _as_linux_build(monkeypatch, vizard_launcher)
     zip_name = tmp_path / "staging.zip"
     _make_vizard_zip(zip_name, executable_name="Vizard.x86_64")
     monkeypatch.setattr(vizard_launcher.urllib.request, "urlopen",
@@ -367,13 +385,37 @@ def test_fetch_vizard_reports_progress_status(tmp_path, monkeypatch):
     assert any("Extracting" in s for s in statuses)
 
 
+def test_fetch_vizard_records_the_download_with_its_sha256(tmp_path, monkeypatch):
+    """No checksum is published for Vizard, so the download is recorded
+    (source, size, SHA-256) and the hash is shown to the user
+    (security analysis S-05)."""
+    import hashlib
+    import json
+
+    from spacemissionstudio.gui import vizard_launcher
+
+    _as_linux_build(monkeypatch, vizard_launcher)
+    zip_name = tmp_path / "staging.zip"
+    _make_vizard_zip(zip_name, executable_name="Vizard.x86_64")
+    data = zip_name.read_bytes()
+    monkeypatch.setattr(vizard_launcher.urllib.request, "urlopen", lambda *a, **k: _FakeUrlResponse(data))
+
+    statuses = []
+    vizard_launcher.fetch_vizard(dest_dir=tmp_path, on_status=statuses.append)
+
+    record = json.loads((tmp_path / "download.json").read_text())
+    assert record["sha256"] == hashlib.sha256(data).hexdigest()
+    assert record["size_bytes"] == len(data) and record["url"].startswith("https://")
+    assert any(record["sha256"] in s for s in statuses)
+
+
 def test_fetch_vizard_finds_the_executable_inside_a_same_named_wrapper_folder(tmp_path, monkeypatch):
     """Matches AVS's own real .zip layout -- Vizard_<platform>.zip wraps
     its contents in a same-named top-level folder.
     """
     from spacemissionstudio.gui import vizard_launcher
 
-    monkeypatch.setattr(vizard_launcher.sys, "platform", "linux")
+    _as_linux_build(monkeypatch, vizard_launcher)
     zip_name = tmp_path / "staging.zip"
     _make_vizard_zip(zip_name, executable_name="Vizard.x86_64", wrapper_folder="Vizard_Linux")
     monkeypatch.setattr(vizard_launcher.urllib.request, "urlopen",
@@ -388,7 +430,7 @@ def test_fetch_vizard_finds_the_executable_inside_a_same_named_wrapper_folder(tm
 def test_fetch_vizard_clears_stale_files_from_an_earlier_extraction(tmp_path, monkeypatch):
     from spacemissionstudio.gui import vizard_launcher
 
-    monkeypatch.setattr(vizard_launcher.sys, "platform", "linux")
+    _as_linux_build(monkeypatch, vizard_launcher)
 
     old_zip = tmp_path / "old.zip"
     _make_vizard_zip(old_zip, executable_name="Vizard.x86_64", wrapper_folder="Vizard_Linux_Old")
@@ -411,7 +453,7 @@ def test_fetch_vizard_clears_stale_files_from_an_earlier_extraction(tmp_path, mo
 def test_fetch_vizard_rejects_a_zip_slip_entry(tmp_path, monkeypatch):
     from spacemissionstudio.gui import vizard_launcher
 
-    monkeypatch.setattr(vizard_launcher.sys, "platform", "linux")
+    _as_linux_build(monkeypatch, vizard_launcher)
     zip_name = tmp_path / "staging.zip"
     with zipfile.ZipFile(zip_name, "w") as zf:
         zf.writestr("../escaped.txt", b"zip-slip payload")
@@ -433,6 +475,7 @@ def test_vizard_fetch_worker_emits_finished_ok_on_success(tmp_path, monkeypatch,
     worker = vizard_launcher.VizardFetchWorker(dest_dir=tmp_path)
     with qtbot.waitSignal(worker.finished_ok, timeout=5000) as blocker:
         worker.start()
+    assert worker.wait(5000)  # join it: GC of a still-running QThread aborts the process
 
     assert blocker.args == [str(fake_path)]
 
@@ -448,6 +491,7 @@ def test_vizard_fetch_worker_emits_failed_on_error(tmp_path, monkeypatch, qtbot)
     worker = vizard_launcher.VizardFetchWorker(dest_dir=tmp_path)
     with qtbot.waitSignal(worker.failed, timeout=5000) as blocker:
         worker.start()
+    assert worker.wait(5000)  # join it: GC of a still-running QThread aborts the process
 
     assert "boom" in blocker.args[0]
 
@@ -467,6 +511,6 @@ def test_vizard_fetch_worker_request_cancel_is_seen_by_should_cancel(tmp_path, m
     worker.request_cancel()
     with qtbot.waitSignal(worker.finished_ok, timeout=5000):
         worker.start()
+    assert worker.wait(5000)  # join it: GC of a still-running QThread aborts the process
 
     assert seen_should_cancel["callable"]() is True  # the Event was already set before start()
-

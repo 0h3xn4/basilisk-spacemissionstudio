@@ -1,0 +1,296 @@
+#
+#  ISC License
+#
+#  Copyright (c) 2026, Autonomous Vehicle Systems Lab, University of Colorado at Boulder
+#
+#  Permission to use, copy, modify, and/or distribute this software for any
+#  purpose with or without fee is hereby granted, provided that the above
+#  copyright notice and this permission notice appear in all copies.
+#
+#  THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+#  WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+#  MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+#  ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+#  WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+#  ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+#  OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+#
+"""Phase 1 assessments: ECSS-E-ST-10-09C, ECSS-E-ST-10-04C, CCSDS 502.0-B-3.
+
+Each rule: (standard, match, status, evidence, gap, fix, effort, near_basilisk,
+remediation). ``match`` is a requirement ID, or an ID prefix ending in ``*``;
+the most specific match wins (see ``tools/build_matrix.py``). Evidence paths
+are relative to ``SpaceMissionStudio/``. "B2.12" is the installed Basilisk
+2.12.0 the tool runs on; "src" is this repository's Basilisk 2.13.0b0 source.
+Statuses: C, P, N, NA, H (see ``build_matrix.STATUS``).
+"""
+
+# Shared findings, referenced by several rules ----------------------------------
+
+_NO_CSD = "No Coordinate Systems Document (CSD) exists; frame and time conventions are spread over code docstrings."
+_CSD_FIX = "Write the CSD (Annex A DRD) from the frame/time inventory in gap_analysis.md section 3.1."
+_FRAMES_IN_CODE = ("engine/service.py (spice_object.zeroBase = central body; Basilisk state names r_BN_N, "
+                   "sigma_BN); engine/kernels.py (naif0012, de430, pck00010)")
+_TIME_GAP = ("Epoch stored as UTC (schema Scenario.epoch_utc); Basilisk/SPICE run in TDB (ET) from naif0012; "
+             "results are tagged in elapsed seconds; the GUI Epoch axis adds them to the UTC epoch "
+             "(gui/results_widget.py), and spaceWeatherData/MSIS count days from the UTC epoch. The "
+             "UTC/TAI/TT/TDB relationship is implicit (inside SPICE) and documented nowhere.")
+
+TECHNICAL_RULES = [
+    # ======================= ECSS-E-ST-10-09C ===================================
+    ("E-ST-10-09C", "5.2.1a", "H", "-", "No responsibility for coordinate-system definition is assigned.",
+     "Name the person responsible for the tool's coordinate systems (CSD owner).", "S", "no", "H02"),
+    ("E-ST-10-09C", "5.2.2*", "P", "compliance/docs/CSD.md (Annex A; under git)", "CSD drafted and under configuration control; not reviewed (H01).", "Review (H01).", "M", "no", "R14,H01"),
+    ("E-ST-10-09C", "5.2.2c", "H", "-", "Project-phase milestones (phase A/B) belong to the using project.",
+     "Each project using the tool references the tool CSD from its own CSD.", "S", "no", "H01"),
+    ("E-ST-10-09C", "5.2.2d", "H", "-", "Configuration control at phase B is a project action.",
+     "Baseline the CSD with the tool release (git tag) and record it in the project CM.", "S", "no", "H05"),
+    ("E-ST-10-09C", "5.2.2e", "H", "-", "Re-examination at each phase is a project/process action.",
+     "Add a CSD review item to each tool release checklist.", "S", "no", "H01"),
+    ("E-ST-10-09C", "5.2.3*", "P", "R02: engine/frames.py, engine/time_system.py, written to every run's provenance.json; compliance/docs/CSD.md sections 6, 8, 9 (inventory, transformation tree, detailed definitions); tests/test_frames.py, tests/test_time_system.py", "Frames, transformations and the tree are documented; the CSD is not reviewed (H01).", "Review (H01).", "S", "yes (documents Basilisk frames)", "R02,R14,H01"),
+    ("E-ST-10-09C", "5.3.1a", "P", "compliance/docs/CSD.md section 3 (conventions: EME2000 as SPICE J2000, ITRF93 by NAIF PCKs, WGS-84, TEME, CCSDS REF_FRAME/TIME_SYSTEM)", "The selection was not checked item by item against the standard's Annex C list; not reviewed (H01).", "Check against Annex C; review (H01).", "S", "no", "R14,H01"),
+    ("E-ST-10-09C", "5.3.1b", "C", "R03 (Phase 2): engine/tle.py checks the TLE (length, line numbers, catalogue "
+     "number, checksums), propagates it with SGP4 to the scenario epoch and rotates TEME of date -> EME2000 "
+     "(IAU 1976 precession, IAU 1980 nutation, equation of the equinoxes without kinematic terms, via ERFA); "
+     "engine/service.py uses it for TLE spacecraft; scenario_checks warns when the TLE is > 3 d from the "
+     "scenario epoch; the GUI shows the TLE epoch and age. ISO 8601 epochs with a UTC offset are converted to "
+     "UTC (engine/time_system.py, engine/tle.py). Tests: tests/test_tle.py (Vallado TEME->J2000 example, "
+     "SPICE IAU-1976/1980 frame to 1e-13 rad, propagation to the scenario epoch, malformed TLEs, warnings), "
+     "tests/gui/test_orbit_ic_widget.py.",
+     "Phase 1 misdescribed Basilisk 2.12 (corrected in gap_analysis.md section 3): it does run SGP4 and rotate "
+     "TEME, but only at the TLE epoch and into GCRF; the tool no longer calls it. Other external conventions "
+     "the tool reads (CelesTrak space weather, MSFC tables) carry no frame; R09 adds CCSDS ODM.",
+     "-", "M", "yes (replaces the call to a Basilisk utility; Basilisk unchanged)", "R03"),
+    ("E-ST-10-09C", "5.3.1c", "P", "engine/tle.py docstring (full specification); compliance/docs/CSD.md sections 6 and 8 (TEME -> N chain)", "The CSD summarises the conversion; the full specification stays in the code; not reviewed.", "Review (H01).", "S", "no", "R03,R14,H01"),
+    ("E-ST-10-09C", "5.3.2*", "P", "R02: engine/frames.py and engine/time_system.py, written to every run's provenance.json; compliance/docs/CSD.md section 3 (naming and notation)", "Conventions specified in code, metadata and the CSD; not reviewed (H01).", "Review (H01).", "S", "yes (adopts Basilisk notation)", "R02,R14,H01"),
+    ('E-ST-10-09C', '5.3.2a', 'C', "R02 (Phase 2): engine/frames.py (definitions: name, mnemonic, origin, axes, epoch, time scale; named transformations; per-series frames) and engine/time_system.py (UTC/TAI/TT/TDB via ERFA), written to every run's provenance.json; tests/test_frames.py, tests/test_time_system.py: every frame has a unique descriptive name",
+     '-', '-', 'S', 'yes', 'R02'),
+    ('E-ST-10-09C', '5.3.2c', 'C', "R02 (Phase 2): engine/frames.py (definitions: name, mnemonic, origin, axes, epoch, time scale; named transformations; per-series frames) and engine/time_system.py (UTC/TAI/TT/TDB via ERFA), written to every run's provenance.json; tests/test_frames.py, tests/test_time_system.py: unique one-letter mnemonics (N, P, B, H, L) plus TEME",
+     '-', '-', 'S', 'yes', 'R02'),
+    ('E-ST-10-09C', '5.3.2d', 'C', "R02 (Phase 2): engine/frames.py (definitions: name, mnemonic, origin, axes, epoch, time scale; named transformations; per-series frames) and engine/time_system.py (UTC/TAI/TT/TDB via ERFA), written to every run's provenance.json; tests/test_frames.py, tests/test_time_system.py: transformations named 'Y -> X' with their direction (frames.TRANSFORMATIONS)",
+     '-', '-', 'S', 'yes', 'R02'),
+    ('E-ST-10-09C', '5.3.2b', 'C', "R02 (Phase 2): engine/frames.py (definitions: name, mnemonic, origin, axes, epoch, time scale; named transformations; per-series frames) and engine/time_system.py (UTC/TAI/TT/TDB via ERFA), written to every run's provenance.json; tests/test_frames.py, tests/test_time_system.py: recognised names used only where the definition is followed (EME2000 = SPICE J2000, ITRF93 from IERS-based PCKs, WGS-84); IAU_EARTH named as SPICE's model",
+     '-', '-', 'S', 'no', 'R02'),
+    ("E-ST-10-09C", "5.3.3*", "P", "compliance/docs/CSD.md section 8 (text diagrams of the top-level and lower-level chains)", "Text diagrams, not graphical figures; no figure per coordinate system.", "Draw figures if the reviewers require them (H01).", "M", "no", "R14,H01"),
+    ('E-ST-10-09C', '5.4.1a', 'C', "R02 (Phase 2): engine/frames.py (definitions: name, mnemonic, origin, axes, epoch, time scale; named transformations; per-series frames) and engine/time_system.py (UTC/TAI/TT/TDB via ERFA), written to every run's provenance.json; tests/test_frames.py, tests/test_time_system.py: origin of every frame",
+     '-', '-', 'S', 'yes', 'R02'),
+    ("E-ST-10-09C", "5.4.1b", "P", "engine/frames.py; compliance/docs/CSD.md section 9 (origin of each frame)", "Origins stated; their derivation from reference points (e.g. the central body's centre of mass via SPICE) is stated, not derived mathematically.", "Review (H01).", "S", "yes", "R14,H01"),
+    ("E-ST-10-09C", "5.4.1c", "P", "engine/frames.py; compliance/docs/CSD.md section 9 (axes of each frame)", "Axes stated with their reference directions; the SPICE and Basilisk definitions are cited, not restated.", "Review (H01).", "S", "yes", "R14,H01"),
+    ("E-ST-10-09C", "5.4.1d", "C", "SPICE frames and Basilisk DCM/MRP algebra are orthonormal by construction; "
+     "tests/test_osculating_elements.py, tests/test_two_body_validation.py exercise them",
+     "-", "Record the evidence in the CSD.", "S", "yes", "R14"),
+    ("E-ST-10-09C", "5.4.1e", "C", "All frames right-handed (SPICE, Basilisk B/N/Hill; facet normals in B)",
+     "-", "State it in the CSD.", "S", "yes", "R14"),
+    ("E-ST-10-09C", "5.4.1f", "C", "No left-handed frame is imported (inputs: classical elements, cartesian "
+     "J2000 state, TLE)", "-", "-", "S", "no", ""),
+    ("E-ST-10-09C", "5.4.1g", "NA", "No left-handed frame exists", "-", "-", "S", "no", ""),
+    ('E-ST-10-09C', '5.4.1h', 'C', "R02 (Phase 2): engine/frames.py (definitions: name, mnemonic, origin, axes, epoch, time scale; named transformations; per-series frames) and engine/time_system.py (UTC/TAI/TT/TDB via ERFA), written to every run's provenance.json; tests/test_frames.py, tests/test_time_system.py: N epoch J2000.0 = 2000-01-01T12:00:00 TT",
+     '-', '-', 'S', 'yes', 'R02'),
+    ('E-ST-10-09C', '5.4.2a', 'C', "R02 (Phase 2): engine/frames.py (definitions: name, mnemonic, origin, axes, epoch, time scale; named transformations; per-series frames) and engine/time_system.py (UTC/TAI/TT/TDB via ERFA), written to every run's provenance.json; tests/test_frames.py, tests/test_time_system.py: time-dependent frames (P, H, L) evaluated in TDB, the simulation time variable; results' time_s = TDB seconds since the scenario epoch; GUI UTC axis converts it",
+     '-', '-', 'M', 'yes', 'R02'),
+    ("E-ST-10-09C", "5.4.2b", "C", "position_N series (engine/results.py, CSV export)", "-", "-", "S", "no", ""),
+    ('E-ST-10-09C', '5.4.3a', 'C', "engine/results.py TimeSeries.units ('-' for dimensionless); tests/test_frames.py checks every series of a real run has units",
+     '-', '-', 'S', 'no', 'R02'),
+    ('E-ST-10-09C', '5.4.3b', 'C', "TimeSeries.units on every series (angles 'rad' or 'deg'); CSV column names carry them; schema fields carry unit comments; units audit of four templates (phase2_log.md)",
+     '-', '-', 'S', 'no', 'R02'),
+    ('E-ST-10-09C', '5.4.4a', 'C', "R02 (Phase 2): engine/frames.py (definitions: name, mnemonic, origin, axes, epoch, time scale; named transformations; per-series frames) and engine/time_system.py (UTC/TAI/TT/TDB via ERFA), written to every run's provenance.json; tests/test_frames.py, tests/test_time_system.py: unit of time s; time variable TDB seconds since the scenario epoch",
+     "The CSV header stays 'time_s' (format unchanged); its scale is in provenance.json.", '-', 'S', 'no', 'R02'),
+    ('E-ST-10-09C', '5.4.4b', 'C', "R02 (Phase 2): engine/frames.py (definitions: name, mnemonic, origin, axes, epoch, time scale; named transformations; per-series frames) and engine/time_system.py (UTC/TAI/TT/TDB via ERFA), written to every run's provenance.json; tests/test_frames.py, tests/test_time_system.py: UTC -> TAI (leap seconds, last 2017-01-01) -> TT (+32.184 s) -> TDB (ERFA dtdb) defined and validated against SPICE str2et to 50 us and the IERS leap-second values; elapsed_to_utc handles leap seconds; long-run segment epochs use it",
+     "Leap seconds announced after naif0012/ERFA's table are not modelled (stated in the metadata).", '-', 'M', 'yes', 'R02'),
+    ("E-ST-10-09C", "5.4.5a", "P", "SpacecraftConfig facets/sensors/actuators defined in B",
+     "B is the Basilisk body frame (origin at the spacecraft point B); its relation to a material structure is "
+     "not defined (the tool has no structural model).",
+     "Document B as an analysis frame and how a project maps it to its mechanical frame.", "S", "yes", "R14"),
+    ("E-ST-10-09C", "5.4.5b", "NA", "-", "AIT physical points/targets: not in the scope of an analysis tool.",
+     "-", "S", "no", ""),
+    ("E-ST-10-09C", "5.4.5c", "NA", "-", "As 5.4.5b.", "-", "S", "no", ""),
+    ("E-ST-10-09C", "5.4.5d", "NA", "-", "As 5.4.5b.", "-", "S", "no", ""),
+    ("E-ST-10-09C", "5.4.5e", "NA", "-", "Launcher interface frame: no launcher modelling.", "-", "S", "no", ""),
+    ("E-ST-10-09C", "5.4.5f", "NA", "-", "Spacecraft/adapter/launcher mechanical frames: no launcher modelling.",
+     "-", "S", "no", ""),
+    ("E-ST-10-09C", "5.4.6a", "C", "R05 (Phase 2): engine/geodesy.py defines the reference surface (WGS-84 "
+     "a = 6378137.0 m, 1/f = 298.257223563; sphere of the simulation radius for other bodies), longitude east "
+     "positive from the body-fixed prime meridian, North Pole = +z of the body-fixed frame; engine/fsw.py places "
+     "groundLocation with specifyLocationPCPF at the WGS-84 position; recorded elevation/azimuth are geodetic; "
+     "GUI and schema label the coordinates. Tests: tests/test_geodesy.py (published WGS-84 constants, round "
+     "trip, independent elevation/azimuth, Basilisk site position), tests/test_scenario_checks.py (template 19 "
+     "passes vs full Basilisk run).",
+     "Residual (Basilisk 2.12, B2): groundLocation's has_access flag uses the geocentric horizon, so a pass "
+     "boundary can differ from the geodetic minimum-elevation crossing by up to ~0.19 deg (about 2 s in the "
+     "template 19 check). The prime meridian is IAU_EARTH until R04. The CSD (R14) restates the definitions.",
+     "-", "S", "yes (Basilisk's public API only)", "R05"),
+    ("E-ST-10-09C", "5.4.7*", "P", "schema OrbitIC; compliance/docs/CSD.md section 7 (parameterisations within systems and transformations)", "Parameterisations specified in words; mean-element theory and singularities are not given mathematically.", "Add the formulae if the reviewers require them (H01).", "S", "yes", "R14,H01"),
+    ("E-ST-10-09C", "5.4.8*", "P", "compliance/docs/CSD.md sections 3 and 7 (DCM convention dcm_XY, MRP sigma_XY with shadow set, right-handed; 3-2-1 Euler only for the Vizard model; no quaternions)", "Conventions stated in words; not reviewed (H01).", "Review (H01).", "S", "yes (documents Basilisk conventions)", "R14,H01"),
+    ("E-ST-10-09C", "5.4.8h", "P", "Basilisk outputs MRPs, not quaternions",
+     "No error quaternion is output; if quaternions are added (e.g. CCSDS AEM/OEM extensions) the positive "
+     "scalar convention applies.", "Keep in mind for any quaternion output.", "S", "no", "R02"),
+    ("E-ST-10-09C", "5.4.9*", "P", "compliance/docs/CSD.md sections 6, 8, 9 (each transformation in words, its DCM/MRP parameterisation, time dependence, parent frame); engine/frames.py TRANSFORMATIONS in every provenance", "Mathematical definitions are by reference (SPICE pxform, ERFA, IAU 1976/1980), not written out; not reviewed.", "Review (H01).", "M", "yes", "R02,R14,H01"),
+    ("E-ST-10-09C", "5.4.9f", "C", "R04 (Phase 2): engine/earth_orientation.py; with the NAIF Earth PCKs "
+     "installed the Earth-fixed frame is SPICE ITRF93 (IAU 1976/1980 + IERS nutation corrections, UT1, polar "
+     "motion; NAIF: 'several microradians' within the high-accuracy span) instead of IAU_EARTH (measured 1.5 "
+     "mrad apart in 2026); planet frame set through spiceInterface.planetFrames; Explain tab and results state "
+     "the frame and accuracy; tests/test_earth_orientation.py (run frame == SPICE ITRF93 to 1e-12)",
+     "Past the files' last datum + 10 weeks the orientation is NAIF's long-term prediction (NAIF: 5-6 mrad); "
+     "without the files IAU_EARTH is used and every Earth run warns. Precision needs of users are stated in "
+     "the CSD (R14).", "-", "M", "yes (public spiceInterface API; Basilisk unchanged)", "R04"),
+    ("E-ST-10-09C", "A.*", "P", "compliance/docs/CSD.md (restates engine/frames.py, which writes the definitions into every run's provenance)", "Draft per the DRD: every DRD section present and not empty (compliance/tools/check_drds.py); not reviewed (H01); sections that depend on people state the gap and name the human action.", "Review and approve at the reviews of H01; close the human actions named in the document.", "M", "no", "R14,H01"),
+    ("E-ST-10-09C", "A.2.1<1>*", "C", "compliance/docs/CSD.md section 1 (introduction)", "-", "-", "S", "no", "R14"),
+    ("E-ST-10-09C", "A.2.1<2>*", "C", "compliance/docs/CSD.md section 2 (applicable and reference documents)", "-", "-", "S", "no", "R14"),
+    ("E-ST-10-09C", "A.2.1<3>*", "C", "compliance/docs/CSD.md section 3 (terms)", "-", "-", "S", "no", "R14"),
+
+    # ======================= ECSS-E-ST-10-04C ===================================
+    ("E-ST-10-04C", "4.2.1a", "C", "engine/service.py (gravity bodies: central body point mass or GGM03S "
+     "spherical harmonics, optional Sun/Moon/planets from DE430); tests/test_two_body_validation.py, "
+     "tests/test_gravity_gradient.py", "-", "-", "S", "yes", ""),
+    ("E-ST-10-04C", "4.2.1b", "P", "R06 (Phase 2): engine/environment_models.py gravity_truncation_acceleration "
+     "(Kaula's rule, actual J2) and srp_acceleration; scenario_checks warns when drag is modelled around a "
+     "point-mass Earth and the Explain tab notes when the field's truncation leaves out more than SRP, with "
+     "the degree that matches it; tests/test_environment_models.py",
+     "Relating truncation to the orbit/attitude accuracy REQUIREMENTS stays the analyst's task (the tool has "
+     "no accuracy requirement input); drag is only compared for the point-mass case. Five bundled templates "
+     "(04, 05, 07, 08, 21) use degree 2-10 with SRP on and get the note.",
+     "Decide whether the templates move to the matching degree (slower runs).", "S", "no", "R06"),
+    ("E-ST-10-04C", "4.2.1c", "C", "R04: the GGM03S field is evaluated in ITRF93 from IERS-based NAIF Earth PCKs "
+     "when installed (engine/earth_orientation.py; tests/test_earth_orientation.py)",
+     "Without the files the field is evaluated in IAU_EARTH and the run warns; beyond the files' high-accuracy "
+     "span the orientation is predicted.", "-", "M", "yes", "R04"),
+    ("E-ST-10-04C", "4.2.2a", "P", "engine/kernels.py LocalGravData.GGM03S (GRACE-based, static, ICGEM, degree "
+     "180); R06: schema caps the degree at 180, the GUI tooltip states the 70 x 70 requirement",
+     "GGM03S satisfies items 1-4 as a model; the degree is the user's choice and templates use 0-10, below the "
+     "70 x 70 the requirement asks for.",
+     "Use degree >= 70 for compliant analyses (performance cost); template decision as 4.2.1b.", "S",
+     "yes", "R06"),
+    ("E-ST-10-04C", "4.2.2b", "P", "R04: IERS-based Earth orientation (ITRF93 from NAIF's EOP-derived PCKs)",
+     "No solid-Earth or ocean tides (Basilisk has no tide model): deviation D-03.",
+     "Tides: deviation D-03 (accepted, D3).", "L", "yes (Basilisk lacks tides)", "R04,D-03"),
+    ("E-ST-10-04C", "4.2.2c", "C", "engine/kernels.py DEFAULT_KERNELS: de430.bsp (planets and Moon, DE/LE-430)",
+     "-", "-", "S", "yes", ""),
+    ("E-ST-10-04C", "4.2.2d", "N", "B2.12 astroConstants (MU_EARTH 398600.436 km^3/s^2 ...), "
+     "simIncludeGravBody; de-403-masses.tpc",
+     "Planetary GM values are Basilisk's/DE-403's, not the IERS 2010 (TN36) standards. D4: IERS TN36 was not "
+     "supplied and could not be fetched (iers.org and iers-conventions.obspm.fr blocked, 2026-10-08), so "
+     "deviation D-07 applies.",
+     "Human action: supply IERS TN36 Table 1.1; then set gravBody.mu from it (public attribute).", "S",
+     "yes (configures Basilisk objects)", "D-07"),
+    ("E-ST-10-04C", "5.2.1a", "N", "engine/fsw.py build_magnetic_field_wmm (Basilisk magneticFieldWMM, "
+     "WMM2025)", "WMM is used, not IGRF-12. IGRF-12 (2015) only predicts to 2020; for 2025+ epochs its use "
+     "is questionable.",
+     "Decision D2: tool-side IGRF (current generation) model, or deviation keeping WMM2025.", "M",
+     "yes (Basilisk has no IGRF)", "R08,D-04"),
+    ("E-ST-10-04C", "5.2.1b", "NA", "-", "No environment model in use carries its own geomagnetic field.", "-",
+     "S", "no", ""),
+    ("E-ST-10-04C", "5.2.1.1a", "N", "engine/fsw.py (WMM2025)", "As 5.2.1a.", "As 5.2.1a.", "M", "yes",
+     "R08,D-04"),
+    ("E-ST-10-04C", "5.2.2a", "N", "-", "No external (magnetospheric) field model; Basilisk has none.",
+     "Deviation (D-05): internal field dominates at LEO for torque-rod/magnetometer analysis.", "L", "yes",
+     "D-05"),
+    ("E-ST-10-04C", "5.3a", "P", "WMM2025 (higher fidelity than a dipole)", "Recommendation to use IGRF not "
+     "followed (see 5.2.1a).", "As 5.2.1a.", "S", "yes", "R08"),
+    ("E-ST-10-04C", "5.3b", "NA", "-", "Permission (may).", "-", "S", "no", ""),
+    ("E-ST-10-04C", "6.2.1a", "C", "Table 6-2 values: B2.12 solarFlux 1361.0 W/m^2 at 1 AU with 1/r^2 (SRP, "
+     "facet SRP, solar panels); R06: engine/environment_models.py TSI 1361 W/m^2, Earth-Sun distance, and "
+     "sensor_thermal_inputs, which corrects Basilisk sensorThermal's fixed 1366 W/m^2 and sigma 5.76051e-8 "
+     "(both measured on 2.12) through its public inputs; tests/test_environment_models.py (Table 6-2 "
+     "perihelion/aphelion values, DE430 distance, Basilisk equilibrium = standard equilibrium to 0.01 K)",
+     "The thermal sensor's flux is set at the scenario epoch's Sun distance; over a multi-month run the real "
+     "flux changes by up to 3.4 % (1316-1407 W/m^2) while the sensor keeps the epoch value.", "-", "S",
+     "yes (configures Basilisk inputs; Basilisk unchanged)", "R06"),
+    ("E-ST-10-04C", "6.2.1b", "NA", "-", "No spectral solar modelling (total irradiance only).", "-", "S", "no", ""),
+    ("E-ST-10-04C", "6.2.1c", "N", "src sensorThermal.cpp radiates to 0 K", "No 3 K space sink in the "
+     "thermal sensor model.", "Deviation D-06 (effect ~ (3/T)^4, negligible) or tool-side correction.", "S",
+     "yes", "D-06"),
+    ("E-ST-10-04C", "6.2.2a", "N", "engine/spaceweather.py (CelesTrak observed, then NASA MSFC prediction "
+     "per ESA AD10 Sec. 5.9)",
+     "Daily/81-day F10.7 come from the observed record and MSFC's prediction, not Table A-1. S10.7/M10.7 are "
+     "not used (NRLMSISE-00 takes F10.7 and Ap only).",
+     "Decision D1: add an ECSS-E-ST-10-04C reference-activity option, or deviation citing AD10.", "M", "no",
+     "R07,D-01"),
+    ("E-ST-10-04C", "6.2.2b", "N", "engine/spaceweather.py", "No fixed-index option with the Table 6-3 values "
+     "(the historical-percentile mode was removed, schema v4).", "Decision D1 (Table 6-3 low/moderate/high).",
+     "S", "no", "R07,D-01"),
+    ("E-ST-10-04C", "6.2.2c", "N", "-", "No Table 6-4 ap storm profile.", "Decision D1.", "S", "no", "R07,D-01"),
+    ("E-ST-10-04C", "6.2.2d", "N", "-", "As 6.2.2b/c.", "Decision D1.", "S", "no", "R07,D-01"),
+    ("E-ST-10-04C", "6.2.3a", "NA", "-", "Permission (may).", "-", "S", "no", ""),
+    ("E-ST-10-04C", "6.2.3b", "C", "engine/spaceweather.py: activity values are used as read, no margin added",
+     "-", "-", "S", "no", ""),
+    ("E-ST-10-04C", "6.2.3c", "N", "engine/spaceweather.py", "Future index sequences come from MSFC (AD10), not "
+     "Table A-1.", "Decision D1.", "M", "no", "R07,D-01"),
+    ("E-ST-10-04C", "6.3*", "N", "-", "Tables 6-2 to 6-4 are data for 6.2.1/6.2.2: TSI 1361 W/m^2 is used "
+     "(SRP); Tables 6-3/6-4 are not available in the tool.", "See 6.2.1a, 6.2.2b-d.", "S", "no", "R07"),
+    ("E-ST-10-04C", "6.3 (ECSS-E-ST-10-04_0760115)", "C", "As 6.2.1a: 1361 W/m^2 at 1 AU, 1/r^2 scaling "
+     "(1316/1407 W/m^2 at aphelion/perihelion, tested).", "Thermal sensor: epoch distance only (see 6.2.1a).",
+     "-", "S", "yes", "R06"),
+    ("E-ST-10-04C", "7.2.1.1a", "C", "engine/service.py msisAtmosphere (Basilisk NRLMSISE-00), default "
+     "atmosphere_model, fed WGS-84 geodetic altitude and latitude by engine/geodetic_atmosphere.py (Phase 3 "
+     "F-07: Basilisk computes them on a sphere); tests/test_lifetime.py (density matches the simulation's); "
+     "validation V-04 against GMAT's NRLMSISE-00 (one-day decay within 1.6 %, tests/validation)",
+     "The exponential model can also be chosen; the tool warns that it is far too thin above ~150 km.",
+     "Keep NRLMSISE-00 the default; mark exponential as non-compliant in the UI.", "S", "yes", ""),
+    ("E-ST-10-04C", "7.2.1.1b", "NA", "-", "Permission (may); JB2008 not used.", "-", "S", "no", ""),
+    ("E-ST-10-04C", "7.2.1.2a", "C", "No JB-2006/JB-2008 model in the tool", "-", "-", "S", "no", ""),
+    ("E-ST-10-04C", "7.2.1.2b", "N", "engine/spaceweather.py", "No worst-case short-period mode with Table 6-3 "
+     "high values (the conservative case is MSFC 95th percentile per AD10).", "Decision D1.", "S", "no",
+     "R07,D-01"),
+    ("E-ST-10-04C", "7.2.1.2c", "N", "engine/spaceweather.py", "Analyses longer than a week use observed and "
+     "MSFC-predicted daily values, not Table 6-3 long-term constants.", "Decision D1.", "S", "no", "R07,D-01"),
+    ("E-ST-10-04C", "7.2.1.2d", "N", "engine/spaceweather.py", "Uses MSFC, not Table A-1.", "Decision D1.", "M",
+     "no", "R07,D-01"),
+    ("E-ST-10-04C", "7.2.1.2e", "C", "engine/spaceweather.py: observed days are the record; MSFC months use the "
+     "same smoothed value for the day and the 81-day mean", "No artificial mixing of high daily with low or "
+     "moderate long-term values.", "-", "S", "no", ""),
+    ("E-ST-10-04C", "7.2.2a", "N", "engine/service.py zeroWindModel (B2.12)", "No HWM07 winds; Basilisk only "
+     "has a zero-wind model (co-rotating atmosphere).", "Deviation D-02, or a tool-side HWM wind model.", "L",
+     "yes (Basilisk lacks HWM)", "D-02"),
+    ("E-ST-10-04C", "7.2.2b", "NA", "-", "No wind model in use (see 7.2.2a).", "-", "S", "no", "D-02"),
+    ("E-ST-10-04C", "7.2.2c", "NA", "-", "Permission (may).", "-", "S", "no", ""),
+    ("E-ST-10-04C", "7.2.3a", "NA", "engine/service.py: drag refused for non-Earth central bodies",
+     "Mars atmosphere not modelled; drag is Earth-only and refused elsewhere.", "-", "S", "no", ""),
+    ("E-ST-10-04C", "A.2 (ECSS-E-ST-10-04_0760121)", "N", "-", "Table A-1 (solar cycle 23 indices) is not "
+     "available in the tool.", "Decision D1.", "S", "no", "R07,D-01"),
+
+    # ======================= CCSDS 502.0-B-3 =====================================
+    ('CCSDS-502.0-B-3', 'CCSDS-502.0-B-3 *', 'C', 'R09 (Phase 2): engine/ccsds_odm.py reads, validates and writes KVN OPM/OMM/OEM per the keyword tables and section 7; tests/test_ccsds_odm.py (all Annex G KVN examples conform; a failing case per rule; round trips)',
+     '-', '-', 'L', 'no', 'R09'),
+    ('CCSDS-502.0-B-3', 'ICS-*', 'C', 'R09: engine/ccsds_odm.py keyword tables cover every OPM/OMM/OEM ICS item for reading and validation (compliance/ics_ccsds_502.csv lists support per item); tests/test_ccsds_odm.py',
+     'Writing covers a subset (see the ICS file: no OPM covariance/maneuvers, OMM only TLE-based, OEM without accelerations/covariance); the ICS proforma itself needs a human signature (H03).', '-', 'M', 'no', 'R09'),
+    ('CCSDS-502.0-B-3', 'CCSDS-502.0-B-3 8.*', 'N', '-',
+     'ODM/XML (section 8) is not implemented: decision D6 (KVN first; XML when the SANA NDM/XML schemas are supplied).', 'Implement XML read/write and validate against the SANA schemas once supplied.', 'M', 'no', 'R09'),
+    ('CCSDS-502.0-B-3', 'CCSDS-502.0-B-3 7.3.3', 'NA', '-',
+     'OCM-only rule; the OCM is out of scope (user decision 2026-10-08).', '-', 'S', 'no', ''),
+    ('CCSDS-502.0-B-3', 'CCSDS-502.0-B-3 7.4.1.4', 'NA', '-',
+     'OCM-only rule; the OCM is out of scope (user decision 2026-10-08).', '-', 'S', 'no', ''),
+    ('CCSDS-502.0-B-3', 'CCSDS-502.0-B-3 7.4.1.5', 'NA', '-',
+     'OCM-only rule; the OCM is out of scope (user decision 2026-10-08).', '-', 'S', 'no', ''),
+    ('CCSDS-502.0-B-3', 'CCSDS-502.0-B-3 7.4.1.6', 'NA', '-',
+     'OCM-only rule; the OCM is out of scope (user decision 2026-10-08).', '-', 'S', 'no', ''),
+    ('CCSDS-502.0-B-3', 'CCSDS-502.0-B-3 7.4.1.7', 'NA', '-',
+     'OCM-only rule; the OCM is out of scope (user decision 2026-10-08).', '-', 'S', 'no', ''),
+    ('CCSDS-502.0-B-3', 'CCSDS-502.0-B-3 7.6.1', 'NA', '-',
+     'OCM-only rule; the OCM is out of scope (user decision 2026-10-08).', '-', 'S', 'no', ''),
+    ('CCSDS-502.0-B-3', 'CCSDS-502.0-B-3 7.7.3.*', 'NA', '-',
+     'OCM-only rule; the OCM is out of scope (user decision 2026-10-08).', '-', 'S', 'no', ''),
+    ('CCSDS-502.0-B-3', 'CCSDS-502.0-B-3 7.9.2.4', 'NA', '-',
+     'OCM-only rule; the OCM is out of scope (user decision 2026-10-08).', '-', 'S', 'no', ''),
+    ('CCSDS-502.0-B-3', 'CCSDS-502.0-B-3 3.1.4', 'H', '-',
+     "Conditions on the receiver's propagator and models: to be agreed in the ICD.", 'Record in the ICD.', 'S', 'no', 'H03'),
+    ('CCSDS-502.0-B-3', 'CCSDS-502.0-B-3 4.1.4', 'H', '-',
+     "Conditions on the receiver's propagator and models: to be agreed in the ICD.", 'Record in the ICD.', 'S', 'no', 'H03'),
+    ('CCSDS-502.0-B-3', 'CCSDS-502.0-B-3 3.2.4.5', 'P', 'R09 (Phase 2): engine/ccsds_odm.py reads, validates and writes KVN OPM/OMM/OEM per the keyword tables and section 7; tests/test_ccsds_odm.py (all Annex G KVN examples conform; a failing case per rule; round trips); export writes SOLAR_RAD_* and DRAG_* only for enabled models',
+     'OPM import takes the state only; the spacecraft parameters (CR, CD, areas) of an imported OPM are not applied to the scenario.', 'Import CR/CD/areas into the spacecraft (CR or CD = 0 -> model off).', 'S', 'no', 'R09'),
+    ('CCSDS-502.0-B-3', 'CCSDS-502.0-B-3 3.2.4.6', 'P', 'R09 (Phase 2): engine/ccsds_odm.py reads, validates and writes KVN OPM/OMM/OEM per the keyword tables and section 7; tests/test_ccsds_odm.py (all Annex G KVN examples conform; a failing case per rule; round trips); export writes SOLAR_RAD_* and DRAG_* only for enabled models',
+     'As 3.2.4.5.', 'As 3.2.4.5.', 'S', 'no', 'R09'),
+    ('CCSDS-502.0-B-3', 'CCSDS-502.0-B-3 7.8.12', 'P', 'R09 (Phase 2): engine/ccsds_odm.py reads, validates and writes KVN OPM/OMM/OEM per the keyword tables and section 7; tests/test_ccsds_odm.py (all Annex G KVN examples conform; a failing case per rule; round trips); written OPM/OEMs carry genesis and ephemeris (DE430) comments',
+     'An OEM does not state its expected accuracy (7.8.12c): the tool has no accuracy estimate.', 'Add an accuracy comment once Phase 3 validation gives one.', 'S', 'no', 'R09,R13'),
+    ("CCSDS-502.0-B-3", "CCSDS-502.0-B-3 1.5.2.1", "NA", "-", "Conventions of the standard itself.", "-", "S",
+     "no", ""),
+    ("CCSDS-502.0-B-3", "CCSDS-502.0-B-3 3.1.6", "P", "compliance/docs/ICD.md 5.3.4 (default convention: one file per spacecraft named <spacecraft>.opm/.omm/.oem, as the CLI writes them; plain files)", "OPM file naming: a default is defined; no exchange partner has agreed to it (decision 9).", "Agree it with each partner.", "S", "no", "R14"),
+    ("CCSDS-502.0-B-3", "CCSDS-502.0-B-3 3.1.7", "P", "compliance/docs/ICD.md 5.3.4 (default convention: one file per spacecraft named <spacecraft>.opm/.omm/.oem, as the CLI writes them; plain files)", "OPM exchange method: a default is defined; no exchange partner has agreed to it (decision 9).", "Agree it with each partner.", "S", "no", "R14"),
+    ("CCSDS-502.0-B-3", "CCSDS-502.0-B-3 4.1.6", "P", "compliance/docs/ICD.md 5.3.4 (default convention: one file per spacecraft named <spacecraft>.opm/.omm/.oem, as the CLI writes them; plain files)", "OMM file naming: a default is defined; no exchange partner has agreed to it (decision 9).", "Agree it with each partner.", "S", "no", "R14"),
+    ("CCSDS-502.0-B-3", "CCSDS-502.0-B-3 4.1.7", "P", "compliance/docs/ICD.md 5.3.4 (default convention: one file per spacecraft named <spacecraft>.opm/.omm/.oem, as the CLI writes them; plain files)", "OMM exchange method: a default is defined; no exchange partner has agreed to it (decision 9).", "Agree it with each partner.", "S", "no", "R14"),
+    ("CCSDS-502.0-B-3", "CCSDS-502.0-B-3 5.1.4", "P", "compliance/docs/ICD.md 5.3.4 (default convention: one file per spacecraft named <spacecraft>.opm/.omm/.oem, as the CLI writes them; plain files)", "OEM file naming: a default is defined; no exchange partner has agreed to it (decision 9).", "Agree it with each partner.", "S", "no", "R14"),
+    ("CCSDS-502.0-B-3", "CCSDS-502.0-B-3 5.1.5", "P", "compliance/docs/ICD.md 5.3.4 (default convention: one file per spacecraft named <spacecraft>.opm/.omm/.oem, as the CLI writes them; plain files)", "OEM exchange method: a default is defined; no exchange partner has agreed to it (decision 9).", "Agree it with each partner.", "S", "no", "R14"),
+    ("CCSDS-502.0-B-3", "CCSDS-502.0-B-3 4.2.4.9", "P", "R03: engine/tle.py treats TLEs as TEME of date (the "
+     "preferred option) and uses TEME only to read them.",
+     "The ICD (H03) has to state the TEME interpretation; no OMM is read or written yet.",
+     "OMM import/export with MEAN_ELEMENT_THEORY = SGP4, REF_FRAME = TEME (R09).", "M", "yes", "R03,R09"),
+]

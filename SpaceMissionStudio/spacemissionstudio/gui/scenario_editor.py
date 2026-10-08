@@ -31,7 +31,6 @@ from __future__ import annotations
 
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
-    QComboBox,
     QDialog,
     QFormLayout,
     QGroupBox,
@@ -44,6 +43,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ..engine.series_names import expected_series_names
 from ..schema.scenario import (
     GravityConfig,
     Scenario,
@@ -55,6 +55,8 @@ from .ground_station_editor import GroundStationListWidget
 from .mission_sequence_editor import MissionSequenceEditorWidget
 from .monte_carlo_editor import MonteCarloGroupWidget
 from .spacecraft_editor import SpacecraftListWidget
+from .theme import PALETTE
+from .widgets import ComboBox
 
 
 class ScenarioEditorWidget(QWidget):
@@ -111,7 +113,7 @@ class ScenarioEditorWidget(QWidget):
         # set will make Save/Run fail with a specific error naming what to
         # remove, same "surface it, don't silently drop it" discipline as
         # everywhere else in this app.
-        self.simulation_mode_combo = QComboBox()
+        self.simulation_mode_combo = ComboBox()
         self.simulation_mode_combo.addItem("Full attitude (sensors, actuators, FSW, power)",
                                             userData="full_attitude")
         self.simulation_mode_combo.addItem("Orbit only (cannonball -- no attitude features)",
@@ -235,17 +237,16 @@ class ScenarioEditorWidget(QWidget):
         add_row("Integrator", sim.integrator)
         add_row("Dynamics task rate [s]", f"{sim.dynamics_task_rate_s:g}")
         add_row("Duration [days]", f"{sim.duration_days:g}")
+        if sim.record_interval_s > 0.0:
+            add_row("Recorded every [s]", f"{sim.record_interval_s:g}")
 
         if sw.atmosphere_model == "exponential":
             add_row("Atmosphere model", "Exponential (no space weather)")
         else:
             add_row("Atmosphere model", "NRLMSISE-00")
             add_row("Space weather source", sw.source)
-            add_row(
-                "Drag margin",
-                f"Conservative (P{sw.activity_percentile:g} historical worst-case)"
-                if sw.activity_level == "conservative" else "Nominal",
-            )
+            level = {95.0: "Conservative", 50.0: "Nominal", 5.0: "Low"}.get(float(sw.forecast_percentile), "")
+            add_row("Solar activity", f"{level}: MSFC {sw.forecast_percentile:g}th percentile")
 
     def _build_spacecraft_group(self) -> QGroupBox:
         group = QGroupBox("Spacecraft")
@@ -253,6 +254,10 @@ class ScenarioEditorWidget(QWidget):
         self.spacecraft_list = SpacecraftListWidget()
         self.spacecraft_list.set_central_body_provider(lambda: self._gravity.central_body)
         self.spacecraft_list.set_simulation_mode_provider(lambda: self.simulation_mode_combo.currentData())
+        self.spacecraft_list.set_ground_station_names_provider(
+            lambda: [gs.name for gs in self.ground_station_list.to_list()]
+        )
+        self.spacecraft_list.set_epoch_provider(lambda: self.epoch_edit.text().strip())
         self.spacecraft_list.changed.connect(self.changed)
         self.spacecraft_list.changed.connect(self._refresh_monte_carlo_spacecraft_names)
         layout.addWidget(self.spacecraft_list)
@@ -273,6 +278,10 @@ class ScenarioEditorWidget(QWidget):
         self.mission_sequence_editor.set_spacecraft_names_provider(
             lambda: [sc.name for sc in self.spacecraft_list.to_list()]
         )
+        self.mission_sequence_editor.set_ground_station_names_provider(
+            lambda: [gs.name for gs in self.ground_station_list.to_list()]
+        )
+        self.mission_sequence_editor.set_series_names_provider(self._expected_series_names)
         self.mission_sequence_editor.changed.connect(self.changed)
         layout.addWidget(self.mission_sequence_editor)
         return group
@@ -292,7 +301,13 @@ class ScenarioEditorWidget(QWidget):
         on anything invalid -- callers (Save, Run, the live-validation
         label) all go through this one method.
         """
-        scenario = Scenario(
+        scenario = self._draft_scenario()
+        scenario.validate()
+        return scenario
+
+    def _draft_scenario(self) -> Scenario:
+        """The scenario as currently edited, NOT validated."""
+        return Scenario(
             name=self.name_edit.text().strip(),
             epoch_utc=self.epoch_edit.text().strip(),
             simulation_mode=self.simulation_mode_combo.currentData(),
@@ -305,11 +320,16 @@ class ScenarioEditorWidget(QWidget):
             monte_carlo=self.monte_carlo_group.to_dataclass(),
             mission_sequence=self.mission_sequence_editor.to_command_list(),
         )
-        scenario.validate()
-        return scenario
+
+    def _expected_series_names(self) -> list[str]:
+        try:
+            return expected_series_names(self._draft_scenario())
+        except Exception:  # noqa: BLE001 -- a half-edited form must never break the command dialog
+            return []
 
     def from_scenario(self, scenario: Scenario) -> None:
         self.name_edit.setText(scenario.name)
+        self.name_edit.setCursorPosition(0)  # a long name otherwise opens scrolled to its END
         self.epoch_edit.setText(scenario.epoch_utc)
         mode_index = self.simulation_mode_combo.findData(scenario.simulation_mode)
         if mode_index >= 0:
@@ -341,7 +361,7 @@ class ScenarioEditorWidget(QWidget):
             self.to_scenario()
         except ScenarioValidationError as exc:
             self.validation_label.setText(f"⚠ {exc}")
-            self.validation_label.setStyleSheet("color: #b00020;")
+            self.validation_label.setStyleSheet(f"color: {PALETTE['danger']};")
         else:
             self.validation_label.setText("✓ valid")
-            self.validation_label.setStyleSheet("color: #1a7a1a;")
+            self.validation_label.setStyleSheet(f"color: {PALETTE['success']};")

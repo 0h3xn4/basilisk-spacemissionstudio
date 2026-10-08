@@ -132,7 +132,7 @@ def test_dialog_round_trips_sensors_actuators_and_fsw_mode(qtbot):
         name="sat-with-fsw",
         orbit=OrbitIC(type="cartesian", position_km=[7000, 0, 0], velocity_km_s=[0, 7.5, 0]),
         sensors=[SensorConfig(kind="star_tracker", name="st-1", params={"noise_arcsec": 5.0})],
-        actuators=[ActuatorConfig(kind="reaction_wheel", name="rw-1", params={"gsHat_B": [1, 0, 0], "rw_type": "Honeywell_HR16"})],
+        actuators=[ActuatorConfig(kind="reaction_wheel", name="rw-1", params={"gsHat_B": [1, 0, 0], "rw_type": "Honeywell_HR16", "maxMomentum": 100.0})],
         fsw_mode="hillPoint",
         fsw_params={"foo": "bar"},
         control_params={"K": 4.0, "P": 25.0},
@@ -145,7 +145,7 @@ def test_dialog_round_trips_sensors_actuators_and_fsw_mode(qtbot):
     assert got.sensors[0].kind == "star_tracker"
     assert got.sensors[0].params == {"noise_arcsec": 5.0}
     assert len(got.actuators) == 1
-    assert got.actuators[0].params == {"gsHat_B": [1, 0, 0], "rw_type": "Honeywell_HR16"}
+    assert got.actuators[0].params == {"gsHat_B": [1, 0, 0], "rw_type": "Honeywell_HR16", "maxMomentum": 100.0}
     assert got.fsw_mode == "hillPoint"
     assert got.fsw_params == {"foo": "bar"}
     assert got.control_params == {"K": 4.0, "P": 25.0}
@@ -175,7 +175,7 @@ def test_dialog_catches_missing_locationpointing_target_immediately(qtbot):
     qtbot.addWidget(dialog)
     index = dialog.fsw_mode_combo.findData("locationPointing")
     dialog.fsw_mode_combo.setCurrentIndex(index)
-    dialog.fsw_params_edit.setPlainText("{}")  # no target_ground_station
+    dialog.fsw_param_form.include_box("target_ground_station").setChecked(False)  # no target at all
 
     with pytest.raises(ValueError, match="target_ground_station"):
         dialog.to_dataclass()
@@ -201,9 +201,75 @@ def test_dialog_fsw_hint_updates_with_mode(qtbot):
     qtbot.addWidget(dialog)
     assert "no attitude control" in dialog.fsw_hint_label.text().lower()
 
+    assert dialog.fsw_params_group.isHidden()
+
     index = dialog.fsw_mode_combo.findData("locationPointing")
     dialog.fsw_mode_combo.setCurrentIndex(index)
-    assert "target_ground_station" in dialog.fsw_hint_label.text()
+    assert "ground station" in dialog.fsw_hint_label.text()
+    assert not dialog.fsw_params_group.isHidden()
+    assert set(dialog.fsw_param_form.fields) == {"target_ground_station", "target_body", "pHat_B"}
+
+
+def test_attitude_tab_is_a_form_not_bullets_over_json(qtbot):
+    """Real user feedback on the Attitude control tab ("another bad UI/UX
+    example"): a bullet list of keys above two raw JSON boxes. Each
+    parameter and gain is now a labelled row; the JSON boxes are only a
+    collapsed "Advanced" area for keys the form doesn't cover."""
+    from spacemissionstudio.gui.spacecraft_editor import SpacecraftEditorDialog
+
+    dialog = SpacecraftEditorDialog(ground_station_names=["berlin", "kiruna"])
+    qtbot.addWidget(dialog)
+    dialog.name_edit.setText("sat-1")
+    dialog.fsw_mode_combo.setCurrentIndex(dialog.fsw_mode_combo.findData("locationPointing"))
+    assert "•" not in dialog.fsw_hint_label.text()
+    assert dialog.fsw_params_edit.isHidden() and dialog.control_params_edit.isHidden()
+
+    # The ground-station row lists the scenario's stations.
+    station = dialog.fsw_param_form.widget("target_ground_station")
+    assert [station.itemText(i) for i in range(station.count())] == ["berlin", "kiruna"]
+    station.setCurrentText("kiruna")
+    # Exactly one target: ticking the body unticks the station.
+    dialog.fsw_param_form.include_box("target_body").setChecked(True)
+    assert not dialog.fsw_param_form.include_box("target_ground_station").isChecked()
+    dialog.fsw_param_form.include_box("target_ground_station").setChecked(True)
+    assert not dialog.fsw_param_form.include_box("target_body").isChecked()
+
+    dialog.control_param_form.set_value("K", 0.5)
+    sc = dialog.to_dataclass()
+    assert sc.fsw_params == {"target_ground_station": "kiruna", "pHat_B": [0.0, 0.0, 1.0]}
+    assert sc.control_params == {"K": 0.5}
+
+
+def test_attitude_tab_round_trips_existing_params_and_extras(qtbot):
+    """Opening and OK'ing a spacecraft keeps its fsw/control params,
+    including keys the form doesn't know (kept in the Advanced box)."""
+    from spacemissionstudio.gui.spacecraft_editor import SpacecraftEditorDialog
+    from spacemissionstudio.schema.scenario import OrbitIC, SpacecraftConfig
+
+    orbit = OrbitIC(type="classical_elements", semi_major_axis_km=6928.0, eccentricity=0.001,
+                    inclination_deg=97.6, raan_deg=0.0, arg_periapsis_deg=0.0, true_anomaly_deg=0.0)
+    config = SpacecraftConfig(name="sat-1", orbit=orbit, fsw_mode="sunSafePoint",
+                              fsw_params={"sHatBdyCmd": [1.0, 0.0, 0.0], "custom_key": 2},
+                              control_params={"P": 12.0, "extra_gain": 1.5})
+    dialog = SpacecraftEditorDialog(config)
+    qtbot.addWidget(dialog)
+    assert not dialog.fsw_params_edit.isHidden()  # extras present -> Advanced expanded
+    sc = dialog.to_dataclass()
+    assert sc.fsw_params == config.fsw_params
+    assert sc.control_params == config.control_params
+
+
+def test_switching_fsw_mode_away_and_back_keeps_edits(qtbot):
+    from spacemissionstudio.gui.spacecraft_editor import SpacecraftEditorDialog
+
+    dialog = SpacecraftEditorDialog()
+    qtbot.addWidget(dialog)
+    dialog.name_edit.setText("sat-1")
+    dialog.fsw_mode_combo.setCurrentIndex(dialog.fsw_mode_combo.findData("sunSafePoint"))
+    dialog.fsw_param_form.set_value("min_unit_mag", 0.25)
+    dialog.fsw_mode_combo.setCurrentIndex(dialog.fsw_mode_combo.findData("hillPoint"))
+    dialog.fsw_mode_combo.setCurrentIndex(dialog.fsw_mode_combo.findData("sunSafePoint"))
+    assert dialog.to_dataclass().fsw_params["min_unit_mag"] == pytest.approx(0.25)
 
 
 def test_dialog_power_and_rf_link_default_to_none(qtbot):
@@ -284,6 +350,219 @@ def test_dialog_round_trips_power_and_rf_link(qtbot):
     got = dialog.to_dataclass()
     assert got.power == existing.power
     assert got.rf_link == existing.rf_link
+
+
+def test_dialog_round_trips_rf_link_antenna_beamwidth_deg(qtbot):
+    """Regression test for a real data-loss bug found by audit:
+    antenna_beamwidth_deg had no editor at all, so opening then OK'ing a
+    spacecraft that already had it set (e.g. template 19's "leo-comms-1")
+    silently deleted it.
+    """
+    from spacemissionstudio.gui.spacecraft_editor import SpacecraftEditorDialog
+    from spacemissionstudio.schema.scenario import OrbitIC, RFLinkConfig, SpacecraftConfig
+
+    existing = SpacecraftConfig(
+        name="sat-beamwidth",
+        orbit=OrbitIC(type="cartesian", position_km=[7000, 0, 0], velocity_km_s=[0, 7.5, 0]),
+        rf_link=RFLinkConfig(tx_power_w=12.0, frequency_hz=8.4e9, data_rate_bps=2.0e6, antenna_beamwidth_deg=12.5),
+    )
+    dialog = SpacecraftEditorDialog(config=existing)
+    qtbot.addWidget(dialog)
+
+    assert dialog.rf_link_group.isChecked()
+    assert dialog.rf_beamwidth_check.isChecked()
+    assert dialog.rf_beamwidth_deg.value() == pytest.approx(12.5)
+
+    got = dialog.to_dataclass()
+    assert got.rf_link == existing.rf_link  # unedited round-trip, including antenna_beamwidth_deg
+
+
+def test_dialog_rf_link_antenna_beamwidth_deg_defaults_to_none_unchecked(qtbot):
+    from spacemissionstudio.gui.spacecraft_editor import SpacecraftEditorDialog
+
+    dialog = SpacecraftEditorDialog()
+    qtbot.addWidget(dialog)
+    dialog.rf_link_group.setChecked(True)
+    assert not dialog.rf_beamwidth_check.isChecked()
+
+    sc = dialog.to_dataclass()
+    assert sc.rf_link.antenna_beamwidth_deg is None
+
+
+def test_dialog_comms_pointing_defaults_to_none(qtbot):
+    from spacemissionstudio.gui.spacecraft_editor import SpacecraftEditorDialog
+
+    dialog = SpacecraftEditorDialog()
+    qtbot.addWidget(dialog)
+    assert not dialog.comms_pointing_group.isChecked()
+    sc = dialog.to_dataclass()
+    assert sc.comms_pointing is None
+
+
+def test_dialog_comms_pointing_ground_station_combo_lists_provided_names(qtbot):
+    from spacemissionstudio.gui.spacecraft_editor import SpacecraftEditorDialog
+
+    dialog = SpacecraftEditorDialog(ground_station_names=["berlin", "svalbard"])
+    qtbot.addWidget(dialog)
+    dialog.comms_pointing_group.setChecked(True)
+    assert dialog.cp_ground_station_combo.isEnabled()
+    names = {dialog.cp_ground_station_combo.itemData(i) for i in range(dialog.cp_ground_station_combo.count())}
+    assert names == {"berlin", "svalbard"}
+
+
+def test_dialog_comms_pointing_disabled_combo_with_no_ground_stations(qtbot):
+    from spacemissionstudio.gui.spacecraft_editor import SpacecraftEditorDialog
+
+    dialog = SpacecraftEditorDialog()
+    qtbot.addWidget(dialog)
+    dialog.comms_pointing_group.setChecked(True)
+    assert not dialog.cp_ground_station_combo.isEnabled()
+
+
+def test_dialog_comms_pointing_requires_a_selectable_ground_station(qtbot):
+    from spacemissionstudio.gui.spacecraft_editor import SpacecraftEditorDialog
+    from spacemissionstudio.schema.scenario import ScenarioValidationError
+
+    dialog = SpacecraftEditorDialog()
+    qtbot.addWidget(dialog)
+    dialog.comms_pointing_group.setChecked(True)
+    with pytest.raises(ScenarioValidationError, match="no ground station is selectable"):
+        dialog.to_dataclass()
+
+
+def test_dialog_builds_comms_pointing_config_when_group_checked(qtbot):
+    from spacemissionstudio.gui.spacecraft_editor import SpacecraftEditorDialog
+
+    dialog = SpacecraftEditorDialog(ground_station_names=["berlin"])
+    qtbot.addWidget(dialog)
+    dialog.comms_pointing_group.setChecked(True)
+    dialog.power_group.setChecked(True)  # comms_power_w > 0 requires power also configured
+    dialog.cp_boresight_x.setValue(1.0)
+    dialog.cp_boresight_y.setValue(0.0)
+    dialog.cp_boresight_z.setValue(0.0)
+    dialog.cp_comms_power_w.setValue(5.0)
+
+    sc = dialog.to_dataclass()
+    assert sc.comms_pointing is not None
+    assert sc.comms_pointing.target_ground_station == "berlin"
+    assert sc.comms_pointing.antenna_boresight_b == [1.0, 0.0, 0.0]
+    assert sc.comms_pointing.sun_pointing_axis_b is None  # default checkbox left checked
+    assert sc.comms_pointing.comms_power_w == 5.0
+
+
+def test_dialog_comms_pointing_sun_axis_override(qtbot):
+    from spacemissionstudio.gui.spacecraft_editor import SpacecraftEditorDialog
+
+    dialog = SpacecraftEditorDialog(ground_station_names=["berlin"])
+    qtbot.addWidget(dialog)
+    dialog.comms_pointing_group.setChecked(True)
+    dialog.cp_sun_axis_default_check.setChecked(False)
+    assert dialog.cp_sun_axis_x.isEnabled()
+    dialog.cp_sun_axis_x.setValue(0.0)
+    dialog.cp_sun_axis_y.setValue(1.0)
+    dialog.cp_sun_axis_z.setValue(0.0)
+
+    sc = dialog.to_dataclass()
+    assert sc.comms_pointing.sun_pointing_axis_b == [0.0, 1.0, 0.0]
+
+
+def test_dialog_round_trips_comms_pointing(qtbot):
+    """Regression test for a real data-loss bug found by audit:
+    comms_pointing had NO editor at all anywhere in this dialog, so
+    opening then OK'ing a spacecraft that already had it set (e.g.
+    template 19's "leo-comms-1") silently DELETED it -- to_dataclass()
+    always rebuilt a fresh SpacecraftConfig from widget state alone.
+    """
+    from spacemissionstudio.gui.spacecraft_editor import SpacecraftEditorDialog
+    from spacemissionstudio.schema.scenario import CommsPointingConfig, OrbitIC, PowerConfig, SpacecraftConfig
+
+    existing = SpacecraftConfig(
+        name="sat-comms",
+        orbit=OrbitIC(type="cartesian", position_km=[7000, 0, 0], velocity_km_s=[0, 7.5, 0]),
+        power=PowerConfig(panel_area_m2=1.5, panel_efficiency=0.28, panel_normal_b=[0.0, 0.0, 1.0],
+                           bus_idle_power_w=10.0, battery_capacity_wh=100.0, battery_initial_soc=1.0),
+        comms_pointing=CommsPointingConfig(
+            target_ground_station="berlin", antenna_boresight_b=[0.0, 1.0, 0.0],
+            sun_pointing_axis_b=[1.0, 0.0, 0.0], comms_power_w=8.0,
+        ),
+    )
+    dialog = SpacecraftEditorDialog(config=existing, ground_station_names=["berlin"])
+    qtbot.addWidget(dialog)
+
+    assert dialog.comms_pointing_group.isChecked()
+    assert not dialog.cp_sun_axis_default_check.isChecked()  # explicit override must survive, not get reset to default
+
+    got = dialog.to_dataclass()
+    assert got.comms_pointing == existing.comms_pointing
+
+
+def test_dialog_stale_comms_pointing_ground_station_is_preserved_not_silently_swapped(qtbot):
+    """Same stale-reference preservation as pk_chief_combo's own test
+    (test_dialog_stale_chief_spacecraft_is_preserved_not_silently_swapped)
+    -- a comms_pointing.target_ground_station that no longer matches any
+    current ground station (renamed/removed since save) must round-trip
+    unchanged, not silently swap to whichever station happens to be first.
+    """
+    from spacemissionstudio.gui.spacecraft_editor import SpacecraftEditorDialog
+    from spacemissionstudio.schema.scenario import CommsPointingConfig, OrbitIC, SpacecraftConfig
+
+    existing = SpacecraftConfig(
+        name="sat-comms",
+        orbit=OrbitIC(type="cartesian", position_km=[7000, 0, 0], velocity_km_s=[0, 7.5, 0]),
+        comms_pointing=CommsPointingConfig(target_ground_station="old-station"),
+    )
+    dialog = SpacecraftEditorDialog(config=existing, ground_station_names=["berlin", "svalbard"])
+    qtbot.addWidget(dialog)
+
+    assert dialog.cp_ground_station_combo.currentData() == "old-station"
+
+    got = dialog.to_dataclass()
+    assert got.comms_pointing.target_ground_station == "old-station"
+
+
+def test_dialog_template_19_leo_comms_1_survives_open_then_ok(qtbot):
+    """The exact real-world bug scenario this fix closes, checked
+    end-to-end against the real bundled template rather than only via the
+    dataclass-level round-trip tests above: load template 19, open its
+    "leo-comms-1" spacecraft (which has both comms_pointing and
+    rf_link.antenna_beamwidth_deg already set) in this dialog, accept with
+    NO edits, and confirm both fields are still populated afterward.
+    """
+    from spacemissionstudio.gui.load_scenario_widget import TEMPLATES_DIR
+    from spacemissionstudio.gui.spacecraft_editor import SpacecraftEditorDialog
+    from spacemissionstudio.schema import load_scenario
+
+    scenario = load_scenario(TEMPLATES_DIR / "19_sun_pointing_comms_link.json")
+    original = next(sc for sc in scenario.spacecraft if sc.name == "leo-comms-1")
+    assert original.comms_pointing is not None  # sanity check this template still exercises the bug
+    assert original.rf_link.antenna_beamwidth_deg is not None
+
+    dialog = SpacecraftEditorDialog(
+        config=original,
+        other_spacecraft_names=[sc.name for sc in scenario.spacecraft if sc.name != "leo-comms-1"],
+        ground_station_names=[gs.name for gs in scenario.ground_stations],
+    )
+    qtbot.addWidget(dialog)
+
+    got = dialog.to_dataclass()  # same call OK triggers, with zero edits made
+    assert got.comms_pointing == original.comms_pointing
+    assert got.rf_link == original.rf_link
+
+
+def test_dialog_orbit_only_mode_force_clears_comms_pointing(qtbot):
+    from spacemissionstudio.gui.spacecraft_editor import SpacecraftEditorDialog
+    from spacemissionstudio.schema.scenario import CommsPointingConfig, OrbitIC, SpacecraftConfig
+
+    existing = SpacecraftConfig(
+        name="sat-comms",
+        orbit=OrbitIC(type="cartesian", position_km=[7000, 0, 0], velocity_km_s=[0, 7.5, 0]),
+        comms_pointing=CommsPointingConfig(target_ground_station="berlin"),
+    )
+    dialog = SpacecraftEditorDialog(config=existing, ground_station_names=["berlin"], simulation_mode="orbit_only")
+    qtbot.addWidget(dialog)
+
+    sc = dialog.to_dataclass()
+    assert sc.comms_pointing is None
 
 
 def test_dialog_station_keeping_defaults_to_none(qtbot):
@@ -388,7 +667,7 @@ def test_dialog_builds_phasing_keeping_config_when_group_checked(qtbot):
     qtbot.addWidget(dialog)
     dialog.station_keeping_group.setChecked(True)  # phasing_keeping requires this
     dialog.phasing_keeping_group.setChecked(True)
-    dialog.pk_target_separation_edit.setText("1000, 500, 100")
+    dialog.pk_target_separations.set_values([1000.0, 500.0, 100.0])
     dialog.pk_reconfiguration_interval_days.setValue(60.0)
     dialog.pk_tolerance_fraction.setValue(0.2)
     dialog.pk_restore_tolerance_fraction.setValue(0.05)
@@ -408,17 +687,31 @@ def test_dialog_builds_phasing_keeping_config_when_group_checked(qtbot):
     assert sc.phasing_keeping.max_delta_semi_major_axis_km == 2.0
 
 
-def test_dialog_phasing_keeping_rejects_malformed_separation_list(qtbot):
+def test_target_separation_stages_are_added_and_removed_as_rows(qtbot):
+    """Real user feedback: the comma-separated separation list is now one
+    km box per stage, with Add/Remove, never fewer than one stage."""
     from spacemissionstudio.gui.spacecraft_editor import SpacecraftEditorDialog
-    from spacemissionstudio.schema.scenario import ScenarioValidationError
 
     dialog = SpacecraftEditorDialog(other_spacecraft_names=["chief"])
     qtbot.addWidget(dialog)
     dialog.station_keeping_group.setChecked(True)
     dialog.phasing_keeping_group.setChecked(True)
-    dialog.pk_target_separation_edit.setText("not, a, number")
-    with pytest.raises(ScenarioValidationError, match="comma-separated numbers"):
-        dialog.to_dataclass()
+    editor = dialog.pk_target_separations
+    assert editor.values() == [100.0] and editor.labels() == ["Stage 1"]
+    assert "km" in editor.boxes()[0].suffix()
+    editor.boxes()[0].setValue(1000.0)
+    editor.add_button.click()
+    editor.boxes()[1].setValue(500.0)
+    editor.add_button.click()
+    editor.boxes()[2].setValue(100.0)
+    assert editor.labels() == ["Stage 1", "Stage 2", "Stage 3"]
+    assert dialog.to_dataclass().phasing_keeping.target_separation_km == [1000.0, 500.0, 100.0]
+
+    editor._on_remove(editor.boxes()[1])
+    assert editor.values() == [1000.0, 100.0]
+    editor._on_remove(editor.boxes()[0])
+    assert editor.values() == [100.0]
+    assert not editor._remove_buttons[0].isEnabled()  # the last stage can't be removed
 
 
 def test_dialog_stale_chief_spacecraft_is_preserved_not_silently_swapped(qtbot):
@@ -716,7 +1009,7 @@ def test_dialog_round_trips_phasing_keeping(qtbot):
 
     assert dialog.phasing_keeping_group.isChecked()
     assert dialog.pk_chief_combo.currentData() == "chief"
-    assert dialog.pk_target_separation_edit.text() == "250, 100"
+    assert dialog.pk_target_separations.values() == [250.0, 100.0]
 
     got = dialog.to_dataclass()
     assert got.phasing_keeping == existing.phasing_keeping
@@ -882,7 +1175,7 @@ def test_list_widget_new_from_template(qtbot, monkeypatch):
     lw = SpacecraftListWidget()
     qtbot.addWidget(lw)
 
-    stabilized = next(t for t in SPACECRAFT_TEMPLATES if "stabilized" in t.name.lower() and "3u" in t.name.lower())
+    stabilized = next(t for t in SPACECRAFT_TEMPLATES if "150 kg" in t.name)
 
     def fake_picker_exec(self):
         return QDialog.DialogCode.Accepted
@@ -903,7 +1196,8 @@ def test_list_widget_new_from_template(qtbot, monkeypatch):
 
     assert lw.list_widget.count() == 1
     added = lw.to_list()[0]
-    assert len(added.actuators) == 3
+    assert [a.kind for a in added.actuators] == ["reaction_wheel"] * 3 + ["magnetic_torque_rod"] * 3
+    assert added.magnetic_momentum_management is not None  # survives the editor's OK
     assert added.fsw_mode == "sunSafePoint"
     assert changed_count == [1]
 
@@ -923,10 +1217,10 @@ def test_list_widget_new_from_template_dedupes_name_on_collision(qtbot, monkeypa
                                     orbit=OrbitIC(type="cartesian", position_km=[7000, 0, 0],
                                                   velocity_km_s=[0, 7.5, 0]))])
 
-    passive = next(t for t in SPACECRAFT_TEMPLATES if "passive" in t.name.lower())
+    first = SPACECRAFT_TEMPLATES[0]
 
     monkeypatch.setattr(SpacecraftTemplateDialog, "exec", lambda self: QDialog.DialogCode.Accepted)
-    monkeypatch.setattr(SpacecraftTemplateDialog, "selected_template", lambda self: passive)
+    monkeypatch.setattr(SpacecraftTemplateDialog, "selected_template", lambda self: first)
     captured_names = []
 
     def fake_editor_exec(self):
@@ -1332,7 +1626,7 @@ def test_dialog_builds_momentum_dumping_config_when_group_checked(qtbot):
         name="sat-md",
         orbit=OrbitIC(type="cartesian", position_km=[7000, 0, 0], velocity_km_s=[0, 7.5, 0]),
         actuators=[
-            ActuatorConfig(kind="reaction_wheel", name="rw-1", params={"gsHat_B": [1, 0, 0], "rw_type": "Honeywell_HR16"}),
+            ActuatorConfig(kind="reaction_wheel", name="rw-1", params={"gsHat_B": [1, 0, 0], "rw_type": "Honeywell_HR16", "maxMomentum": 100.0}),
             ActuatorConfig(kind="thruster", name="thr-1",
                             params={"r_B": [1, 0, 0], "tHat_B": [0, 1, 0], "MaxThrust": 1.0}),
         ],
@@ -1360,7 +1654,7 @@ def test_dialog_round_trips_momentum_dumping(qtbot):
         name="sat-md",
         orbit=OrbitIC(type="cartesian", position_km=[7000, 0, 0], velocity_km_s=[0, 7.5, 0]),
         actuators=[
-            ActuatorConfig(kind="reaction_wheel", name="rw-1", params={"gsHat_B": [1, 0, 0], "rw_type": "Honeywell_HR16"}),
+            ActuatorConfig(kind="reaction_wheel", name="rw-1", params={"gsHat_B": [1, 0, 0], "rw_type": "Honeywell_HR16", "maxMomentum": 100.0}),
             ActuatorConfig(kind="thruster", name="thr-1",
                             params={"r_B": [1, 0, 0], "tHat_B": [0, 1, 0], "MaxThrust": 1.0}),
         ],
@@ -1461,8 +1755,8 @@ def test_dialog_builds_magnetic_momentum_management_config_when_group_checked(qt
         name="sat-mmm",
         orbit=OrbitIC(type="cartesian", position_km=[7000, 0, 0], velocity_km_s=[0, 7.5, 0]),
         actuators=[
-            ActuatorConfig(kind="reaction_wheel", name="rw-1", params={"gsHat_B": [1, 0, 0], "rw_type": "Honeywell_HR16"}),
-            ActuatorConfig(kind="reaction_wheel", name="rw-2", params={"gsHat_B": [0, 1, 0], "rw_type": "Honeywell_HR16"}),
+            ActuatorConfig(kind="reaction_wheel", name="rw-1", params={"gsHat_B": [1, 0, 0], "rw_type": "Honeywell_HR16", "maxMomentum": 100.0}),
+            ActuatorConfig(kind="reaction_wheel", name="rw-2", params={"gsHat_B": [0, 1, 0], "rw_type": "Honeywell_HR16", "maxMomentum": 100.0}),
             ActuatorConfig(kind="magnetic_torque_rod", name="mtb-1",
                             params={"gtHat_B": [1, 0, 0], "max_dipole_a_m2": 0.1}),
         ],
@@ -1471,7 +1765,10 @@ def test_dialog_builds_magnetic_momentum_management_config_when_group_checked(qt
     dialog = SpacecraftEditorDialog(config=existing)
     qtbot.addWidget(dialog)
     dialog.magnetic_momentum_management_group.setChecked(True)
-    dialog.mmm_wheel_speed_biases_edit.setText("83.8, 62.8")
+    assert dialog.mmm_wheel_speed_biases.labels() == ["rw-1", "rw-2"]
+    first, second = dialog.mmm_wheel_speed_biases.boxes()
+    first.setValue(83.8)  # [rad/s]
+    second.setValue(62.8)  # [rad/s]
     dialog.mmm_c_gain.setValue(0.01)
 
     sc = dialog.to_dataclass()
@@ -1490,7 +1787,7 @@ def test_dialog_round_trips_magnetic_momentum_management(qtbot):
         name="sat-mmm",
         orbit=OrbitIC(type="cartesian", position_km=[7000, 0, 0], velocity_km_s=[0, 7.5, 0]),
         actuators=[
-            ActuatorConfig(kind="reaction_wheel", name="rw-1", params={"gsHat_B": [1, 0, 0], "rw_type": "Honeywell_HR16"}),
+            ActuatorConfig(kind="reaction_wheel", name="rw-1", params={"gsHat_B": [1, 0, 0], "rw_type": "Honeywell_HR16", "maxMomentum": 100.0}),
             ActuatorConfig(kind="magnetic_torque_rod", name="mtb-1",
                             params={"gtHat_B": [1, 0, 0], "max_dipole_a_m2": 0.1}),
         ],
@@ -1503,31 +1800,70 @@ def test_dialog_round_trips_magnetic_momentum_management(qtbot):
     qtbot.addWidget(dialog)
 
     assert dialog.magnetic_momentum_management_group.isChecked()
-    assert dialog.mmm_wheel_speed_biases_edit.text() == "12.5"
+    assert dialog.mmm_wheel_speed_biases.values() == [12.5]
     assert dialog.mmm_c_gain.value() == 0.02
 
     sc = dialog.to_dataclass()
     assert sc.magnetic_momentum_management.wheel_speed_biases_rad_s == [12.5]
 
 
-def test_dialog_rejects_malformed_wheel_speed_biases(qtbot):
+def test_wheel_speed_bias_rows_follow_the_reaction_wheel_list(qtbot):
+    """Real user feedback: the biases were a comma-separated list matched
+    to the wheels by position, with nothing showing which number was which
+    wheel. Each wheel now has its own labelled row, kept in step with the
+    Sensors/actuators tab."""
     from spacemissionstudio.gui.spacecraft_editor import SpacecraftEditorDialog
-    from spacemissionstudio.schema.scenario import ActuatorConfig, OrbitIC, ScenarioValidationError, SpacecraftConfig
+    from spacemissionstudio.schema.scenario import (
+        ActuatorConfig, MagneticMomentumManagementConfig, OrbitIC, ScenarioValidationError, SpacecraftConfig,
+    )
 
+    wheel = {"gsHat_B": [1, 0, 0], "rw_type": "Honeywell_HR16", "maxMomentum": 100.0}
     existing = SpacecraftConfig(
         name="sat-mmm",
         orbit=OrbitIC(type="cartesian", position_km=[7000, 0, 0], velocity_km_s=[0, 7.5, 0]),
         actuators=[
-            ActuatorConfig(kind="reaction_wheel", name="rw-1", params={"gsHat_B": [1, 0, 0], "rw_type": "Honeywell_HR16"}),
+            ActuatorConfig(kind="reaction_wheel", name="rw-x", params=wheel),
             ActuatorConfig(kind="magnetic_torque_rod", name="mtb-1",
-                            params={"gtHat_B": [1, 0, 0], "max_dipole_a_m2": 0.1}),
+                           params={"gtHat_B": [1, 0, 0], "max_dipole_a_m2": 0.1}),
+            ActuatorConfig(kind="reaction_wheel", name="rw-y", params=wheel),
         ],
         fsw_mode="sunSafePoint",
+        magnetic_momentum_management=MagneticMomentumManagementConfig(wheel_speed_biases_rad_s=[10.0, 20.0]),
     )
     dialog = SpacecraftEditorDialog(config=existing)
     qtbot.addWidget(dialog)
-    dialog.magnetic_momentum_management_group.setChecked(True)
-    dialog.mmm_wheel_speed_biases_edit.setText("not a number")
+    biases = dialog.mmm_wheel_speed_biases
+    assert biases.labels() == ["rw-x", "rw-y"] and biases.values() == [10.0, 20.0]
+    assert "rad/s" in biases.boxes()[0].suffix()
 
-    with pytest.raises(ScenarioValidationError, match="comma-separated numbers"):
+    # A third wheel added on the Sensors/actuators tab gets its own row.
+    actuators = dialog.actuator_list.to_list() + [ActuatorConfig(kind="reaction_wheel", name="rw-z", params=wheel)]
+    dialog.actuator_list.from_list(actuators)
+    dialog.actuator_list.changed.emit()
+    assert biases.labels() == ["rw-x", "rw-y", "rw-z"] and biases.values() == [10.0, 20.0, 0.0]
+
+    # No wheels at all: a clear message, not a silent empty list.
+    dialog.actuator_list.from_list([a for a in actuators if a.kind != "reaction_wheel"])
+    dialog.actuator_list.changed.emit()
+    assert biases.values() == [] and not biases.empty_label.isHidden()
+    with pytest.raises(ScenarioValidationError, match="at least one reaction wheel"):
         dialog.to_dataclass()
+
+
+def test_dialog_round_trips_thruster_realism_settings(qtbot):
+    from spacemissionstudio.gui.spacecraft_editor import SpacecraftEditorDialog
+    from spacemissionstudio.schema.scenario import OrbitIC, SpacecraftConfig, StationKeepingConfig
+
+    existing = SpacecraftConfig(
+        name="sat-ep",
+        orbit=OrbitIC(type="cartesian", position_km=[7000, 0, 0], velocity_km_s=[0, 7.5, 0]),
+        station_keeping=StationKeepingConfig(target_altitude_km=550.0, deadband_km=5.0, thrust_n=0.05,
+                                              isp_s=1500.0, propellant_kg=5.0, min_on_time_s=300.0,
+                                              eccentricity_neutral_burns=True),
+    )
+    dialog = SpacecraftEditorDialog(config=existing)
+    qtbot.addWidget(dialog)
+
+    assert dialog.sk_min_on_time_s.value() == 300.0  # [s]
+    assert dialog.sk_eccentricity_neutral_check.isChecked()
+    assert dialog.to_dataclass().station_keeping == existing.station_keeping

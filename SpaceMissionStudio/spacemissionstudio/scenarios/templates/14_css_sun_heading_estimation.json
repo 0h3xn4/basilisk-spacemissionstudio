@@ -27,17 +27,17 @@
         "tle_line1": null,
         "tle_line2": null
       },
-      "dry_mass_kg": 50.0,
+      "dry_mass_kg": 150.0,
       "inertia_kg_m2": [
-        5.0,
+        20.5,
         0.0,
         0.0,
         0.0,
-        5.0,
+        20.5,
         0.0,
         0.0,
         0.0,
-        5.0
+        16.0
       ],
       "sigma_bn_init": [
         0.1,
@@ -55,6 +55,7 @@
       "enable_srp": false,
       "srp_coeff": 1.3,
       "srp_area_m2": 1.0,
+      "facets": [],
       "enable_gravity_gradient": false,
       "sensors": [
         {
@@ -164,8 +165,10 @@
               0.0,
               0.0
             ],
-            "rw_type": "Honeywell_HR16",
-            "maxMomentum": 100.0
+            "rw_type": "custom",
+            "maxMomentum": 6.0,
+            "Omega_max": 6000.0,
+            "u_max": 0.05
           }
         },
         {
@@ -177,8 +180,10 @@
               1.0,
               0.0
             ],
-            "rw_type": "Honeywell_HR16",
-            "maxMomentum": 100.0
+            "rw_type": "custom",
+            "maxMomentum": 6.0,
+            "Omega_max": 6000.0,
+            "u_max": 0.05
           }
         },
         {
@@ -190,8 +195,10 @@
               0.0,
               1.0
             ],
-            "rw_type": "Honeywell_HR16",
-            "maxMomentum": 100.0
+            "rw_type": "custom",
+            "maxMomentum": 6.0,
+            "Omega_max": 6000.0,
+            "u_max": 0.05
           }
         }
       ],
@@ -204,19 +211,18 @@
         ],
         "use_css_estimation": true
       },
-      "control_params": {
-        "K": 0.0194,
-        "P": 0.167
-      },
+      "control_params": {},
       "power": null,
       "rf_link": null,
       "comms_pointing": null,
       "station_keeping": null,
+      "geo_station_keeping": null,
       "phasing_keeping": null,
       "constant_thrust": null,
       "momentum_dumping": null,
       "magnetic_momentum_management": null,
       "fuel_tank": null,
+      "propellant_budget": null,
       "vizard_model_path": null,
       "vizard_model_offset_m": [
         0.0,
@@ -237,17 +243,18 @@
   ],
   "ground_stations": [],
   "space_weather": {
-    "source": "synthetic",
+    "source": "bundled",
     "local_file_path": null,
     "cache_dir": null,
     "atmosphere_model": "nrlmsise00",
-    "activity_level": "nominal",
-    "activity_percentile": 95.0
+    "forecast_percentile": 50.0,
+    "msfc_file_path": null
   },
   "sim_settings": {
     "duration_days": 0.025,
     "dynamics_task_rate_s": 1.0,
-    "integrator": "rkf78"
+    "integrator": "rkf78",
+    "record_interval_s": 0.0
   },
   "monte_carlo": {
     "enabled": false,
@@ -257,6 +264,6 @@
     "dispersions": []
   },
   "mission_sequence": [],
-  "description": "Real sun-direction ESTIMATION (not truth) feeding a closed attitude-control loop: eight coarse_sun_sensor devices in a cube layout (same directions as examples/BskSim/models/BSK_Dynamics.py's SetCSSConstellation()) feed a dedicated CSSConstellation + cssWlsEst weighted-least-squares estimator (engine.fsw.build_css_sun_estimation), and fsw_params['use_css_estimation']=True routes that ESTIMATE (rather than simpleNav's truth) into fsw_mode 'sunSafePoint''s sunDirectionInMsg -- the same architecture as examples/BskSim/scenarios/scenario_AttEclipse.py's real reference (cssWlsEst -> sunSafePoint -> mrpFeedback -> reaction wheels).\n\ncontrol_params is deliberately NOT left at engine.fsw.DEFAULT_MRP_GAINS (K=3.5/P=30): that default is lifted directly from Basilisk's own BSK_Fsw.py reference, tuned for THAT example's 900 kg*m^2 spacecraft. Applied unscaled to this template's 5 kg*m^2 hub it is roughly 180x too stiff -- confirmed directly against a real Basilisk build to produce a persistent, non-decaying ~30-degree pointing oscillation (bounded by RW torque saturation, not a crash, but never actually 'pointed and holding'). Scaling K and P by this hub's inertia relative to that reference (both x 5/900) converges cleanly instead -- confirmed: sub-1e-6-degree final pointing error. See HISTORY.md for the full investigation; this gain/inertia mismatch is a general risk for ANY small-sat-scale spacecraft left on DEFAULT_MRP_GAINS, worth checking on every new fsw_mode spacecraft this small, not something specific to CSS estimation.\n\nWhat to look at: '{sat-1}.sun_heading_body_estimated' (the CSS estimate) should settle near [0, 0, 1] in the body frame as sunSafePoint drives the commanded body +Z axis (sHatBdyCmd) onto the real sun direction -- compare its early, still-converging samples against its settled final value to see the estimate itself stabilize as the attitude stops moving. The WLS estimate's accuracy is purely geometry-dependent (how many of the 8 sensors are actually sunlit for the current sun direction, confirmed directly against a real Basilisk build: an under-determined 2-of-8-illuminated case gave 14.5 degrees of error, a well-conditioned 4-of-8 case gave an exact 0.0-degree match with zero sensor noise) -- real hardware has exactly this coverage gap, it is not something to 'fix' here.\n\nTry changing: the coarse_sun_sensor fov_deg values (a narrower FOV sees fewer sensors illuminated at once, degrading the WLS conditioning), or fsw_params['use_css_estimation'] to False to compare against simpleNav's noise-free truth sun direction instead.",
-  "schema_version": 2
+  "description": "Sun-safe pointing driven by an estimated Sun direction: eight coarse sun sensors feed a weighted least-squares estimator, instead of using the true direction.\n\nWhat to look at:\n- sat-1.sun_heading_body_estimated settling near [0, 0, 1] as the +Z axis turns to the Sun.\n- Accuracy depends on how many sensors are lit, as on real hardware.\n\nTry changing:\n- The sensors' field of view: narrower means fewer lit sensors and a worse estimate.\n- Turn off \"Estimate Sun heading from coarse sun sensors\" to compare with the true direction.",
+  "schema_version": 4
 }

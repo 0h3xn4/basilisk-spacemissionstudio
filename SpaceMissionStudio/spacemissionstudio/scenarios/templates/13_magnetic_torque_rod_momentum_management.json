@@ -25,17 +25,17 @@
         "tle_line1": null,
         "tle_line2": null
       },
-      "dry_mass_kg": 10.0,
+      "dry_mass_kg": 150.0,
       "inertia_kg_m2": [
-        0.006666666666666667,
+        20.5,
         0.0,
         0.0,
         0.0,
-        0.04186666666666666,
+        20.5,
         0.0,
         0.0,
         0.0,
-        0.04186666666666666
+        16.0
       ],
       "sigma_bn_init": [
         0.1,
@@ -53,6 +53,7 @@
       "enable_srp": false,
       "srp_coeff": 1.3,
       "srp_area_m2": 1.0,
+      "facets": [],
       "enable_gravity_gradient": false,
       "sensors": [],
       "actuators": [
@@ -65,8 +66,10 @@
               0.6156614753256583,
               0.788010753606722
             ],
-            "rw_type": "BCT_RWP015",
-            "Omega_max": 5000.0
+            "rw_type": "custom",
+            "maxMomentum": 6.0,
+            "Omega_max": 6000.0,
+            "u_max": 0.05
           }
         },
         {
@@ -78,8 +81,10 @@
               0.788010753606722,
               -0.6156614753256583
             ],
-            "rw_type": "BCT_RWP015",
-            "Omega_max": 5000.0
+            "rw_type": "custom",
+            "maxMomentum": 6.0,
+            "Omega_max": 6000.0,
+            "u_max": 0.05
           }
         },
         {
@@ -91,8 +96,10 @@
               -0.788010753606722,
               0.0
             ],
-            "rw_type": "BCT_RWP015",
-            "Omega_max": 5000.0
+            "rw_type": "custom",
+            "maxMomentum": 6.0,
+            "Omega_max": 6000.0,
+            "u_max": 0.05
           }
         },
         {
@@ -104,8 +111,10 @@
               -0.788010753606722,
               0.0
             ],
-            "rw_type": "BCT_RWP015",
-            "Omega_max": 5000.0
+            "rw_type": "custom",
+            "maxMomentum": 6.0,
+            "Omega_max": 6000.0,
+            "u_max": 0.05
           }
         },
         {
@@ -117,7 +126,7 @@
               0.0,
               0.0
             ],
-            "max_dipole_a_m2": 0.1
+            "max_dipole_a_m2": 15.0
           }
         },
         {
@@ -129,7 +138,7 @@
               1.0,
               0.0
             ],
-            "max_dipole_a_m2": 0.1
+            "max_dipole_a_m2": 15.0
           }
         },
         {
@@ -141,7 +150,7 @@
               0.0,
               1.0
             ],
-            "max_dipole_a_m2": 0.1
+            "max_dipole_a_m2": 15.0
           }
         },
         {
@@ -153,7 +162,7 @@
               0.70710678,
               0.0
             ],
-            "max_dipole_a_m2": 0.1
+            "max_dipole_a_m2": 15.0
           }
         }
       ],
@@ -165,14 +174,12 @@
           0.0
         ]
       },
-      "control_params": {
-        "K": 0.0001,
-        "P": 0.002
-      },
+      "control_params": {},
       "power": null,
       "rf_link": null,
       "comms_pointing": null,
       "station_keeping": null,
+      "geo_station_keeping": null,
       "phasing_keeping": null,
       "constant_thrust": null,
       "momentum_dumping": null,
@@ -186,6 +193,7 @@
         "c_gain": 0.003
       },
       "fuel_tank": null,
+      "propellant_budget": null,
       "vizard_model_path": null,
       "vizard_model_offset_m": [
         0.0,
@@ -206,17 +214,18 @@
   ],
   "ground_stations": [],
   "space_weather": {
-    "source": "synthetic",
+    "source": "bundled",
     "local_file_path": null,
     "cache_dir": null,
     "atmosphere_model": "nrlmsise00",
-    "activity_level": "nominal",
-    "activity_percentile": 95.0
+    "forecast_percentile": 50.0,
+    "msfc_file_path": null
   },
   "sim_settings": {
     "duration_days": 0.08333333333333333,
     "dynamics_task_rate_s": 2.0,
-    "integrator": "rkf78"
+    "integrator": "rkf78",
+    "record_interval_s": 0.0
   },
   "monte_carlo": {
     "enabled": false,
@@ -226,6 +235,6 @@
     "dispersions": []
   },
   "mission_sequence": [],
-  "description": "The alternative desaturation strategy to '12': instead of waiting for total momentum to cross a threshold and firing a discrete thruster burst, this spacecraft's four reaction wheels (same skewed-pyramid layout as examples/scenarioMtbMomentumManagement.py) are CONTINUOUSLY biased toward target speeds (800/600/400/200 RPM) the whole run, using four magnetic torque rods and the real geomagnetic field (Basilisk's WMM model) via MagneticMomentumManagementConfig (engine.fsw.build_mtb_desaturation: a dedicated magnetometer + tamComm feed mtbMomentumManagement, which sits BETWEEN rwMotorTorque and the RW hardware, modifying the commanded motor torque). No control-allocation conflict with the fsw_mode='inertial3D' attitude pointing running at the same time -- magnetic torque rods never do attitude control here, only this continuous momentum bias.\n\nWhat to look at: result series '{sat-1}.rw_speeds' should climb from zero and settle near 800/600/400/200 RPM (converted: ~83.8/62.8/41.9/20.9 rad/s) over the ~2 hour run -- confirmed by direct experimentation against a real Basilisk build to converge to within about 0.5 RPM of each target. Compare the SHAPE of this convergence against '12''s sharp, discrete desaturation steps -- same underlying problem (reaction wheels accumulating momentum), two structurally different real Basilisk solutions.\n\nTry changing: wheel_speed_biases_rad_s (different target speeds per wheel), c_gain (a larger gain reacts faster but can overshoot/oscillate), or the orbit inclination (a near-equatorial orbit sees a weaker, less favorably-oriented geomagnetic field than a higher-inclination one, which can slow convergence noticeably).",
-  "schema_version": 2
+  "description": "The alternative to 12, on a 150 kg microsatellite: four 15 A*m^2 magnetic torque rods and Earth's magnetic field continuously steer four reaction wheels toward target speeds (800, 600, 400 and 200 RPM) while the wheels point the spacecraft.\n\nWhat to look at:\n- sat-1.rw_speeds settling smoothly near the targets over ~2 hours (within ~0.5 RPM), not in steps.\n\nTry changing:\n- Wheel speed biases: the target speeds.\n- Gain: larger reacts faster but can overshoot.\n- Inclination: a near-equatorial orbit sees a weaker field and converges more slowly.",
+  "schema_version": 4
 }

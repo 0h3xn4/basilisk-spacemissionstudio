@@ -46,8 +46,8 @@ if ($LASTEXITCODE -ne 0) {
     Fail "pip upgrade failed (exit code $LASTEXITCODE)"
 }
 
-Write-Host "SpaceMissionStudio: installing Basilisk (bsk[all]) from PyPI -- this needs internet access and can take a few minutes ..."
-& $VenvPython -m pip install --quiet "bsk[all]"
+Write-Host "SpaceMissionStudio: installing Basilisk 2.12.0 (bsk[all]==2.12.0, the version SpaceMissionStudio is qualified with) from PyPI -- this needs internet access and can take a few minutes ..."
+& $VenvPython -m pip install --quiet "bsk[all]==2.12.0"
 if ($LASTEXITCODE -ne 0) {
     Fail "Basilisk install failed (exit code $LASTEXITCODE)"
 }
@@ -88,6 +88,18 @@ kernels.require_kernels()
 "
 if ($LASTEXITCODE -ne 0) {
     Fail "support-data pre-fetch failed (exit code $LASTEXITCODE) -- check internet access and try again"
+}
+
+# IERS-based Earth orientation (NAIF ITRF93 Earth PCKs, ~36 MB) into the
+# install-wide directory every user reads. Non-fatal: without them runs
+# use IAU_EARTH and say so.
+Write-Host "SpaceMissionStudio: fetching Earth orientation files (NAIF ITRF93 Earth PCKs, ~36 MB) ..."
+& $VenvPython -c "
+from spacemissionstudio.engine import earth_orientation
+earth_orientation.fetch(earth_orientation.SYSTEM_DIR)
+"
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "SpaceMissionStudio: could not fetch the Earth orientation files -- runs use IAU_EARTH until they are fetched."
 }
 
 # No custom Start Menu icon is rendered here: gui/icons.py's

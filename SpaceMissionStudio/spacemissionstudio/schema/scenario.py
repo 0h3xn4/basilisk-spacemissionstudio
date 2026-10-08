@@ -56,14 +56,15 @@ painful than reserving the shape up front.
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from .command import Command
+from .command import Command, report_before_propagate_errors
 
-CURRENT_SCHEMA_VERSION = 2
+CURRENT_SCHEMA_VERSION = 4
 
 # SPICE-recognized central body name strings this schema accepts, matching
 # Basilisk's simIncludeGravBody.gravBodyFactory named helpers
@@ -102,6 +103,15 @@ ANOMALY_TYPES = ("true", "mean")
 # on magnetic torque rods that simply never fire).
 SUPPORTED_SENSOR_KINDS = ("star_tracker", "imu", "coarse_sun_sensor", "magnetometer", "thermal")
 SUPPORTED_ACTUATOR_KINDS = ("reaction_wheel", "thruster", "magnetic_torque_rod")
+
+# The only maxMomentum values [N*m*s] simIncludeRW.rwFactory accepts for
+# these named wheels; any other value, or none, makes rwFactory.create()
+# call exit(1) and take the whole app down with it.
+NAMED_RW_MAX_MOMENTUM_OPTIONS = {
+    "Honeywell_HR12": (12.0, 25.0, 50.0),
+    "Honeywell_HR14": (25.0, 50.0, 75.0),
+    "Honeywell_HR16": (50.0, 75.0, 100.0),
+}
 
 # "thermal" (sensorThermal.SensorThermal, optionally chained into
 # tempMeasurement.TempMeasurement for measurement noise/bias/fault) models
@@ -148,6 +158,20 @@ class ScenarioValidationError(ValueError):
 def _require(condition: bool, message: str) -> None:
     if not condition:
         raise ScenarioValidationError(message)
+
+
+def _is_direction_vector(values) -> bool:
+    """True for a 3-element ``[x, y, z]`` of finite numbers that is not the
+    zero vector -- what every body-frame axis/direction field here needs.
+    A zero or non-finite vector used to pass validation and only fail
+    mid-run, once Basilisk normalized it into a NaN attitude/thrust axis.
+    """
+    try:
+        components = [float(v) for v in values]
+    except (TypeError, ValueError):
+        return False
+    return (len(components) == 3 and all(math.isfinite(v) for v in components)
+            and math.sqrt(sum(v * v for v in components)) > 1e-12)
 
 
 @dataclass
@@ -290,8 +314,8 @@ class PowerConfig:
                   "value is outside this range, check for a units mixup (e.g. cm^2 instead of m^2)")
         _require(0.0 < self.panel_efficiency <= 1.0,
                   f"{spacecraft_name}: power.panel_efficiency must be in (0, 1]")
-        _require(len(self.panel_normal_b) == 3,
-                  f"{spacecraft_name}: power.panel_normal_b must be a 3-element [x, y, z] list")
+        _require(_is_direction_vector(self.panel_normal_b),
+                  f"{spacecraft_name}: power.panel_normal_b must be a non-zero, finite 3-element [x, y, z] list")
         _require(self.bus_idle_power_w >= 0, f"{spacecraft_name}: power.bus_idle_power_w must be >= 0")
         _require(0.0 < self.battery_capacity_wh <= 1.0e6,
                   f"{spacecraft_name}: power.battery_capacity_wh must be in (0, 1e6] W*hr -- if your "
@@ -396,10 +420,12 @@ class CommsPointingConfig:
     def validate(self, spacecraft_name: str) -> None:
         _require(bool(self.target_ground_station),
                   f"{spacecraft_name}: comms_pointing.target_ground_station must not be empty")
-        _require(len(self.antenna_boresight_b) == 3,
-                  f"{spacecraft_name}: comms_pointing.antenna_boresight_b must be a 3-element [x, y, z] list")
-        _require(self.sun_pointing_axis_b is None or len(self.sun_pointing_axis_b) == 3,
-                  f"{spacecraft_name}: comms_pointing.sun_pointing_axis_b must be None or a 3-element [x, y, z] list")
+        _require(_is_direction_vector(self.antenna_boresight_b),
+                  f"{spacecraft_name}: comms_pointing.antenna_boresight_b must be a non-zero, finite 3-element "
+                  "[x, y, z] list")
+        _require(self.sun_pointing_axis_b is None or _is_direction_vector(self.sun_pointing_axis_b),
+                  f"{spacecraft_name}: comms_pointing.sun_pointing_axis_b must be None or a non-zero, finite "
+                  "3-element [x, y, z] list")
         _require(self.comms_power_w >= 0, f"{spacecraft_name}: comms_pointing.comms_power_w must be >= 0")
 
 
@@ -435,9 +461,22 @@ class StationKeepingConfig:
     isp_s: float  # [s] reboost thruster specific impulse
     propellant_kg: float  # [kg] initial propellant mass available for station-keeping
     eclipse_sunlit_threshold: float = 0.99  # [-] shadow factor above which the spacecraft is treated as sunlit
+    # Thruster hardware/firing realism, shared by a co-located
+    # phasing_keeping (one physical thruster) -- see
+    # engine.orbit_maintenance.ThrusterOnTimeModel. 0.0 = an ideal thruster
+    # that can fire for arbitrarily short times.
+    min_on_time_s: float = 0.0  # [s] minimum firing duration (minimum impulse bit = thrust_n * min_on_time_s)
+    # Gate firings so a multi-orbit, eclipse-interrupted burn doesn't
+    # accumulate an eccentricity change (it waits for the balancing side
+    # of the orbit instead).
+    eccentricity_neutral_burns: bool = False
 
     def validate(self, spacecraft_name: str) -> None:
         _require(self.target_altitude_km > 0, f"{spacecraft_name}: station_keeping.target_altitude_km must be > 0")
+        _require(math.isfinite(self.min_on_time_s) and 0.0 <= self.min_on_time_s <= 86400.0,
+                  f"{spacecraft_name}: station_keeping.min_on_time_s must be in [0, 86400] s")
+        _require(isinstance(self.eccentricity_neutral_burns, bool),
+                  f"{spacecraft_name}: station_keeping.eccentricity_neutral_burns must be true or false")
         _require(0.0 < self.deadband_km < self.target_altitude_km,
                   f"{spacecraft_name}: station_keeping.deadband_km must be > 0 and < target_altitude_km")
         _require(self.thrust_n > 0, f"{spacecraft_name}: station_keeping.thrust_n must be > 0")
@@ -445,6 +484,33 @@ class StationKeepingConfig:
         _require(self.propellant_kg >= 0, f"{spacecraft_name}: station_keeping.propellant_kg must be >= 0")
         _require(0.0 < self.eclipse_sunlit_threshold <= 1.0,
                   f"{spacecraft_name}: station_keeping.eclipse_sunlit_threshold must be in (0, 1]")
+
+
+@dataclass
+class GeoStationKeepingConfig:
+    """GEO station-keeping (``engine.geo_station_keeping``): east-west
+    control holds the longitude within ``longitude_deadband_deg`` of
+    ``target_longitude_deg``, north-south control keeps the inclination
+    below ``inclination_max_deg``. Both measured in Earth's own rotating
+    frame. Earth only (it uses Earth's J22 term to plan east-west burns).
+    """
+
+    target_longitude_deg: float  # [deg] east longitude of the slot
+    thrust_n: float  # [N]
+    isp_s: float  # [s]
+    propellant_kg: float  # [kg] initial propellant, on top of dry_mass_kg
+    longitude_deadband_deg: float = 0.05  # [deg] half-width of the longitude box
+    inclination_max_deg: float = 0.05  # [deg]
+
+    def validate(self, spacecraft_name: str) -> None:
+        where = f"{spacecraft_name}: geo_station_keeping"
+        _require(-180.0 <= self.target_longitude_deg <= 360.0,
+                  f"{where}.target_longitude_deg must be in [-180, 360] deg")
+        _require(0.0 < self.longitude_deadband_deg <= 5.0, f"{where}.longitude_deadband_deg must be in (0, 5] deg")
+        _require(0.0 < self.inclination_max_deg <= 10.0, f"{where}.inclination_max_deg must be in (0, 10] deg")
+        _require(self.thrust_n > 0, f"{where}.thrust_n must be > 0")
+        _require(self.isp_s > 0, f"{where}.isp_s must be > 0")
+        _require(self.propellant_kg >= 0, f"{where}.propellant_kg must be >= 0")
 
 
 SUPPORTED_THRUST_FRAMES = ("VNB", "RTN")
@@ -490,9 +556,8 @@ class ConstantThrustConfig:
         _require(self.frame in SUPPORTED_THRUST_FRAMES,
                   f"{spacecraft_name}: constant_thrust.frame {self.frame!r} must be one of "
                   f"{SUPPORTED_THRUST_FRAMES}")
-        _require(len(self.direction) == 3, f"{spacecraft_name}: constant_thrust.direction must have 3 elements")
-        _require(any(abs(v) > 1e-12 for v in self.direction),
-                  f"{spacecraft_name}: constant_thrust.direction must not be the zero vector")
+        _require(_is_direction_vector(self.direction),
+                  f"{spacecraft_name}: constant_thrust.direction must be a non-zero, finite 3-element vector")
         _require(self.thrust_n > 0, f"{spacecraft_name}: constant_thrust.thrust_n must be > 0")
         _require(self.isp_s > 0, f"{spacecraft_name}: constant_thrust.isp_s must be > 0")
         _require(self.propellant_kg >= 0, f"{spacecraft_name}: constant_thrust.propellant_kg must be >= 0")
@@ -518,6 +583,17 @@ class PhasingKeepingConfig:
     there is no way for the two to accidentally disagree about the same
     hardware), with altitude-keeping taking priority whenever both want to
     fire on the same tick -- see the controller's own docstring for why.
+
+    On a phasing follower, that ``station_keeping`` block holds altitude
+    RELATIVE TO THE CHIEF, not to its own ``target_altitude_km``: it
+    mirrors the chief's reboosts, and its ``deadband_km`` is how far below
+    the chief's (smoothed) altitude it may fall before a safety reboost.
+    Reboosting the two spacecraft independently was a real bug: one lone
+    reboost leaves a km-scale semi-major-axis mismatch, which drifts the
+    formation apart by degrees per day (see
+    ``engine.orbit_maintenance.StationKeepingController``'s
+    "Formation-follower mode" docstring). Give the chief its own
+    ``station_keeping`` to hold the formation's altitude.
 
     ``target_separation_km`` is one or more along-track distances [km]
     ahead of the chief; with more than one entry, the target steps through
@@ -554,7 +630,10 @@ class PhasingKeepingConfig:
     reconfiguration_interval_days: float = 90.0  # [day] only matters if target_separation_km has >1 entry
     tolerance_fraction: float = 0.10  # [-] trigger threshold, as a fraction of the current target separation
     restore_tolerance_fraction: float = 0.02  # [-] "close enough, stop drifting" threshold, same units
-    correction_window_days: float = 21.0  # [day] target time to null a fresh phasing error
+    # 3 days: a 50 km repositioning at ~550 km LEO costs ~0.13 m/s; the
+    # delta-V of a correction scales roughly as 1 / window (21 days, the
+    # old default, took three weeks to close any error).
+    correction_window_days: float = 3.0  # [day] target time to null a fresh phasing error
     max_drift_days: float = 90.0  # [day] safety cap on the drift coast phase
     max_delta_semi_major_axis_km: float = 3.0  # [km] safety clamp on the drift-orbit SMA offset
 
@@ -723,6 +802,108 @@ class FuelTankConfig:
                   f"{spacecraft_name}: fuel_tank.tank_position_b_m must be a 3-element [x, y, z] list [m]")
 
 
+SUPPORTED_DISPOSALS = ("uncontrolled_reentry", "controlled_reentry", "graveyard", "none")
+
+
+@dataclass
+class PropellantBudgetConfig:
+    """Inputs for a delta-V and propellant budget in the manner of ESA's
+    AD10 guideline (EOP-FM/2024-07-177 v3.0; see
+    engine/propellant_budget.py). Contributors left as None are taken
+    from the spacecraft's last run (in- and out-of-plane orbit control,
+    formation keeping); the rest are entered here or computed (collision
+    avoidance, clearance, injection corrections, disposal)."""
+
+    mission_years: float = 5.0  # [year] nominal operations from the epoch (AD10 Sec. 5.7)
+    dry_mass_includes_margin: bool = False  # else the system margin below is added (Sec. 5.10)
+    system_margin_fraction: float = 0.15  # [-] Sec. 5.10 default
+    tank_capacity_kg: float = 0.0  # [kg] maximum propellant load (Sec. 5.8); 0 = the budget's own total
+    isp_s: Optional[float] = None  # [s] None = the orbit thruster's (station keeping etc.)
+    thrust_angle_deg: float = 0.0  # [deg] thruster axis vs wanted thrust direction (Sec. 5.11)
+    misalignment_deg: float = 0.0  # [deg] incl. attitude error while thrusting
+    plume_efficiency: float = 1.0  # [-]
+    modulation_efficiency: float = 1.0  # [-]
+    # Beginning of life (Sec. 6.1), 2-sigma launcher injection errors
+    injection_sma_error_km: float = 0.0  # [km]
+    injection_eccentricity_error: float = 0.0  # [-] eccentricity-vector error to correct (frozen orbit)
+    injection_inclination_error_deg: float = 0.0  # [deg]
+    injection_raan_delta_v_m_s: float = 0.0  # [m/s] RAAN/MLST correction, strategy-specific
+    orbit_acquisition_delta_v_m_s: float = 0.0  # [m/s]
+    # Mission operations (Sec. 6.2); None = from the last run
+    transfer_delta_v_m_s: float = 0.0  # [m/s]
+    in_plane_control_delta_v_m_s: Optional[float] = None  # [m/s]
+    out_of_plane_control_delta_v_m_s: Optional[float] = None  # [m/s]
+    formation_delta_v_m_s: Optional[float] = None  # [m/s]
+    collision_avoidance_count: float = 0.0  # [-] e.g. from ESA DRAMA, before the x4 margin
+    attitude_thruster_propellant_kg: float = 0.0  # [kg] before the 100% margin
+    # End of life (Sec. 6.3)
+    disposal: str = "uncontrolled_reentry"  # see SUPPORTED_DISPOSALS
+    clearance_sma_drop_km: float = 0.0  # [km] AD10 suggests >= 5 km for formation flyers
+    disposal_lifetime_years: float = 5.0  # [year] orbit lifetime after the disposal burn
+    controlled_reentry_delta_v_m_s: float = 0.0  # [m/s] burns before the last
+    controlled_reentry_last_burn_m_s: float = 0.0  # [m/s] the last burn, before its 15% margin
+    hall_thruster_ignition_kg: float = 0.0  # [kg] cathode start-up losses over the mission
+
+    def validate(self, spacecraft_name: str) -> None:
+        where = f"{spacecraft_name}: propellant_budget"
+        _require(0.0 < self.mission_years <= 30.0, f"{where}.mission_years must be in (0, 30]")
+        _require(0.0 <= self.system_margin_fraction < 1.0, f"{where}.system_margin_fraction must be in [0, 1)")
+        _require(self.tank_capacity_kg >= 0.0, f"{where}.tank_capacity_kg must be >= 0")
+        _require(self.isp_s is None or self.isp_s > 0.0, f"{where}.isp_s must be > 0")
+        _require(0.0 <= self.thrust_angle_deg < 90.0 and 0.0 <= self.misalignment_deg < 90.0,
+                  f"{where}: thrust_angle_deg and misalignment_deg must be in [0, 90)")
+        _require(0.0 < self.plume_efficiency <= 1.0 and 0.0 < self.modulation_efficiency <= 1.0,
+                  f"{where}: plume_efficiency and modulation_efficiency must be in (0, 1]")
+        for name in ("injection_sma_error_km", "injection_eccentricity_error", "injection_inclination_error_deg",
+                     "injection_raan_delta_v_m_s", "orbit_acquisition_delta_v_m_s", "transfer_delta_v_m_s",
+                     "collision_avoidance_count", "attitude_thruster_propellant_kg", "clearance_sma_drop_km",
+                     "controlled_reentry_delta_v_m_s", "controlled_reentry_last_burn_m_s",
+                     "hall_thruster_ignition_kg"):
+            _require(getattr(self, name) >= 0.0, f"{where}.{name} must be >= 0")
+        for name in ("in_plane_control_delta_v_m_s", "out_of_plane_control_delta_v_m_s", "formation_delta_v_m_s"):
+            value = getattr(self, name)
+            _require(value is None or value >= 0.0, f"{where}.{name} must be >= 0 (or unset: from the last run)")
+        _require(self.disposal in SUPPORTED_DISPOSALS,
+                  f"{where}.disposal {self.disposal!r} must be one of {SUPPORTED_DISPOSALS}")
+        _require(0.0 < self.disposal_lifetime_years <= 25.0, f"{where}.disposal_lifetime_years must be in (0, 25]")
+
+
+@dataclass
+class FacetConfig:
+    """One flat plate of the spacecraft's outer surface, for attitude
+    -dependent drag and solar radiation pressure -- Basilisk's
+    ``facetDragDynamicEffector``/``facetSRPDynamicEffector``. Each plate
+    pushes only on its lit (or wind-facing) side, at its own centre of
+    pressure, so the force depends on attitude and an offset between that
+    centre and the centre of mass gives a disturbance torque. A two-sided
+    panel (a solar array) is two facets with opposite normals.
+    """
+
+    name: str
+    area_m2: float  # [m^2]
+    normal_b: list  # [-] outward normal, body frame (normalized when built)
+    location_b: list = field(default_factory=lambda: [0.0, 0.0, 0.0])  # [m] centre of pressure from point B
+    drag_coeff: float = 2.2  # [-]
+    specular_coeff: float = 0.3  # [-] fraction of sunlight reflected mirror-like
+    diffuse_coeff: float = 0.1  # [-] fraction reflected diffusely; the rest is absorbed
+
+    def validate(self, spacecraft_name: str) -> None:
+        where = f"{spacecraft_name}: facet {self.name!r}"
+        _require(bool(self.name), f"{spacecraft_name}: every facet needs a name")
+        _require(isinstance(self.area_m2, (int, float)) and 0.0 < self.area_m2 <= 1.0e4,
+                  f"{where}: area_m2 must be in (0, 1e4] m^2")
+        _require(_is_direction_vector(self.normal_b),
+                  f"{where}: normal_b must be a non-zero, finite 3-element body-frame vector")
+        _require(isinstance(self.location_b, list) and len(self.location_b) == 3
+                  and all(isinstance(v, (int, float)) and math.isfinite(v) for v in self.location_b),
+                  f"{where}: location_b must be a finite 3-element [x, y, z] in m")
+        _require(isinstance(self.drag_coeff, (int, float)) and 0.0 <= self.drag_coeff <= 10.0,
+                  f"{where}: drag_coeff must be in [0, 10]")
+        _require(0.0 <= self.specular_coeff <= 1.0 and 0.0 <= self.diffuse_coeff <= 1.0
+                  and self.specular_coeff + self.diffuse_coeff <= 1.0,
+                  f"{where}: specular_coeff and diffuse_coeff must each be in [0, 1] and sum to at most 1")
+
+
 @dataclass
 class SpacecraftConfig:
     name: str
@@ -748,6 +929,11 @@ class SpacecraftConfig:
     enable_srp: bool = False
     srp_coeff: float = 1.3
     srp_area_m2: float = 1.0
+    # Optional flat-plate model of the outer surface (list[FacetConfig]).
+    # When set, enabled drag and SRP use it (attitude-dependent forces plus
+    # their torques) instead of the sphere-like drag_area_m2/drag_coeff and
+    # srp_area_m2/srp_coeff above. Needs simulation_mode 'full_attitude'.
+    facets: list = field(default_factory=list)
 
     # Torque from the central body's (and, if present, any third-body
     # perturber's) gravity gradient across the spacecraft's own mass
@@ -784,11 +970,13 @@ class SpacecraftConfig:
     rf_link: Optional[RFLinkConfig] = None
     comms_pointing: Optional[CommsPointingConfig] = None
     station_keeping: Optional[StationKeepingConfig] = None
+    geo_station_keeping: Optional[GeoStationKeepingConfig] = None
     phasing_keeping: Optional[PhasingKeepingConfig] = None
     constant_thrust: Optional[ConstantThrustConfig] = None
     momentum_dumping: Optional[MomentumDumpingConfig] = None
     magnetic_momentum_management: Optional[MagneticMomentumManagementConfig] = None
     fuel_tank: Optional[FuelTankConfig] = None
+    propellant_budget: Optional[PropellantBudgetConfig] = None  # see engine/propellant_budget.py
 
     # Phase 5: PURELY COSMETIC Vizard display -- replaces this spacecraft's
     # default cube icon with a custom CAD model
@@ -814,6 +1002,38 @@ class SpacecraftConfig:
                   f"{self.name}: dry_mass_kg must be in (0, 1e6] -- if your intended value is outside "
                   "this range, check for a units mixup (e.g. g instead of kg)")
         _require(len(self.inertia_kg_m2) == 9, f"{self.name}: inertia_kg_m2 must have 9 elements (3x3, row-major)")
+        # Real bug, found against a real (newer) Basilisk build: Basilisk's
+        # own HubEffector::validateConfiguration() -- added after this
+        # project's verified 2.12.0 baseline, see
+        # src/architecture/utilities/avsEigenSupport.cpp's
+        # eigenIsValidInertiaMatrix() -- now rejects an inertia tensor
+        # whose principal moments violate the triangle inequality (no
+        # rigid body's principal moment may exceed the sum of the other
+        # two), previously only caught deep inside InitializeSimulation()
+        # with a cryptic C++ message ("IHubPntBc_B is not a valid inertia
+        # tensor") rather than at scenario-validation time. Confirmed
+        # directly: tests/test_gravity_gradient.py shipped exactly this
+        # mistake (diag(5, 10, 20): 5+10 < 20), undetected against 2.12.0.
+        # Scoped to the diagonal case -- every inertia_kg_m2 across this
+        # project's own bundled templates/scenarios is diagonal (confirmed
+        # by sweeping all of them), and a diagonal matrix's diagonal
+        # entries ARE its principal moments directly, with no eigenvalue
+        # decomposition needed (this module deliberately has no numpy
+        # dependency -- see its own "standalone, no Basilisk needed"
+        # design). A fully general (off-diagonal-populated) tensor still
+        # reaches Basilisk's own runtime check unvalidated here, just
+        # without this earlier, clearer message.
+        inertia_diag = (self.inertia_kg_m2[0], self.inertia_kg_m2[4], self.inertia_kg_m2[8])
+        inertia_off_diag = (self.inertia_kg_m2[1], self.inertia_kg_m2[2], self.inertia_kg_m2[3],
+                             self.inertia_kg_m2[5], self.inertia_kg_m2[6], self.inertia_kg_m2[7])
+        if all(v == 0.0 for v in inertia_off_diag):
+            ix, iy, iz = inertia_diag
+            _require(ix > 0.0 and iy > 0.0 and iz > 0.0,
+                      f"{self.name}: inertia_kg_m2's diagonal entries (principal moments) must be positive")
+            _require(ix + iy >= iz and iy + iz >= ix and ix + iz >= iy,
+                      f"{self.name}: inertia_kg_m2's diagonal entries ({ix:g}, {iy:g}, {iz:g}) violate the "
+                      "triangle inequality -- no rigid body's principal moment of inertia can exceed the "
+                      "sum of the other two; check for a units/axis mixup")
         _require(len(self.sigma_bn_init) == 3, f"{self.name}: sigma_bn_init must have 3 elements")
         _require(len(self.omega_bn_b_init_rad_s) == 3, f"{self.name}: omega_bn_b_init_rad_s must have 3 elements")
         # drag_coeff/drag_area_m2/srp_coeff/srp_area_m2 feed straight into
@@ -870,14 +1090,14 @@ class SpacecraftConfig:
                       f"{SUPPORTED_SENSOR_KINDS}")
             if sensor.kind == "coarse_sun_sensor":
                 nHat_B = sensor.params.get("nHat_B")
-                _require(nHat_B is not None and len(nHat_B) == 3,
+                _require(nHat_B is not None and _is_direction_vector(nHat_B),
                           f"{self.name}: coarse_sun_sensor {sensor.name!r} needs params['nHat_B'] "
-                          "as a 3-element body-frame boresight unit vector")
+                          "as a non-zero, finite 3-element body-frame boresight unit vector")
             if sensor.kind == "thermal":
                 nHat_B = sensor.params.get("nHat_B")
-                _require(nHat_B is not None and len(nHat_B) == 3,
+                _require(nHat_B is not None and _is_direction_vector(nHat_B),
                           f"{self.name}: thermal sensor {sensor.name!r} needs params['nHat_B'] "
-                          "as a 3-element body-frame face-normal unit vector")
+                          "as a non-zero, finite 3-element body-frame face-normal unit vector")
                 # Confirmed directly against sensorThermal.cpp's own Reset():
                 # a non-positive sensorArea/sensorMass/sensorSpecificHeat, or
                 # an absorptivity/emissivity outside (0, 1], each hard-exits
@@ -918,6 +1138,16 @@ class SpacecraftConfig:
                           f"params['measurement_fault_mode'] {measurement_fault_mode!r} -- must be one of "
                           f"{_THERMAL_FAULT_MODES}")
 
+        if self.geo_station_keeping is not None:
+            self.geo_station_keeping.validate(self.name)
+            _require(self.station_keeping is None and self.phasing_keeping is None,
+                      f"{self.name}: geo_station_keeping replaces station_keeping and phasing_keeping -- "
+                      "set only one of them")
+        facet_names = [f.name for f in self.facets]
+        _require(len(facet_names) == len(set(facet_names)),
+                  f"{self.name}: facet names must be unique, got {facet_names}")
+        for facet in self.facets:
+            facet.validate(self.name)
         actuator_names = [a.name for a in self.actuators]
         _require(len(actuator_names) == len(set(actuator_names)),
                   f"{self.name}: actuator names must be unique, got {actuator_names}")
@@ -928,9 +1158,9 @@ class SpacecraftConfig:
                       f"{SUPPORTED_ACTUATOR_KINDS}")
             if actuator.kind == "reaction_wheel":
                 gsHat_B = actuator.params.get("gsHat_B")
-                _require(gsHat_B is not None and len(gsHat_B) == 3,
+                _require(gsHat_B is not None and _is_direction_vector(gsHat_B),
                           f"{self.name}: reaction_wheel {actuator.name!r} needs params['gsHat_B'] "
-                          "as a 3-element body-frame spin-axis unit vector")
+                          "as a non-zero, finite 3-element body-frame spin-axis unit vector")
                 rw_type = actuator.params.get("rw_type", "custom")
                 if rw_type == "custom":
                     # Confirmed directly against simIncludeRW.py's rwFactory.create(): the
@@ -974,6 +1204,14 @@ class SpacecraftConfig:
                               "set -- rwFactory.create() hard-exits the whole process because it builds this "
                               "wheel's inertia exactly one way, never both; remove params['Js'] (let it be "
                               "derived from Omega_max/maxMomentum) or remove the Omega_max/maxMomentum pair")
+                options = NAMED_RW_MAX_MOMENTUM_OPTIONS.get(rw_type)
+                if options is not None:
+                    max_momentum = actuator.params.get("maxMomentum")
+                    _require(isinstance(max_momentum, (int, float)) and float(max_momentum) in options,
+                              f"{self.name}: reaction_wheel {actuator.name!r} is a {rw_type}, which Basilisk "
+                              f"builds only with params['maxMomentum'] set to one of {options} N*m*s (got "
+                              f"{max_momentum!r}); for another size, use rw_type 'custom' with maxMomentum, "
+                              "Omega_max and u_max")
                 # Optional motor-thermal model (motorThermal.MotorThermal,
                 # see engine.fsw.build_reaction_wheel_motor_thermal) -- an
                 # all-or-nothing group, confirmed directly against
@@ -1027,9 +1265,9 @@ class SpacecraftConfig:
                           "requires it explicitly rather than silently falling back to it")
             if actuator.kind == "magnetic_torque_rod":
                 gtHat_B = actuator.params.get("gtHat_B")
-                _require(gtHat_B is not None and len(gtHat_B) == 3,
+                _require(gtHat_B is not None and _is_direction_vector(gtHat_B),
                           f"{self.name}: magnetic_torque_rod {actuator.name!r} needs params['gtHat_B'] as a "
-                          "3-element body-frame dipole-axis unit vector [-]")
+                          "non-zero, finite 3-element body-frame dipole-axis unit vector [-]")
                 _require(actuator.params.get("max_dipole_a_m2") is not None,
                           f"{self.name}: magnetic_torque_rod {actuator.name!r} needs params['max_dipole_a_m2'] "
                           "[A*m^2] (maximum commandable dipole magnitude)")
@@ -1108,6 +1346,8 @@ class SpacecraftConfig:
                       "actuator (desaturation hardware) on this spacecraft")
             num_reaction_wheels = sum(1 for a in self.actuators if a.kind == "reaction_wheel")
             self.magnetic_momentum_management.validate(self.name, num_reaction_wheels)
+        if self.propellant_budget is not None:
+            self.propellant_budget.validate(self.name)
         if self.fuel_tank is not None:
             _require("thruster" in actuator_kinds_present,
                       f"{self.name}: fuel_tank needs at least one 'thruster' actuator on this spacecraft to "
@@ -1132,6 +1372,8 @@ class GravityConfig:
         _require(self.central_body in SUPPORTED_CENTRAL_BODIES,
                   f"gravity.central_body {self.central_body!r} must be one of {SUPPORTED_CENTRAL_BODIES}")
         _require(self.central_body_degree >= 0, "gravity.central_body_degree must be >= 0")
+        _require(self.central_body_degree <= MAX_GRAVITY_DEGREE,
+                 f"gravity.central_body_degree must be <= {MAX_GRAVITY_DEGREE} (the GGM03S field's maximum)")
         # engine.service.SimulationService.build() only has spherical
         # -harmonics gravity-field data (GGM03S) for Earth, and raises
         # SimulationServiceError for any other central_body with
@@ -1153,10 +1395,14 @@ class GravityConfig:
 
 @dataclass
 class GroundStationConfig:
+    """A ground station. Coordinates are geodetic on the WGS-84 ellipsoid
+    for Earth (planetocentric on a sphere for other bodies); longitude is
+    east positive; see :mod:`engine.geodesy` (ECSS-E-ST-10-09C 5.4.6a)."""
+
     name: str
-    latitude_deg: float
-    longitude_deg: float
-    altitude_m: float = 0.0
+    latitude_deg: float  # [deg] geodetic latitude, north positive
+    longitude_deg: float  # [deg] east positive
+    altitude_m: float = 0.0  # [m] height above the ellipsoid
     min_elevation_deg: float = 10.0
     # Receive-side link-budget parameters -- only meaningful for a
     # spacecraft that also has RFLinkConfig set (see engine.link_budget);
@@ -1172,34 +1418,31 @@ class GroundStationConfig:
         _require(self.system_noise_temp_k > 0, f"{self.name}: system_noise_temp_k must be > 0")
 
 
+MAX_GRAVITY_DEGREE = 180  # GGM03S, the Earth field engine.service loads
+SUPPORTED_SPACE_WEATHER_SOURCES = ("bundled", "local_file")
+SUPPORTED_FORECAST_PERCENTILES = (95.0, 50.0, 5.0)  # [%] MSFC's published columns
+
+
 @dataclass
 class SpaceWeatherConfig:
-    """See engine/spaceweather.py and engine/service.py. ``source``
-    selects the space-weather resolution strategy; ``local_file_path`` is
-    used (and required) only for ``"local_file"``.
-
-    SpaceMissionStudio never accesses the network at runtime (real user
-    requirement: "the app must be completely closed off and offline,
-    only exception is the installation process") -- ``source`` is one of
-    ``"local_file"`` (a real historical/forecast CSV you supply yourself,
-    matching the user's own original fallback plan: "if fetching isn't
-    possible I'll provide the file myself") or ``"synthetic"`` (the
-    default: a solar-cycle-SHAPED, not real, profile generated locally,
-    no file needed). There used to be a third option, ``"celestrak"``,
-    that fetched real data from CelesTrak at RUN time -- removed
-    entirely (not just defaulted away from) for the same offline
-    requirement; see ``engine.spaceweather``'s own module docstring for
-    the full history and what this means for the "conservative" worst
-    -case margin below (now ``"local_file"``-only, since there is no
-    longer a way to pull a real historical record in automatically).
+    """See engine/spaceweather.py and engine/service.py. Real data only
+    (user requirement): ``source`` is ``"bundled"`` (the default:
+    CelesTrak's SW-All file shipped with the app -- observed since 1957,
+    a 45-day forecast, NOAA's monthly F10.7 forecast to 2041 -- or a newer
+    one the startup prompt downloaded) or ``"local_file"`` (your own
+    CelesTrak ``.txt``/``.csv`` file, used only when
+    ``local_file_path`` is set). SpaceMissionStudio never accesses the
+    network at runtime. The ``"synthetic"`` profile of schema versions
+    1-2 was removed; ``schema.migrations`` moves old files to
+    ``"bundled"``.
 
     ``atmosphere_model`` selects which Basilisk atmosphere-density model
     ``engine.service`` builds for ``enable_drag`` spacecraft:
     ``"nrlmsise00"`` (the original, only model this project used to wire
-    up -- needs the ``source``/``activity_level`` space-weather machinery
+    up -- needs the ``source``/``forecast_percentile`` space-weather machinery
     below) or ``"exponential"`` (Basilisk's ``ExponentialAtmosphere``, a
     simple per-planet scale-height model that ignores ``source``/
-    ``activity_level``/``local_file_path`` entirely -- no F10.7/Ap
+    ``forecast_percentile``/``local_file_path`` entirely -- no F10.7/Ap
     dependence at all). ``engine.service`` configures it with Basilisk's
     own ``simSetPlanetEnvironment.exponentialAtmosphere()`` helper (the
     same sea-level Earth baseDensity/scaleHeight a real shipped Basilisk
@@ -1223,35 +1466,36 @@ class SpaceWeatherConfig:
     There is no Jacchia-Roberts model in Basilisk at all, so that specific
     option genuinely cannot be offered here.
 
-    ``activity_level``/``activity_percentile`` (``"nrlmsise00"`` only --
-    ignored for ``"exponential"``) select a CONSERVATIVE, sustained-
-    worst-case drag margin instead of the ordinary resolved space-weather
-    data: see ``engine.spaceweather``'s own docstring, "Conservative
-    ('worst-case') drag margin", for the real user request this
-    implements and exactly what it computes.
+    ``forecast_percentile`` sets how active the predicted Sun is: past
+    the observations, every day uses NASA MSFC's prediction at its 95th
+    (conservative: ESA AD10 Sec. 5.9 for operations), 50th (nominal; AD10
+    for end of life) or 5th percentile. Observed days are always the
+    observations. (Schema v3 also had a "conservative" ``activity_level``
+    holding F10.7/Ap at a percentile of the historical record;
+    ``schema.migrations`` turns it into the 95th percentile.)
     """
 
-    source: str = "synthetic"  # "local_file" | "synthetic"
+    source: str = "bundled"  # "bundled" | "local_file"
     local_file_path: Optional[str] = None
     cache_dir: Optional[str] = None  # defaults to engine.spaceweather's own cache dir when None
     atmosphere_model: str = "nrlmsise00"  # "nrlmsise00" | "exponential"
-    activity_level: str = "nominal"  # "nominal" | "conservative"
-    activity_percentile: float = 95.0  # [-] percentile of REAL historical F10.7/Ap; "conservative" only
+    # [%] which of MSFC's predicted percentiles drives the days past the
+    # observations: 95 conservative (ESA AD10 Sec. 5.9, operations), 50
+    # nominal (AD10, end of life), 5 low
+    forecast_percentile: float = 50.0
+    msfc_file_path: Optional[str] = None  # your own MSFC prediction table; None = the one shipped with the app
 
     def validate(self) -> None:
-        _require(self.source in ("local_file", "synthetic"),
-                  f"space_weather.source {self.source!r} must be 'local_file' or 'synthetic'")
+        _require(self.source in SUPPORTED_SPACE_WEATHER_SOURCES,
+                  f"space_weather.source {self.source!r} must be one of {SUPPORTED_SPACE_WEATHER_SOURCES}")
         if self.source == "local_file":
             _require(bool(self.local_file_path),
                       "space_weather.source is 'local_file' but local_file_path was not set")
         _require(self.atmosphere_model in ("nrlmsise00", "exponential"),
                   f"space_weather.atmosphere_model {self.atmosphere_model!r} must be 'nrlmsise00' or 'exponential'")
-        _require(self.activity_level in ("nominal", "conservative"),
-                  f"space_weather.activity_level {self.activity_level!r} must be 'nominal' or 'conservative'")
-        if self.activity_level == "conservative":
-            _require(50.0 <= self.activity_percentile < 100.0,
-                      "space_weather.activity_percentile must be in [50, 100) when activity_level is "
-                      f"'conservative' -- got {self.activity_percentile!r}")
+        _require(float(self.forecast_percentile) in SUPPORTED_FORECAST_PERCENTILES,
+                  f"space_weather.forecast_percentile {self.forecast_percentile!r} must be one of "
+                  f"{SUPPORTED_FORECAST_PERCENTILES} (MSFC's published percentiles)")
 
 
 @dataclass
@@ -1324,6 +1568,13 @@ class SimSettings:
     duration_days: float = 1.0
     dynamics_task_rate_s: float = 10.0
     integrator: str = "rkf78"  # see SUPPORTED_INTEGRATORS
+    # [s] How often results are recorded; 0 = every dynamics step. Long
+    # runs need this: a 5-year run at a 30 s step is ~5 million samples per
+    # series. Controller burn flags record "fired since the last sample", so
+    # short burns still show; positions, angles and access flags are
+    # snapshots, so anything shorter than this (e.g. a ground-station
+    # pass) can fall between two samples.
+    record_interval_s: float = 0.0
 
     # NOTE: gravity-field degree/order lives on GravityConfig.central_body_degree,
     # not here -- an earlier draft of this schema had a second,
@@ -1333,9 +1584,28 @@ class SimSettings:
     # anything (the GUI, saved scenario files) came to depend on the
     # redundant field -- there is deliberately only one place to set this now.
 
+    # _MAX_SINGLE_RUN_DAYS: a real Basilisk platform limit, not a
+    # stylistic choice. Basilisk's own nanoToSec() (C++,
+    # src/architecture/utilities/macroDefinitions.h) converts simulated
+    # nanoseconds to a double, which can only exactly represent integers up
+    # to 2**53 (DBL_MANT_DIG) -- 9007199254740992 ns, ~104.25 days. Past
+    # that it prints a stderr error on EVERY call and returns NaN, which
+    # poisons every downstream time-dependent calculation for the rest of
+    # the run -- confirmed directly: a 180-day test run hit this and became
+    # severely degraded. 100.0 days keeps a safety margin under the cliff.
+    # A longer duration (up to _MAX_DURATION_DAYS) runs as a chain of
+    # shorter simulations -- see engine/long_run.py -- which mission
+    # sequences and phasing keeping cannot do (Scenario.validate()).
+    _MAX_SINGLE_RUN_DAYS = 100.0  # [day]
+    _MAX_DURATION_DAYS = 3660.0  # [day] about 10 years
+
     def validate(self) -> None:
         _require(self.duration_days > 0, "sim_settings.duration_days must be > 0")
+        _require(self.duration_days <= self._MAX_DURATION_DAYS,
+                  f"sim_settings.duration_days must be <= {self._MAX_DURATION_DAYS:g} days (about 10 years)")
         _require(self.dynamics_task_rate_s > 0, "sim_settings.dynamics_task_rate_s must be > 0")
+        _require(0.0 <= self.record_interval_s <= 86400.0,
+                  "sim_settings.record_interval_s must be in [0, 86400] s (0 = every dynamics step)")
         _require(self.integrator in SUPPORTED_INTEGRATORS,
                   f"sim_settings.integrator {self.integrator!r} must be one of {SUPPORTED_INTEGRATORS}")
 
@@ -1414,6 +1684,9 @@ class Scenario:
                 _require(not sc.actuators,
                           f"{sc.name}: actuators are set but scenario.simulation_mode is 'orbit_only' -- "
                           "actuators need 'full_attitude' mode, or remove them from this spacecraft")
+                _require(not sc.facets,
+                          f"{sc.name}: facets are set but scenario.simulation_mode is 'orbit_only' -- their "
+                          "drag and SRP depend on the attitude 'full_attitude' mode simulates, or remove them")
                 _require(sc.power is None,
                           f"{sc.name}: power is set but scenario.simulation_mode is 'orbit_only' -- a real solar"
                           "-panel power budget needs the simulated attitude 'full_attitude' mode provides, or "
@@ -1447,6 +1720,17 @@ class Scenario:
                 _require(sc.phasing_keeping.chief_spacecraft in names,
                           f"{sc.name}: phasing_keeping.chief_spacecraft {sc.phasing_keeping.chief_spacecraft!r} "
                           f"is not one of this scenario's spacecraft {names}")
+        # Past one Basilisk run's limit the run is split into segments
+        # (engine/long_run.py); these two cannot be split.
+        single_run_days = SimSettings._MAX_SINGLE_RUN_DAYS
+        if self.sim_settings.duration_days > single_run_days:
+            _require(not self.mission_sequence,
+                      f"sim_settings.duration_days is over {single_run_days:g} days, which a mission sequence "
+                      "cannot run -- shorten the run or remove the mission sequence")
+            for sc in self.spacecraft:
+                _require(sc.phasing_keeping is None,
+                          f"{sc.name}: phasing_keeping runs at most {single_run_days:g} days "
+                          "(sim_settings.duration_days) -- shorten the run")
         # engine.service.SimulationService.build() raises a
         # SimulationServiceError for this same condition (power/
         # station_keeping/enable_srp all need the real eclipse shadow
@@ -1496,6 +1780,9 @@ class Scenario:
                           f"{sc.name}: has magnetic_momentum_management configured, but gravity.central_body "
                           f"is {self.gravity.central_body!r}, not 'earth' -- magneticFieldWMM is Earth-only. "
                           "Remove magnetic_momentum_management, or set gravity.central_body to 'earth'")
+                _require(sc.geo_station_keeping is None,
+                          f"{sc.name}: geo_station_keeping is Earth-only (it plans east-west burns from "
+                          f"Earth's J22 term), but gravity.central_body is {self.gravity.central_body!r}")
         self.space_weather.validate()
         self.sim_settings.validate()
         self.monte_carlo.validate()
@@ -1516,6 +1803,8 @@ class Scenario:
         for i, command in enumerate(self.mission_sequence):
             command_errors = command.validate(f"mission_sequence[{i}]")
             _require(not command_errors, "; ".join(command_errors))
+        order_errors = report_before_propagate_errors(self.mission_sequence)
+        _require(not order_errors, "; ".join(order_errors))
         # local import: schema.references only imports schema.scenario
         # under TYPE_CHECKING (never at runtime), so this has no real
         # import cycle to avoid -- kept local anyway, matching
@@ -1551,6 +1840,7 @@ class Scenario:
             sc = dict(sc)
             orbit = OrbitIC(**sc.pop("orbit"))
             sensors = [SensorConfig(**s) for s in sc.pop("sensors", [])]
+            facets = [FacetConfig(**f) for f in sc.pop("facets", [])]
             actuators = [ActuatorConfig(**a) for a in sc.pop("actuators", [])]
             power_data = sc.pop("power", None)
             power = PowerConfig(**power_data) if power_data is not None else None
@@ -1560,6 +1850,8 @@ class Scenario:
             comms_pointing = CommsPointingConfig(**comms_pointing_data) if comms_pointing_data is not None else None
             station_keeping_data = sc.pop("station_keeping", None)
             station_keeping = StationKeepingConfig(**station_keeping_data) if station_keeping_data is not None else None
+            geo_data = sc.pop("geo_station_keeping", None)
+            geo_station_keeping = GeoStationKeepingConfig(**geo_data) if geo_data is not None else None
             phasing_keeping_data = sc.pop("phasing_keeping", None)
             phasing_keeping = PhasingKeepingConfig(**phasing_keeping_data) if phasing_keeping_data is not None else None
             constant_thrust_data = sc.pop("constant_thrust", None)
@@ -1575,13 +1867,16 @@ class Scenario:
             )
             fuel_tank_data = sc.pop("fuel_tank", None)
             fuel_tank = FuelTankConfig(**fuel_tank_data) if fuel_tank_data is not None else None
-            spacecraft.append(SpacecraftConfig(orbit=orbit, sensors=sensors, actuators=actuators,
+            budget_data = sc.pop("propellant_budget", None)
+            propellant_budget = PropellantBudgetConfig(**budget_data) if budget_data is not None else None
+            spacecraft.append(SpacecraftConfig(propellant_budget=propellant_budget, orbit=orbit, sensors=sensors, actuators=actuators,
                                                 power=power, rf_link=rf_link, comms_pointing=comms_pointing,
                                                 station_keeping=station_keeping,
+                                                geo_station_keeping=geo_station_keeping,
                                                 phasing_keeping=phasing_keeping, constant_thrust=constant_thrust,
                                                 momentum_dumping=momentum_dumping,
                                                 magnetic_momentum_management=magnetic_momentum_management,
-                                                fuel_tank=fuel_tank,
+                                                fuel_tank=fuel_tank, facets=facets,
                                                 **sc))
 
         mission_sequence = [Command.from_dict(c) for c in data.pop("mission_sequence", [])]

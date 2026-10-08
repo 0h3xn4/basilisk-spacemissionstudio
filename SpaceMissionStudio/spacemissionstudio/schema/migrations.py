@@ -72,9 +72,38 @@ def _migrate_1_to_2(data: dict) -> dict:
     return data
 
 
+def _migrate_2_to_3(data: dict) -> dict:
+    """v2 -> v3: ``SpaceWeatherConfig.source`` dropped ``"synthetic"``
+    (user requirement: real space-weather data only). It was the v2
+    default, so it covers most older files. Rewrites it to ``"bundled"``:
+    the real CelesTrak data shipped with the app."""
+    space_weather = data.get("space_weather")
+    if isinstance(space_weather, dict) and space_weather.get("source") == "synthetic":
+        space_weather["source"] = "bundled"
+    data["schema_version"] = 3
+    return data
+
+
+def _migrate_3_to_4(data: dict) -> dict:
+    """v3 -> v4: ``SpaceWeatherConfig.activity_level`` and
+    ``activity_percentile`` removed. "conservative" held F10.7/Ap at a
+    percentile of the historical record; it now means what ESA AD10 Sec.
+    5.9 prescribes, NASA MSFC's 95th-percentile prediction, so it becomes
+    ``forecast_percentile = 95``."""
+    space_weather = data.get("space_weather")
+    if isinstance(space_weather, dict):
+        if space_weather.pop("activity_level", None) == "conservative":
+            space_weather["forecast_percentile"] = 95.0
+        space_weather.pop("activity_percentile", None)
+    data["schema_version"] = 4
+    return data
+
+
 # {old_version: migration_function}.
 MIGRATIONS: Dict[int, Callable[[dict], dict]] = {
     1: _migrate_1_to_2,
+    2: _migrate_2_to_3,
+    3: _migrate_3_to_4,
 }
 
 

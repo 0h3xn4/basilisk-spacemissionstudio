@@ -146,7 +146,7 @@ from Basilisk.utilities.MonteCarlo.Dispersions import (
 )
 from Basilisk.utilities.MonteCarlo.RetentionPolicy import RetentionPolicy
 
-from ..schema.scenario import DispersionConfig, MonteCarloConfig, Scenario
+from ..schema.scenario import DispersionConfig, MonteCarloConfig, Scenario, SimSettings
 from .service import SimulationService
 
 # spacecraft.name -> attribute path suffix on that spacecraft's sc_object,
@@ -323,6 +323,9 @@ def run_monte_carlo(scenario: Scenario, mc_config: MonteCarloConfig, archive_dir
     """
     if not mc_config.enabled:
         raise MonteCarloError("monte_carlo.enabled is False -- set it True before calling run_monte_carlo()")
+    if scenario.sim_settings.duration_days > SimSettings._MAX_SINGLE_RUN_DAYS:
+        raise MonteCarloError(f"Monte Carlo runs at most {SimSettings._MAX_SINGLE_RUN_DAYS:g} days per run "
+                              "(sim_settings.duration_days) -- shorten the run")
 
     archive_dir = Path(archive_dir)
     try:

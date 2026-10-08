@@ -25,17 +25,17 @@
         "tle_line1": null,
         "tle_line2": null
       },
-      "dry_mass_kg": 100.0,
+      "dry_mass_kg": 300.0,
       "inertia_kg_m2": [
-        10.0,
+        92.2,
         0.0,
         0.0,
         0.0,
-        10.0,
+        92.2,
         0.0,
         0.0,
         0.0,
-        10.0
+        72.0
       ],
       "sigma_bn_init": [
         0.3,
@@ -53,6 +53,7 @@
       "enable_srp": false,
       "srp_coeff": 1.3,
       "srp_area_m2": 1.0,
+      "facets": [],
       "enable_gravity_gradient": false,
       "sensors": [],
       "actuators": [
@@ -61,9 +62,9 @@
           "name": "thr-1",
           "params": {
             "r_B": [
-              -1,
-              -1,
-              1.28
+              -0.6,
+              -0.6,
+              0.75
             ],
             "tHat_B": [
               1,
@@ -78,9 +79,9 @@
           "name": "thr-2",
           "params": {
             "r_B": [
-              1,
-              -1,
-              -1.28
+              0.6,
+              -0.6,
+              -0.75
             ],
             "tHat_B": [
               -1,
@@ -95,9 +96,9 @@
           "name": "thr-3",
           "params": {
             "r_B": [
-              1,
-              -1,
-              1.28
+              0.6,
+              -0.6,
+              0.75
             ],
             "tHat_B": [
               0,
@@ -112,9 +113,9 @@
           "name": "thr-4",
           "params": {
             "r_B": [
-              1,
-              1,
-              -1.28
+              0.6,
+              0.6,
+              -0.75
             ],
             "tHat_B": [
               0,
@@ -129,9 +130,9 @@
           "name": "thr-5",
           "params": {
             "r_B": [
-              1,
-              1,
-              1.28
+              0.6,
+              0.6,
+              0.75
             ],
             "tHat_B": [
               -1,
@@ -146,9 +147,9 @@
           "name": "thr-6",
           "params": {
             "r_B": [
-              -1,
-              1,
-              -1.28
+              -0.6,
+              0.6,
+              -0.75
             ],
             "tHat_B": [
               1,
@@ -163,9 +164,9 @@
           "name": "thr-7",
           "params": {
             "r_B": [
-              -1,
-              1,
-              1.28
+              -0.6,
+              0.6,
+              0.75
             ],
             "tHat_B": [
               0,
@@ -180,9 +181,9 @@
           "name": "thr-8",
           "params": {
             "r_B": [
-              -1,
-              -1,
-              -1.28
+              -0.6,
+              -0.6,
+              -0.75
             ],
             "tHat_B": [
               0,
@@ -206,6 +207,7 @@
       "rf_link": null,
       "comms_pointing": null,
       "station_keeping": null,
+      "geo_station_keeping": null,
       "phasing_keeping": null,
       "constant_thrust": null,
       "momentum_dumping": null,
@@ -219,6 +221,7 @@
           0.0
         ]
       },
+      "propellant_budget": null,
       "vizard_model_path": null,
       "vizard_model_offset_m": [
         0.0,
@@ -239,17 +242,18 @@
   ],
   "ground_stations": [],
   "space_weather": {
-    "source": "synthetic",
+    "source": "bundled",
     "local_file_path": null,
     "cache_dir": null,
     "atmosphere_model": "nrlmsise00",
-    "activity_level": "nominal",
-    "activity_percentile": 95.0
+    "forecast_percentile": 50.0,
+    "msfc_file_path": null
   },
   "sim_settings": {
     "duration_days": 0.01,
     "dynamics_task_rate_s": 0.5,
-    "integrator": "rkf78"
+    "integrator": "rkf78",
+    "record_interval_s": 0.0
   },
   "monte_carlo": {
     "enabled": false,
@@ -259,6 +263,6 @@
     "dispersions": []
   },
   "mission_sequence": [],
-  "description": "The exact same 8-thruster attitude control setup as '11' (inertial3D pointing, the real thrForceMapping -> thrFiringSchmitt -> thrusterDynamicEffector chain), with a real FuelTankConfig added -- Basilisk's own fuelTank state effector (engine.fsw.build_fuel_tank, confirmed against examples/MultiSatBskSim/modelsMultiSat/BSK_MultiSatDynamics.py's own SetFuelTank()) now tracks REAL propellant depletion as the thrusters fire, reading the same mass-flow rate (mDot = F / (steadyIsp * g0)) each thruster already computes for its own physics -- unlike this app's older station-keeping/phasing/constant-thrust propellant bookkeeping (engine.orbit_maintenance, a hand-rolled Python estimate), this is Basilisk's own state effector doing the real physics, including the resulting center-of-mass shift as propellant depletes.\n\nThis exact configuration was confirmed directly against a real Basilisk build: the spacecraft's attitude error converges from its initial tip (sigma norm ~0.37) to near-zero (~0.002) within about 100-150 seconds, consuming roughly 0.185 kg of the tank's 0.5 kg starting load during that active correction burn -- then '{sat-1}.fuel_mass_remaining' goes flat once the attitude has converged and the thrusters stop firing, a clean before /during/after depletion curve.\n\nWhat to look at: result series '{sat-1}.fuel_mass_remaining' alongside '{sat-1}.thruster_on_time' -- the fuel-depletion curve's steep drop should line up exactly with the period where thrusters are actively firing, then both go flat together.\n\nTry changing: fuel_tank.propellant_mass_kg (set it below the ~0.185 kg this convergence burn needs to see what happens when the tank runs dry mid-maneuver -- thrusterDynamicEffector keeps commanding thrust, but fuelTank has nothing left to give), or each thruster's steadyIsp (a lower Isp burns through the same delta-V budget using more propellant, a higher Isp less).",
-  "schema_version": 2
+  "description": "Template 11's eight-thruster attitude control with a real fuel tank: propellant runs down as the thrusters fire, and the centre of mass shifts with it.\n\nWhat to look at:\n- sat-1.fuel_mass_remaining with sat-1.thruster_on_time: about 0.3 g of the 0.5 kg drains while the attitude settles; after ~3 minutes only occasional short pulses fire and it barely moves.\n\nTry changing:\n- Propellant below ~0.0003 kg, to run dry mid-manoeuvre.\n- Thruster specific impulse: lower uses more propellant for the same correction.",
+  "schema_version": 4
 }

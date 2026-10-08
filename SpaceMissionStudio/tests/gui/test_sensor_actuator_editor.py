@@ -1,5 +1,6 @@
 """Tests for gui.sensor_actuator_editor.SensorActuatorListWidget."""
 
+import html
 import json
 
 import pytest
@@ -184,20 +185,22 @@ def test_new_item_dialog_prefills_params_with_kind_template(qtbot):
     """Regression test: a brand-new sensor/actuator used to start with an
     empty ``{}`` params box no matter the kind, forcing a beginner to
     already know (from reading engine/fsw.py's source) which keys that
-    kind needs. It should now start pre-filled with a working example for
-    whichever kind is selected when the dialog opens (the first entry in
-    SUPPORTED_SENSOR_KINDS, "star_tracker", by default).
+    kind needs. It now opens with one form row per parameter of the
+    selected kind ("star_tracker" by default), the required ones filled
+    with a working example and the optional ones left at their defaults.
     """
-    from spacemissionstudio.gui.sensor_actuator_editor import _ItemEditorDialog, _template_params
+    from spacemissionstudio.gui.sensor_actuator_editor import _KIND_PARAM_SPECS, _ItemEditorDialog
     from spacemissionstudio.schema.scenario import SUPPORTED_SENSOR_KINDS, SensorConfig
 
-    dialog = _ItemEditorDialog(SensorConfig, SUPPORTED_SENSOR_KINDS)
-    qtbot.addWidget(dialog)
-    assert dialog.kind_combo.currentText() == "star_tracker"
-    dialog.name_edit.setText("st-1")
-
-    config = dialog.to_dataclass()
-    assert config.params == _template_params("star_tracker")
+    for kind in ("star_tracker", "coarse_sun_sensor"):
+        dialog = _ItemEditorDialog(SensorConfig, SUPPORTED_SENSOR_KINDS)
+        qtbot.addWidget(dialog)
+        dialog.kind_combo.setCurrentIndex(dialog.kind_combo.findText(kind))
+        dialog.name_edit.setText("s-1")
+        specs = _KIND_PARAM_SPECS[kind]
+        assert set(dialog.param_form.fields) == {spec.key for spec in specs}
+        config = dialog.to_dataclass()
+        assert config.params == {spec.key: spec.example for spec in specs if spec.required}
 
 
 def test_switching_kind_does_not_clobber_params_until_reset_clicked(qtbot):
@@ -206,26 +209,21 @@ def test_switching_kind_does_not_clobber_params_until_reset_clicked(qtbot):
     the explicit 'Reset to template' button does that (see this dialog's
     module docstring).
     """
-    from spacemissionstudio.gui.sensor_actuator_editor import (
-        _ItemEditorDialog,
-        _non_vector_template_params,
-        _vector_specs,
-    )
+    from spacemissionstudio.gui.sensor_actuator_editor import _ItemEditorDialog
     from spacemissionstudio.schema.scenario import SUPPORTED_SENSOR_KINDS, SensorConfig
 
     dialog = _ItemEditorDialog(SensorConfig, SUPPORTED_SENSOR_KINDS)
     qtbot.addWidget(dialog)
+    dialog.param_form.set_value("noise_arcsec", 7.5)
     dialog.params_edit.setPlainText('{"hand_typed": true}')
 
-    index = dialog.kind_combo.findText("coarse_sun_sensor")
-    dialog.kind_combo.setCurrentIndex(index)
-    assert json.loads(dialog.params_edit.toPlainText()) == {"hand_typed": True}
+    dialog.kind_combo.setCurrentIndex(dialog.kind_combo.findText("coarse_sun_sensor"))
+    dialog.kind_combo.setCurrentIndex(dialog.kind_combo.findText("star_tracker"))
+    assert dialog.param_form.params() == {"noise_arcsec": 7.5, "hand_typed": True}
 
     dialog._on_reset_template()
-    assert json.loads(dialog.params_edit.toPlainText()) == _non_vector_template_params("coarse_sun_sensor")
-    for spec in _vector_specs("coarse_sun_sensor"):
-        x, y, z = dialog._vector_boxes[spec.key]
-        assert [x.value(), y.value(), z.value()] == spec.example
+    assert dialog.param_form.params() == {}
+    assert not dialog.param_form.include_box("noise_arcsec").isChecked()
 
 
 def test_switching_kind_away_and_back_preserves_vector_edit(qtbot):
@@ -315,7 +313,7 @@ def test_magnetic_torque_rod_shows_a_conditional_requirement_note(qtbot):
     index = dialog.kind_combo.findText("magnetic_torque_rod")
     dialog.kind_combo.setCurrentIndex(index)
     assert "not simulated yet" not in dialog.hint_label.text()
-    assert "magnetic_momentum_management" in dialog.hint_label.text()
+    assert "Magnetic momentum management" in dialog.hint_label.text()
 
 
 def test_thruster_kind_is_implemented_and_round_trips(qtbot):
@@ -360,21 +358,66 @@ def test_thruster_position_vector_row_has_no_normalize_button(qtbot):
     index = dialog.kind_combo.findText("thruster")
     dialog.kind_combo.setCurrentIndex(index)
 
-    r_b_row_widget = dialog._vector_form.itemAt(0, dialog._vector_form.ItemRole.FieldRole).widget()
-    t_hat_row_widget = dialog._vector_form.itemAt(1, dialog._vector_form.ItemRole.FieldRole).widget()
+    r_b_row_widget = dialog.param_form.widget("r_B")
+    t_hat_row_widget = dialog.param_form.widget("tHat_B")
     assert not r_b_row_widget.findChildren(QPushButton), "r_B (a position, not a direction) must have no Normalize button"
     assert len(t_hat_row_widget.findChildren(QPushButton)) == 1, "tHat_B (a direction) must keep its Normalize button"
 
 
-def test_item_editor_dialog_resizes_to_its_own_sizehint_on_construction(qtbot):
-    """See test_constellation_dialog.py's identical test for why."""
+def test_item_editor_dialog_opens_at_least_at_its_size_hint(qtbot):
+    """See test_constellation_dialog.py's sizeHint test for why. This
+    dialog opens a little larger than its hint, so the parameter form and
+    the device card are readable without scrolling."""
     from spacemissionstudio.gui.sensor_actuator_editor import _ItemEditorDialog
     from spacemissionstudio.schema.scenario import SUPPORTED_SENSOR_KINDS, SensorConfig
 
     dialog = _ItemEditorDialog(SensorConfig, SUPPORTED_SENSOR_KINDS)
     qtbot.addWidget(dialog)
 
-    assert dialog.size() == dialog.sizeHint()
+    assert dialog.width() >= dialog.sizeHint().width()
+    assert dialog.height() >= dialog.sizeHint().height()
+
+
+def test_device_card_is_structured_rich_text(qtbot):
+    """Real user feedback: the device information was raw text that looked
+    "unclear, confusing, all over the place and not professional". It is
+    now a card: name, summary and a labelled facts table."""
+    from spacemissionstudio.engine.device_catalog import catalog_entries_for_kind
+    from spacemissionstudio.gui.sensor_actuator_editor import _ItemEditorDialog
+    from spacemissionstudio.schema.scenario import SUPPORTED_SENSOR_KINDS, SensorConfig
+
+    dialog = _ItemEditorDialog(SensorConfig, SUPPORTED_SENSOR_KINDS)
+    qtbot.addWidget(dialog)
+    dialog.kind_combo.setCurrentIndex(dialog.kind_combo.findText("imu"))
+    dialog.catalog_combo.setCurrentIndex(1)
+    entry = catalog_entries_for_kind("imu")[0]
+    card = dialog.catalog_info_label.text()
+    assert "<table" in card
+    for label in ("Heritage", "Procurement", "Export control", "Source"):
+        assert label in card
+    assert entry.product_name in card
+
+
+def test_parameter_rows_show_units_and_optional_checkboxes(qtbot):
+    """Each parameter is its own labelled row: the unit is in the field,
+    and an optional parameter's checkbox leaves the key out (Basilisk's
+    default) until it is ticked."""
+    from PySide6.QtWidgets import QDoubleSpinBox
+
+    from spacemissionstudio.gui.sensor_actuator_editor import _ItemEditorDialog
+    from spacemissionstudio.schema.scenario import SUPPORTED_SENSOR_KINDS, SensorConfig
+
+    dialog = _ItemEditorDialog(SensorConfig, SUPPORTED_SENSOR_KINDS)
+    qtbot.addWidget(dialog)
+    dialog.kind_combo.setCurrentIndex(dialog.kind_combo.findText("imu"))
+    box = dialog.param_form.widget("gyro_noise_rad_s")
+    assert isinstance(box, QDoubleSpinBox) and "rad/s" in box.suffix()
+    include = dialog.param_form.include_box("gyro_noise_rad_s")
+    assert not include.isChecked() and not box.isEnabled()
+    include.setChecked(True)
+    box.setValue(1.0e-4)  # [rad/s]
+    dialog.name_edit.setText("imu-1")
+    assert dialog.to_dataclass().params["gyro_noise_rad_s"] == pytest.approx(1.0e-4)
 
 
 # -- Device catalog picker: direct user feedback -- "the user should be
@@ -421,15 +464,14 @@ def test_catalog_row_is_hidden_for_a_kind_with_no_entries(qtbot):
 
 def test_selecting_a_catalog_entry_previews_its_info_without_changing_fields(qtbot):
     from spacemissionstudio.engine.device_catalog import catalog_entries_for_kind
-    from spacemissionstudio.gui.sensor_actuator_editor import _ItemEditorDialog, _non_vector_template_params
+    from spacemissionstudio.gui.sensor_actuator_editor import _ItemEditorDialog
     from spacemissionstudio.schema.scenario import SUPPORTED_SENSOR_KINDS, SensorConfig
 
     dialog = _ItemEditorDialog(SensorConfig, SUPPORTED_SENSOR_KINDS)
     qtbot.addWidget(dialog)
     index = dialog.kind_combo.findText("star_tracker")
     dialog.kind_combo.setCurrentIndex(index)
-    original_params_text = dialog.params_edit.toPlainText()
-    assert json.loads(original_params_text) == _non_vector_template_params("star_tracker")
+    original_params = dialog.param_form.params()
 
     entry = catalog_entries_for_kind("star_tracker")[0]
     dialog.catalog_combo.setCurrentIndex(1)  # the first real entry, index 0 is the placeholder
@@ -440,12 +482,12 @@ def test_selecting_a_catalog_entry_previews_its_info_without_changing_fields(qtb
     # only the explicit "Apply device preset" click does (same
     # never-clobber-until-an-explicit-action rule "Reset to template"
     # already follows elsewhere in this dialog).
-    assert dialog.params_edit.toPlainText() == original_params_text
+    assert dialog.param_form.params() == original_params
 
 
 def test_applying_a_catalog_entry_fills_real_device_params(qtbot):
     from spacemissionstudio.engine.device_catalog import catalog_entries_for_kind
-    from spacemissionstudio.gui.sensor_actuator_editor import _ItemEditorDialog, _vector_specs
+    from spacemissionstudio.gui.sensor_actuator_editor import _ItemEditorDialog
     from spacemissionstudio.schema.scenario import SUPPORTED_SENSOR_KINDS, SensorConfig
 
     dialog = _ItemEditorDialog(SensorConfig, SUPPORTED_SENSOR_KINDS)
@@ -459,12 +501,8 @@ def test_applying_a_catalog_entry_fills_real_device_params(qtbot):
 
     dialog.name_edit.setText("css-1")
     config = dialog.to_dataclass()
-    vector_keys = {spec.key for spec in _vector_specs("coarse_sun_sensor")}
     for key, value in entry.params.items():
-        if key in vector_keys:
-            assert config.params[key] == value
-        else:
-            assert config.params[key] == value
+        assert config.params[key] == value
 
 
 def test_applying_a_catalog_entry_leaves_the_result_freely_editable(qtbot):
@@ -513,3 +551,46 @@ def test_catalog_combo_resets_to_custom_placeholder_when_kind_changes(qtbot):
 
     assert dialog.catalog_combo.currentIndex() == 0
     assert not dialog.catalog_info_label.text()
+
+
+@pytest.mark.parametrize("entry_index", range(len(__import__(
+    "spacemissionstudio.engine.device_catalog", fromlist=["CATALOG"]).CATALOG)))
+def test_every_catalog_entry_applies_and_validates(qtbot, entry_index):
+    """Every catalog device -- including the ones added from the user's
+    supplier database -- applies through the real editor dialog and
+    yields a configuration that validates, with its heritage and
+    procurement status shown in the preview."""
+    from spacemissionstudio.engine.device_catalog import CATALOG, catalog_entries_for_kind
+    from spacemissionstudio.gui.sensor_actuator_editor import _ItemEditorDialog
+    from spacemissionstudio.schema.scenario import (
+        SUPPORTED_ACTUATOR_KINDS, SUPPORTED_SENSOR_KINDS, ActuatorConfig, MagneticMomentumManagementConfig,
+        OrbitIC, SensorConfig, SpacecraftConfig,
+    )
+
+    entry = CATALOG[entry_index]
+    is_sensor = entry.kind in SUPPORTED_SENSOR_KINDS
+    dialog = _ItemEditorDialog(SensorConfig if is_sensor else ActuatorConfig,
+                               SUPPORTED_SENSOR_KINDS if is_sensor else SUPPORTED_ACTUATOR_KINDS)
+    qtbot.addWidget(dialog)
+    dialog.kind_combo.setCurrentIndex(dialog.kind_combo.findText(entry.kind))
+    dialog.catalog_combo.setCurrentIndex(catalog_entries_for_kind(entry.kind).index(entry) + 1)
+    info = dialog.catalog_info_label.text()
+    assert html.escape(entry.heritage) in info and html.escape(entry.procurement_status) in info
+
+    dialog._on_apply_catalog_entry()
+    dialog.name_edit.setText("device-1")
+    config = dialog.to_dataclass()
+    for key, value in entry.params.items():
+        assert config.params[key] == value, key
+    orbit = OrbitIC(type="classical_elements", semi_major_axis_km=6928.0, eccentricity=0.001,
+                    inclination_deg=97.6, raan_deg=0.0, arg_periapsis_deg=0.0, true_anomaly_deg=0.0)
+    devices = {"sensors": [config]} if is_sensor else {"actuators": [config]}
+    if entry.kind == "magnetic_torque_rod":
+        # Torque rods are only simulated for momentum management, which also
+        # needs a reaction wheel.
+        wheel = ActuatorConfig(name="rw-1", kind="reaction_wheel",
+                               params={"gsHat_B": [0.0, 0.0, 1.0], "rw_type": "Honeywell_HR16",
+                                       "maxMomentum": 100.0})
+        devices = {"actuators": [config, wheel],
+                   "magnetic_momentum_management": MagneticMomentumManagementConfig(wheel_speed_biases_rad_s=[0.0])}
+    SpacecraftConfig(name="sat-1", orbit=orbit, **devices).validate()

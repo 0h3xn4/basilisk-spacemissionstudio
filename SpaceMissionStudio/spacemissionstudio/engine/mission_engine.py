@@ -81,7 +81,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 
-from ..schema.command import Command
+from ..schema.command import PASS_EVENT_KINDS, Command, evaluate_condition, script_blocks
 from ..schema.scenario import Scenario
 from .orbit_maintenance import _rtn_basis, _vnb_basis
 from .results import CommandSummary, ReportEntry, ResultSet
@@ -142,6 +142,11 @@ _ASSIGNMENT_CONTROLLERS = {
 _ASSIGNMENT_ATTRIBUTES = {"thrust_n": "thrustN", "isp_s": "ispS"}
 
 
+# Radial velocity below which the first sample of a periapsis/apoapsis event
+# counts as starting on the apsis (finding F-10). Rounding leaves about
+# 1e-13 m/s there; one dynamics step changes it by of order 1 m/s in LEO.
+_APSIS_AT_START_M_S = 1.0e-6  # [m/s]
+
 class MissionEngineError(Exception):
     """Raised when a mission_sequence command fails to build or execute --
     always names the specific command (its path within mission_sequence,
@@ -149,6 +154,11 @@ class MissionEngineError(Exception):
     never a bare exception from deep inside Basilisk or Python's own
     ``eval``/``exec``.
     """
+
+
+class ScriptsNotAllowedError(MissionEngineError):
+    """The mission sequence has ``script_block`` commands and the user has
+    not consented to running them (``MissionEngine(allow_scripts=False)``)."""
 
 
 class MissionEngineCancelled(Exception):
@@ -185,8 +195,12 @@ class MissionEngine:
     """
 
     def __init__(self, scenario: Scenario, service: Optional[SimulationService] = None,
-                 should_cancel: Optional[Callable[[], bool]] = None):
+                 should_cancel: Optional[Callable[[], bool]] = None, allow_scripts: bool = False):
         self.scenario = scenario
+        # script_block runs unrestricted Python from the scenario file: it
+        # runs only when the caller has the user's explicit consent
+        # (SRS-S-03; CLI --allow-scripts, GUI confirmation).
+        self.allow_scripts = allow_scripts
         self.service = service or SimulationService(scenario)
         self._should_cancel = should_cancel
         self._event_counter = 0
@@ -240,6 +254,12 @@ class MissionEngine:
         run_live``'s own ``should_cancel`` already has for the
         non-mission_sequence path.
         """
+        blocks = script_blocks(self.scenario.mission_sequence)
+        if blocks and not self.allow_scripts:
+            raise ScriptsNotAllowedError(
+                f"{', '.join(path for path, _ in blocks)}: script_block runs unrestricted Python from the "
+                "scenario file, so it runs only with your explicit consent -- check the code, then use "
+                "--allow-scripts (CLI) or confirm when asked (GUI)")
         if self.service.scSim is None:
             self.service.build()
         summary = CommandSummary()
@@ -366,7 +386,10 @@ class MissionEngine:
 
     def _run_propagate_event(self, command: Command, summary: CommandSummary, path: str) -> None:
         """``propagate.stop_condition == "event"``: runs until the named
-        spacecraft crosses periapsis or apoapsis, detected as a sign
+        spacecraft starts or ends a pass over ``ground_station``
+        (``pass_start``/``pass_end``: its ``groundLocation`` access turning
+        on or off, checked every dynamics step), or crosses periapsis or
+        apoapsis, detected as a sign
         change in radial velocity (``dot(r, v) / |r|``) -- exactly zero at
         periapsis/apoapsis for any Keplerian (or near-Keplerian) orbit,
         going negative-to-positive at periapsis (distance stops
@@ -394,7 +417,26 @@ class MissionEngine:
         # name -- see SimulationBaseClass.py -- rather than replacing the
         # existing event) never accidentally reuses a previous invocation's
         # already-fired, now-permanently-inactive event.
-        detector_state: Dict[str, Optional[float]] = {"prev_radial_velocity": None}
+        detector_state: Dict[str, Optional[float]] = {"prev_radial_velocity": None, "prev_access": None}
+        access_msg = None
+        if event_kind in PASS_EVENT_KINDS:
+            station = command.params["ground_station"]
+            access_msg = self.service._access_out_msgs.get((station, handle.sc_object.ModelTag))
+            if access_msg is None:
+                raise MissionEngineError(
+                    f"{path}: propagate stop_condition='event' names unknown ground station {station!r}"
+                )
+
+        def pass_condition(_parent_sim, access_msg=access_msg, event_kind=event_kind,
+                           detector_state=detector_state) -> bool:
+            # A pass already under way when the propagate starts doesn't
+            # count as its start: the first sample only seeds the state.
+            access = bool(access_msg.read().hasAccess)
+            previous = detector_state["prev_access"]
+            detector_state["prev_access"] = access
+            if previous is None:
+                return False
+            return access and not previous if event_kind == "pass_start" else previous and not access
 
         def condition(_parent_sim, handle=handle, event_kind=event_kind, detector_state=detector_state) -> bool:
             payload = handle.sc_object.scStateOutMsg.read()
@@ -404,6 +446,10 @@ class MissionEngine:
             previous = detector_state["prev_radial_velocity"]
             detector_state["prev_radial_velocity"] = radial_velocity
             if previous is None:
+                if abs(radial_velocity) < _APSIS_AT_START_M_S:
+                    # Starting on the apsis itself: it does not count, whatever the sign of the
+                    # rounding; seed the state as just past it, so the next one ends the run (F-10).
+                    detector_state["prev_radial_velocity"] = 1.0 if event_kind == "periapsis" else -1.0  # [m/s]
                 return False
             if event_kind == "periapsis":
                 return previous < 0.0 <= radial_velocity
@@ -415,7 +461,7 @@ class MissionEngine:
             event_name,
             macros.sec2nano(self.scenario.sim_settings.dynamics_task_rate_s),
             True,
-            conditionFunction=condition,
+            conditionFunction=pass_condition if access_msg is not None else condition,
             terminal=True,
         )
 
@@ -486,8 +532,9 @@ class MissionEngine:
         # only when its conditionFunction actually returns True) is the
         # real signal.
         if self.service.scSim.eventMap[event_name].occurCounter == 0:
+            over = f" over {command.params['ground_station']!r}" if access_msg is not None else ""
             raise MissionEngineError(
-                f"{path}: propagate stop_condition='event' ({event_kind}) for spacecraft {spacecraft_name!r} "
+                f"{path}: propagate stop_condition='event' ({event_kind}{over}) for spacecraft {spacecraft_name!r} "
                 f"did not occur within the {cap_days:.1f}-day safety cap"
             )
         # Unlike duration/epoch, there is no "requested" target here -- the
@@ -746,8 +793,9 @@ class MissionEngine:
                 )
 
     def _evaluate_condition(self, expression: str, path: str) -> bool:
+        # Not eval(): see schema.command.evaluate_condition (finding S-02).
         try:
-            return bool(eval(expression, {"__builtins__": {}}, self._script_context()))
+            return bool(evaluate_condition(expression, self._script_context()))
         except MissionEngineError:
             raise
         except Exception as exc:
@@ -801,13 +849,16 @@ class MissionEngine:
         (or, for that matter, the Python scenario scripts this whole
         checkout's ``examples/`` directory already consists of) -- only
         run a scenario file you trust, the same rule that already applies
-        to running any Python script at all.
+        to running any Python script at all. :meth:`run` refuses to start
+        a sequence containing one unless ``allow_scripts`` is set, so a
+        scenario from someone else cannot run code without the user
+        knowing (SRS-S-03).
         """
         context: Dict[str, Any] = dict(self._script_context())
         context["service"] = self.service
         context["scenario"] = self.scenario
         context["summary"] = summary
         try:
-            exec(command.params["code"], {"__builtins__": __builtins__}, context)
+            exec(command.params["code"], {"__builtins__": __builtins__}, context)  # noqa: S102 -- by design, after consent (run())
         except Exception as exc:
             raise MissionEngineError(f"{path}: script_block raised {type(exc).__name__}: {exc}") from exc

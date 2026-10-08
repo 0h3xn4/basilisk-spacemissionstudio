@@ -96,6 +96,83 @@ def test_vnb_and_rtn_bases_are_orthonormal_and_right_handed(seed):
         assert np.allclose(np.cross(a1, a2), a3, atol=1e-9)
 
 
+# -- PhasingKeepingController._argument_of_latitude: numerically robust
+# phase metric, replacing an osculating-mean-anomaly-difference metric that
+# a real audit found to be singular as eccentricity -> 0 (see that class's
+# own "Numerical conditioning of the phase error" docstring section for the
+# full real-Basilisk-J2 reproduction that found this). -------------------
+
+def test_argument_of_latitude_matches_true_anomaly_for_an_equatorial_orbit():
+    """Same hand-computed reference geometry as the VNB/RTN basis tests
+    above: r along +x, v along +y (circular, equatorial, prograde) is
+    exactly at the ascending-node fallback reference (+x) this function
+    uses for an equatorial orbit (undefined ascending node, same
+    well-known singularity classical RAAN has at i == 0) -- u must read
+    exactly 0 here, and a quarter-orbit further around (r along +y) must
+    read exactly 90 deg.
+    """
+    from spacemissionstudio.engine.orbit_maintenance import PhasingKeepingController
+
+    u_at_x_axis = PhasingKeepingController._argument_of_latitude(
+        np.array([7000e3, 0.0, 0.0]), np.array([0.0, 7500.0, 0.0]))
+    assert np.isclose(u_at_x_axis, 0.0, atol=1e-9)
+
+    u_quarter_orbit_later = PhasingKeepingController._argument_of_latitude(
+        np.array([0.0, 7000e3, 0.0]), np.array([-7500.0, 0.0, 0.0]))
+    assert np.isclose(u_quarter_orbit_later, np.pi / 2.0, atol=1e-9)
+
+
+def test_argument_of_latitude_matches_rv2elem_true_anomaly_for_a_well_conditioned_orbit():
+    """Cross-check against Basilisk's own orbitalMotion.rv2elem for an
+    orbit where classical elements are NOT near their e -> 0 singularity
+    (e = 0.1, comfortably away from zero) -- u = omega + f must match
+    rv2elem's own (omega, f) decomposition exactly (mod 2 pi), confirming
+    this is the same physical quantity, computed a different (numerically
+    robust) way, not a different definition.
+    """
+    from Basilisk.utilities import orbitalMotion
+
+    from spacemissionstudio.engine.orbit_maintenance import PhasingKeepingController
+
+    mu = 3.986004418e14
+    oe = orbitalMotion.ClassicElements()
+    oe.a, oe.e, oe.i, oe.Omega, oe.omega, oe.f = 6928e3, 0.1, np.radians(53.0), np.radians(30.0), np.radians(80.0), np.radians(40.0)
+    r, v = orbitalMotion.elem2rv(mu, oe)
+
+    u = PhasingKeepingController._argument_of_latitude(np.array(r), np.array(v))
+
+    expected = (oe.omega + oe.f + np.pi) % (2.0 * np.pi) - np.pi
+    assert np.isclose(u, expected, atol=1e-6)
+
+
+def test_argument_of_latitude_stays_well_conditioned_as_eccentricity_vanishes():
+    """The real bug this function fixes: orbitalMotion.rv2elem's own
+    (e, omega, f) decomposition is numerically singular as e -> 0 (the
+    eccentricity VECTOR's direction, hence omega and f individually,
+    becomes meaningless) -- confirmed directly against a real Basilisk
+    build with real J2 active (see this module's own docstring). u must
+    stay smooth and continuous across that same e -> 0 crossing, since it
+    never decomposes e/omega/f at all.
+    """
+    from Basilisk.utilities import orbitalMotion
+
+    from spacemissionstudio.engine.orbit_maintenance import PhasingKeepingController
+
+    mu = 3.986004418e14
+    us = []
+    for e in (1e-2, 1e-4, 1e-6, 0.0, 1e-6, 1e-4, 1e-2):
+        oe = orbitalMotion.ClassicElements()
+        oe.a, oe.e, oe.i, oe.Omega, oe.omega, oe.f = 6928e3, e, np.radians(53.0), np.radians(30.0), 0.0, np.radians(40.0)
+        r, v = orbitalMotion.elem2rv(mu, oe)
+        us.append(PhasingKeepingController._argument_of_latitude(np.array(r), np.array(v)))
+
+    # omega == 0 above, so u == f == 40 deg at every single one of these
+    # (e, continuous through exactly zero) -- a classical (e, omega, f)
+    # decomposition cannot even promise omega stays 0 as e -> 0 (it is
+    # undefined there), let alone this directly.
+    assert np.allclose(us, np.radians(40.0), atol=1e-9)
+
+
 # -- Non-finite/degenerate spacecraft state must never reach
 # orbitalMotion.rv2elem() from inside UpdateState() -----------------------
 #
@@ -231,6 +308,40 @@ def test_phasing_keeping_skips_thrust_on_zero_velocity():
     state_b = messaging.SCStatesMsg()
     _write_sc_state(state_a, [7000e3, 0.0, 0.0], [0.0, 7500.0, 0.0])
     _write_sc_state(state_b, [0.0, 7000e3, 0.0], [0.0, 0.0, 0.0])  # zero velocity
+    controller.scStateInMsgA.subscribeTo(state_a)
+    controller.scStateInMsgB.subscribeTo(state_b)
+    controller.Reset(0)
+
+    controller.UpdateState(0)  # must not raise
+
+    assert _flat(controller.extForceEffectorB.extForce_N) == [0.0, 0.0, 0.0]
+    assert np.isnan(controller.errorDegLog[-1])
+
+
+def test_phasing_keeping_skips_thrust_on_parallel_r_and_v():
+    """Real gap found alongside the _argument_of_latitude fix: that
+    function (like _vnb_basis/_rtn_basis -- see
+    test_constant_thrust_skips_on_parallel_r_and_v's identical reasoning)
+    divides by norm(cross(r, v)) (the orbit-normal magnitude), zero for a
+    purely radial trajectory even though r and v are each individually
+    finite and nonzero.
+    """
+    from Basilisk.architecture import messaging
+    from Basilisk.simulation import extForceTorque
+
+    from spacemissionstudio.engine.orbit_maintenance import PhasingKeepingController, SeparationSchedule
+
+    controller = PhasingKeepingController(
+        name="pk", mu=3.986004418e14, nominal_a_m=6928e3,
+        separation_schedule=SeparationSchedule(distances_km=[50.0], interval_days=0.0, semi_major_axis_m=6928e3),
+        tolerance_fraction=0.1, restore_tolerance_fraction=0.5, correction_window_days=1.0,
+        max_drift_days=5.0, max_delta_a_m=1000.0, thrust_n=0.05, isp_s=1500.0, dry_mass_kg=400.0,
+    )
+    controller.extForceEffectorB = extForceTorque.ExtForceTorque()
+    state_a = messaging.SCStatesMsg()
+    state_b = messaging.SCStatesMsg()
+    _write_sc_state(state_a, [7000e3, 0.0, 0.0], [0.0, 7500.0, 0.0])
+    _write_sc_state(state_b, [0.0, 7000e3, 0.0], [0.0, 100.0, 0.0])  # v parallel to r
     controller.scStateInMsgA.subscribeTo(state_a)
     controller.scStateInMsgB.subscribeTo(state_b)
     controller.Reset(0)
@@ -390,6 +501,11 @@ def test_station_keeping_dv_budget_is_tsiolkovsky_closed_form():
 
 
 def test_station_keeping_publishes_delta_v_message_after_update():
+    """Below the deadband -> burnOn (once the altitude-smoothing window
+    has a FULL orbital period of real history -- see the cold-start
+    regression test below for why a single below-deadband sample must
+    NOT trigger this immediately) -> nonzero delta-V.
+    """
     from Basilisk.architecture import messaging
     from Basilisk.simulation import extForceTorque
 
@@ -401,17 +517,94 @@ def test_station_keeping_publishes_delta_v_message_after_update():
     )
     controller.extForceEffector = extForceTorque.ExtForceTorque()
     sc_state_msg = messaging.SCStatesMsg()
-    # Below the deadband -> burnOn immediately -> nonzero delta-V this tick.
     _write_sc_state(sc_state_msg, [6378137.0 + 540e3, 0.0, 0.0], [0.0, 7500.0, 0.0])
     controller.scStateInMsg.subscribeTo(sc_state_msg)
     controller.Reset(0)
 
-    controller.UpdateState(int(1e9))  # dt = 1 s
+    dt_s = 60.0
+    t_s = 0.0
+    # +dt_s margin: the window's "full" clock starts at the FIRST tick
+    # (t=dt_s, not t=0 -- see StationKeepingController's own
+    # _historyStartT comment), so reaching smoothingWindowS of ELAPSED
+    # time needs one extra step beyond smoothingWindowS/dt_s steps.
+    while t_s <= controller.smoothingWindowS + dt_s:
+        t_s += dt_s
+        controller.UpdateState(int(t_s * 1e9))
 
     payload = controller.deltaVOutMsg.read()
     assert payload.storageLevel == controller._cumulativeDv
     assert payload.storageLevel > 0.0
     assert payload.storageCapacity == controller.dvBudgetMps
+
+
+def test_station_keeping_cold_start_does_not_spuriously_burn_on_one_low_sample():
+    """Real bug, found by reproducing a real Vizard screenshot of
+    `05_formation_flying_phasing.json` showing a co-located
+    PhasingKeepingController's along-track separation diverging without
+    bound instead of converging: `_altHistory` starts EMPTY every
+    `Reset()`, so at the very first tick `smoothAlt` is averaged over
+    exactly ONE sample -- the raw osculating altitude at whatever point
+    in the orbit the spacecraft happens to start. A spacecraft started
+    near perigee (a real, deliberate choice -- e.g. a classical-elements
+    orbit with `true_anomaly_deg=0`, as that template uses) reads well
+    below the orbit's true mean altitude from completely normal
+    Keplerian motion alone -- nothing secular (e.g. drag decay, the only
+    thing this controller is meant to respond to) is actually happening.
+    A single low reading must NOT be enough to start a reboost burn.
+    """
+    from Basilisk.architecture import messaging
+    from Basilisk.simulation import extForceTorque
+
+    from spacemissionstudio.engine.orbit_maintenance import StationKeepingController
+
+    controller = StationKeepingController(
+        name="sk", mu=3.986004418e14, nominal_alt_m=550e3, deadband_m=2e3, r_planet_m=6378137.0,
+        thrust_n=0.05, isp_s=1500.0, dry_mass_kg=400.0, propellant_kg=5.0,
+    )
+    controller.extForceEffector = extForceTorque.ExtForceTorque()
+    sc_state_msg = messaging.SCStatesMsg()
+    # Same "well below the deadband" osculating reading the old,
+    # removed version of test_station_keeping_publishes_delta_v_message_after_update
+    # used to trigger an immediate burn from -- this test is that
+    # removed assumption's direct replacement.
+    _write_sc_state(sc_state_msg, [6378137.0 + 540e3, 0.0, 0.0], [0.0, 7500.0, 0.0])
+    controller.scStateInMsg.subscribeTo(sc_state_msg)
+    controller.Reset(0)
+
+    controller.UpdateState(int(1e9))  # dt = 1 s -- exactly one sample in the window
+
+    assert controller.burnOn is False
+    assert controller.burnLog[-1] == 0
+    assert controller._cumulativeDv == 0.0
+    assert _flat(controller.extForceEffector.extForce_N) == [0.0, 0.0, 0.0]
+
+
+def test_station_keeping_cold_start_guard_only_gates_the_start_not_the_stop():
+    """The fix must not delay EXITING a burn once one has legitimately
+    started -- only starting a NEW one before the window is trustworthy.
+    Forces burnOn True directly (bypassing the start-side guard this
+    test isn't about) and confirms a single above-nominal sample still
+    turns it off immediately, exactly as before this fix.
+    """
+    from Basilisk.architecture import messaging
+    from Basilisk.simulation import extForceTorque
+
+    from spacemissionstudio.engine.orbit_maintenance import StationKeepingController
+
+    controller = StationKeepingController(
+        name="sk", mu=3.986004418e14, nominal_alt_m=550e3, deadband_m=2e3, r_planet_m=6378137.0,
+        thrust_n=0.05, isp_s=1500.0, dry_mass_kg=400.0, propellant_kg=5.0,
+    )
+    controller.extForceEffector = extForceTorque.ExtForceTorque()
+    sc_state_msg = messaging.SCStatesMsg()
+    _write_sc_state(sc_state_msg, [6378137.0 + 551e3, 0.0, 0.0], [0.0, 7500.0, 0.0])
+    controller.scStateInMsg.subscribeTo(sc_state_msg)
+    controller.Reset(0)
+    controller.burnOn = True  # simulate an already-in-progress burn
+
+    controller.UpdateState(int(1e9))
+
+    assert controller.burnOn is False
 
 
 def test_phasing_keeping_dv_budget_is_passed_through_from_constructor():

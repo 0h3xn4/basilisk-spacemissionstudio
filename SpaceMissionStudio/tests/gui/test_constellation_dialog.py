@@ -24,7 +24,9 @@ def test_description_label_wraps_instead_of_blowing_up_dialog_width(qtbot):
     description_labels = [w for w in dialog.findChildren(QLabel) if len(w.text()) > 100]
     assert description_labels, "expected to find the long top description QLabel"
     assert all(w.wordWrap() for w in description_labels)
-    assert dialog.sizeHint().width() < 900
+    # 900 px at the Linux CI's font; as a count of average characters, so a
+    # platform with wider fonts (Windows) gets the same bound (SRelD K-10).
+    assert dialog.sizeHint().width() < 150 * dialog.fontMetrics().averageCharWidth()
 
 
 def test_defaults_produce_a_valid_request(qtbot):
@@ -113,3 +115,23 @@ def test_dialog_resizes_to_its_own_sizehint_on_construction(qtbot):
     qtbot.addWidget(dialog)
 
     assert dialog.size() == dialog.sizeHint()
+
+
+def test_sun_synchronous_button_sets_the_inclination_for_the_altitude(qtbot):
+    from spacemissionstudio.engine.orbit_design import sun_synchronous_inclination_deg
+    from spacemissionstudio.gui.constellation_dialog import WalkerConstellationDialog
+
+    dialog = WalkerConstellationDialog(["sat-1"], central_body="earth")
+    qtbot.addWidget(dialog)
+    dialog.altitude_km.setValue(550.0)  # [km]
+    dialog.sun_sync_button.click()
+    assert dialog.inclination_deg.value() == sun_synchronous_inclination_deg(6378.1366 + 550.0, 0.0)  # [deg]
+    assert 97.0 < dialog.inclination_deg.value() < 98.0  # [deg]
+
+
+def test_sun_synchronous_button_is_disabled_off_earth(qtbot):
+    from spacemissionstudio.gui.constellation_dialog import WalkerConstellationDialog
+
+    dialog = WalkerConstellationDialog(["sat-1"], central_body="moon")
+    qtbot.addWidget(dialog)
+    assert not dialog.sun_sync_button.isEnabled()

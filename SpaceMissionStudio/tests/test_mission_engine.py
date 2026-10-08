@@ -211,6 +211,36 @@ def test_propagate_event_periapsis_stops_near_zero_radial_velocity():
     assert abs(radial_velocity) < 20.0, f"expected near-zero radial velocity at periapsis, got {radial_velocity} m/s"
 
 
+@pytest.mark.parametrize("event_kind, start_anomaly_deg", [
+    ("periapsis", -1e-9), ("periapsis", 0.0), ("periapsis", 1e-9),
+    ("apoapsis", 180.0 - 1e-9), ("apoapsis", 180.0), ("apoapsis", 180.0 + 1e-9),
+])
+def test_propagate_to_an_apsis_from_that_apsis_flies_a_whole_orbit(event_kind, start_anomaly_deg):
+    """Finding F-10: starting at periapsis, the radial velocity is zero up
+    to rounding. When rounding made it slightly negative (on Windows, at
+    true anomaly 0), the first steps already "crossed" periapsis and the
+    propagate stopped after a second. The apsis the run starts on no longer
+    counts, whatever the sign of the rounding: the run stops at the next
+    one, a whole period later."""
+    from spacemissionstudio.engine.mission_engine import MissionEngine
+
+    orbit = _circular_orbit(eccentricity=0.05)
+    orbit.true_anomaly_deg = start_anomaly_deg
+    scenario = _scenario(
+        duration_days=1.0, dynamics_task_rate_s=1.0, orbit=orbit,
+        mission_sequence=[
+            Command(kind="propagate", params={
+                "stop_condition": "event", "event_kind": event_kind, "spacecraft": "sat-1",
+            }),
+        ],
+    )
+    result, _summary = MissionEngine(scenario).run()
+
+    period_s = 2.0 * np.pi * np.sqrt((7000.0e3) ** 3 / 3.986004415e14)  # [s] about 5829 s
+    flown_s = result.series["sat-1.position_N"].time_s[-1]
+    assert flown_s == pytest.approx(period_s, abs=5.0)  # [s] within a few 1 s checks
+
+
 def test_propagate_event_unknown_spacecraft_raises():
     """MissionEngine's own "unknown spacecraft" check in
     _run_propagate_event is unreachable through a normal Scenario, since
@@ -381,6 +411,8 @@ def test_report_unknown_series_raises():
     from spacemissionstudio.engine.mission_engine import MissionEngine, MissionEngineError
 
     scenario = _scenario(mission_sequence=[
+        # A propagate first: a report before any is rejected by validation.
+        Command(kind="propagate", params={"stop_condition": "duration", "duration_days": 0.001}),
         Command(kind="report", params={"series": ["sat-1.nonexistent_series"]}),
     ])
     with pytest.raises(MissionEngineError, match="not found in the result set"):
@@ -399,7 +431,7 @@ def test_if_true_branch_runs_children():
             Command(kind="script_block", params={"code": "summary.reports.append('ran')"}),
         ]),
     ])
-    _, summary = MissionEngine(scenario).run()
+    _, summary = MissionEngine(scenario, allow_scripts=True).run()
     assert summary.reports == ["ran"]
 
 
@@ -426,7 +458,7 @@ def test_if_condition_can_read_spacecraft_state():
             Command(kind="script_block", params={"code": "summary.reports.append('above surface')"}),
         ]),
     ])
-    _, summary = MissionEngine(scenario).run()
+    _, summary = MissionEngine(scenario, allow_scripts=True).run()
     assert summary.reports == ["above surface"]
 
 
@@ -468,7 +500,7 @@ def test_while_loop_exceeding_iteration_cap_raises_clear_error():
         ]),
     ])
     with pytest.raises(MissionEngineError, match="exceeded .* iterations"):
-        MissionEngine(scenario).run()
+        MissionEngine(scenario, allow_scripts=True).run()
 
 
 def test_script_block_can_write_to_summary():
@@ -477,7 +509,7 @@ def test_script_block_can_write_to_summary():
     scenario = _scenario(mission_sequence=[
         Command(kind="script_block", params={"code": "summary.reports.append(None)"}),
     ])
-    _, summary = MissionEngine(scenario).run()
+    _, summary = MissionEngine(scenario, allow_scripts=True).run()
     assert summary.reports == [None]
 
 
@@ -488,7 +520,42 @@ def test_script_block_exception_is_wrapped_in_mission_engine_error():
         Command(kind="script_block", params={"code": "raise ValueError('boom')"}),
     ])
     with pytest.raises(MissionEngineError, match="boom"):
-        MissionEngine(scenario).run()
+        MissionEngine(scenario, allow_scripts=True).run()
+
+
+def test_script_block_does_not_run_without_consent():
+    """SRS-S-03: a scenario's script_block is refused before anything is
+    built unless the caller passes the user's consent (allow_scripts),
+    and the error names the command."""
+    from spacemissionstudio.engine.mission_engine import MissionEngine, ScriptsNotAllowedError
+
+    scenario = _scenario(mission_sequence=[
+        Command(kind="if", params={"condition": "True"}, children=[
+            Command(kind="script_block", params={"code": "summary.reports.append('ran')"}),
+        ]),
+    ])
+    engine = MissionEngine(scenario)
+    with pytest.raises(ScriptsNotAllowedError, match=r"mission_sequence\[0\]\.children\[0\]"):
+        engine.run()
+    assert engine.service.scSim is None
+
+
+def test_condition_cannot_reach_python_objects():
+    """A condition is evaluated over a whitelist, not by eval(): attribute
+    access (the way out of eval's empty builtins) and calls are refused
+    (security analysis S-02)."""
+    from spacemissionstudio.engine.mission_engine import MissionEngine, MissionEngineError
+    from spacemissionstudio.schema.scenario import ScenarioValidationError
+
+    escape = "().__class__.__base__.__subclasses__()"
+    scenario = _scenario(mission_sequence=[Command(kind="if", params={"condition": escape}, children=[])])
+    with pytest.raises(ScenarioValidationError, match="is not allowed in a condition"):
+        scenario.validate()
+    # The engine refuses it too, for a scenario that skipped validation.
+    engine = object.__new__(MissionEngine)
+    engine._script_context = lambda: {"t_s": 0.0}
+    with pytest.raises(MissionEngineError, match="is not allowed in a condition"):
+        engine._evaluate_condition(escape, "mission_sequence[0]")
 
 
 def test_nested_if_inside_while_shares_one_command_summary():
@@ -663,3 +730,37 @@ def test_no_should_cancel_runs_to_completion_as_before():
     ])
     _, summary = MissionEngine(scenario).run()
     assert summary.commands_executed == 1
+
+
+def test_propagate_stops_at_ground_station_pass_start_and_end():
+    """Template 19's Berlin passes (10.5-18.2 and 106.9-111.7 min in a real
+    run). A pass_start issued during a pass waits for the next one."""
+    import glob
+    import os
+
+    from spacemissionstudio.engine.mission_engine import MissionEngine
+    from spacemissionstudio.schema import load_scenario
+
+    templates = os.path.join(os.path.dirname(__file__), "..", "spacemissionstudio", "scenarios", "templates")
+    scenario = load_scenario(glob.glob(os.path.join(templates, "19_*.json"))[0])
+
+    def stop(kind, label):
+        return [Command(kind="propagate", params={"stop_condition": "event", "event_kind": kind,
+                                                  "spacecraft": "leo-comms-1", "ground_station": "berlin-gs"}),
+                Command(kind="report", label=label, params={"series": []})]
+
+    scenario.mission_sequence = (stop("pass_start", "start 1") + stop("pass_end", "end 1")
+                                 + stop("pass_start", "start 2") + stop("pass_start", "start 3"))
+    scenario.sim_settings.duration_days = 0.5  # [day] sets the event search cap only
+    # Pass times depend only on the orbit: orbit-only at a 10 s step keeps
+    # this test fast (the template's attitude runs at 0.1 s).
+    scenario.simulation_mode = "orbit_only"
+    scenario.sim_settings.dynamics_task_rate_s = 10.0  # [s]
+    for spacecraft in scenario.spacecraft:
+        spacecraft.comms_pointing = spacecraft.power = spacecraft.rf_link = None
+    _result, summary = MissionEngine(scenario).run()
+    minutes = [entry.t_s / 60.0 for entry in summary.reports]  # [min]
+    assert minutes[0] == pytest.approx(10.5, abs=0.5)  # [min]
+    assert minutes[1] == pytest.approx(18.2, abs=0.5)  # [min]
+    assert minutes[2] == pytest.approx(106.9, abs=0.5)  # [min]
+    assert minutes[3] > minutes[2] + 60.0  # not the pass already under way

@@ -1,5 +1,5 @@
 {
-  "name": "15 - Direct celestial-body pointing (locationPointing + target_body)",
+  "name": "15 - Direct celestial-body pointing (Moon)",
   "epoch_utc": "2030-01-01T00:00:00",
   "simulation_mode": "full_attitude",
   "gravity": {
@@ -30,15 +30,15 @@
       },
       "dry_mass_kg": 300.0,
       "inertia_kg_m2": [
-        12.5,
+        92.2,
         0.0,
         0.0,
         0.0,
-        12.5,
+        92.2,
         0.0,
         0.0,
         0.0,
-        7.5
+        72.0
       ],
       "sigma_bn_init": [
         0.1,
@@ -56,6 +56,7 @@
       "enable_srp": false,
       "srp_coeff": 1.3,
       "srp_area_m2": 1.0,
+      "facets": [],
       "enable_gravity_gradient": false,
       "sensors": [],
       "actuators": [],
@@ -73,11 +74,13 @@
       "rf_link": null,
       "comms_pointing": null,
       "station_keeping": null,
+      "geo_station_keeping": null,
       "phasing_keeping": null,
       "constant_thrust": null,
       "momentum_dumping": null,
       "magnetic_momentum_management": null,
       "fuel_tank": null,
+      "propellant_budget": null,
       "vizard_model_path": null,
       "vizard_model_offset_m": [
         0.0,
@@ -98,17 +101,18 @@
   ],
   "ground_stations": [],
   "space_weather": {
-    "source": "synthetic",
+    "source": "bundled",
     "local_file_path": null,
     "cache_dir": null,
     "atmosphere_model": "nrlmsise00",
-    "activity_level": "nominal",
-    "activity_percentile": 95.0
+    "forecast_percentile": 50.0,
+    "msfc_file_path": null
   },
   "sim_settings": {
     "duration_days": 0.05,
     "dynamics_task_rate_s": 0.1,
-    "integrator": "rkf78"
+    "integrator": "rkf78",
+    "record_interval_s": 0.0
   },
   "monte_carlo": {
     "enabled": false,
@@ -118,6 +122,6 @@
     "dispersions": []
   },
   "mission_sequence": [],
-  "description": "fsw_mode 'locationPointing' has TWO target options: '07'-style pointing at a ground station (fsw_params['target_ground_station']), or pointing straight at a celestial body (fsw_params['target_body']) -- this template is the second one. A body-fixed axis (pHat_B, here the spacecraft +Z) stays pointed at the Moon throughout the orbit, built via engine.fsw.build_ephemeris_converter() (SpicePlanetStateMsg -> EphemerisMsg -> locationPointing.celBodyInMsg), the same converter + guidance pairing as Basilisk's own examples/scenarioAsteroidArrival.py (there pointing an antenna at Earth and a camera at an asteroid; here, at the Moon). target_body must name gravity.central_body or one of gravity.third_body_perturbers -- 'moon' is SPICE-tracked here for exactly that reason.\n\nWhat to look at: there is no separate result series for the body-to-target pointing error yet (add a 'report' mission_sequence command on sat-1.attitude_sigma_bn, see '08', or watch Vizard's live attitude indicator) -- but unlike '06'/'07's hillPoint/sunSafePoint, the target direction here keeps changing as the Moon moves along its own orbit while the spacecraft moves along its much faster one, so the commanded attitude is never constant.\n\nTry changing: target_body to 'sun' (already SPICE-tracked here too) to compare a much farther, slower-moving target's pointing behavior against the Moon's; or pHat_B to a different body axis to re-point a different physical location on the spacecraft (e.g. a antenna mounted off the +Z face) at the same target.",
-  "schema_version": 2
+  "description": "The spacecraft's +Z axis stays pointed at the Moon for the whole run, about three-quarters of an orbit (locationPointing with a celestial target).\n\nWhat to look at:\n- Vizard's attitude view: the commanded attitude keeps changing as both the spacecraft and the Moon move.\n\nTry changing:\n- Target body: the Sun, a farther and slower target.\n- The pointing axis, to aim a different face.",
+  "schema_version": 4
 }

@@ -89,8 +89,12 @@ output_deb="$output_dir/spacemissionstudio_${version}_all.deb"
 # baking this build machine's own uid/gid into the archive.
 dpkg-deb --build --root-owner-group "$staging" "$output_deb"
 
+# Release checksum (security_analysis.md S-07), next to the package.
+(cd "$output_dir" && sha256sum "$(basename "$output_deb")" > "$(basename "$output_deb").sha256")
+
 echo
 echo "Built: $output_deb"
+echo "SHA-256: $output_deb.sha256"
 echo "Install with: sudo apt install ./$(basename "$output_deb")"
 echo "(or: sudo dpkg -i $(basename "$output_deb")  -- apt install ./PATH is preferred, it also resolves"
 echo " python3/python3-venv/python3-pip if you don't already have them)"

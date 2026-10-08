@@ -7,6 +7,7 @@ subcommands go through, never an actual Basilisk propagation.
 
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from spacemissionstudio.schema import load_scenario
@@ -117,6 +118,16 @@ def test_magnetic_momentum_management_template_mixes_reaction_wheel_and_mtb_actu
     assert len(sat.magnetic_momentum_management.wheel_speed_biases_rad_s) == num_rw
 
 
+@pytest.mark.parametrize("path", _TEMPLATE_PATHS, ids=lambda p: p.name)
+def test_every_template_flies_a_100_to_500_kg_spacecraft(path):
+    """The class this app is for. Its inertia must fit that mass: at least
+    that of a 0.5 m cube, at most that of a 2.5 m one."""
+    for sc in load_scenario(path).spacecraft:
+        assert 100.0 <= sc.dry_mass_kg <= 500.0, sc.name  # [kg]
+        mean_inertia = sum(sc.inertia_kg_m2[i] for i in (0, 4, 8)) / 3.0  # [kg*m^2]
+        assert sc.dry_mass_kg * 0.5 ** 2 / 6.0 <= mean_inertia <= sc.dry_mass_kg * 2.5 ** 2 / 6.0, sc.name
+
+
 def test_css_sun_heading_estimation_template_wires_use_css_estimation():
     scenario = load_scenario(_TEMPLATES_DIR / "14_css_sun_heading_estimation.json")
     sat = scenario.spacecraft[0]
@@ -124,11 +135,12 @@ def test_css_sun_heading_estimation_template_wires_use_css_estimation():
     assert sat.fsw_params.get("use_css_estimation") is True
     assert sum(1 for s in sat.sensors if s.kind == "coarse_sun_sensor") == 8
     assert "sun" in scenario.gravity.third_body_perturbers
-    # DEFAULT_MRP_GAINS (K=3.5/P=30) scaled down for this template's 5 kg*m^2
-    # hub -- see scripts/_generate_templates.py's own comment and
-    # HISTORY.md for why an unscaled default never converges here.
-    assert sat.control_params.get("K", 3.5) < 1.0
-    assert sat.control_params.get("P", 30.0) < 1.0
+    # No explicit gains: engine.fsw scales its K=3.5/P=30 defaults by the
+    # mean inertia over 900 kg*m^2, far below the unscaled pair that never
+    # converged here.
+    assert not sat.control_params
+    mean_inertia = sum(sat.inertia_kg_m2[i] for i in (0, 4, 8)) / 3.0  # [kg*m^2]
+    assert 30.0 * mean_inertia / 900.0 < 1.0  # the scaled P
 
 
 def test_celestial_body_pointing_template_uses_target_body_not_ground_station():
@@ -174,16 +186,143 @@ def test_phasing_template_pairs_phasing_keeping_with_station_keeping():
 
 
 def test_leo_station_keeping_template_is_drag_driven_not_srp_driven():
-    """The direct LEO counterpart to '03' (GEO, SRP/third-body-driven,
-    drag off): this one isolates drag as the one dominant perturbation
-    instead, with a materially tighter deadband than '03's GEO case --
-    see the file's own description for why (continuous drag needs more
-    frequent, smaller corrections than GEO's occasional ones).
-    """
+    """The LEO counterpart to '03': altitude hold against drag, where 03
+    holds a GEO slot's longitude and inclination."""
     leo = load_scenario(_TEMPLATES_DIR / "18_leo_station_keeping.json").spacecraft[0]
     geo = load_scenario(_TEMPLATES_DIR / "03_geo_station_keeping.json").spacecraft[0]
     assert leo.station_keeping is not None
     assert leo.enable_drag is True
     assert leo.enable_srp is False
     assert leo.station_keeping.target_altitude_km < 1000.0  # genuinely LEO, not GEO-scale
-    assert leo.station_keeping.deadband_km < geo.station_keeping.deadband_km
+    assert geo.station_keeping is None and geo.geo_station_keeping is not None
+
+
+def test_geo_template_starts_in_earths_true_equator_over_its_slot():
+    """i = 0 in J2000 is ~0.17 deg inclined to Earth's 2030 equator: the
+    first real run showed it as an immediate north-south burn."""
+    from spacemissionstudio.engine.scenario_checks import _earth_rotation_angle
+
+    geo = load_scenario(_TEMPLATES_DIR / "03_geo_station_keeping.json").spacecraft[0]
+    assert geo.orbit.inclination_deg == pytest.approx(0.167, abs=0.002)  # [deg]
+    assert geo.orbit.raan_deg == pytest.approx(89.81, abs=0.01)  # [deg] node of the true equator
+    # [deg] the rough IAU rotation (pole precession ignored) puts it within ~0.2 deg of 10 E
+    rough_lon = (geo.orbit.raan_deg + geo.orbit.true_anomaly_deg
+                 - np.degrees(_earth_rotation_angle("2030-01-01T00:00:00", np.array([0.0]))[0])) % 360.0
+    assert rough_lon == pytest.approx(10.0, abs=0.3)
+
+
+@pytest.mark.parametrize("path", _TEMPLATE_PATHS, ids=lambda p: p.name)
+def test_template_descriptions_are_short_and_structured(path):
+    """Real user feedback on the Load tab ("just awful UI/UX"): the
+    descriptions were up to 7,000 characters of prose, including
+    development audit history. They are now a short summary plus "What to
+    look at" / "Try changing" bullets, written for the user."""
+    description = load_scenario(path).description
+    assert len(description) < 1400, len(description)
+    assert "What to look at" in description and "Try changing:" in description
+    for banned in ("Audit history", "docstring", "HISTORY.md", "confirmed directly", "real user"):
+        assert banned not in description, banned
+    summary = description.split("\n\n")[0]
+    assert len(summary) < 300, summary
+    for line in description.splitlines():
+        if line.startswith("- "):
+            assert len(line) < 200, line  # short bullets, not paragraphs
+
+
+def test_lambert_template_burns_a_quarter_orbit_in_like_basilisks_example():
+    """examples/scenarioLambertSolver.py burns at tau/4 and arrives at tau/2.
+    Burning at t = 0 puts the arc below Earth's surface (~6366 km), which
+    the template's own min_orbit_radius_m rejects; the coast also gives the
+    first report something recorded to show."""
+    import math
+
+    scenario = load_scenario(_TEMPLATES_DIR / "16_lambert_transfer.json")
+    kinds = [c.kind for c in scenario.mission_sequence]
+    assert kinds == ["propagate", "report", "lambert_transfer", "propagate", "report"]
+    a_m = scenario.spacecraft[0].orbit.semi_major_axis_km * 1e3
+    period_s = 2 * math.pi * math.sqrt(a_m ** 3 / 3.986004415e14)  # [s] Basilisk's Earth mu
+    coast_s = scenario.mission_sequence[0].params["duration_days"] * 86400.0
+    assert coast_s == pytest.approx(round(period_s / 4 / 10) * 10)  # [s] the example's tm, on its 10 s step
+    lambert = scenario.mission_sequence[2]
+    arrival_coast_s = scenario.mission_sequence[3].params["duration_days"] * 86400.0
+    assert arrival_coast_s == pytest.approx(lambert.params["time_of_flight_s"])
+
+
+@pytest.mark.parametrize("path", sorted(_TEMPLATES_DIR.glob("*.json")), ids=lambda p: p.name)
+def test_sun_pointing_templates_put_their_sun_sensors_on_the_sun_face(path):
+    """sunSafePoint turns sHatBdyCmd (default +Z) to the Sun. Template 20's
+    thermal sensor (and 07/20's single sun sensor) faced +X, i.e. edge-on to
+    the Sun: zero projected area, so no solar heating and no CSS signal,
+    contradicting the template's own "heats in sunlight" lesson."""
+    import numpy as np
+
+    for sc in load_scenario(path).spacecraft:
+        if sc.fsw_mode != "sunSafePoint":
+            continue
+        sun_axis = np.array(sc.fsw_params.get("sHatBdyCmd", [0.0, 0.0, 1.0]))
+        facing = {s.name: float(np.dot(s.params["nHat_B"], sun_axis)) for s in sc.sensors
+                  if s.kind in ("thermal", "coarse_sun_sensor")}
+        thermal = [s.name for s in sc.sensors if s.kind == "thermal"]
+        assert all(facing[name] > 0.5 for name in thermal), facing
+        css = [s.name for s in sc.sensors if s.kind == "coarse_sun_sensor"]
+        assert not css or any(facing[name] > 0.5 for name in css), facing
+
+
+def test_template_descriptions_match_the_run_length():
+    """Template 15 promised Moon pointing "for the whole orbit" over a run
+    shorter than one orbit."""
+    import math
+
+    scenario = load_scenario(_TEMPLATES_DIR / "15_celestial_body_pointing.json")
+    a_m = scenario.spacecraft[0].orbit.semi_major_axis_km * 1e3
+    period_days = 2 * math.pi * math.sqrt(a_m ** 3 / 3.986004415e14) / 86400.0  # [day]
+    if scenario.sim_settings.duration_days < period_days:
+        assert "whole orbit" not in scenario.description
+
+
+def _ground_station_passes_min(scenario, station, step_s=20.0):
+    """[(AOS, LOS, peak elevation)] in minutes/deg over the run, from a
+    circular J2-secular orbit and the IAU_EARTH rotation SPICE uses
+    (pck00010). Coarse but independent of Basilisk -- enough to catch a
+    template whose passes fall outside its own run."""
+    import math
+    from datetime import datetime
+
+    import numpy as np
+
+    mu, r_e, j2 = 3.986004415e14, 6378.1363e3, 1.0826e-3  # [m^3/s^2], [m], [-]
+    orbit = scenario.spacecraft[0].orbit
+    a = orbit.semi_major_axis_km * 1e3  # [m]
+    inc, raan0 = math.radians(orbit.inclination_deg), math.radians(orbit.raan_deg)
+    u0 = math.radians(orbit.arg_periapsis_deg + (orbit.true_anomaly_deg or 0.0))
+    n = math.sqrt(mu / a ** 3)  # [rad/s]
+    g = 1.5 * j2 * (r_e / a) ** 2
+    t = np.arange(0.0, scenario.sim_settings.duration_days * 86400.0 + step_s, step_s)  # [s]
+    raan = raan0 - g * n * math.cos(inc) * t
+    u = u0 + n * (1 + g * (4 - 5 * math.sin(inc) ** 2) / 2 + g * (1 - 1.5 * math.sin(inc) ** 2)) * t
+    r = a * np.stack([np.cos(raan) * np.cos(u) - np.sin(raan) * np.sin(u) * math.cos(inc),
+                      np.sin(raan) * np.cos(u) + np.cos(raan) * np.sin(u) * math.cos(inc),
+                      np.sin(u) * math.sin(inc)], 1)
+    epoch = datetime.fromisoformat(scenario.epoch_utc)
+    jd0 = 2451544.5 + (epoch - datetime(2000, 1, 1)).total_seconds() / 86400.0 + 69.2 / 86400.0  # [day] TDB
+    w = np.radians(90.0 + 190.147 + 360.9856235 * (jd0 + t / 86400.0 - 2451545.0))  # IAU_EARTH, from the x axis
+    lat, lon = math.radians(station.latitude_deg), math.radians(station.longitude_deg)
+    up = np.stack([math.cos(lat) * np.cos(w + lon), math.cos(lat) * np.sin(w + lon), np.full_like(w, math.sin(lat))], 1)
+    d = r - r_e * up
+    el = np.degrees(np.arcsin(np.sum(d * up, 1) / np.linalg.norm(d, axis=1)))
+    visible = np.concatenate([[False], el >= station.min_elevation_deg, [False]])
+    edges = np.flatnonzero(np.diff(visible.astype(int)))
+    return [(t[s] / 60.0, t[e - 1] / 60.0, float(el[s:e].max())) for s, e in zip(edges[0::2], edges[1::2])]
+
+
+def test_comms_template_has_ground_station_passes_early_in_its_run():
+    """Real user report: template 19 showed "never ground station contact".
+    A Sun-synchronous orbit crosses Berlin's latitude only at two fixed local
+    times; with a midnight-UTC epoch the first pass came ~8 h into the run.
+    The run must now open with a high pass and hold a second one."""
+    scenario = load_scenario(_TEMPLATES_DIR / "19_sun_pointing_comms_link.json")
+    passes = _ground_station_passes_min(scenario, scenario.ground_stations[0])
+    assert len(passes) >= 2, passes
+    first_aos, _first_los, first_peak = passes[0]
+    assert 5.0 <= first_aos <= 20.0, passes  # [min] after the initial attitude settles, well before the end
+    assert first_peak >= 45.0, passes  # [deg] a high pass, so a healthy link margin shows

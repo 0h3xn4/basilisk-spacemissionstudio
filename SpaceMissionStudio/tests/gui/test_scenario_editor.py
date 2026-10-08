@@ -268,3 +268,21 @@ def test_reset_to_default_clears_mission_sequence(widget):
     assert len(widget.mission_sequence_editor.to_command_list()) == 1
     widget.reset_to_default()
     assert widget.mission_sequence_editor.to_command_list() == []
+
+
+def test_mission_sequence_report_lists_the_scenarios_series(qtbot):
+    """The Report command's pick-list is fed from the scenario being
+    edited (engine.series_names), even before it validates."""
+    from pathlib import Path
+
+    from spacemissionstudio.gui.scenario_editor import ScenarioEditorWidget
+    from spacemissionstudio.schema import load_scenario
+
+    templates = Path(__file__).resolve().parents[2] / "spacemissionstudio" / "scenarios" / "templates"
+    editor = ScenarioEditorWidget()
+    qtbot.addWidget(editor)
+    editor.from_scenario(load_scenario(templates / "05_formation_flying_phasing.json"))
+    names = editor.mission_sequence_editor._series_names()
+    assert len(names) == 40 and "follower-1.phasing_keeping.separation_error" in names
+    editor.name_edit.setText("")  # invalid scenario: the list must still come back
+    assert editor.mission_sequence_editor._series_names() == names

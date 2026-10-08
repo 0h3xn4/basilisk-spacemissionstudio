@@ -111,7 +111,7 @@ def test_css_unrecognized_fault_mode_raises_fsw_error():
 def _run_magnetometer(params: dict):
     from Basilisk.architecture import messaging
     from Basilisk.simulation import spacecraft
-    from Basilisk.utilities import SimulationBaseClass, macros, orbitalMotion, simHelpers, simIncludeGravBody
+    from Basilisk.utilities import SimulationBaseClass, macros, orbitalMotion, simIncludeGravBody
 
     from spacemissionstudio.engine import fsw
 

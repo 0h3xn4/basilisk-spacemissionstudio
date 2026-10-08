@@ -33,6 +33,7 @@ sets the actual name/orbit/anything else there, same as "Add..."/"Edit...".
 
 from __future__ import annotations
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
@@ -69,10 +70,16 @@ class SpacecraftTemplateDialog(QDialog):
         for template in SPACECRAFT_TEMPLATES:
             self.list_widget.addItem(QListWidgetItem(template.name))
         self.list_widget.currentRowChanged.connect(self._on_selection_changed)
+        # Wide enough for the longest preset name: at an even 50/50 split
+        # the first name overflowed and the list grew a horizontal scrollbar.
+        self.list_widget.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.list_widget.setMinimumWidth(self.list_widget.sizeHintForColumn(0) + 2 * self.list_widget.frameWidth()
+                                         + 16)
         body.addWidget(self.list_widget, stretch=1)
 
         self.description_label = QLabel()
         self.description_label.setWordWrap(True)
+        self.description_label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
         self.description_label.setStyleSheet("color: palette(mid);")
         body.addWidget(self.description_label, stretch=1)
         layout.addLayout(body)

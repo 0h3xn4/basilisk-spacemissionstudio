@@ -316,3 +316,30 @@ def test_rename_ground_station_updates_comms_pointing_reference():
     assert updated == 1
     assert scenario.ground_stations[0].name == "gs-1-renamed"
     assert sc.comms_pointing.target_ground_station == "gs-1-renamed"
+
+
+# -- pass-event propagate commands name a ground station ---------------------
+
+def _pass_scenario():
+    from spacemissionstudio.schema.command import Command
+
+    stop = Command(kind="propagate", params={"stop_condition": "event", "event_kind": "pass_end",
+                                             "spacecraft": "sat-1", "ground_station": "gs-1"})
+    loop = Command(kind="while", params={"condition": "True"}, children=[stop])
+    return _scenario(ground_stations=[GroundStationConfig(name="gs-1", latitude_deg=52.5, longitude_deg=13.4)],
+                     mission_sequence=[loop])
+
+
+def test_pass_event_station_is_found_renamed_and_checked():
+    from spacemissionstudio.schema import find_ground_station_references, rename_ground_station
+    from spacemissionstudio.schema.scenario import ScenarioValidationError
+
+    scenario = _pass_scenario()
+    refs = find_ground_station_references(scenario, "gs-1")
+    assert [r.path for r in refs] == ["mission_sequence[0].children[0].params['ground_station']"]
+    assert rename_ground_station(scenario, "gs-1", "berlin") == 1
+    assert scenario.mission_sequence[0].children[0].params["ground_station"] == "berlin"
+    scenario.validate()
+    scenario.mission_sequence[0].children[0].params["ground_station"] = "gone"
+    with pytest.raises(ScenarioValidationError, match="ground_station 'gone' is not one of"):
+        scenario.validate()

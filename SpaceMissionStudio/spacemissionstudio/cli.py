@@ -60,8 +60,10 @@ import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from . import dependencies
 from .logging_setup import configure_logging
 from .schema import ScenarioValidationError, load_scenario
+from .schema.command import script_blocks
 
 
 def cmd_validate(args: argparse.Namespace) -> int:
@@ -72,7 +74,24 @@ def cmd_validate(args: argparse.Namespace) -> int:
         return 1
     print(f"OK: {scenario.name!r} -- {len(scenario.spacecraft)} spacecraft, "
           f"schema version {scenario.schema_version}, epoch {scenario.epoch_utc}")
+    blocks = script_blocks(scenario.mission_sequence)
+    if blocks:
+        print(f"NOTE: {len(blocks)} script_block(s) ({', '.join(path for path, _ in blocks)}) run unrestricted "
+              "Python; 'run' needs --allow-scripts to run them")
     return 0
+
+
+def _run_argument_error(scenario, args: argparse.Namespace):
+    """Why ``run`` cannot start with these arguments, or None. A scenario
+    with script blocks needs --allow-scripts: a scenario file must not run
+    code without the user knowing (SRS-S-03)."""
+    if args.vizard_save_file and args.vizard_live_stream:
+        return "pass at most one of --vizard-save-file / --vizard-live-stream"
+    blocks = script_blocks(scenario.mission_sequence)
+    if blocks and not args.allow_scripts:
+        return (f"{len(blocks)} script_block(s) ({', '.join(path for path, _ in blocks)}) run unrestricted "
+                "Python from the scenario file. Read the code first, then pass --allow-scripts to run it.")
+    return None
 
 
 def cmd_run(args: argparse.Namespace) -> int:
@@ -82,8 +101,9 @@ def cmd_run(args: argparse.Namespace) -> int:
         print(f"INVALID: {exc}", file=sys.stderr)
         return 1
 
-    if args.vizard_save_file and args.vizard_live_stream:
-        print("ERROR: pass at most one of --vizard-save-file / --vizard-live-stream", file=sys.stderr)
+    argument_error = _run_argument_error(scenario, args)
+    if argument_error:
+        print(f"ERROR: {argument_error}", file=sys.stderr)
         return 1
 
     try:
@@ -91,6 +111,9 @@ def cmd_run(args: argparse.Namespace) -> int:
     except ImportError as exc:
         print(f"ERROR: Basilisk is not installed/built ({exc}) -- see SpaceMissionStudio/README.md", file=sys.stderr)
         return 2
+    version_note = dependencies.basilisk_check()
+    if version_note:
+        print(f"WARNING: {version_note}", file=sys.stderr)
 
     vizard_request = None
     if args.vizard_save_file or args.vizard_live_stream:
@@ -99,6 +122,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         vizard_request = VizardRequest(
             save_file=args.vizard_save_file, live_stream=args.vizard_live_stream,
             camera_target=args.vizard_camera_target, show_orbit_lines=not args.vizard_no_orbit_lines,
+            show_trajectory_trail=args.vizard_trail, show_ground_tracks=args.vizard_ground_tracks,
         )
 
     print(f"Running {scenario.name!r} ({len(scenario.spacecraft)} spacecraft, "
@@ -117,7 +141,8 @@ def cmd_run(args: argparse.Namespace) -> int:
             from .engine.mission_engine import MissionEngine
 
             print(f"Executing mission_sequence ({len(scenario.mission_sequence)} top-level command(s))...")
-            result, command_summary = MissionEngine(scenario, service=service).run()
+            result, command_summary = MissionEngine(scenario, service=service,
+                                                    allow_scripts=args.allow_scripts).run()
         else:
             result = service.run()
     except Exception as exc:  # noqa: BLE001 -- report ANY run failure with a specific message, not a bare traceback
@@ -128,6 +153,16 @@ def cmd_run(args: argparse.Namespace) -> int:
     print(f"Wrote {len(paths)} result file(s) to {args.out_dir}:")
     for name, path in sorted(paths.items()):
         print(f"  {name}: {path}")
+    if args.oem:
+        from .engine import ccsds_odm
+
+        names = [sc.name for sc in scenario.spacecraft if f"{sc.name}.position_N" in result.series]
+        for name, text in ccsds_odm.oem_from_result(result, scenario.epoch_utc, scenario.gravity.central_body,
+                                                    names, stride=args.oem_stride,
+                                                    interpolation=args.oem_interpolation).items():
+            oem_path = args.out_dir / f"{name}.oem"
+            oem_path.write_text(text, encoding="ascii")
+            print(f"  CCSDS OEM: {oem_path}")
 
     # Informational only -- never affects the exit code (see
     # ResultSet.warnings's own docstring: a non-empty list here is a
@@ -249,6 +284,147 @@ def cmd_monte_carlo(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_lifetime(args: argparse.Namespace) -> int:
+    try:
+        scenario = load_scenario(args.scenario)
+    except ScenarioValidationError as exc:
+        print(f"INVALID: {exc}", file=sys.stderr)
+        return 1
+    name = args.spacecraft or scenario.spacecraft[0].name
+    try:
+        from .engine import lifetime
+    except ImportError as exc:
+        print(f"ERROR: Basilisk is not installed/built ({exc}) -- see SpaceMissionStudio/README.md", file=sys.stderr)
+        return 2
+    try:
+        drag_coeff = None if args.drag_coeff == "own" else float(args.drag_coeff)
+        end = lifetime.end_of_life(scenario, name, deorbit_perigee_km=args.deorbit_perigee_km,
+                                   max_years=args.max_years, forecast_percentile=args.forecast_percentile,
+                                   drag_coeff=drag_coeff)
+    except lifetime.LifetimeError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 3
+    result = end.lifetime
+    if end.deorbit is not None:
+        plan = end.deorbit
+        print(f"Deorbit burn: {plan.delta_v_m_s:.1f} m/s, {plan.propellant_kg:.2f} kg of "
+              f"{plan.propellant_available_kg:.2f} kg -> perigee {plan.perigee_km:.0f} km")
+    if result.reentered:
+        print(f"{name}: re-entry {result.reentry_utc:%Y-%m-%d}, {result.lifetime_years:.2f} years from "
+              f"{result.start_utc:%Y-%m-%d}")
+    else:
+        print(f"{name}: still in orbit after {result.horizon_years:.1f} years")
+    for years, label in ((lifetime.ZERO_DEBRIS_YEARS, "5-year rule"), (lifetime.IADC_YEARS, "25-year guideline")):
+        verdict = ("met" if result.meets(years) else "not met") if result.known(years) else "not known"
+        print(f"  {label}: {verdict}")
+    for warning in result.warnings:
+        print(f"WARNING: {warning}", file=sys.stderr)
+    return 0
+
+
+def _print_altitude_trade(pb, scenario, name, result, altitudes) -> int:
+    print(f"{name}: launch-delay sweep per altitude (several minutes; altitudes run in parallel)...")
+    try:
+        trade = pb.altitude_trade(scenario, name, altitudes or None, result)
+    except pb.BudgetError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 3
+    print(f"{'Altitude':>8} {'Incl.':>6} {'Worst launch':<12} {'In-plane dV':>12} {'Disposal dV':>12} "
+          f"{'Prop. [kg]':>10}  Fits tank")
+    for case in trade.altitudes:
+        worst = case.worst
+        fits = {True: "yes", False: "no", None: "-"}[trade.fits(case)]
+        print(f"{case.altitude_km:>6g}km {case.inclination_deg:>6.2f} {worst.launch_utc:%Y-%m-%d}   "
+              f"{worst.delta_v_of('Operations', 'In-plane'):>12.2f} {worst.delta_v_of('End of life', ''):>12.2f} "
+              f"{worst.budget.total_propellant_kg:>10.3f}  {fits}")
+    for note in trade.notes:
+        print(f"NOTE: {note}")
+    return 0
+
+
+def _altitudes_arg(text: str) -> list:
+    if text == "auto":
+        return []
+    try:
+        altitudes = [float(v) for v in text.split(",") if v.strip()]
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{text!r}: comma-separated altitudes in km, e.g. 400,450,500") from None
+    if not altitudes or any(not 150.0 <= a <= 2000.0 for a in altitudes):
+        raise argparse.ArgumentTypeError(f"{text!r}: altitudes between 150 and 2000 km")
+    return altitudes
+
+
+def _drag_coeff_arg(text: str) -> str:
+    if text != "own":
+        try:
+            if not 0.0 < float(text) <= 10.0:
+                raise ValueError
+        except ValueError:
+            raise argparse.ArgumentTypeError(f"{text!r}: a drag coefficient in (0, 10], or 'own'") from None
+    return text
+
+
+def cmd_budget(args: argparse.Namespace) -> int:
+    try:
+        scenario = load_scenario(args.scenario)
+    except ScenarioValidationError as exc:
+        print(f"INVALID: {exc}", file=sys.stderr)
+        return 1
+    name = args.spacecraft or scenario.spacecraft[0].name
+    try:
+        from .engine import propellant_budget as pb
+        from .engine.service import SimulationService
+    except ImportError as exc:
+        print(f"ERROR: Basilisk is not installed/built ({exc}) -- see SpaceMissionStudio/README.md", file=sys.stderr)
+        return 2
+    result = None
+    if args.run:
+        print(f"Running {scenario.name!r} for the simulated contributors...")
+        try:
+            result = SimulationService(scenario).run()
+        except Exception as exc:  # noqa: BLE001 -- report ANY run failure with a specific message
+            print(f"ERROR: run failed: {exc}", file=sys.stderr)
+            return 3
+    if args.altitudes is not None:
+        return _print_altitude_trade(pb, scenario, name, result, args.altitudes)
+    if args.launch_delays:
+        return _print_launch_delays(pb, scenario, name, result)
+    try:
+        budget = pb.compute_budget(scenario, name, result)
+    except pb.BudgetError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 3
+    print(f"{name}: dry mass {budget.dry_mass_kg:.1f} kg, Isp {budget.isp_s:g} s, efficiency {budget.efficiency:.3f}")
+    print(f"{'Phase':<18} {'Contributor':<52} {'dV [m/s]':>9} {'Prop. [kg]':>10}  Margin")
+    for row in budget.rows:
+        dv = "" if row.delta_v_m_s is None else f"{row.delta_v_m_s:.2f}"
+        print(f"{row.phase:<18} {row.contributor:<52} {dv:>9} {row.propellant_kg:>10.3f}  {row.margin} ({row.source})")
+    print(f"{'Total':<71} {budget.total_delta_v_m_s:>9.2f} {budget.total_propellant_kg:>10.3f}")
+    for note in budget.notes:
+        print(f"NOTE: {note}")
+    return 0
+
+
+def _print_launch_delays(pb, scenario, name, result) -> int:
+    print(f"{name}: budget for the planned launch and up to 5 years late (ESA AD10 Sec. 5.5)...")
+    try:
+        sweep = pb.launch_delay_sweep(scenario, name, result)
+    except pb.BudgetError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 3
+    print(f"{'Launch':<11} {'Delay':>6} {'In-plane dV':>12} {'Disposal dV':>12} {'Total dV':>9} {'Prop. [kg]':>10}")
+    worst = sweep.worst
+    for case in sweep.cases:
+        in_plane = case.delta_v_of("Operations", "In-plane")
+        disposal = case.delta_v_of("End of life", "")
+        mark = "  <- worst" if case is worst else ""
+        print(f"{case.launch_utc:%Y-%m-%d} {case.delay_years:>5g}y {in_plane:>12.2f} {disposal:>12.2f} "
+              f"{case.budget.total_delta_v_m_s:>9.2f} {case.budget.total_propellant_kg:>10.3f}{mark}")
+    for note in sweep.notes:
+        print(f"NOTE: {note}")
+    return 0
+
+
 def cmd_kernels_status(args: argparse.Namespace) -> int:
     try:
         from .engine import kernels
@@ -266,6 +442,130 @@ def cmd_kernels_status(args: argparse.Namespace) -> int:
     return 0 if all(s.available for s in statuses) else 1
 
 
+def cmd_earth_orientation(args: argparse.Namespace) -> int:
+    """Status of the Earth orientation files; --fetch downloads them from
+    NAIF (network: only when asked), --import installs files from disk,
+    --rollback restores the previous set."""
+    from .engine import earth_orientation as eo
+
+    try:
+        if args.fetch:
+            print(f"Downloading from {eo.NAIF_PCK_URL}: {', '.join(eo.available_files())} ...")
+            eo.fetch()
+        elif args.import_files:
+            eo.import_files(args.import_files)
+        elif args.rollback:
+            eo.rollback()
+    except eo.EarthOrientationError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+    kernels = eo.installed()
+    if not kernels:
+        print(f"No Earth orientation files installed: runs use {eo.FALLBACK_EARTH_FRAME}. "
+              "Run 'spacemissionstudio earth-orientation --fetch' (needs internet) or --import FILE.")
+        return 1
+    for kernel in kernels:
+        print(f"  {kernel.role:15s} {Path(kernel.path).name}  {kernel.size_bytes / 1e6:.1f} MB  "
+              f"last datum {kernel.last_datum_utc or 'unknown'}  sha256 {kernel.sha256[:16]}  from {kernel.source}")
+    until = eo.high_accuracy_until(kernels)
+    print(f"Earth-fixed frame: {eo.EARTH_FIXED_FRAME}; high accuracy until "
+          f"{until:%Y-%m-%d}, predicted after." if until else f"Earth-fixed frame: {eo.EARTH_FIXED_FRAME}.")
+    return 0
+
+
+def cmd_ccsds_validate(args: argparse.Namespace) -> int:
+    """Check KVN OPM/OMM/OEM files against CCSDS 502.0-B-3."""
+    from .engine import ccsds_odm
+
+    failed = False
+    for path in args.files:
+        issues = ccsds_odm.validate(Path(path).read_text(encoding="ascii", errors="replace"))
+        errors = [i for i in issues if i.level == "error"]
+        failed = failed or bool(errors)
+        print(f"{path}: {'conforms' if not errors else f'{len(errors)} error(s)'}"
+              + (f", {len(issues) - len(errors)} warning(s)" if len(issues) > len(errors) else ""))
+        for issue in issues:
+            print(f"  {issue}")
+    return 1 if failed else 0
+
+
+def cmd_ccsds_export(args: argparse.Namespace) -> int:
+    """OPM of each spacecraft's initial state, or a TLE spacecraft's OMM."""
+    try:
+        scenario = load_scenario(args.scenario)
+    except ScenarioValidationError as exc:
+        print(f"INVALID: {exc}", file=sys.stderr)
+        return 1
+    from .engine import ccsds_odm, time_system
+
+    args.out.mkdir(parents=True, exist_ok=True)
+    epoch = time_system.elapsed_to_utc(scenario.epoch_utc, [0.0])[0]
+    for sc in scenario.spacecraft:
+        if sc.orbit.type == "tle":
+            text = ccsds_odm.omm_from_tle(sc.orbit.tle_line1, sc.orbit.tle_line2, sc.name)
+            path = args.out / f"{sc.name}.omm"
+        else:
+            try:
+                from .engine.service import _orbit_ic_to_rv
+            except ImportError as exc:
+                print(f"ERROR: Basilisk is not installed/built ({exc})", file=sys.stderr)
+                return 2
+            r, v = _orbit_ic_to_rv(ccsds_odm.EARTH_GM_KM3_S2 * 1e9 if scenario.gravity.central_body == "earth"
+                                   else _central_mu(scenario), sc.orbit, scenario.epoch_utc)
+            gm = ccsds_odm.EARTH_GM_KM3_S2 if scenario.gravity.central_body == "earth" else None
+            text = ccsds_odm.write_opm(
+                object_name=sc.name, object_id="UNKNOWN", center_name=scenario.gravity.central_body,
+                ref_frame="EME2000", time_system="UTC", epoch=epoch, r_km=[x / 1e3 for x in r],
+                v_km_s=[x / 1e3 for x in v], gm_km3_s2=gm, mass_kg=sc.dry_mass_kg,
+                srp_area_m2=sc.srp_area_m2 if sc.enable_srp else None, srp_coeff=sc.srp_coeff if sc.enable_srp else None,
+                drag_area_m2=sc.drag_area_m2 if sc.enable_drag else None,
+                drag_coeff=sc.drag_coeff if sc.enable_drag else None,
+                comments=[f"Initial state of scenario {scenario.name!r}; EME2000 is SPICE J2000"])
+            path = args.out / f"{sc.name}.opm"
+        path.write_text(text, encoding="ascii")
+        print(f"wrote {path}")
+    return 0
+
+
+def _central_mu(scenario) -> float:
+    from Basilisk.utilities import simIncludeGravBody
+
+    factory = simIncludeGravBody.gravBodyFactory()
+    return getattr(factory, f"create{scenario.gravity.central_body.capitalize()}")().mu
+
+
+def cmd_ccsds_import(args: argparse.Namespace) -> int:
+    """Set a spacecraft's initial orbit from an OPM or TLE-based OMM."""
+    from .engine import ccsds_odm
+
+    try:
+        scenario = load_scenario(args.scenario)
+        orbit, epoch, notes = ccsds_odm.orbit_ic_from_odm(args.message.read_text(encoding="ascii", errors="replace"))
+    except (ScenarioValidationError, ccsds_odm.OdmError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        for issue in getattr(exc, "issues", []):
+            print(f"  {issue}", file=sys.stderr)
+        return 1
+    matches = [sc for sc in scenario.spacecraft if sc.name == args.spacecraft]
+    if not matches:
+        print(f"ERROR: no spacecraft {args.spacecraft!r} in {args.scenario}", file=sys.stderr)
+        return 1
+    if epoch is not None:
+        scenario_epoch = datetime.fromisoformat(scenario.epoch_utc)
+        if abs((epoch - scenario_epoch.replace(tzinfo=None)).total_seconds()) > 1e-3 and not args.set_epoch:
+            print(f"ERROR: the OPM state is at {epoch.isoformat()} UTC, the scenario epoch is {scenario.epoch_utc}; "
+                  "pass --set-epoch to move the scenario epoch to the OPM's", file=sys.stderr)
+            return 1
+        scenario.epoch_utc = epoch.isoformat()
+    matches[0].orbit = orbit
+    scenario.validate()
+    scenario.save(args.out or args.scenario)
+    for note in notes:
+        print(f"  {note}")
+    print(f"{args.spacecraft}: orbit set from {args.message} -> {args.out or args.scenario}")
+    return 0
+
+
 def cmd_spaceweather_resolve(args: argparse.Namespace) -> int:
     try:
         scenario = load_scenario(args.scenario)
@@ -278,16 +578,12 @@ def cmd_spaceweather_resolve(args: argparse.Namespace) -> int:
     start = datetime.fromisoformat(scenario.epoch_utc)
     end = start + timedelta(days=scenario.sim_settings.duration_days)
     try:
-        resolved = sw.resolve(
-            scenario.space_weather.source, start, end,
-            local_file_path=scenario.space_weather.local_file_path,
-            cache_dir=scenario.space_weather.cache_dir,
-        )
+        resolved = sw.resolve_for(scenario.space_weather, start, end)
     except Exception as exc:  # noqa: BLE001 -- report ANY resolve failure with a specific message, not a bare traceback
         print(f"ERROR: space weather resolve failed: {exc}", file=sys.stderr)
         return 3
     print(f"Resolved to: {resolved.path}")
-    print(f"Synthetic: {resolved.is_synthetic}")
+    print(f"From real data: {resolved.data_file}")
     for warning in resolved.warnings:
         print(f"  warning: {warning}")
     return 0
@@ -381,6 +677,9 @@ def cmd_generate_phasing_formation(args: argparse.Namespace) -> int:
         station_keeping_target_altitude_km=args.station_keeping_target_altitude_km,
         station_keeping_deadband_km=args.station_keeping_deadband_km,
         thrust_n=args.thrust_n, isp_s=args.isp_s, propellant_kg=args.propellant_kg,
+        eclipse_sunlit_threshold=args.eclipse_sunlit_threshold,
+        min_on_time_s=args.min_on_time_s,
+        eccentricity_neutral_burns=args.eccentricity_neutral_burns,
     )
     try:
         follower = generate_phasing_follower(request, chief, template, scenario.gravity.central_body)
@@ -431,6 +730,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_run = subparsers.add_parser("run", help="run a scenario headlessly and export results to CSV")
     p_run.add_argument("scenario", type=Path)
     p_run.add_argument("--out-dir", type=Path, default=Path("results"), help="directory to write CSV results to")
+    p_run.add_argument("--oem", action="store_true",
+                       help="also write each spacecraft's ephemeris as a CCSDS OEM (KVN, EME2000, UTC)")
+    p_run.add_argument("--oem-stride", type=int, default=1, metavar="N",
+                       help="write every Nth recorded state to the OEM (default 1: all)")
+    p_run.add_argument("--oem-interpolation", choices=("hermite", "lagrange"), default="hermite",
+                       help="interpolation the OEM suggests, degree 7 (GMAT reads only lagrange)")
     p_run.add_argument("--vizard-save-file", type=str, default=None,
                         help="write a Vizard .bin playback file to this path (see engine/vizard.py)")
     p_run.add_argument("--vizard-live-stream", action="store_true",
@@ -440,7 +745,13 @@ def build_parser() -> argparse.ArgumentParser:
                              "(default: the scenario's central body -- an Earth-centered view with the orbit "
                              "tracing around it, like STK/GMAT/FreeFlyer, rather than a spacecraft-locked close-up)")
     p_run.add_argument("--vizard-no-orbit-lines", action="store_true",
-                        help="don't draw Vizard's orbit-trace lines (they're on by default)")
+                        help="don't draw each spacecraft's orbit in Vizard (on by default)")
+    p_run.add_argument("--vizard-trail", action="store_true",
+                        help="also draw the flown path in Vizard (builds up into a band over long runs)")
+    p_run.add_argument("--vizard-ground-tracks", action="store_true", help="also draw ground tracks in Vizard")
+    p_run.add_argument("--allow-scripts", action="store_true",
+                       help="run the scenario's script_block commands (unrestricted Python: only for files you "
+                            "trust and have read)")
     p_run.set_defaults(func=cmd_run)
 
     p_mc = subparsers.add_parser("monte-carlo", help="run a Monte Carlo batch and archive retained results")
@@ -449,8 +760,58 @@ def build_parser() -> argparse.ArgumentParser:
                        help="directory to archive per-run parameters and retained data to")
     p_mc.set_defaults(func=cmd_monte_carlo)
 
+    p_life = subparsers.add_parser("lifetime", help="estimate when a spacecraft re-enters (orbit-averaged drag)")
+    p_life.add_argument("scenario", type=Path)
+    p_life.add_argument("--spacecraft", help="spacecraft name (default: the first)")
+    p_life.add_argument("--deorbit-perigee-km", type=float, default=None,
+                        help="first lower the perigee to this altitude [km] with the orbit thruster")
+    p_life.add_argument("--max-years", type=float, default=30.0, help="how far ahead to look [years]")
+    p_life.add_argument("--forecast-percentile", type=float, choices=(95.0, 50.0, 5.0), default=50.0,
+                        help="MSFC solar-activity percentile (ESA AD10: 50 for end of life)")
+    p_life.add_argument("--drag-coeff", default="2.2", type=_drag_coeff_arg,
+                        help="drag coefficient, or 'own' for the spacecraft's (default 2.2: ESA AD10 end of life)")
+    p_life.set_defaults(func=cmd_lifetime)
+
+    p_budget = subparsers.add_parser("budget", help="delta-V and propellant budget (ESA AD10 style)")
+    p_budget.add_argument("scenario", type=Path)
+    p_budget.add_argument("--spacecraft", help="spacecraft name (default: the first)")
+    p_budget.add_argument("--run", action="store_true",
+                          help="run the scenario first, for orbit control and formation keeping")
+    p_budget.add_argument("--launch-delays", action="store_true",
+                          help="repeat the budget for launches 1-5 years late (ESA AD10 Sec. 5.5)")
+    p_budget.add_argument("--altitudes", nargs="?", const="auto", type=_altitudes_arg, default=None,
+                          metavar="KM,KM,...",
+                          help="launch-delay sweep at each altitude [km] (default: five around the "
+                               "spacecraft's own), against the tank")
+    p_budget.set_defaults(func=cmd_budget)
+
     p_kernels = subparsers.add_parser("kernels-status", help="fetch/check SPICE kernel cache status")
     p_kernels.set_defaults(func=cmd_kernels_status)
+
+    p_eop = subparsers.add_parser("earth-orientation",
+                                  help="IERS-based Earth orientation files: status, --fetch, --import, --rollback")
+    eop_action = p_eop.add_mutually_exclusive_group()
+    eop_action.add_argument("--fetch", action="store_true", help="download the current NAIF Earth PCKs (internet)")
+    eop_action.add_argument("--import", dest="import_files", nargs="+", type=Path, metavar="FILE",
+                            help="install Earth PCK .bpc files from disk (a .cmt next to each is read too)")
+    eop_action.add_argument("--rollback", action="store_true", help="restore the previously installed files")
+    p_eop.set_defaults(func=cmd_earth_orientation)
+
+    p_ccsds = subparsers.add_parser("ccsds-validate", help="check CCSDS OPM/OMM/OEM (KVN) files (no Basilisk needed)")
+    p_ccsds.add_argument("files", nargs="+", type=Path)
+    p_ccsds.set_defaults(func=cmd_ccsds_validate)
+    p_ccsds_out = subparsers.add_parser("ccsds-export",
+                                        help="write each spacecraft's initial state as a CCSDS OPM (or OMM for a TLE)")
+    p_ccsds_out.add_argument("scenario", type=Path)
+    p_ccsds_out.add_argument("--out", type=Path, required=True, help="output directory")
+    p_ccsds_out.set_defaults(func=cmd_ccsds_export)
+    p_ccsds_in = subparsers.add_parser("ccsds-import", help="set a spacecraft's orbit from a CCSDS OPM or TLE-based OMM")
+    p_ccsds_in.add_argument("message", type=Path)
+    p_ccsds_in.add_argument("scenario", type=Path)
+    p_ccsds_in.add_argument("--spacecraft", required=True)
+    p_ccsds_in.add_argument("--set-epoch", action="store_true", help="move the scenario epoch to the OPM's epoch")
+    p_ccsds_in.add_argument("--out", type=Path, help="write the updated scenario here (default: overwrite)")
+    p_ccsds_in.set_defaults(func=cmd_ccsds_import)
 
     p_sw = subparsers.add_parser("spaceweather-resolve",
                                   help="resolve space weather for a scenario without running it (no Basilisk needed)")
@@ -508,7 +869,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_phasing.add_argument("--reconfiguration-interval-days", type=float, default=90.0)
     p_phasing.add_argument("--tolerance-fraction", type=float, default=0.10)
     p_phasing.add_argument("--restore-tolerance-fraction", type=float, default=0.02)
-    p_phasing.add_argument("--correction-window-days", type=float, default=21.0)
+    p_phasing.add_argument("--correction-window-days", type=float, default=3.0)
     p_phasing.add_argument("--max-drift-days", type=float, default=90.0)
     p_phasing.add_argument("--max-delta-semi-major-axis-km", type=float, default=3.0)
     p_phasing.add_argument("--station-keeping-target-altitude-km", type=float, default=None,
@@ -517,6 +878,14 @@ def build_parser() -> argparse.ArgumentParser:
     p_phasing.add_argument("--thrust-n", type=float, default=0.05, help="shared thruster thrust [N]")
     p_phasing.add_argument("--isp-s", type=float, default=1500.0, help="shared thruster specific impulse [s]")
     p_phasing.add_argument("--propellant-kg", type=float, default=5.0, help="shared tank propellant [kg]")
+    p_phasing.add_argument("--eclipse-sunlit-threshold", type=float, default=0.99,
+                            help="minimum shadow factor [-] (1.0 = full sunlight) before a station-keeping "
+                                 "reboost burn may fire")
+    p_phasing.add_argument("--min-on-time-s", type=float, default=0.0,
+                            help="shared thruster's minimum firing duration [s] (minimum impulse bit = "
+                                 "thrust x this); 0 = ideal")
+    p_phasing.add_argument("--eccentricity-neutral-burns", action="store_true",
+                            help="gate firings so long eclipse-interrupted burns don't change eccentricity")
     p_phasing.set_defaults(func=cmd_generate_phasing_formation)
 
     p_gui = subparsers.add_parser("gui", help="launch the PySide6 GUI shell")

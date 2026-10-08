@@ -47,16 +47,15 @@ its own explicit enable control here:
   sees) rather than moving the per-spacecraft fields here, which would
   need a spacecraft-picker of its own and duplicate
   ``SpacecraftEditorDialog``'s existing one.
-* atmosphere-model CHOICE (``atmosphere_model_combo``) and a
-  CONSERVATIVE, historical-percentile drag margin
-  (``activity_level_combo``/``activity_percentile_spin``) -- see
-  ``schema.scenario.SpaceWeatherConfig``'s own docstring for exactly
-  what each selects and why (Basilisk has no Jacchia-Roberts model to
-  offer, checked directly against its source; the percentile margin is
-  computed from real historical F10.7/Ap data the user supplies via a
-  local file). This dialog itself makes no network calls -- there is no
-  "celestrak" source option here, only "local_file"/"synthetic" -- but
-  its Local file field pre-fills with the path of the most recent
+* atmosphere-model CHOICE (``atmosphere_model_combo``) and the solar
+  activity (``forecast_percentile_combo``: nominal, conservative or low,
+  NASA MSFC's 50th, 95th or 5th percentile; conservative is ESA AD10's
+  operations case) -- see ``schema.scenario.SpaceWeatherConfig``'s own
+  docstring (Basilisk has no Jacchia-Roberts model to offer, checked
+  directly against its source). This dialog
+  makes no network calls -- the sources are "bundled" (CelesTrak data
+  shipped with the app) and "local_file" -- but its Local file field
+  pre-fills with the path of the most recent
   startup-time fetch (``gui.startup_fetch_dialog``, a real CelesTrak CSV,
   only ever downloaded after the user explicitly agreed to it) when one
   exists and the scenario doesn't already have its own path set; see
@@ -74,11 +73,10 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QApplication,
     QCheckBox,
-    QComboBox,
     QDialog,
     QDialogButtonBox,
-    QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
     QGroupBox,
@@ -89,18 +87,22 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMessageBox,
     QPushButton,
-    QSpinBox,
+    QScrollArea,
     QVBoxLayout,
+    QWidget,
 )
 
 from ..schema.scenario import (
+    MAX_GRAVITY_DEGREE,
     SUPPORTED_CENTRAL_BODIES,
     SUPPORTED_INTEGRATORS,
+    SUPPORTED_SPACE_WEATHER_SOURCES,
     GravityConfig,
     ScenarioValidationError,
     SimSettings,
     SpaceWeatherConfig,
 )
+from .widgets import ComboBox, PreciseDoubleSpinBox, SpinBox
 
 # The minimum spherical-harmonics degree/order that's actually meaningful
 # ("spherical harmonics" starting below this is just point-mass again) --
@@ -108,6 +110,10 @@ from ..schema.scenario import (
 # while the degree spinner is still at 0, never enforced as a hard floor
 # (GravityConfig.validate() only requires >= 0).
 _DEFAULT_HARMONICS_DEGREE = 2
+
+# Wrap width for this dialog's explanatory labels -- keeps the dialog a
+# comfortable reading width instead of one label's single-line length.
+_CONTENT_WIDTH = 600
 
 
 class PropagationSetupDialog(QDialog):
@@ -117,53 +123,64 @@ class PropagationSetupDialog(QDialog):
         self.setWindowTitle("Propagation setup")
 
         layout = QVBoxLayout(self)
+
+        # Everything but the OK/Cancel row lives in a QScrollArea: the
+        # three groups together need ~800 px of height, more than a
+        # common 768/800 px-tall laptop screen offers -- found by
+        # rendering this dialog on an 800 px screen, where the window
+        # manager clamped the window and Qt squashed the last group's
+        # rows until their text was cut off. Scrolling degrades cleanly
+        # instead; on a taller screen the dialog simply opens at full size.
+        content = QWidget()
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setWidget(content)
+        layout.addWidget(scroll)
+
         intro_label = QLabel(
-            "Everything that governs how this scenario's orbits propagate: the gravity model, "
-            "which perturbations are active, the numerical integrator, and the space-weather data "
-            "atmospheric drag uses."
+            "Gravity, perturbations, integrator and space weather for every orbit in this scenario."
         )
         intro_label.setWordWrap(True)
         # A word-wrapped QLabel's sizeHint() reports the width needed to
         # lay the text out on ONE line unless something else constrains
         # it -- without this cap, this label alone stretched the whole
-        # dialog (everything else here just fills whatever width the
-        # layout ends up with) to ~1360px wide. Caught by actually
-        # rendering the dialog and looking at it, not from reading the
-        # layout code -- same class of bug as SpacecraftEditorDialog's
-        # tab-sizing issue elsewhere in this app.
-        intro_label.setMaximumWidth(560)
-        layout.addWidget(intro_label)
+        # dialog to ~1360px wide.
+        intro_label.setMaximumWidth(_CONTENT_WIDTH)
+        content_layout.addWidget(intro_label)
 
-        layout.addWidget(self._build_gravity_group(gravity))
-        layout.addWidget(self._build_sim_settings_group(sim_settings))
-        layout.addWidget(self._build_space_weather_group(space_weather))
-        layout.addStretch(1)
+        content_layout.addWidget(self._build_gravity_group(gravity))
+        content_layout.addWidget(self._build_sim_settings_group(sim_settings))
+        content_layout.addWidget(self._build_space_weather_group(space_weather))
+        content_layout.addStretch(1)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self._on_accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
-        # Real bug, found by actually rendering this dialog: on first
-        # show(), Qt sized this window smaller than its OWN sizeHint()
-        # (871x734 vs 871x768 -- measured directly) -- a nested
-        # QGroupBox/QVBoxLayout/QFormLayout structure containing a
-        # heightForWidth-dependent QLabel (srp_pointer above) doesn't
-        # always converge to its final preferred size within Qt's
-        # initial layout pass. Left alone, that shortfall clipped the
-        # bottom two rows of the "Atmosphere & drag" group against the
-        # group box's own border. Explicitly resizing to sizeHint() here
-        # (computed AFTER every group is built, so it reflects the real,
-        # final content) forces the window to actually match what its
-        # own layout says it needs.
-        self.resize(self.sizeHint())
+        # A QScrollArea's own sizeHint() is a small arbitrary default, not
+        # its content's real size, so size the window from the CONTENT
+        # (computed after every group exists), capped to the screen.
+        content_hint = content.sizeHint()
+        margins = layout.contentsMargins()
+        width = content_hint.width() + margins.left() + margins.right() + scroll.verticalScrollBar().sizeHint().width()
+        height = (content_hint.height() + buttons.sizeHint().height() + layout.spacing()
+                  + margins.top() + margins.bottom())
+        screen = self.screen() if self.screen() is not None else QApplication.primaryScreen()
+        if screen is not None:
+            height = min(height, int(screen.availableGeometry().height() * 0.9))
+        self.resize(width, height)
 
     # -- construction ---------------------------------------------------------
     def _build_gravity_group(self, gravity: GravityConfig) -> QGroupBox:
         group = QGroupBox("Gravity")
         form = QFormLayout(group)
 
-        self.central_body_combo = QComboBox()
+        self.central_body_combo = ComboBox()
         self.central_body_combo.addItems(SUPPORTED_CENTRAL_BODIES)
         self.central_body_combo.setCurrentText(gravity.central_body)
         self.central_body_combo.setToolTip(
@@ -187,8 +204,8 @@ class PropagationSetupDialog(QDialog):
         self.enable_harmonics_check.toggled.connect(self._on_harmonics_toggled)
         form.addRow(self.enable_harmonics_check)
 
-        self.central_body_degree_spin = QSpinBox()
-        self.central_body_degree_spin.setRange(0, 360)
+        self.central_body_degree_spin = SpinBox()
+        self.central_body_degree_spin.setRange(0, MAX_GRAVITY_DEGREE)
         self.central_body_degree_spin.setValue(
             gravity.central_body_degree if gravity.central_body_degree > 0 else _DEFAULT_HARMONICS_DEGREE
         )
@@ -196,7 +213,9 @@ class PropagationSetupDialog(QDialog):
             "How many terms of the real gravity field to include -- higher captures finer "
             "mass-distribution detail at the cost of more compute per step. Degree 2 alone "
             "already captures J2 (by far the dominant term); low double digits (e.g. 8-10) is "
-            "a common practical choice for most mission-design work."
+            "a common practical choice for most mission-design work.\n"
+            "ECSS-E-ST-10-04C 4.2.2a: Earth orbits need degree and order 70 or more (GGM03S goes to 180). "
+            "The Explain tab notes when the degree leaves out more than the SRP acceleration (4.2.1b)."
         )
         form.addRow("Degree/order", self.central_body_degree_spin)
 
@@ -268,19 +287,20 @@ class PropagationSetupDialog(QDialog):
         group = QGroupBox("Simulation settings")
         form = QFormLayout(group)
 
-        self.duration_days_spin = QDoubleSpinBox()
-        self.duration_days_spin.setRange(0.0001, 100000.0)
+        self.duration_days_spin = PreciseDoubleSpinBox()
+        self.duration_days_spin.setRange(0.0001, SimSettings._MAX_DURATION_DAYS)
         self.duration_days_spin.setDecimals(4)
         self.duration_days_spin.setValue(sim_settings.duration_days)
         self.duration_days_spin.setToolTip(
             "Total simulated time, starting from the epoch. Longer means more wall-clock run "
             "time (roughly proportional to duration / task rate below) and a bigger recorded "
             "dataset -- pick just enough to see what you're looking for (e.g. a few orbits for "
-            "a quick geometry check, weeks/months for a real decay/station-keeping study)."
+            "a quick geometry check, weeks/months for a real decay/station-keeping study). "
+            "Over 100 days runs as several shorter simulations, chained."
         )
         form.addRow("Duration [days]", self.duration_days_spin)
 
-        self.task_rate_spin = QDoubleSpinBox()
+        self.task_rate_spin = PreciseDoubleSpinBox()
         self.task_rate_spin.setRange(0.001, 1.0e6)
         self.task_rate_spin.setDecimals(3)
         self.task_rate_spin.setValue(sim_settings.dynamics_task_rate_s)
@@ -293,7 +313,19 @@ class PropagationSetupDialog(QDialog):
         )
         form.addRow("Dynamics task rate [s]", self.task_rate_spin)
 
-        self.integrator_combo = QComboBox()
+        self.record_interval_spin = PreciseDoubleSpinBox()
+        self.record_interval_spin.setRange(0.0, 86400.0)
+        self.record_interval_spin.setDecimals(1)
+        self.record_interval_spin.setSingleStep(60.0)
+        self.record_interval_spin.setSpecialValueText("Every step")
+        self.record_interval_spin.setValue(sim_settings.record_interval_s)
+        self.record_interval_spin.setToolTip(
+            "How often results are recorded. Long runs need this: a year at a 30 s step is a million "
+            "samples per plot. Burns still show however short; passes shorter than this may not."
+        )
+        form.addRow("Record every [s]", self.record_interval_spin)
+
+        self.integrator_combo = ComboBox()
         self.integrator_combo.addItems(SUPPORTED_INTEGRATORS)
         self.integrator_combo.setCurrentText(sim_settings.integrator)
         self.integrator_combo.setToolTip(
@@ -335,18 +367,16 @@ class PropagationSetupDialog(QDialog):
         # top-level intro_label already uses successfully, doesn't have
         # that negotiation problem.
         srp_pointer = QLabel(
-            "Atmospheric drag and solar radiation pressure are set PER SPACECRAFT (each needs that "
-            "spacecraft's own cross-section/coefficient) -- open a spacecraft in the scenario's "
-            "spacecraft list and look at its \"Orbit / mass\" tab, not here."
+            "Drag and solar radiation pressure are set per spacecraft, on its Orbit / mass tab."
         )
         srp_pointer.setWordWrap(True)
-        srp_pointer.setMaximumWidth(520)
+        srp_pointer.setMaximumWidth(_CONTENT_WIDTH)
         group_layout.addWidget(srp_pointer)
 
         form = QFormLayout()
         group_layout.addLayout(form)
 
-        self.atmosphere_model_combo = QComboBox()
+        self.atmosphere_model_combo = ComboBox()
         # (display text, schema value) -- SpaceWeatherConfig.atmosphere_model's
         # own docstring explains why these two and not, say, Jacchia-Roberts
         # (Basilisk has no such model at all).
@@ -361,91 +391,91 @@ class PropagationSetupDialog(QDialog):
             "What atmospheric density model drag (see each spacecraft's own 'Enable "
             "atmospheric drag' checkbox) is actually computed from. NRLMSISE-00 is a real, "
             "physically-detailed density model that responds to solar/geomagnetic activity "
-            "(set via Source/Drag margin below); Exponential is a much simpler fallback with "
+            "(set via Source/Solar activity below); Exponential is a much simpler fallback with "
             "no space-weather dependence at all -- only use it when you specifically want to "
             "isolate drag's effect from solar-cycle variability."
         )
         self.atmosphere_model_combo.currentIndexChanged.connect(self._on_atmosphere_model_changed)
         form.addRow("Atmosphere model", self.atmosphere_model_combo)
 
-        self.space_weather_source_combo = QComboBox()
-        self.space_weather_source_combo.addItems(["synthetic", "local_file"])
+        self.space_weather_source_combo = ComboBox()
+        self.space_weather_source_combo.addItems(list(SUPPORTED_SPACE_WEATHER_SOURCES))
         self.space_weather_source_combo.setCurrentText(space_weather.source)
         self.space_weather_source_combo.setToolTip(
-            "Where NRLMSISE-00's solar/geomagnetic activity inputs (F10.7, Ap) come from. "
-            "'synthetic' generates a nominal, solar-cycle-SHAPED profile locally -- plausible "
-            "but not a real historical record, and the only option that needs no extra setup. "
-            "'local_file' reads real historical data from a CSV you supply yourself (this app "
-            "makes no network calls at runtime -- see the field below)."
+            "Where NRLMSISE-00's observed F10.7 and Ap come from -- real data only. 'bundled': "
+            "CelesTrak's record shipped with the app (since 1957, plus a 45-day forecast); a newer "
+            "copy from the startup download is used automatically. 'local_file': your own CelesTrak "
+            "file. Later days use NASA MSFC's prediction (below)."
         )
         self.space_weather_source_combo.currentTextChanged.connect(self._on_space_weather_source_changed)
         form.addRow("Source", self.space_weather_source_combo)
 
         local_file_row = QHBoxLayout()
-        # Pre-fills with the most recently startup-fetched CelesTrak CSV
-        # (see gui.startup_fetch_dialog) when the scenario doesn't already
-        # have its own local_file_path set -- a real user-visible fetch
-        # that produces a local file nobody can actually USE unless they
-        # know its path isn't much of a convenience. Still just a
-        # suggestion: the field stays plain text, editable/clearable like
-        # any other, and nothing here touches the network -- it only
-        # checks whether a previous fetch already left a file on disk.
-        initial_local_file_path = space_weather.local_file_path
-        if not initial_local_file_path:
-            from ..engine import spaceweather as sw
-            cached = sw.cached_fetch_path()
-            if cached is not None:
-                initial_local_file_path = str(cached)
-        self.local_file_edit = QLineEdit(initial_local_file_path or "")
+        self.local_file_edit = QLineEdit(space_weather.local_file_path or "")
         self.local_file_edit.setToolTip(
-            "Path to a real historical space-weather CSV (e.g. a CelesTrak F10.7/Ap extract "
-            "you downloaded ahead of time) -- only read when Source above is 'local_file'; "
-            "ignored otherwise. This app never fetches this itself at run time."
+            "A CelesTrak space-weather file (SW-All.txt or .csv) you downloaded yourself -- "
+            "only read when Source above is 'local_file'. This app never fetches it at run time."
         )
+        self.local_file_edit.setPlaceholderText("only used when Source is local_file")
         self.local_file_browse_button = QPushButton("Browse...")
         self.local_file_browse_button.clicked.connect(self._on_browse_local_file)
         local_file_row.addWidget(self.local_file_edit)
         local_file_row.addWidget(self.local_file_browse_button)
-        form.addRow("Local file (used directly if Source=local_file; ignored otherwise)", local_file_row)
+        form.addRow("Local file", local_file_row)
 
-        self.activity_level_combo = QComboBox()
-        # (display text, schema value)
-        self._activity_level_items = [("Nominal (ordinary resolved space weather)", "nominal"),
-                                       ("Conservative (historical-percentile worst-case margin)", "conservative")]
-        for label, _value in self._activity_level_items:
-            self.activity_level_combo.addItem(label)
-        self.activity_level_combo.setCurrentIndex(0 if space_weather.activity_level == "nominal" else 1)
-        self.activity_level_combo.setToolTip(
-            "'Nominal' uses the resolved space-weather profile (from Source above) as-is -- "
-            "day-to-day variation included. 'Conservative' instead holds activity at a fixed, "
-            "sustained high percentile (set below) for the WHOLE scenario -- a worst-case "
-            "margin for drag-sensitive design questions (e.g. minimum propellant for station "
-            "-keeping), at the cost of being less representative of an ordinary day."
+        self._forecast_items = [("Nominal: MSFC 50th percentile (AD10 end of life)", 50.0),
+                                ("Conservative: MSFC 95th percentile (AD10 operations)", 95.0),
+                                ("Low: MSFC 5th percentile", 5.0)]
+        self.forecast_percentile_combo = ComboBox()
+        for label, _value in self._forecast_items:
+            self.forecast_percentile_combo.addItem(label)
+        self.forecast_percentile_combo.setCurrentIndex(
+            next((i for i, (_l, v) in enumerate(self._forecast_items) if v == float(space_weather.forecast_percentile)),
+                 0))
+        self.forecast_percentile_combo.setToolTip(
+            "Solar activity past the observations: NASA MSFC's predicted solar cycle (F10.7 and Ap) at "
+            "this percentile. ESA AD10 (EOP-FM/2024-07-177) Sec. 5.9: 95th for operations budgets, "
+            "50th for end of life. Observed days always use the observations."
         )
-        self.activity_level_combo.currentIndexChanged.connect(self._on_activity_level_changed)
-        form.addRow("Drag margin", self.activity_level_combo)
+        form.addRow("Solar activity", self.forecast_percentile_combo)
 
-        self.activity_percentile_spin = QDoubleSpinBox()
-        self.activity_percentile_spin.setRange(50.0, 99.9)
-        self.activity_percentile_spin.setDecimals(1)
-        self.activity_percentile_spin.setValue(space_weather.activity_percentile)
-        self.activity_percentile_spin.setToolTip(
-            "Percentile of REAL historical F10.7/Ap data to hold constant across the whole scenario as "
-            "a sustained worst-case drag assumption -- 95.0 is a common 'P95' choice; ~97.7 approximates "
-            "a mean+2-sigma figure. This app makes no network calls at runtime, so 'Conservative' needs "
-            "Source above set to 'local_file', pointing at a real historical space-weather CSV you "
-            "supply yourself (e.g. a CelesTrak extract downloaded ahead of time, outside this app)."
+        msfc_row = QHBoxLayout()
+        self.msfc_file_edit = QLineEdit(space_weather.msfc_file_path or "")
+        self.msfc_file_edit.setPlaceholderText("(MSFC prediction shipped with the app)")
+        self.msfc_file_edit.setToolTip(
+            "Your own NASA MSFC prediction table (e.g. oct2026f10-prd.txt), to keep a study on the "
+            "file it started with. Empty: the one shipped with the app."
         )
-        form.addRow("Worst-case percentile", self.activity_percentile_spin)
+        self.msfc_browse_button = QPushButton("Browse...")
+        self.msfc_browse_button.clicked.connect(self._on_browse_msfc_file)
+        msfc_row.addWidget(self.msfc_file_edit)
+        msfc_row.addWidget(self.msfc_browse_button)
+        form.addRow("MSFC prediction", msfc_row)
+
+        # cache_dir: internal-infra override, not a mission-design knob --
+        # see SpaceWeatherConfig.cache_dir's own comment. Blank (the
+        # common case) keeps the None default, which lets
+        # engine.spaceweather pick its own cache directory. Rarely
+        # needed; included here only so a value already set on a
+        # hand-edited scenario round-trips instead of being silently
+        # dropped on save (same reasoning as every other optional field
+        # in this dialog).
+        self.cache_dir_edit = QLineEdit(space_weather.cache_dir or "")
+        self.cache_dir_edit.setPlaceholderText("(default cache directory)")
+        self.cache_dir_edit.setToolTip(
+            "Overrides where engine.spaceweather caches fetched space-weather data on disk. "
+            "Rarely needed -- leave blank unless you specifically need a non-default cache "
+            "location (e.g. a read-only home directory)."
+        )
+        form.addRow("Cache directory (advanced)", self.cache_dir_edit)
 
         self._on_atmosphere_model_changed(self.atmosphere_model_combo.currentIndex())
         self._on_space_weather_source_changed(self.space_weather_source_combo.currentText())
-        self._on_activity_level_changed(self.activity_level_combo.currentIndex())
         return group
 
     def _on_atmosphere_model_changed(self, _index: int) -> None:
         is_msis = self._selected_atmosphere_model() == "nrlmsise00"
-        # Exponential ignores source/local_file_path/activity_level entirely
+        # Exponential ignores source/local_file_path/solar activity entirely
         # (schema.scenario.SpaceWeatherConfig's own docstring) -- greyed
         # out rather than hidden, so switching back doesn't lose whatever
         # the user had set.
@@ -454,26 +484,45 @@ class PropagationSetupDialog(QDialog):
         self.local_file_browse_button.setEnabled(
             is_msis and self.space_weather_source_combo.currentText() == "local_file"
         )
-        self.activity_level_combo.setEnabled(is_msis)
-        self.activity_percentile_spin.setEnabled(is_msis and self._selected_activity_level() == "conservative")
-
-    def _on_activity_level_changed(self, _index: int) -> None:
-        is_msis = self._selected_atmosphere_model() == "nrlmsise00"
-        self.activity_percentile_spin.setEnabled(is_msis and self._selected_activity_level() == "conservative")
+        for widget in (self.forecast_percentile_combo, self.msfc_file_edit, self.msfc_browse_button):
+            widget.setEnabled(is_msis)
 
     def _selected_atmosphere_model(self) -> str:
         return self._atmosphere_model_items[self.atmosphere_model_combo.currentIndex()][1]
-
-    def _selected_activity_level(self) -> str:
-        return self._activity_level_items[self.activity_level_combo.currentIndex()][1]
 
     def _on_space_weather_source_changed(self, source: str) -> None:
         is_msis = self._selected_atmosphere_model() == "nrlmsise00"
         self.local_file_edit.setEnabled(is_msis and source == "local_file")
         self.local_file_browse_button.setEnabled(is_msis and source == "local_file")
+        if source == "local_file":
+            self._suggest_cached_local_file()
+
+    def _suggest_cached_local_file(self) -> None:
+        """Fill an empty "Local CSV file" with the most recently
+        startup-fetched CelesTrak CSV (see gui.startup_fetch_dialog), so a
+        fetched file is usable without knowing where it went. Only when
+        the source IS local_file: real bug, found on a real user's
+        machine, where pre-filling it for every scenario meant merely
+        opening this dialog and clicking OK wrote the user's own absolute
+        cache path into a bundled-source scenario (and so into any file
+        they saved and shared). Never touches the network -- it only
+        checks whether a previous fetch already left a file on disk.
+        """
+        if self.local_file_edit.text().strip():
+            return
+        from ..engine import spaceweather as sw
+        cached = sw.cached_fetch_path()
+        if cached is not None:
+            self.local_file_edit.setText(str(cached))
+
+    def _on_browse_msfc_file(self) -> None:
+        path, _filter = QFileDialog.getOpenFileName(self, "Select an MSFC prediction table", "", "Text (*.txt)")
+        if path:
+            self.msfc_file_edit.setText(path)
 
     def _on_browse_local_file(self) -> None:
-        path, _filter = QFileDialog.getOpenFileName(self, "Select space-weather CSV", "", "CSV files (*.csv)")
+        path, _filter = QFileDialog.getOpenFileName(self, "Select a CelesTrak space-weather file", "",
+                                                    "Space weather (*.txt *.csv)")
         if path:
             self.local_file_edit.setText(path)
 
@@ -492,15 +541,17 @@ class PropagationSetupDialog(QDialog):
             duration_days=self.duration_days_spin.value(),
             dynamics_task_rate_s=self.task_rate_spin.value(),
             integrator=self.integrator_combo.currentText(),
+            record_interval_s=self.record_interval_spin.value(),
         )
 
     def to_space_weather(self) -> SpaceWeatherConfig:
         return SpaceWeatherConfig(
             source=self.space_weather_source_combo.currentText(),
             local_file_path=self.local_file_edit.text().strip() or None,
+            cache_dir=self.cache_dir_edit.text().strip() or None,
             atmosphere_model=self._selected_atmosphere_model(),
-            activity_level=self._selected_activity_level(),
-            activity_percentile=self.activity_percentile_spin.value(),
+            forecast_percentile=self._forecast_items[self.forecast_percentile_combo.currentIndex()][1],
+            msfc_file_path=self.msfc_file_edit.text().strip() or None,
         )
 
     def _on_accept(self) -> None:

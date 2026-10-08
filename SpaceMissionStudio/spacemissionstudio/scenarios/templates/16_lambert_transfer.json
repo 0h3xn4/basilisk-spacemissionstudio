@@ -27,15 +27,15 @@
       },
       "dry_mass_kg": 330.0,
       "inertia_kg_m2": [
-        10.0,
+        101.5,
         0.0,
         0.0,
         0.0,
-        10.0,
+        101.5,
         0.0,
         0.0,
         0.0,
-        10.0
+        79.2
       ],
       "sigma_bn_init": [
         0.0,
@@ -53,6 +53,7 @@
       "enable_srp": false,
       "srp_coeff": 1.3,
       "srp_area_m2": 1.0,
+      "facets": [],
       "enable_gravity_gradient": false,
       "sensors": [],
       "actuators": [],
@@ -63,11 +64,13 @@
       "rf_link": null,
       "comms_pointing": null,
       "station_keeping": null,
+      "geo_station_keeping": null,
       "phasing_keeping": null,
       "constant_thrust": null,
       "momentum_dumping": null,
       "magnetic_momentum_management": null,
       "fuel_tank": null,
+      "propellant_budget": null,
       "vizard_model_path": null,
       "vizard_model_offset_m": [
         0.0,
@@ -88,17 +91,18 @@
   ],
   "ground_stations": [],
   "space_weather": {
-    "source": "synthetic",
+    "source": "bundled",
     "local_file_path": null,
     "cache_dir": null,
     "atmosphere_model": "nrlmsise00",
-    "activity_level": "nominal",
-    "activity_percentile": 95.0
+    "forecast_percentile": 50.0,
+    "msfc_file_path": null
   },
   "sim_settings": {
     "duration_days": 0.2,
     "dynamics_task_rate_s": 10.0,
-    "integrator": "rkf78"
+    "integrator": "rkf78",
+    "record_interval_s": 0.0
   },
   "monte_carlo": {
     "enabled": false,
@@ -108,6 +112,15 @@
     "dispersions": []
   },
   "mission_sequence": [
+    {
+      "kind": "propagate",
+      "label": "Coast to burn point",
+      "params": {
+        "stop_condition": "duration",
+        "duration_days": 0.028819444444444446
+      },
+      "children": []
+    },
     {
       "kind": "report",
       "label": "Before transfer",
@@ -150,6 +163,6 @@
       "children": []
     }
   ],
-  "description": "A new Mission Sequence command kind: 'lambert_transfer' solves for whatever impulsive delta-V takes the spacecraft from its CURRENT state to target_position_m after time_of_flight_s, via Basilisk's own lambertPlanner -> lambertSolver -> lambertValidator chain (engine.mission_engine.MissionEngine._run_lambert_transfer), then applies it immediately -- unlike '08's 'maneuver' command, you specify WHERE you want to end up, not the delta-V itself. Same underlying 3 Basilisk modules, same validation/reporting philosophy as Basilisk's own examples/scenarioLambertSolver.py.\n\nThis exact configuration (orbit, target_position_m, time_of_flight_s) was confirmed directly against a real Basilisk build to land within floating-point noise (sub-millimeter) of target_position_m when the resulting delta-V is propagated forward by time_of_flight_s -- not a hand-picked-to-look-plausible example.\n\nWhat to look at: the 'Mission Output' tab's two 'report' commands snapshot sat-1.position_N before and after the transfer -- after propagating for time_of_flight_s, the 'after' position should sit almost exactly at target_position_m ([-6578000, 0, 0] m here).\n\nTry changing: target_position_m (any reachable point works, not just ones near the current orbit), time_of_flight_s (very short times need very large, often rejected, delta-Vs -- try making it unreasonably small to see lambert_transfer raise a clear 'lambertValidator reported' error instead of silently doing nothing), or min_orbit_radius_m (set it to the central body's own radius to reject any transfer trajectory that would dip through the surface).",
-  "schema_version": 2
+  "description": "A Mission Sequence step that solves for the burn: lambert_transfer finds the delta-V that reaches a target position after a set time of flight, then applies it.\n\nWhat to look at:\n- The Mission Output tab: after the time of flight, the position sits at the target [-6578000, 0, 0] m, within about 2 m (the solver accepts up to 500 m).\n\nTry changing:\n- Target position or time of flight (too short a time is rejected with a clear error).\n- Coast to burn point: shorten it to 10 s and the path dips below Earth's surface, so the minimum orbit radius check rejects it.",
+  "schema_version": 4
 }

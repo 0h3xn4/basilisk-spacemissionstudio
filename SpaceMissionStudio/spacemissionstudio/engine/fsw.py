@@ -185,7 +185,8 @@ from Basilisk.simulation import (
 from Basilisk.utilities import macros, simIncludeRW, simIncludeThruster
 
 from ..schema.scenario import SUPPORTED_FSW_MODES, GroundStationConfig, RFLinkConfig
-from . import link_budget
+from . import environment_models, geodesy, link_budget
+from .orbit_maintenance import LogThinner
 
 DEFAULT_MRP_GAINS: Dict[str, float] = {"K": 3.5, "P": 30.0}
 
@@ -570,6 +571,7 @@ class _CommsPointingArbitrator(sysModel.SysModel):
 
         # Python-side telemetry -- same convention as
         # engine.orbit_maintenance's controllers (see class docstring).
+        self.logThinner = LogThinner()  # see sim_settings.record_interval_s
         self.tLog: list = []
         self.modeLog: list = []  # 0 = Sun-pointing, 1 = ground-station-pointing
         self.pointingErrorDegLog: list = []  # [deg] the ACTIVE chain's own achieved tracking error
@@ -626,9 +628,10 @@ class _CommsPointingArbitrator(sysModel.SysModel):
         link_cmd.deviceCmd = link_ok_cmd
         self.linkStatusCmdOutMsg.write(link_cmd, CurrentSimNanos, self.moduleID)
 
-        self.tLog.append(t)
-        self.modeLog.append(1 if active_comms else 0)
-        self.pointingErrorDegLog.append(theta_deg)
+        if self.logThinner.due(t):
+            self.tLog.append(t)
+            self.modeLog.append(1 if active_comms else 0)
+            self.pointingErrorDegLog.append(theta_deg)
 
 
 def build_comms_pointing(scSim, task_name: str, tag: str, comms_config, sun_guid_msg, comms_guid_msg,
@@ -1154,11 +1157,16 @@ def build_rw_motor_torque(scSim, task_name: str, tag: str, mrp_feedback_module, 
 
 
 def build_ground_location(scSim, task_name: str, gs_config, central_body_radius_m: float, planet_state_out_msg,
-                           sc_state_out_msgs: List):
+                           sc_state_out_msgs: List, central_body: str = "earth"):
     """One ``groundLocation.GroundLocation`` per
     :class:`schema.scenario.GroundStationConfig`. Matches
     ``examples/scenarioAttLocPoint.py``. Its ``currentGroundStateOutMsg`` is
     what ``locationPointing`` targets (:func:`build_guidance`).
+
+    The site is placed with ``specifyLocationPCPF`` at its position on the
+    reference surface of :func:`engine.geodesy.ellipsoid_for` (WGS-84 for
+    Earth, ECSS-E-ST-10-09C 5.4.6a): ``specifyLocation`` would put a
+    geodetic latitude on a sphere, up to about 21 km off for Earth.
 
     ``engine.service`` calls this BEFORE any spacecraft exist (ground
     stations don't depend on them), so ``sc_state_out_msgs`` is normally
@@ -1169,7 +1177,10 @@ def build_ground_location(scSim, task_name: str, gs_config, central_body_radius_
     gl = groundLocation.GroundLocation()
     gl.ModelTag = f"groundStation_{gs_config.name}"
     gl.planetRadius = central_body_radius_m
-    gl.specifyLocation(np.radians(gs_config.latitude_deg), np.radians(gs_config.longitude_deg), gs_config.altitude_m)
+    ellipsoid = geodesy.ellipsoid_for(central_body, central_body_radius_m)
+    r_LP_P = geodesy.geodetic_to_pcpf(np.radians(gs_config.latitude_deg), np.radians(gs_config.longitude_deg),
+                                      gs_config.altitude_m, ellipsoid)
+    gl.specifyLocationPCPF(r_LP_P)
     gl.minimumElevation = np.radians(gs_config.min_elevation_deg)
     gl.maximumRange = -1.0  # no maximum slant range
     gl.planetInMsg.subscribeTo(planet_state_out_msg)
@@ -1216,7 +1227,8 @@ def build_magnetic_field_wmm(scSim, task_name: str, planet_state_out_msg, centra
 
 
 def attach_sensors(scSim, task_name: str, tag: str, sc_object, sensor_configs: List,
-                    sun_state_out_msg=None, mag_field_model=None, sun_eclipse_in_msg=None) -> Dict[str, object]:
+                    sun_state_out_msg=None, mag_field_model=None, sun_eclipse_in_msg=None,
+                    solar_flux_w_m2: float = environment_models.TOTAL_SOLAR_IRRADIANCE_W_M2) -> Dict[str, object]:
     """Builds every :class:`schema.scenario.SensorConfig` entry for one
     spacecraft and returns ``{sensor.name: output_message}`` for
     :class:`~spacemissionstudio.engine.results.ResultSet` recording.
@@ -1457,6 +1469,16 @@ def attach_sensors(scSim, task_name: str, tag: str, sc_object, sensor_configs: L
                 mod.T_0 = float(params["initial_temp_c"])
             if "power_draw_w" in params:
                 mod.sensorPowerDraw = float(params["power_draw_w"])
+            # sensorThermal's own constants (1366 W/m^2 at any distance,
+            # sigma 5.76051e-8) are not settable: scale its inputs so the
+            # heat balance uses the scenario epoch's solar flux and the
+            # CODATA sigma (ECSS-E-ST-10-04C 6.2.1a; engine.environment_models).
+            corrected = environment_models.sensor_thermal_inputs(
+                mod.sensorAbsorptivity, mod.sensorEmissivity, mod.sensorPowerDraw, mod.sensorMass, solar_flux_w_m2)
+            mod.sensorAbsorptivity = corrected.absorptivity
+            mod.sensorEmissivity = corrected.emissivity
+            mod.sensorPowerDraw = corrected.power_draw_w
+            mod.sensorMass = corrected.mass_kg
             mod.sunInMsg.subscribeTo(sun_state_out_msg)
             mod.stateInMsg.subscribeTo(sc_object.scStateOutMsg)
             # Optional, confirmed directly against sensorThermal.cpp's own

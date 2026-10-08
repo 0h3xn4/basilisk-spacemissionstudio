@@ -4,7 +4,6 @@ not synthetic fixtures, since the whole point of this widget is
 surfacing exactly those files.
 """
 
-from pathlib import Path
 
 import pytest
 
@@ -49,16 +48,32 @@ def test_no_selection_disables_open_button_and_clears_description(qtbot):
 
 
 def _customize_button(widget, name_substring: str):
-    """Finds the standalone "Customize: <template name>..." button for a
-    given template -- see _build_customize_buttons's own docstring for
-    why these are separate, always-enabled buttons rather than one
-    shared, selection-dependent button.
+    """Finds a template row's own "Customize..." button (accessible name
+    "Customize: <template name>") -- see this module's docstring for why
+    each row has its own always-enabled button rather than one shared,
+    selection-dependent button.
     """
     from PySide6.QtWidgets import QPushButton
 
-    matches = [b for b in widget.findChildren(QPushButton) if name_substring in b.text()]
+    matches = [b for b in widget.findChildren(QPushButton)
+               if b.accessibleName().startswith("Customize: ") and name_substring in b.accessibleName()]
     assert len(matches) == 1, f"expected exactly one Customize button matching {name_substring!r}, got {matches}"
     return matches[0]
+
+
+def test_left_pane_content_fits_a_default_window_without_horizontal_scrolling(qtbot):
+    """Regression test for a real layout bug found by audit: a second,
+    full-width "Customize: <whole template title>..." button per template
+    demanded up to ~670 px, forcing the Load Scenario tab into a
+    horizontal scrollbar at the default 1400x850 window size (left pane
+    ~580 px) -- clipping the intro text mid-word and hiding this tab's own
+    buttons behind the scrollbar.
+    """
+    from spacemissionstudio.gui.load_scenario_widget import LoadScenarioWidget
+
+    widget = LoadScenarioWidget()
+    qtbot.addWidget(widget)
+    assert widget.minimumSizeHint().width() <= 560
 
 
 def test_customize_button_exists_for_every_template_with_a_registered_wizard_spec(qtbot):
@@ -299,3 +314,31 @@ def test_a_malformed_template_is_skipped_not_crashed_on(qtbot, monkeypatch, tmp_
     qtbot.addWidget(widget)
 
     assert widget.list_widget.count() == 0
+
+
+def test_description_renders_headings_and_bullets(qtbot):
+    from spacemissionstudio.gui.load_scenario_widget import description_html
+
+    html_text = description_html("Summary line.\n\nTry changing:\n- First <one>\n- Second")
+    assert "<b>Try changing</b>" in html_text
+    assert html_text.count("<li>") == 2
+    assert "&lt;one&gt;" in html_text  # escaped, never interpreted
+    assert "<p" in html_text and "Summary line." in html_text
+
+
+def test_selected_templates_title_and_description_are_visible_without_scrolling_the_tab(qtbot):
+    """The description used to sit below the 20-row list, off-screen."""
+    from PySide6.QtWidgets import QApplication
+
+    from spacemissionstudio.gui.load_scenario_widget import LoadScenarioWidget
+
+    widget = LoadScenarioWidget()
+    qtbot.addWidget(widget)
+    widget.resize(560, 700)
+    widget.show()
+    widget.list_widget.setCurrentRow(4)
+    for _ in range(3):
+        QApplication.processEvents()
+    assert widget.description_title.text() == widget.list_widget.item(4).text()
+    top_of_card = widget.description_scroll.mapTo(widget, widget.description_scroll.rect().topLeft()).y()
+    assert top_of_card < widget.height() - 100  # the card starts well inside the visible tab

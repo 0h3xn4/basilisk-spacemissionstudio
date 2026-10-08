@@ -8,3 +8,7 @@ dist/
 
 # Space-weather cache (fetched/generated at runtime, not checked in)
 .cache/
+
+# Coverage data (compliance/tools/metrics.py, CI)
+.coverage
+coverage.json

@@ -65,6 +65,48 @@ def test_initial_title_is_untitled(window):
     assert window.windowTitle() == "SpaceMissionStudio -- untitled"
 
 
+def test_explain_tab_exists_and_shows_the_default_scenario_on_startup(window):
+    assert window.right_tabs.indexOf(window.scenario_explainer_widget) >= 0
+    assert window.right_tabs.tabText(window.right_tabs.indexOf(window.scenario_explainer_widget)) == "Explain"
+    # reset_to_default()'s own scenario has zero spacecraft (invalid --
+    # Scenario.validate() requires >= 1), so the placeholder is the
+    # correct initial state here, not a crash -- this is the real
+    # regression this test guards: reset_to_default() runs BEFORE
+    # __init__ wires the changed signal, so without the explicit initial
+    # call this fix adds, the widget would be left showing its
+    # constructor-time blank state instead of ever calling set_scenario()
+    # at all.
+    assert not window.scenario_explainer_widget._placeholder_label.isHidden()
+
+
+def test_explain_tab_refreshes_on_edit(window):
+    _add_valid_spacecraft(window)
+    assert window.scenario_explainer_widget._headline_label.isHidden() is False
+    tile_labels = {
+        window.scenario_explainer_widget._tiles_row.itemAt(i).widget()
+        for i in range(window.scenario_explainer_widget._tiles_row.count())
+        if window.scenario_explainer_widget._tiles_row.itemAt(i).widget() is not None
+    }
+    assert tile_labels  # at least one stat tile rendered for the new spacecraft
+
+
+def test_explain_tab_shows_placeholder_while_scenario_is_invalid(window):
+    window.scenario_editor.name_edit.setText("")  # name must not be empty -- an invalid scenario
+    window.scenario_editor.changed.emit()
+    assert not window.scenario_explainer_widget._placeholder_label.isHidden()
+
+
+def test_explain_tab_refreshes_on_new(window):
+    _add_valid_spacecraft(window)
+    assert not window.scenario_explainer_widget._headline_label.isHidden()
+    window.on_new()
+    # on_new() resets to reset_to_default()'s own zero-spacecraft scenario,
+    # which does NOT validate (Scenario.validate() requires >= 1
+    # spacecraft) -- the placeholder, not the stale "sat-1" headline from
+    # before on_new(), is the correct post-reset state.
+    assert not window.scenario_explainer_widget._placeholder_label.isHidden()
+
+
 def test_toolbar_actions_are_all_visible(window, qtbot):
     """Regression test for a real user report, with a screenshot: on
     their platform, one toolbar button ("Launch Vizard") simply wasn't
@@ -198,16 +240,16 @@ def test_choosing_a_customized_scenario_opens_it_with_no_current_path(window):
 
     template_path = TEMPLATES_DIR / "03_geo_station_keeping.json"
     scenario = load_scenario(template_path)
-    scenario.spacecraft[0].station_keeping.deadband_km = 2.5
+    scenario.spacecraft[0].geo_station_keeping.longitude_deadband_deg = 0.1
 
     window.load_scenario_widget.scenario_customized.emit(scenario)
 
     assert window._current_path is None
     assert window.left_tabs.currentWidget() is window.scenario_editor
     loaded = window.scenario_editor.to_scenario()
-    assert loaded.spacecraft[0].station_keeping.deadband_km == 2.5
+    assert loaded.spacecraft[0].geo_station_keeping.longitude_deadband_deg == 0.1
     # The original template file itself must be untouched.
-    assert load_scenario(template_path).spacecraft[0].station_keeping.deadband_km != 2.5
+    assert load_scenario(template_path).spacecraft[0].geo_station_keeping.longitude_deadband_deg != 0.1
 
 
 def test_choosing_a_customized_scenario_with_unsaved_changes_prompts_first(window, monkeypatch):
@@ -236,7 +278,7 @@ def test_customized_scenario_that_fails_validation_shows_error_not_crash(window,
     monkeypatch.setattr(QMessageBox, "critical", staticmethod(lambda *a, **k: critical_calls.append(a)))
 
     scenario = load_scenario(TEMPLATES_DIR / "03_geo_station_keeping.json")
-    scenario.spacecraft[0].station_keeping.deadband_km = -1.0  # invalid: must be > 0
+    scenario.spacecraft[0].geo_station_keeping.longitude_deadband_deg = -1.0  # invalid: must be > 0
 
     window.load_scenario_widget.scenario_customized.emit(scenario)
 
@@ -362,9 +404,10 @@ def test_run_passes_vizard_request_to_worker(window, monkeypatch):
     captured = {}
     original_init = RunWorker.__init__
 
-    def spy_init(self, scenario, vizard_request=None, live=False, parent=None):
+    def spy_init(self, scenario, vizard_request=None, live=False, parent=None, allow_scripts=False):
         captured["vizard_request"] = vizard_request
-        original_init(self, scenario, vizard_request=vizard_request, live=live, parent=parent)
+        original_init(self, scenario, vizard_request=vizard_request, live=live, parent=parent,
+                      allow_scripts=allow_scripts)
 
     monkeypatch.setattr(RunWorker, "__init__", spy_init)
     monkeypatch.setattr(RunWorker, "start", lambda self: None)  # don't actually spin up the thread
@@ -398,12 +441,15 @@ def test_run_passes_live_flag_from_action_to_worker(window, monkeypatch):
     captured = {}
     original_init = RunWorker.__init__
 
-    def spy_init(self, scenario, vizard_request=None, live=False, parent=None):
+    def spy_init(self, scenario, vizard_request=None, live=False, parent=None, allow_scripts=False):
         captured["live"] = live
-        original_init(self, scenario, vizard_request=vizard_request, live=live, parent=parent)
+        captured["allow_scripts"] = allow_scripts
+        original_init(self, scenario, vizard_request=vizard_request, live=live, parent=parent,
+                      allow_scripts=allow_scripts)
 
     monkeypatch.setattr(RunWorker, "__init__", spy_init)
     monkeypatch.setattr(RunWorker, "start", lambda self: None)
+    monkeypatch.setattr(type(window), "_confirm_script_blocks", lambda self, blocks: True)
 
     window.live_plot_action.setChecked(True)
     window.on_run()
@@ -835,12 +881,15 @@ def test_run_with_mission_sequence_ignores_live_flag_and_shows_mission_output(wi
     captured = {}
     original_init = RunWorker.__init__
 
-    def spy_init(self, scenario, vizard_request=None, live=False, parent=None):
+    def spy_init(self, scenario, vizard_request=None, live=False, parent=None, allow_scripts=False):
         captured["live"] = live
-        original_init(self, scenario, vizard_request=vizard_request, live=live, parent=parent)
+        captured["allow_scripts"] = allow_scripts
+        original_init(self, scenario, vizard_request=vizard_request, live=live, parent=parent,
+                      allow_scripts=allow_scripts)
 
     monkeypatch.setattr(RunWorker, "__init__", spy_init)
     monkeypatch.setattr(RunWorker, "start", lambda self: None)
+    monkeypatch.setattr(type(window), "_confirm_script_blocks", lambda self, blocks: True)
 
     window.live_plot_action.setChecked(True)
     window.on_run()
@@ -850,6 +899,51 @@ def test_run_with_mission_sequence_ignores_live_flag_and_shows_mission_output(wi
     assert captured["live"] is False
 
 
+def test_script_blocks_run_only_after_the_user_confirms(window, monkeypatch):
+    """SRS-S-03: a scenario with a script_block asks first. Declining
+    starts nothing; confirming starts the run with the consent passed on."""
+    from spacemissionstudio.gui.run_worker import RunWorker
+    from spacemissionstudio.schema.command import Command
+
+    _add_valid_spacecraft(window)
+    window.scenario_editor.mission_sequence_editor.from_command_list([
+        Command(kind="script_block", label="mine", params={"code": "print('hello')"}),
+    ])
+    window.scenario_editor.changed.emit()
+    started, asked = [], []
+    monkeypatch.setattr(RunWorker, "start", lambda self: started.append(self.allow_scripts))
+
+    monkeypatch.setattr(type(window), "_confirm_script_blocks", lambda self, blocks: asked.append(blocks) or False)
+    window.on_run()
+    assert started == []
+    assert [path for path, _ in asked[0]] == ["mission_sequence[0]"]
+
+    monkeypatch.setattr(type(window), "_confirm_script_blocks", lambda self, blocks: True)
+    window.on_run()
+    assert started == [True]
+
+
+def test_script_block_confirmation_shows_the_code_and_defaults_to_no(window, monkeypatch):
+    """The confirmation lists each block's path and code, and No is the
+    default button."""
+    from PySide6.QtWidgets import QMessageBox
+
+    from spacemissionstudio.schema.command import Command
+
+    seen = {}
+
+    def fake_exec(box):
+        seen["details"] = box.detailedText()
+        seen["default"] = box.defaultButton() is box.button(QMessageBox.StandardButton.No)
+        return QMessageBox.StandardButton.No
+
+    monkeypatch.setattr(QMessageBox, "exec", fake_exec)
+    block = Command(kind="script_block", label="mine", params={"code": "print('hello')"})
+    assert window._confirm_script_blocks([("mission_sequence[0]", block)]) is False
+    assert "mission_sequence[0] (mine):" in seen["details"] and "print('hello')" in seen["details"]
+    assert seen["default"]
+
+
 def test_run_finished_with_command_summary_shows_mission_output_tab(window):
     from spacemissionstudio.engine.results import CommandSummary, ReportEntry, ResultSet
 
@@ -857,7 +951,7 @@ def test_run_finished_with_command_summary_shows_mission_output_tab(window):
     window._on_run_finished(ResultSet(scenario_name="test", series={}), summary)
 
     assert window.right_tabs.currentWidget() is window.mission_output_widget
-    assert "1 command(s) executed" in window.mission_output_widget.text_edit.toPlainText()
+    assert "1 command run" in window.mission_output_widget.summary_label.text()
 
 
 def test_run_finished_without_command_summary_shows_results_tab(window):
@@ -1567,7 +1661,7 @@ def test_run_cancelled_with_command_summary_shows_mission_output_tab(window):
     window._on_run_cancelled(ResultSet(scenario_name="test", series={}), summary)
 
     assert window.right_tabs.currentWidget() is window.mission_output_widget
-    assert "1 command(s) executed" in window.mission_output_widget.text_edit.toPlainText()
+    assert "1 command run" in window.mission_output_widget.summary_label.text()
 
 
 def test_end_to_end_cancel_signal_updates_window_without_crashing(window, qtbot, monkeypatch):
@@ -1752,3 +1846,72 @@ def test_check_autosave_recovery_user_declines_clears_file_and_leaves_editor_unt
     assert window.scenario_editor.spacecraft_list.to_list() == []
     assert not window._dirty
     assert autosave.read_recovery_file() is None
+
+
+def test_join_finished_worker_waits_out_a_thread_that_already_signalled(qtbot):
+    """Regression test: a worker emits its terminal signal from INSIDE
+    run(), so Run can be re-enabled while that thread is still returning;
+    on_run()/on_run_monte_carlo() replacing the last reference to it then
+    made Qt abort the whole app ("QThread: Destroyed while thread is still
+    running"). _join_finished_worker() must leave it fully stopped first.
+    """
+    import threading
+
+    from PySide6.QtCore import QThread, Signal
+
+    from spacemissionstudio.gui.main_window import _join_finished_worker
+
+    release = threading.Event()
+
+    class _SignalsThenLingers(QThread):
+        done = Signal()
+
+        def run(self):
+            self.done.emit()
+            release.wait(5)  # still "returning" after its terminal signal  # [s]
+
+    worker = _SignalsThenLingers()
+    with qtbot.waitSignal(worker.done, timeout=5000):
+        worker.start()
+    assert worker.isRunning()
+
+    threading.Timer(0.05, release.set).start()  # [s]
+    _join_finished_worker(worker)
+    assert not worker.isRunning()
+    _join_finished_worker(None)  # no previous worker: a no-op
+
+
+def test_explain_tab_title_counts_pre_run_warnings(window, qapp):
+    """Pre-run checks (engine.scenario_checks) only help if they're seen:
+    the Explain tab's own title says when there's something to check."""
+    from pathlib import Path
+
+    templates = Path(__file__).resolve().parents[2] / "spacemissionstudio" / "scenarios" / "templates"
+    tab_index = window.right_tabs.indexOf(window.scenario_explainer_widget)
+    from spacemissionstudio.schema import load_scenario
+
+    assert window.open_path(next(templates.glob("19_*.json")))
+    assert window.right_tabs.tabText(tab_index) == "Explain"
+    late = load_scenario(next(templates.glob("19_*.json")))
+    late.epoch_utc = "2030-01-01T00:00:00"  # the old epoch: no Berlin pass in the run
+    window.scenario_editor.from_scenario(late)
+    window.scenario_editor.changed.emit()
+    assert window.right_tabs.tabText(tab_index) == "Explain (1 to check)"
+
+
+def test_a_run_hands_the_scenarios_featured_series_to_the_results_tab(window, monkeypatch):
+    """The Results tab's one-click suggestions come from the scenario
+    being run -- template 19's description names five series."""
+    from pathlib import Path
+
+    from spacemissionstudio.engine.series_names import featured_series
+    from spacemissionstudio.gui.run_worker import RunWorker
+    from spacemissionstudio.schema import load_scenario
+
+    path = next((Path(__file__).resolve().parents[2] / "spacemissionstudio" / "scenarios" / "templates")
+                .glob("19_*.json"))
+    assert window.open_path(path)
+    monkeypatch.setattr(RunWorker, "start", lambda self: None)  # don't actually spin up the thread
+    window.on_run()
+    assert window.results_widget._featured == featured_series(load_scenario(path))
+    assert len(window.results_widget._featured) == 5

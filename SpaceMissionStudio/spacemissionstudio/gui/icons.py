@@ -197,3 +197,17 @@ def ensure_icon_file(path: "str | Path", size: int = 256) -> Path:
         if not _render(size).save(str(path), "PNG"):
             raise OSError(f"could not render/save the app icon to {path}")
     return path
+
+
+_ASSETS_DIR = Path(__file__).resolve().parent / "assets"
+
+
+def toolbar_icon(name: str) -> QIcon:
+    """One of the app's own toolbar/menu line icons (``assets/tb-<name>.svg``).
+
+    Replaces the platform style's stock pixmaps, which mixed full-color
+    bitmaps (folder, floppy disk) with plain glyphs and left some actions
+    with no icon at all -- one consistent outline set reads as one app.
+    Qt derives the greyed disabled look from the same SVG automatically.
+    """
+    return QIcon(str(_ASSETS_DIR / f"tb-{name}.svg"))

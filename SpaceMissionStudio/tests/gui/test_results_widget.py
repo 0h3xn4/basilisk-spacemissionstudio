@@ -26,12 +26,22 @@ def _sample_result_set(n=50):
     return rs
 
 
+# The first plot page (plotly.js) can take over 10 s to load on a loaded CI runner
+# with several test workers (Windows, macOS: SRelD K-10); the tool is not at fault.
+_PAGE_LOAD_TIMEOUT_MS = 30000  # [ms]
+
+
 @pytest.fixture
 def widget(qtbot):
+    """A shown, exposed ResultsWidget, as in the app. Hidden, its web view
+    could stall a page load for good on the macOS CI (cocoa: loadFinished
+    never came within 30 s in one test worker, CI run 27; SRelD K-10)."""
     from spacemissionstudio.gui.results_widget import ResultsWidget
 
     w = ResultsWidget()
     qtbot.addWidget(w)
+    with qtbot.waitExposed(w):
+        w.show()
     return w
 
 
@@ -59,8 +69,8 @@ def test_set_result_with_provenance_shows_version_and_run_time(widget):
     label = widget.provenance_label.text()
     assert "9.9.9" in label
     assert "2.12.0" in label
-    assert "rkf78" in label
-    assert "2030-01-01T00:00:00+00:00" in label
+    assert "RKF78, 10 s step" in label
+    assert "2030-01-01 00:00 UTC" in label
     assert "deterministic" in widget.provenance_label.toolTip()
 
 
@@ -167,7 +177,7 @@ def test_save_plot_as_png_writes_a_real_png_file(widget, tmp_path, monkeypatch, 
     """
     from PySide6.QtWidgets import QFileDialog, QMessageBox
 
-    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=10000):
+    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=_PAGE_LOAD_TIMEOUT_MS):
         widget.set_result(_sample_result_set())
     assert widget.save_png_button.isEnabled()
     out_path = tmp_path / "plot.png"
@@ -188,7 +198,7 @@ def test_save_plot_as_png_writes_a_real_png_file(widget, tmp_path, monkeypatch, 
 def test_save_plot_as_png_appends_extension_if_missing(widget, tmp_path, monkeypatch, qtbot):
     from PySide6.QtWidgets import QFileDialog, QMessageBox
 
-    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=10000):
+    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=_PAGE_LOAD_TIMEOUT_MS):
         widget.set_result(_sample_result_set())
     out_path_no_ext = tmp_path / "plot"
     monkeypatch.setattr(QFileDialog, "getSaveFileName",
@@ -233,7 +243,7 @@ def test_redraw_does_not_reenable_save_button_while_a_png_poll_is_in_flight(widg
     kept firing forever, re-triggering a duplicate file write + a
     duplicate "Plot saved" dialog every poll interval.
     """
-    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=10000):
+    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=_PAGE_LOAD_TIMEOUT_MS):
         widget.set_result(_sample_result_set())
     assert widget.save_png_button.isEnabled()
 
@@ -250,7 +260,7 @@ def test_save_plot_as_png_is_a_no_op_while_a_poll_is_already_in_flight(widget, q
     from PySide6.QtCore import QTimer
     from PySide6.QtWidgets import QFileDialog
 
-    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=10000):
+    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=_PAGE_LOAD_TIMEOUT_MS):
         widget.set_result(_sample_result_set())
 
     calls = []
@@ -270,7 +280,7 @@ def test_save_plot_as_png_poll_state_resets_after_completion_allowing_a_later_sa
     """
     from PySide6.QtWidgets import QFileDialog, QMessageBox
 
-    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=10000):
+    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=_PAGE_LOAD_TIMEOUT_MS):
         widget.set_result(_sample_result_set())
     first_path = tmp_path / "first.png"
     monkeypatch.setattr(QFileDialog, "getSaveFileName",
@@ -300,7 +310,7 @@ def test_save_plot_as_svg_writes_a_real_svg_file(widget, tmp_path, monkeypatch, 
     """
     from PySide6.QtWidgets import QFileDialog, QMessageBox
 
-    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=10000):
+    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=_PAGE_LOAD_TIMEOUT_MS):
         widget.set_result(_sample_result_set())
     assert widget.save_svg_button.isEnabled()
     out_path = tmp_path / "plot.svg"
@@ -321,7 +331,7 @@ def test_save_plot_as_svg_writes_a_real_svg_file(widget, tmp_path, monkeypatch, 
 def test_save_plot_as_svg_appends_extension_if_missing(widget, tmp_path, monkeypatch, qtbot):
     from PySide6.QtWidgets import QFileDialog, QMessageBox
 
-    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=10000):
+    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=_PAGE_LOAD_TIMEOUT_MS):
         widget.set_result(_sample_result_set())
     out_path_no_ext = tmp_path / "plot"
     monkeypatch.setattr(QFileDialog, "getSaveFileName",
@@ -354,7 +364,7 @@ def test_save_png_and_save_svg_share_the_same_re_entrancy_guard(widget, qtbot, m
     from PySide6.QtCore import QTimer
     from PySide6.QtWidgets import QFileDialog
 
-    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=10000):
+    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=_PAGE_LOAD_TIMEOUT_MS):
         widget.set_result(_sample_result_set())
 
     calls = []
@@ -371,7 +381,7 @@ def test_redraw_does_not_reenable_save_svg_button_while_a_poll_is_in_flight(widg
     save_svg_button must stay disabled across a live-update _redraw()
     too, for the same reason.
     """
-    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=10000):
+    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=_PAGE_LOAD_TIMEOUT_MS):
         widget.set_result(_sample_result_set())
     assert widget.save_svg_button.isEnabled()
 
@@ -441,19 +451,23 @@ def test_switching_to_access_timeline_disables_series_combo(widget):
     assert widget.series_combo.isEnabled()
 
 
-def test_access_timeline_plots_one_trace_per_access_window_plus_empty_pair(widget):
+def test_access_timeline_plots_one_trace_per_pair_with_a_segment_per_window(widget):
     widget.set_result(_access_result_set())
     widget.view_combo.setCurrentIndex(widget.view_combo.findData("access_timeline"))
 
     assert widget.figure is not None
     y_values = {trace.y[0] for trace in widget.figure.data}
     assert y_values == {"station-a -> sat-1", "station-b -> sat-1"}
-    # station-a has two separate access windows -> two line traces;
-    # station-b has none -> one invisible placeholder trace.
+    # One trace per pair (thousands of per-pass traces were slow to draw on
+    # long runs): station-a's two separate access windows are two segments
+    # of its one trace, split by a None gap; station-b has none -> one
+    # invisible placeholder trace.
     station_a_traces = [t for t in widget.figure.data if t.y[0] == "station-a -> sat-1"]
     station_b_traces = [t for t in widget.figure.data if t.y[0] == "station-b -> sat-1"]
-    assert len(station_a_traces) == 2
-    assert len(station_b_traces) == 1
+    assert len(station_a_traces) == 1 and len(station_b_traces) == 1
+    segments = [part for part in "|".join("x" if x is None else "s" for x in station_a_traces[0].x).split("x")
+                if part.strip("|")]
+    assert len(segments) == 2
 
 
 def test_access_timeline_with_no_access_series_shows_explanatory_empty_state(widget):
@@ -497,7 +511,7 @@ def test_access_timeline_renders_in_the_real_webview(widget, qtbot):
     (e.g. a NaN/non-JSON-serializable value sneaking into a trace).
     """
     widget.set_result(_access_result_set())
-    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=10000) as blocker:
+    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=_PAGE_LOAD_TIMEOUT_MS) as blocker:
         widget.view_combo.setCurrentIndex(widget.view_combo.findData("access_timeline"))
     assert blocker.args == [True]
 
@@ -505,7 +519,7 @@ def test_access_timeline_renders_in_the_real_webview(widget, qtbot):
 def test_save_plot_default_name_is_access_timeline_in_that_view(widget, tmp_path, monkeypatch, qtbot):
     from PySide6.QtWidgets import QFileDialog
 
-    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=10000):
+    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=_PAGE_LOAD_TIMEOUT_MS):
         widget.set_result(_access_result_set())
     widget.view_combo.setCurrentIndex(widget.view_combo.findData("access_timeline"))
 
@@ -571,6 +585,14 @@ def test_set_live_result_throttles_rapid_webview_redraws(widget, monkeypatch):
     widget.set_live_result(_sample_result_set(n=5))
     assert push_calls == [1]  # the first chunk always pushes immediately
 
+    class _FrozenClock:  # "rapid" must not depend on machine load: no time passes
+        def elapsed(self):
+            return 0
+
+        def restart(self):
+            return 0
+
+    monkeypatch.setattr(widget, "_live_redraw_elapsed", _FrozenClock())
     for n in (10, 15, 20, 25):
         widget.set_live_result(_sample_result_set(n=n))
 
@@ -599,7 +621,7 @@ def test_user_series_change_is_never_throttled_during_a_live_run(widget, monkeyp
     test_set_live_result_throttles_rapid_webview_redraws's own style.
     """
     widget.set_live_result(_sample_result_set(n=5))
-    first_series = widget.series_combo.currentText()
+    first_series = widget.current_series_name()
     other_series = next(name for name in widget._result.series if name != first_series)
 
     push_calls = []
@@ -608,9 +630,9 @@ def test_user_series_change_is_never_throttled_during_a_live_run(widget, monkeyp
     # setCurrentText only updates the line-edit's displayed text and
     # relies on editingFinished (Enter/focus-loss) to sync currentIndex
     # -- not what a real dropdown pick (this test's actual subject) does.
-    widget.series_combo.setCurrentIndex(widget.series_combo.findText(other_series))  # still inside the throttle window
+    widget.series_combo.setCurrentIndex(widget.series_combo.findData(other_series))  # still inside the throttle window
 
-    assert widget.series_combo.currentText() == other_series
+    assert widget.current_series_name() == other_series
     assert push_calls == [1]
 
 
@@ -630,13 +652,15 @@ def test_selecting_a_series_via_the_completer_popup_redraws_the_plot(widget):
     is deliberately the OTHER, dropdown-arrow pick path).
     """
     widget.set_result(_sample_result_set())
-    first_series = widget.series_combo.currentText()
+    first_series = widget.current_series_name()
     other_series = next(name for name in widget._result.series if name != first_series)
     original_y_title = widget.figure.layout.yaxis.title.text
 
-    widget.series_combo.completer().activated.emit(other_series)
+    # The popup offers the shown labels, so that is what it emits.
+    widget.series_combo.completer().activated.emit(
+        widget.series_combo.itemText(widget.series_combo.findData(other_series)))
 
-    assert widget.series_combo.currentText() == other_series
+    assert widget.current_series_name() == other_series
     assert widget.figure.layout.yaxis.title.text != original_y_title  # the plot actually rebuilt, not just the combo text
 
 
@@ -648,15 +672,15 @@ def test_typing_an_exact_series_name_and_pressing_enter_redraws_the_plot(widget,
     from PySide6.QtCore import Qt
 
     widget.set_result(_sample_result_set())
-    first_series = widget.series_combo.currentText()
+    first_series = widget.current_series_name()
     other_series = next(name for name in widget._result.series if name != first_series)
     original_y_title = widget.figure.layout.yaxis.title.text
 
     widget.series_combo.setFocus()
-    widget.series_combo.lineEdit().setText(other_series)
+    widget.series_combo.lineEdit().setText(widget.series_combo.itemText(widget.series_combo.findData(other_series)))
     qtbot.keyClick(widget.series_combo.lineEdit(), Qt.Key.Key_Return)
 
-    assert widget.series_combo.currentText() == other_series
+    assert widget.current_series_name() == other_series
     assert widget.figure.layout.yaxis.title.text != original_y_title  # the plot actually rebuilt, not just the combo text
 
 
@@ -757,6 +781,35 @@ def test_mean_orbital_element_series_is_plotted_and_labeled_distinctly_from_oscu
     assert w.figure.layout.title.text == "sat-1: Mean (first-order J2) Inclination"
 
 
+def test_wrapping_angle_breaks_its_line_instead_of_drawing_a_vertical_jump(widget):
+    """True anomaly runs 0 -> 360 deg every orbit; drawn as one line, each
+    wrap was a false vertical stroke across the whole plot."""
+    from spacemissionstudio.engine.results import ResultSet, TimeSeries
+
+    t = np.arange(0.0, 3 * 5400.0, 60.0)  # [s] three ~90 min orbits
+    nu_rad = np.mod(2 * np.pi * t / 5400.0, 2 * np.pi)  # [rad]
+    rs = ResultSet(scenario_name="demo")
+    rs.add(TimeSeries("sat-1.orbit_elements.true_anomaly", t, ("nu",), nu_rad.reshape(-1, 1), units="rad"))
+    widget.set_result(rs)
+
+    y = np.asarray(widget.figure.data[0].y, dtype=float)
+    assert np.count_nonzero(np.isnan(y)) == 2  # one gap per wrap
+    finite = y[np.isfinite(y)]
+    np.testing.assert_allclose(finite, np.degrees(nu_rad))  # every sample still drawn, still in [0, 360)
+    segments = np.split(y, np.flatnonzero(np.isnan(y)))
+    assert all(np.all(np.abs(np.diff(seg[np.isfinite(seg)])) < 180.0) for seg in segments)
+
+
+def test_long_wrapping_series_is_thinned_evenly_not_min_max():
+    """Min-max thinning would pick ~0 and ~360 deg from every stretch."""
+    from spacemissionstudio.gui.results_widget import _MAX_PLOT_POINTS_PER_LINE, _wrapping_display_indices
+
+    keep = _wrapping_display_indices(10 * _MAX_PLOT_POINTS_PER_LINE)
+    assert len(keep) == _MAX_PLOT_POINTS_PER_LINE
+    assert keep[0] == 0 and keep[-1] == 10 * _MAX_PLOT_POINTS_PER_LINE - 1
+    assert np.ptp(np.diff(keep)) <= 1  # evenly spaced
+
+
 def test_dimensionless_series_is_not_unit_converted(widget):
     from spacemissionstudio.engine.results import ResultSet, TimeSeries
 
@@ -822,7 +875,10 @@ def test_epoch_x_axis_converts_time_s_to_datetimes(widget):
     plotted_x = list(widget.figure.data[0].x)
     base = datetime.fromisoformat("2030-01-01T00:00:00")
     expected = [base + timedelta(seconds=float(t)) for t in rs.series["sat-1.position_N"].time_s]
-    assert plotted_x == expected
+    # time_s is TDB seconds (engine.time_system): UTC = epoch + t minus the
+    # change of TDB - UTC, here microseconds (no leap second in between).
+    assert all(abs((got - want).total_seconds()) < 1e-3 for got, want in zip(plotted_x, expected))
+    assert plotted_x[0] == base
     assert widget.figure.layout.xaxis.title.text == "Epoch (UTC)"
 
 
@@ -871,4 +927,308 @@ def test_set_live_result_rebuilds_combo_if_series_names_change(widget):
     widget.set_live_result(other)
 
     assert widget.series_combo.count() == 1
-    assert widget.series_combo.currentText() == "sat-2.position_N"
+    assert widget.current_series_name() == "sat-2.position_N"
+
+
+def test_a_large_series_still_shows_when_selected(widget, qtbot):
+    """Real user report: during a long run, switching to chief-1.position_N
+    or .velocity_N "just doesn't change" -- each was a ~5.8 MB page and
+    QWebEngineView.setHtml() silently shows nothing above 2 MB, so the
+    previous plot stayed up. Pages now load from a file, so a 90,000-
+    sample, 3-line series must actually render after switching to it."""
+    import numpy as np
+
+    from spacemissionstudio.engine.results import ResultSet, TimeSeries
+
+    t = np.arange(90000) * 30.0  # [s] 30 s samples over ~31 days
+    result = ResultSet(scenario_name="big")
+    result.add(TimeSeries("sat-1.semi_major_axis", t, ("a",), np.full((len(t), 1), 6928e3), units="m"))
+    position = np.column_stack([7e6 * np.cos(t / 900.0), 7e6 * np.sin(t / 900.0), np.zeros(len(t))])  # [m]
+    result.add(TimeSeries("sat-1.position_N", t, ("x", "y", "z"), position, units="m"))
+    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=20000):
+        widget.set_result(result)
+    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=20000):
+        widget.series_combo.setCurrentIndex(widget.series_combo.findData("sat-1.position_N"))
+
+    shown = {}
+    widget.web_view.page().runJavaScript(
+        "(function(){var d=document.querySelector('.plotly-graph-div');"
+        "return d && d.layout ? d.layout.title.text + '|' + d.data.length : 'NO PLOT';})()",
+        0, lambda value: shown.setdefault("title", value))
+    qtbot.waitUntil(lambda: "title" in shown, timeout=10000)
+    assert shown["title"].startswith("sat-1: ") and shown["title"].endswith("|3"), shown["title"]
+
+
+def test_display_thinning_keeps_peaks_and_caps_points():
+    """Each plotted line is thinned to at most _MAX_PLOT_POINTS_PER_LINE
+    points, keeping every stretch's minimum and maximum, so a short burn
+    or spike still shows. Small series are drawn in full."""
+    import numpy as np
+
+    from spacemissionstudio.gui.results_widget import _MAX_PLOT_POINTS_PER_LINE, _display_indices
+
+    small = np.arange(500.0)
+    assert np.array_equal(_display_indices(small), np.arange(500))
+
+    values = np.sin(np.arange(200000) / 50.0)
+    values[123457] = 25.0  # a one-sample spike
+    keep = _display_indices(values)
+    assert len(keep) <= _MAX_PLOT_POINTS_PER_LINE
+    assert 123457 in keep and 0 in keep and len(values) - 1 in keep
+    assert np.all(np.diff(keep) > 0)  # in time order
+
+
+# -- decluttering (real user feedback: "check the Results tab for the same clutter") --
+
+def test_series_list_shows_plot_titles_with_the_code_name_as_tooltip(widget):
+    """The Series list used raw dotted code names; entries now read like
+    their plot titles, and the code name (the CSV file name) stays
+    available as the item's data and tooltip."""
+    from PySide6.QtCore import Qt
+
+    widget.set_result(_sample_result_set())
+    combo = widget.series_combo
+    labels = [combo.itemText(i) for i in range(combo.count())]
+    assert labels == ["sat-1: Inertial Position (ECI)", "sat-1: Inertial Velocity (ECI)"]
+    assert [combo.itemData(i) for i in range(combo.count())] == ["sat-1.position_N", "sat-1.velocity_N"]
+    assert combo.itemData(0, Qt.ItemDataRole.ToolTipRole) == "sat-1.position_N"
+    assert widget.figure.layout.title.text == labels[0]  # list entry == plot title
+
+
+def test_typing_a_full_code_name_still_selects_that_series(widget, qtbot):
+    from PySide6.QtCore import Qt
+
+    widget.set_result(_sample_result_set())
+    widget.series_combo.setFocus()
+    widget.series_combo.lineEdit().setText("sat-1.velocity_N")
+    qtbot.keyClick(widget.series_combo.lineEdit(), Qt.Key.Key_Return)
+
+    assert widget.current_series_name() == "sat-1.velocity_N"
+
+
+def test_view_selector_only_appears_when_there_are_access_series(widget):
+    """With no ground stations there is nothing to choose between."""
+    widget.show()
+    widget.set_result(_sample_result_set())
+    assert not widget.view_combo.isVisible() and not widget.view_label.isVisible()
+
+    widget.set_result(_access_result_set())
+    assert widget.view_combo.isVisible() and widget.view_label.isVisible()
+
+    widget.view_combo.setCurrentIndex(widget.view_combo.findData("access_timeline"))
+    widget.set_result(_sample_result_set())  # back to a result without stations
+    assert not widget.view_combo.isVisible()
+    assert widget.view_combo.currentData() == "single"
+    assert widget.figure.layout.title.text == "sat-1: Inertial Position (ECI)"
+
+
+def test_results_tab_fits_a_narrow_pane(widget):
+    """A one-line provenance label and a wide toolbar used to force the tab
+    to ~780 px, wider than a typical right-hand pane."""
+    from spacemissionstudio.engine.results import RunProvenance
+
+    rs = _access_result_set()
+    for name, series in _sample_result_set().series.items():
+        rs.add(series)
+    rs.provenance = RunProvenance(
+        spacemissionstudio_version="2.0.0", basilisk_version="2.12.0",
+        run_started_utc="2026-10-07T14:33:38.434854+00:00", integrator="rkf78", dynamics_task_rate_s=30.0,
+    )
+    rs.warnings = ["sat-1: orbital energy drifted 5.1% (limit 1%) -- try a smaller dynamics step or a "
+                   "higher-order integrator"]
+    widget.set_result(rs)
+    widget.show()
+    # 620 px at the Linux CI's font; as a count of average characters, so
+    # a platform with wider fonts (Windows) gets the same bound (SRelD K-10).
+    assert widget.minimumSizeHint().width() <= 103 * widget.fontMetrics().averageCharWidth()
+    assert "14:33 UTC" in widget.provenance_label.text() and ".434854" not in widget.provenance_label.text()
+
+
+def test_plot_page_fills_the_view_without_a_scroll_bar(widget, qtbot):
+    """Plotly's page kept the browser's default body margin under a
+    100%-height plot, so every plot had a scroll bar beside it."""
+    widget.resize(800, 600)  # [px]
+    widget.show()
+    qtbot.waitExposed(widget)
+    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=20000):
+        widget.set_result(_sample_result_set())
+    sizes = {}
+    widget.web_view.page().runJavaScript(
+        "[document.documentElement.scrollHeight, window.innerHeight,"
+        " document.documentElement.scrollWidth, window.innerWidth].join(',')",
+        0, lambda value: sizes.setdefault("v", value))
+    qtbot.waitUntil(lambda: "v" in sizes, timeout=5000)
+    scroll_height, inner_height, scroll_width, inner_width = (int(v) for v in sizes["v"].split(","))
+    assert scroll_height <= inner_height and scroll_width <= inner_width, sizes["v"]
+
+
+def test_access_timeline_marks_each_pass_and_starts_at_zero(widget):
+    """On a long run a pass is narrower than a pixel, so its segment alone
+    vanished; fixed-size end ticks keep it visible. The ticks must not pad
+    the axis to before t = 0."""
+    widget.set_result(_access_result_set())
+    widget.view_combo.setCurrentIndex(widget.view_combo.findData("access_timeline"))
+
+    with_passes = [t for t in widget.figure.data if t.y[0] == "station-a -> sat-1"][0]
+    assert "markers" in with_passes.mode
+    assert with_passes.marker.symbol == "line-ns"
+    assert widget.figure.layout.xaxis.range == (0.0, 1.0)  # [hr] the whole 3600 s run
+
+
+# -- one-click "What to look at" suggestions ------------------------------------
+
+def _comms_result():
+    from spacemissionstudio.engine.results import ResultSet, TimeSeries
+
+    t = np.linspace(0, 600, 20)
+    rs = ResultSet(scenario_name="19")
+    rs.add(TimeSeries("leo-comms-1.position_N", t, ("x", "y", "z"), np.zeros((20, 3)), units="m"))
+    rs.add(TimeSeries("berlin-gs.access_to_leo-comms-1.has_access", t, ("has_access",),
+                      (t > 300).astype(float)[:, None], units="-"))
+    rs.add(TimeSeries("leo-comms-1.comms_pointing.pointing_error_deg", t, ("pointing_error_deg",),
+                      np.linspace(90, 1, 20)[:, None], units="deg"))
+    rs.add(TimeSeries("leo-comms-1.battery_charge", t, ("charge",), np.linspace(36, 30, 20)[:, None], units="W*hr"))
+    return rs
+
+
+def test_suggestions_offer_the_featured_series_and_open_on_the_first(widget):
+    widget.show()
+    widget.set_featured_series(["berlin-gs.access_to_leo-comms-1.has_access",
+                                "leo-comms-1.comms_pointing.pointing_error_deg",
+                                "leo-comms-1.battery_charge",
+                                "leo-comms-1.comms_pointing.active_mode"])  # not in this result: no chip
+    widget.set_result(_comms_result())
+
+    assert widget.suggestion_row.isVisible()
+    # One spacecraft and one station pair: the chips don't repeat them.
+    assert [c.text() for c in widget._suggestion_chips] == ["Access Window", "Pointing Error", "Battery State of Charge"]
+    assert [c.toolTip() for c in widget._suggestion_chips][0] == "berlin-gs.access_to_leo-comms-1.has_access"
+    assert widget.current_series_name() == "berlin-gs.access_to_leo-comms-1.has_access"  # not position_N
+    assert [c.isChecked() for c in widget._suggestion_chips] == [True, False, False]
+
+
+def test_clicking_a_suggestion_shows_it_even_from_the_access_timeline(widget):
+    widget.show()
+    widget.set_featured_series(["leo-comms-1.battery_charge"])
+    widget.set_result(_comms_result())
+    widget.view_combo.setCurrentIndex(widget.view_combo.findData("access_timeline"))
+
+    widget._suggestion_chips[0].click()
+
+    assert widget.view_combo.currentData() == "single"
+    assert widget.current_series_name() == "leo-comms-1.battery_charge"
+    assert widget.figure.layout.title.text == "leo-comms-1: Battery State of Charge"
+    assert widget._suggestion_chips[0].isChecked()
+
+
+def test_suggestions_keep_names_that_tell_spacecraft_apart_and_hide_when_empty(widget):
+    from spacemissionstudio.engine.results import TimeSeries
+
+    widget.show()
+    widget.set_featured_series(["leo-comms-1.battery_charge", "sat-2.position_N"])
+    result = _comms_result()
+    result.add(TimeSeries("sat-2.position_N", np.linspace(0, 600, 20), ("x", "y", "z"), np.zeros((20, 3)), units="m"))
+    widget.set_result(result)
+    assert [c.text() for c in widget._suggestion_chips] == ["leo-comms-1: Battery State of Charge",
+                                                           "sat-2: Inertial Position (ECI)"]
+
+    widget.set_featured_series([])
+    assert not widget.suggestion_row.isVisible()
+    widget.set_featured_series(["leo-comms-1.battery_charge"])
+    widget.set_result(None)
+    assert not widget.suggestion_row.isVisible()
+
+
+def test_newly_named_series_get_plot_titles():
+    """Featured in templates 19/20 but shown as raw code names before."""
+    from spacemissionstudio.engine.results import TimeSeries
+    from spacemissionstudio.gui.results_widget import _series_label
+
+    def label(name, columns, units):
+        return _series_label(name, TimeSeries(name, np.zeros(1), columns, np.zeros((1, len(columns))), units=units))
+
+    assert label("leo-comms-1.comms_pointing.active_mode", ("active_mode",), "-") == \
+        "leo-comms-1: Pointing Mode (0 Sun, 1 ground station)"
+    assert label("leo-comms-1.comms_pointing.pointing_error_deg", ("pointing_error_deg",), "deg") == \
+        "leo-comms-1: Pointing Error"
+    assert label("sat-1.actuator.rw-1.motor_temperature", ("temperature",), "C") == "sat-1: Motor Temperature: rw-1"
+    assert label("sat-1.sensor.therm-1", ("temperature",), "C") == "sat-1: Thermal Sensor: therm-1"
+
+
+class _DeferredPage:
+    """Stands in for the web page: runJavaScript() keeps the callbacks, which
+    the test answers later, as the real asynchronous page does."""
+
+    def __init__(self):
+        self.pending = []
+
+    def runJavaScript(self, script, callback=None):  # noqa: N802 -- Qt's name
+        if callback is not None:
+            self.pending.append(callback)
+
+
+def _deferred_poll(widget, monkeypatch, tmp_path):
+    from PySide6.QtCore import QTimer
+
+    page = _DeferredPage()
+    monkeypatch.setattr(widget.web_view, "page", lambda: page)
+    rendered = []
+    monkeypatch.setattr(widget, "_on_plot_png_rendered", lambda *args: rendered.append(args))
+    widget._png_poll_state = {"path": str(tmp_path / "p.png"), "fmt": "png", "timer": QTimer(widget), "attempts": 0}
+    return page, rendered
+
+
+def test_a_poll_tick_after_the_poll_finished_is_ignored(widget):
+    """SRelD K-08: a timer tick queued before the poll finished used to read
+    the cleared state ("'NoneType' object is not subscriptable")."""
+    widget._png_poll_state = None
+    widget._poll_plot_png()  # must not raise
+
+
+def test_only_one_poll_query_is_in_flight_and_late_answers_are_ignored(widget, monkeypatch, tmp_path):
+    """SRelD K-08: on a slow machine several queries were in flight at once;
+    each answer finished the save again (a second write and "saved"
+    dialog). Ticks wait for the outstanding answer, and an answer to a
+    finished poll does nothing."""
+    page, rendered = _deferred_poll(widget, monkeypatch, tmp_path)
+    widget._poll_plot_png()
+    widget._poll_plot_png()  # the first answer is still outstanding
+    widget._poll_plot_png()
+    assert len(page.pending) == 1
+
+    page.pending.pop()("data:image/png;base64,AAAA")
+    assert len(rendered) == 1 and widget._png_poll_state is None
+
+    widget._poll_plot_png()  # a late tick: nothing to do
+    assert page.pending == [] and len(rendered) == 1
+
+
+def test_a_pending_answer_lets_the_next_tick_ask_again(widget, monkeypatch, tmp_path):
+    """While the plot is still rendering, each answer frees the next tick
+    to ask again, until the result arrives."""
+    from spacemissionstudio.gui.results_widget import _SAVE_PNG_PENDING_SENTINEL
+
+    page, rendered = _deferred_poll(widget, monkeypatch, tmp_path)
+    widget._poll_plot_png()
+    page.pending.pop()(_SAVE_PNG_PENDING_SENTINEL)
+    widget._poll_plot_png()
+    assert len(page.pending) == 1 and widget._png_poll_state["attempts"] == 2
+    page.pending.pop()("data:image/png;base64,AAAA")
+    assert len(rendered) == 1
+
+
+def test_an_answer_that_never_comes_does_not_stall_the_save(widget, monkeypatch, tmp_path):
+    """One query at a time must not mean waiting forever: if an answer is
+    lost, the poll asks again after a second of ticks."""
+    from spacemissionstudio.gui.results_widget import _SAVE_PNG_MAX_WAIT_TICKS
+
+    page, rendered = _deferred_poll(widget, monkeypatch, tmp_path)
+    widget._poll_plot_png()
+    page.pending.clear()  # the answer is lost
+    for _ in range(_SAVE_PNG_MAX_WAIT_TICKS - 1):
+        widget._poll_plot_png()
+    assert page.pending == []
+    widget._poll_plot_png()
+    assert len(page.pending) == 1
+    page.pending.pop()("data:image/png;base64,AAAA")
+    assert len(rendered) == 1 and widget._png_poll_state is None

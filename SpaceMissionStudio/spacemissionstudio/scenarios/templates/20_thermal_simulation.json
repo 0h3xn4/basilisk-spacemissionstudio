@@ -28,17 +28,17 @@
         "tle_line1": null,
         "tle_line2": null
       },
-      "dry_mass_kg": 50.0,
+      "dry_mass_kg": 150.0,
       "inertia_kg_m2": [
-        5.0,
+        20.5,
         0.0,
         0.0,
         0.0,
-        5.0,
+        20.5,
         0.0,
         0.0,
         0.0,
-        5.0
+        16.0
       ],
       "sigma_bn_init": [
         0.1,
@@ -56,6 +56,7 @@
       "enable_srp": false,
       "srp_coeff": 1.3,
       "srp_area_m2": 1.0,
+      "facets": [],
       "enable_gravity_gradient": false,
       "sensors": [
         {
@@ -77,9 +78,9 @@
           "name": "css-1",
           "params": {
             "nHat_B": [
-              1.0,
               0.0,
-              0.0
+              0.0,
+              1.0
             ]
           }
         },
@@ -88,9 +89,9 @@
           "name": "therm-1",
           "params": {
             "nHat_B": [
-              1.0,
               0.0,
-              0.0
+              0.0,
+              1.0
             ],
             "area_m2": 0.05,
             "absorptivity": 0.25,
@@ -113,8 +114,10 @@
               0.0,
               0.0
             ],
-            "rw_type": "Honeywell_HR16",
-            "maxMomentum": 100.0,
+            "rw_type": "custom",
+            "maxMomentum": 6.0,
+            "Omega_max": 6000.0,
+            "u_max": 0.05,
             "motor_thermal_initial_temp_c": 20.0,
             "motor_thermal_ambient_temp_c": 20.0,
             "motor_thermal_efficiency": 0.7,
@@ -131,8 +134,10 @@
               1.0,
               0.0
             ],
-            "rw_type": "Honeywell_HR16",
-            "maxMomentum": 100.0
+            "rw_type": "custom",
+            "maxMomentum": 6.0,
+            "Omega_max": 6000.0,
+            "u_max": 0.05
           }
         },
         {
@@ -144,17 +149,16 @@
               0.0,
               1.0
             ],
-            "rw_type": "Honeywell_HR16",
-            "maxMomentum": 100.0
+            "rw_type": "custom",
+            "maxMomentum": 6.0,
+            "Omega_max": 6000.0,
+            "u_max": 0.05
           }
         }
       ],
       "fsw_mode": "sunSafePoint",
       "fsw_params": {},
-      "control_params": {
-        "K": 0.0194,
-        "P": 0.167
-      },
+      "control_params": {},
       "power": {
         "panel_area_m2": 0.3,
         "panel_efficiency": 0.28,
@@ -170,11 +174,13 @@
       "rf_link": null,
       "comms_pointing": null,
       "station_keeping": null,
+      "geo_station_keeping": null,
       "phasing_keeping": null,
       "constant_thrust": null,
       "momentum_dumping": null,
       "magnetic_momentum_management": null,
       "fuel_tank": null,
+      "propellant_budget": null,
       "vizard_model_path": null,
       "vizard_model_offset_m": [
         0.0,
@@ -195,17 +201,18 @@
   ],
   "ground_stations": [],
   "space_weather": {
-    "source": "synthetic",
+    "source": "bundled",
     "local_file_path": null,
     "cache_dir": null,
     "atmosphere_model": "nrlmsise00",
-    "activity_level": "nominal",
-    "activity_percentile": 95.0
+    "forecast_percentile": 50.0,
+    "msfc_file_path": null
   },
   "sim_settings": {
     "duration_days": 0.3,
     "dynamics_task_rate_s": 1.0,
-    "integrator": "rkf78"
+    "integrator": "rkf78",
+    "record_interval_s": 0.0
   },
   "monte_carlo": {
     "enabled": false,
@@ -215,6 +222,6 @@
     "dispersions": []
   },
   "mission_sequence": [],
-  "description": "Adds Basilisk's real thermal modules on top of '07's own ADCS hardware suite: a 'thermal' sensor (sensorThermal.SensorThermal) models the temperature of an externally -mounted component (e.g. a star-tracker baffle or avionics panel) as it heats under direct sunlight and cools in Earth's shadow -- real radiative absorption/emission plus an internal power-to-heat draw, not an analytical estimate; its own optional measurement_* params add noise/bias/fault on top, same device-interface-realism shape as every other sensor kind (see schema.scenario's own SUPPORTED_SENSOR_KINDS comment). Separately, 'rw-1' also carries an OPTIONAL motor-thermal model (motorThermal.MotorThermal, the motor_thermal_* params) -- a reaction wheel generates real heat from motor inefficiency and friction, independent of whether any 'thermal' sensor is configured at all; 'rw-2'/'rw-3' deliberately have none set, showing this is per-wheel opt-in, not an all-or-nothing spacecraft setting.\n\nWhat to look at: 'sat-1.sensor.therm-1.temperature' should visibly rise while the orbit is in sunlight and fall across each eclipse pass (compare its timing against this spacecraft's own eclipse windows, inferred from where power.battery_soc stops recharging) -- a handful of full orbits are simulated specifically so more than one heating/cooling cycle is visible. 'sat-1.actuator.rw-1.motor_temperature' separately drifts toward motor_thermal_ambient_temp_c as the wheel spins (friction/inefficiency heat vs. ambient dissipation), decoupled from the sensor's own sun-driven cycle.\n\nTry changing: therm-1's nHat_B (a face pointed away from the Sun-pointing axis sees a very different, possibly inverted, heating pattern -- see sunSafePoint's own sHatBdyCmd below for which body axis is actually Sun-pointed), area_m2/absorptivity/emissivity/mass_kg/specific_heat_j_kg_k (a larger mass_kg*specific_heat_j_kg_k heat capacity makes the whole temperature curve respond more slowly/smoothly to each sunlight/eclipse transition), or rw-1's motor_thermal_efficiency (closer to 1.0 means less waste heat, a flatter motor-temperature curve -- note 1.0 itself is rejected, see that field's own validation message).\n\nKnown, deliberately-not-used real Basilisk capability: engine.fsw.attach_sensors's own 'thermal' kind does not yet expose sensorThermal's sensorStatusInMsg (a DeviceStatusMsg that can turn sensorPowerDraw on/off at run time, e.g. tied to a duty cycle) -- this template's power_draw_w is a constant, always-on draw instead. A real future upgrade would wire a DeviceStatusMsg source (this app has none today) to that input.",
-  "schema_version": 2
+  "description": "Template 07's hardware with thermal models: a thermal sensor on the Sun-facing +Z panel heats in sunlight and cools in eclipse, and reaction wheel rw-1 carries a motor-thermal model.\n\nWhat to look at:\n- sat-1.sensor.therm-1 (temperature) rising in sunlight and falling in each eclipse.\n- sat-1.actuator.rw-1.motor_temperature: it rises only ~0.05 C above its 20 C ambient. The motor heats from wheel power and friction, and this gentle slew uses little of either.\n\nTry changing:\n- therm-1's facing direction, area, absorptivity, emissivity, mass or specific heat (more heat capacity responds more slowly).\n- rw-1's motor efficiency (closer to 1 means less heat; 1 itself is rejected) -- it only shows on a wheel that works hard.\n\nLimitations:\n- The thermal sensor's power draw is constant (no on/off duty cycle yet).",
+  "schema_version": 4
 }

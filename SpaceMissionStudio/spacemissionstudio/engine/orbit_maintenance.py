@@ -162,6 +162,193 @@ _LOGGER = logging.getLogger(__name__)
 # noise right at a cycle boundary); two in a row is.
 _MAX_NON_CONVERGENT_CYCLES = 2
 
+# Relative semi-major-axis mismatch [m] (follower minus chief, one-orbit
+# average) that PhasingKeepingController treats as a disturbance worth
+# trimming out on its own, independent of the phase error -- e.g. a reboost
+# that only one spacecraft made. Measured to ~0.1 m under real J2 (the
+# one-orbit boxcar of the osculating difference), so this is far above
+# measurement noise, yet a fraction of the ~5 km mismatch a lone reboost
+# causes. Smaller mismatches are left to the ordinary phase-error cycles.
+# (Burns hit their delta-V exactly -- partial-tick thrust, see UpdateState
+# -- so a trim cannot overshoot back out of this tolerance.)
+_RELATIVE_SMA_TRIM_TOLERANCE_M = 25.0
+
+
+def _log_sunlit_transition(tag: str, t_s: float, illumination: float, in_sun: bool,
+                           previous_in_sun: Optional[bool]) -> bool:
+    """DEBUG-logs an eclipse reading only when the sunlit/eclipsed verdict
+    CHANGES (and on the first tick), returning ``in_sun`` for the caller to
+    store. Real bug: these controllers logged every single tick, three
+    controllers x every 30 s, which made a real user's 90-day
+    formation-template run write a 116 MB log of nothing but that line.
+    """
+    if in_sun != previous_in_sun:
+        _LOGGER.debug("%s: t=%.3f s now %s (eclipse illumination %r)", tag, t_s,
+                      "sunlit" if in_sun else "eclipsed", illumination)
+    return in_sun
+
+
+class LogThinner:
+    """When a controller's per-step telemetry is due
+    (``sim_settings.record_interval_s``; 0 = every step). Burn flags
+    should be OR-ed over the skipped steps by the caller, so a burn
+    shorter than the interval still shows."""
+
+    def __init__(self, interval_s: float = 0.0):
+        self.intervalS = interval_s  # [s]
+        self._lastT: Optional[float] = None  # [s]
+
+    def due(self, t: float) -> bool:
+        if self.intervalS <= 0.0 or self._lastT is None or t - self._lastT >= self.intervalS - 1e-6:
+            self._lastT = t
+            return True
+        return False
+
+
+class ThrusterOnTimeModel:
+    """On-time command model for the one physical thruster a spacecraft's
+    station-keeping and phasing controllers share (see ``StationKeepingConfig``).
+
+    Two hardware/astrodynamics realities the ideal per-tick force used to
+    ignore:
+
+    * **Minimum on-time** (``min_on_time_s``, 0 = an ideal, arbitrarily
+      short firing). A real thruster can't fire for less than its minimum
+      on-time, so it has a minimum impulse bit of ``thrust * min_on_time``.
+      A firing, once started, runs for at least that long, even across
+      several control ticks. A burn needing LESS than one minimum firing
+      is rounded up to it if it needs at least half of one, and otherwise
+      skipped.
+    * **Eccentricity-neutral burns** (``eccentricity_neutral``). Tangential
+      thrust changes the eccentricity vector by ~(2 dv / v) (cos u, sin u)
+      at argument of latitude u. A burn spread evenly over whole orbits
+      cancels out, but eclipse gating cuts the same arc out of every orbit,
+      so a multi-orbit reboost accumulated an eccentricity change
+      comparable to the formation template's own e = 0.001. With this on, a
+      new firing only STARTS if it keeps the burn's accumulated
+      eccentricity change within one orbit's natural excursion of
+      continuous thrust.
+      The thruster then skips just enough sunlit arc to stay balanced
+      (each firing lasts at most ``max(min_on_time_s, dt)`` so the gate
+      is re-checked often).
+
+    Basilisk's own ``thrusterDynamicEffector`` was deliberately NOT used:
+    its thrusters are fixed in the BODY frame, so burning along-track
+    would need the spacecraft to slew to point along its velocity, and an
+    orbit-only scenario has no attitude control at all. This model keeps
+    the ideal inertial force but gives it the firing constraints of real
+    hardware. A firing is applied as its average force over each 30 s
+    tick (same impulse as full thrust for part of the tick).
+    """
+
+    def __init__(self, min_on_time_s: float = 0.0, eccentricity_neutral: bool = False):
+        self.minOnTimeS = float(min_on_time_s)  # [s]
+        self.eccentricityNeutral = bool(eccentricity_neutral)
+        self.pulseLeftS = 0.0  # [s] committed on-time still to fire
+        self.pulseOwner = None  # the controller whose command started the firing in progress
+        self.eccVector = np.zeros(2)  # [-] eccentricity-vector change of the current maneuver (node frame)
+        self._eccOwner = None  # the controller whose maneuver eccVector belongs to
+
+    def reset(self) -> None:
+        """Start of a new maneuver: no firing in progress, no accumulated
+        eccentricity change."""
+        self.pulseLeftS = 0.0
+        self.pulseOwner = None
+        self.eccVector = np.zeros(2)
+        self._eccOwner = None
+
+    def firing_owned_by(self, owner) -> bool:
+        """True while a firing that ``owner`` started is still committed."""
+        return self.pulseLeftS > 0.0 and self.pulseOwner is owner
+
+    def minimum_impulse_dv(self, thrust_n: float, mass_kg: float) -> float:
+        """Delta-V [m/s] of one minimum firing (0 for an ideal thruster)."""
+        return thrust_n * self.minOnTimeS / mass_kg
+
+    def _ecc_step(self, sign: float, dv: float, u_rad: float, v_mps: float) -> np.ndarray:
+        return sign * 2.0 * dv / v_mps * np.array([np.cos(u_rad), np.sin(u_rad)])
+
+    def _start_allowed(self, sign, on_time_s, thrust_n, mass_kg, u_rad, v_mps, mean_motion) -> bool:
+        if not self.eccentricityNeutral:
+            return True
+        accel = thrust_n / mass_kg  # [m/s^2]
+        # One orbit of continuous tangential thrust traces a circle through
+        # the origin of the eccentricity plane, of diameter
+        # 4 * accel / (v * n): an unavoidable transient that an evenly
+        # spread burn returns to zero from. Allowing exactly that much means
+        # an uninterrupted burn is never held back; only the drift that
+        # eclipse gating adds orbit after orbit is.
+        tolerance = max(4.0 * accel / (v_mps * mean_motion),
+                        2.5 * 2.0 * accel * on_time_s / v_mps)
+        after = self.eccVector + self._ecc_step(sign, accel * on_time_s, u_rad, v_mps)
+        return float(np.linalg.norm(after)) <= max(float(np.linalg.norm(self.eccVector)), tolerance)
+
+    def command(self, *, owner, want_firing: bool, remaining_dv: Optional[float], sign: float, thrust_n: float,
+                mass_kg: float, dt_s: float, in_sun: bool, u_rad: float, v_mps: float, mean_motion: float):
+        """This tick's average thrust [N], plus the committed delta-V [m/s]
+        a newly started firing adds beyond ``remaining_dv`` (non-zero only
+        when a small burn was rounded UP to one minimum firing -- the
+        caller extends its own burn target by it), and whether a
+        ``remaining_dv`` burn turned out too small to fire at all.
+
+        ``remaining_dv`` None = open-ended (station-keeping: fire for as
+        long as ``want_firing``). Eclipse (``not in_sun``) always cuts a
+        firing short -- the bus has no power for it.
+
+        ``owner`` is the calling controller. The station-keeping and phasing
+        controllers share one thruster, so a firing belongs to whoever
+        started it: another caller gets no thrust until it ends (real bug
+        caught in verification: station-keeping used to continue, and log,
+        half of every phasing firing as its own).
+        """
+        if self.pulseLeftS > 0.0 and self.pulseOwner is not owner:
+            return 0.0, 0.0, False  # the thruster is busy with another controller's firing
+        if not in_sun or dt_s <= 0.0:
+            self.pulseLeftS = 0.0
+            return 0.0, 0.0, False
+        if self._eccOwner is not owner:
+            self.eccVector = np.zeros(2)  # a different controller's maneuver
+            self._eccOwner = owner
+        extra_dv = 0.0
+        if self.pulseLeftS <= 0.0:
+            if not want_firing:
+                return 0.0, 0.0, False
+            chunk_s = max(self.minOnTimeS, dt_s)
+            if remaining_dv is None:
+                on_time = chunk_s
+            else:
+                on_time = remaining_dv * mass_kg / thrust_n  # [s]
+                if on_time <= 0.0:
+                    return 0.0, 0.0, True
+                if self.minOnTimeS > 0.0 and on_time < self.minOnTimeS:
+                    if on_time < 0.5 * self.minOnTimeS:
+                        return 0.0, 0.0, True  # below half an impulse bit: not worth a firing
+                    extra_dv = (self.minOnTimeS - on_time) * thrust_n / mass_kg
+                    on_time = self.minOnTimeS
+                if self.eccentricityNeutral and on_time >= chunk_s + self.minOnTimeS:
+                    # Split into gate-checked pieces, but never leave a
+                    # last piece shorter than one minimum firing (it would
+                    # be rounded up or skipped): fly a shorter remainder,
+                    # up to chunk + minimum on-time, as one firing.
+                    on_time = chunk_s
+            if not self._start_allowed(sign, on_time, thrust_n, mass_kg, u_rad, v_mps, mean_motion):
+                return 0.0, 0.0, False
+            self.pulseLeftS = on_time
+            self.pulseOwner = owner
+        on = min(dt_s, self.pulseLeftS)
+        self.pulseLeftS -= on
+        thrust = thrust_n * on / dt_s
+        self.eccVector = self.eccVector + self._ecc_step(sign, thrust_n * on / mass_kg, u_rad, v_mps)
+        return thrust, extra_dv, False
+
+
+def _crossed_zero(error_rad: float, drift_sign: float) -> bool:
+    """True once a phase error that started with sign ``drift_sign`` has
+    crossed ZERO -- not merely changed sign by wrapping through +/-180 deg
+    (an error near +/-pi means "half an orbit away", the opposite of
+    "target reached")."""
+    return bool(error_rad != 0.0 and np.sign(error_rad) != drift_sign and abs(error_rad) < 0.5 * np.pi)
+
 
 def _wrap_pm_pi(angle_rad: float) -> float:
     """Wrap an angle [rad] to (-pi, pi]."""
@@ -228,6 +415,28 @@ class StationKeepingController(sysModel.SysModel):
     :func:`build_station_keeping` rather than directly; that function
     wires ``scStateInMsg``/``eclipseInMsg``/``extForceEffector``/
     ``scObject``, which this class needs set before ``UpdateState`` runs.
+
+    Formation-follower mode
+    -----------------------
+    :func:`build_phasing_keeping` switches a phasing follower's own
+    controller into this mode (``formationFollower = True``, plus
+    ``formationReference`` = the chief's own controller, or ``None`` if
+    the chief has no station-keeping). The follower then never reboosts
+    toward its OWN absolute ``target_altitude_km``. Instead it mirrors
+    the chief's reboosts tick for tick, and keeps only a safety floor of
+    ``deadband_km`` below the chief's smoothed altitude.
+
+    Real bug behind this, reproduced from a real user's 90-day run of the
+    formation template: an absolute target makes the two spacecraft
+    reboost independently. That run's follower (with a 2 km deadband)
+    reboosted to its 550 km target at t = 0.07 d while the chief, whose
+    natural mean altitude was ~545 km, never did. The result was a ~5 km
+    semi-major-axis mismatch, i.e. ~6 deg/day of relative drift, which
+    the phasing controller could never undo (its corrections are capped
+    at a few km and sized in metres). The follower lapped the chief
+    repeatedly for the whole run. Mirroring the chief keeps both orbits
+    raised together, and the phasing controller's own closed-loop
+    relative-SMA trim removes whatever small mismatch remains.
     """
 
     def __init__(
@@ -243,6 +452,8 @@ class StationKeepingController(sysModel.SysModel):
         propellant_kg: float,
         eclipse_sunlit_threshold: float = 0.99,
         g0_mps2: float = 9.80665,
+        min_on_time_s: float = 0.0,
+        eccentricity_neutral: bool = False,
     ):
         super().__init__()
         self.ModelTag = name
@@ -288,13 +499,37 @@ class StationKeepingController(sysModel.SysModel):
         semi_major_axis_m = r_planet_m + nominal_alt_m  # [m]
         self.smoothingWindowS = float(2.0 * np.pi * np.sqrt(semi_major_axis_m ** 3 / mu))  # [s] orbit period
         self.sunlitThreshold = eclipse_sunlit_threshold  # [-]
+        # The physical thruster's firing model -- shared with a co-located
+        # PhasingKeepingController (build_phasing_keeping), see
+        # ThrusterOnTimeModel.
+        self.thruster = ThrusterOnTimeModel(min_on_time_s, eccentricity_neutral)
+        self._burnWasOn = False
 
         self.burnOn = False
+        # Formation-follower mode -- see this class's own docstring. Set by
+        # build_phasing_keeping, never by build_station_keeping itself.
+        self.formationFollower = False
+        self.formationReference: Optional["StationKeepingController"] = None
+        self._floorBurn = False  # formation follower: the current burn is a safety-floor burn, not a mirror
+        # Latest smoothed altitude (None before the first tick) -- read by
+        # a formation follower's controller to compare against this one.
+        self.lastSmoothAlt: Optional[float] = None  # [m]
+        self._lastInSun: Optional[bool] = None  # for _log_sunlit_transition
         self._lastT: Optional[float] = None  # [s]
         self._altHistory: list = []  # list of (t [s], alt [m]) for the smoothing window
+        # [s] When the FIRST sample since Reset() was recorded -- tracked
+        # separately from _altHistory[0][0] because the pruning loop
+        # below keeps that oldest-kept-sample's age at or under
+        # smoothingWindowS by construction, so it can never itself reach
+        # or exceed smoothingWindowS; this is the real "has a full
+        # orbital period of history actually accumulated yet" clock (see
+        # UpdateState's own cold-start-guard comment).
+        self._historyStartT: Optional[float] = None  # [s]
 
         # Python-side telemetry (cheap; avoids extra BSK messages/recorders
         # for what is ultimately just a handful of scalars per tick).
+        self.logThinner = LogThinner()  # see sim_settings.record_interval_s
+        self._burnedSinceLog = False
         self.tLog: list = []
         self.altLog: list = []
         self.smoothAltLog: list = []
@@ -305,10 +540,42 @@ class StationKeepingController(sysModel.SysModel):
 
     def Reset(self, CurrentSimNanos):
         self.burnOn = False
+        self._floorBurn = False
+        self.lastSmoothAlt = None
         self._lastT = CurrentSimNanos * macros.NANO2SEC
         self._altHistory = []
+        self._historyStartT = None
         if self.extForceEffector is not None:
             self.extForceEffector.extForce_N = [0.0, 0.0, 0.0]
+
+    def _formation_follower_burn_on(self, smoothAlt: float, windowFull: bool) -> bool:
+        """Burn decision in formation-follower mode (see this class's own
+        docstring): mirror the chief's reboost while it burns, and
+        otherwise only fire (until level with the chief again) if this
+        spacecraft has fallen more than ``deadband`` below the chief's
+        smoothed altitude. With no chief controller to follow, never fire
+        on its own -- the co-located phasing controller's relative-SMA
+        trim then keeps the follower matched to the decaying chief.
+        """
+        reference = self.formationReference
+        if reference is None or reference.lastSmoothAlt is None:
+            self._floorBurn = False
+            return False
+        if reference.burnOn:
+            self._floorBurn = False
+            return True
+        if self.burnOn and self._floorBurn:  # a safety-floor burn already in progress
+            self._floorBurn = smoothAlt < reference.lastSmoothAlt
+            return self._floorBurn
+        # A MIRRORED burn ends with the reference's. Real bug: it used to be
+        # carried on as if it were a safety-floor burn, until this smoothed
+        # altitude caught up with the reference's -- but a one-orbit boxcar
+        # lags a burn by up to an orbit, so a follower that ended its mirror
+        # a few metres short kept firing and overshot by ~700 m of semi-major
+        # axis (with eclipse gating and a 300 s minimum on-time). The
+        # co-located phasing controller trims the small residual instead.
+        self._floorBurn = windowFull and smoothAlt < (reference.lastSmoothAlt - self.deadband)
+        return self._floorBurn
 
     def UpdateState(self, CurrentSimNanos):
         t = CurrentSimNanos * macros.NANO2SEC  # [s]
@@ -327,24 +594,78 @@ class StationKeepingController(sysModel.SysModel):
         if not (np.all(np.isfinite(rVec)) and np.all(np.isfinite(vVec)) and np.linalg.norm(vVec) > 0.0):
             if self.extForceEffector is not None:
                 self.extForceEffector.extForce_N = [0.0, 0.0, 0.0]
-            self.tLog.append(t)
-            self.altLog.append(float("nan"))
-            self.smoothAltLog.append(float("nan"))
-            self.burnLog.append(0)
-            self.propellantLog.append(self.propellant)
-            self.deltaVLog.append(self._cumulativeDv)
+            if self.logThinner.due(t):
+                self.tLog.append(t)
+                self.altLog.append(float("nan"))
+                self.smoothAltLog.append(float("nan"))
+                self.burnLog.append(1 if self._burnedSinceLog else 0)
+                self._burnedSinceLog = False
+                self.propellantLog.append(self.propellant)
+                self.deltaVLog.append(self._cumulativeDv)
             return
 
         alt = float(np.linalg.norm(rVec) - self.rPlanet)  # [m]
 
         # Orbit-period boxcar smoothing to reject short-period altitude
         # oscillation and only respond to secular (e.g. drag-driven) decay.
+        if self._historyStartT is None:
+            self._historyStartT = t
         self._altHistory.append((t, alt))
         while self._altHistory and (t - self._altHistory[0][0]) > self.smoothingWindowS:
             self._altHistory.pop(0)
         smoothAlt = float(np.mean([a for _, a in self._altHistory]))
 
-        if not self.burnOn and smoothAlt < (self.nominalAlt - self.deadband):
+        # Real bug, found by reproducing a real Vizard screenshot showing
+        # a co-located PhasingKeepingController's along-track separation
+        # diverging without bound instead of converging toward its own
+        # target (see that class's own docstring) -- traced to THIS
+        # controller, not phasing-keeping's own control law. _altHistory
+        # starts EMPTY every Reset(), so smoothAlt at/near t=0 is averaged
+        # over however few samples have accumulated so far -- at the very
+        # first tick, exactly ONE: the raw OSCULATING altitude at
+        # whatever point in the orbit the spacecraft happens to start.
+        # For a spacecraft placed near perigee (a common, deliberate
+        # choice -- e.g. true_anomaly_deg=0, as this module's own
+        # formation-flying template uses), that one sample reads well
+        # BELOW the orbit's true mean altitude from completely normal
+        # Keplerian motion, with nothing secular (drag decay, etc.)
+        # involved at all. Confirmed directly: a bare two-body repro
+        # (point-mass gravity, no drag/J2) with the spacecraft started at
+        # perigee showed burnOn flip True at t=0 and stay True for
+        # roughly half an orbital period, injecting a real, unintended
+        # ~540 m semi-major-axis change before the window held enough
+        # samples to reflect the orbit's genuine, already-on-target
+        # average altitude -- a co-located PhasingKeepingController
+        # sharing this same thruster has no way to distinguish that
+        # perturbation from a real orbital anomaly, and its own single,
+        # correctly-sized correction burn is then overwhelmed by it.
+        # Fixed by gating a NEW burn's START on the window actually
+        # holding a full orbital period of real history -- the exact
+        # same "don't trust a partial window" discipline this smoothing
+        # filter already claims for itself in the comment above, just
+        # not previously applied at cold start. Never gates the
+        # symmetric EXIT condition below, which only matters once a burn
+        # has legitimately begun (by then the window is always full).
+        # Delays reacting to a genuinely real altitude deficiency at
+        # simulation start by at most one orbital period -- consistent
+        # with, not a new tradeoff against, this controller's own stated
+        # purpose of responding only to SECULAR decay, which by
+        # definition unfolds over many orbits anyway.
+        #
+        # Deliberately measured against self._historyStartT (set once,
+        # the first tick after Reset()), NOT self._altHistory[0][0]: the
+        # pruning loop just above keeps the OLDEST entry still in the
+        # window at or under smoothingWindowS old by construction, so
+        # that age can never itself reach smoothingWindowS -- comparing
+        # against it here would make this guard permanently, silently
+        # unsatisfiable (a real bug caught in this fix's own first-draft
+        # test run: the window never read as "full" even after a
+        # genuinely full orbital period of real ticks had elapsed).
+        windowFull = (t - self._historyStartT) >= self.smoothingWindowS
+        self.lastSmoothAlt = smoothAlt
+        if self.formationFollower:
+            self.burnOn = self._formation_follower_burn_on(smoothAlt, windowFull)
+        elif not self.burnOn and windowFull and smoothAlt < (self.nominalAlt - self.deadband):
             self.burnOn = True
         elif self.burnOn and smoothAlt >= self.nominalAlt:
             self.burnOn = False
@@ -352,13 +673,26 @@ class StationKeepingController(sysModel.SysModel):
         inSun = True
         if self.eclipseInMsg.isLinked():
             illum = _eclipse_illumination_fraction(self.eclipseInMsg())
-            _LOGGER.debug("%s: t=%.3f s eclipse illumination read=%r", self.ModelTag, t, illum)
             inSun = illum > self.sunlitThreshold
+            self._lastInSun = _log_sunlit_transition(self.ModelTag, t, illum, inSun, self._lastInSun)
 
-        thrustMag = self.thrustN if (self.burnOn and inSun) else 0.0  # [N]
-        if thrustMag > 0.0 and self.propellant <= 1e-9:
-            thrustMag = 0.0
+        if self.burnOn and not self._burnWasOn:
+            self.thruster.reset()  # a new reboost maneuver
+        self._burnWasOn = self.burnOn
+        thrustMag = 0.0  # [N]
+        if self.burnOn and self.propellant <= 1e-9:
             self.bskLogger.warning(f"{self.ModelTag}: propellant depleted, reboost inhibited")
+        elif self.burnOn or self.thruster.firing_owned_by(self):
+            massEstimate = (self.scObject.scMassOutMsg.read().massSC if self.scObject is not None
+                            else (self.dryMass + self.propellant))  # [kg]
+            meanMotion = np.sqrt(self.mu / (self.rPlanet + self.nominalAlt) ** 3)  # [rad/s]
+            # A firing already started keeps going for at least its minimum
+            # on-time, even if burnOn just dropped (see ThrusterOnTimeModel).
+            thrustMag, _extraDv, _tooSmall = self.thruster.command(
+                owner=self, want_firing=self.burnOn, remaining_dv=None, sign=1.0, thrust_n=self.thrustN,
+                mass_kg=massEstimate, dt_s=dt, in_sun=inSun,
+                u_rad=PhasingKeepingController._argument_of_latitude(rVec, vVec),
+                v_mps=float(np.linalg.norm(vVec)), mean_motion=meanMotion)
 
         # Achieved acceleration/delta-v depends on the spacecraft's TRUE
         # total mass -- hub.mHub ALONE undercounts it whenever a
@@ -412,12 +746,15 @@ class StationKeepingController(sysModel.SysModel):
         deltaVMsg.storageCapacity = self.dvBudgetMps  # [m/s]
         self.deltaVOutMsg.write(deltaVMsg, CurrentSimNanos, self.moduleID)
 
-        self.tLog.append(t)
-        self.altLog.append(alt)
-        self.smoothAltLog.append(smoothAlt)
-        self.burnLog.append(1 if thrustMag > 0.0 else 0)
-        self.propellantLog.append(self.propellant)
-        self.deltaVLog.append(self._cumulativeDv)
+        self._burnedSinceLog = self._burnedSinceLog or thrustMag > 0.0
+        if self.logThinner.due(t):
+            self.tLog.append(t)
+            self.altLog.append(alt)
+            self.smoothAltLog.append(smoothAlt)
+            self.burnLog.append(1 if self._burnedSinceLog else 0)
+            self._burnedSinceLog = False
+            self.propellantLog.append(self.propellant)
+            self.deltaVLog.append(self._cumulativeDv)
 
 
 def build_station_keeping(scSim, task_name: str, tag: str, sc_object, mu: float, r_planet_m: float,
@@ -448,6 +785,8 @@ def build_station_keeping(scSim, task_name: str, tag: str, sc_object, mu: float,
         dry_mass_kg=dry_mass_kg,
         propellant_kg=config.propellant_kg,
         eclipse_sunlit_threshold=config.eclipse_sunlit_threshold,
+        min_on_time_s=config.min_on_time_s,
+        eccentricity_neutral=config.eccentricity_neutral_burns,
     )
 
     thruster = extForceTorque.ExtForceTorque()
@@ -474,12 +813,17 @@ class PhasingKeepingController(sysModel.SysModel):
 
     Ported from ``../missionAnalysis/constellation_controllers.py``'s
     controller of the same name -- the drift-orbit state machine
-    (IDLE/BURN_OUT/DRIFT/BURN_RESTORE), the mean-anomaly error computation
-    (osculating, smoothed over one orbital period to reject J2
-    short-period noise), and the thruster-arbitration/shared-propellant
-    logic are unchanged. Differs the same two ways
-    :class:`StationKeepingController` differs from its own original (no
-    fast-dyn/coarse-ctrl task split, no ``log_decimation``), plus:
+    (IDLE/BURN_OUT/DRIFT/BURN_RESTORE) and the thruster-arbitration/
+    shared-propellant logic are unchanged. The phase-error computation
+    itself is NOT unchanged -- see "Numerical conditioning of the phase
+    error" below, a real bug found by this project's own audit, after a
+    real user's screenshot kept showing the along-track separation
+    diverging even after an earlier, unrelated cold-start fix (see
+    :class:`StationKeepingController`'s own docstring) had already
+    landed. Still smoothed over one orbital period to reject J2
+    short-period noise, same as the ported original. Differs the same two
+    ways :class:`StationKeepingController` differs from its own original
+    (no fast-dyn/coarse-ctrl task split, no ``log_decimation``), plus:
     ``thrust_n``/``isp_s``/``dry_mass_kg`` are not schema fields here --
     :func:`build_phasing_keeping` always reads them off the co-located
     ``StationKeepingController`` (see ``PhasingKeepingConfig``'s
@@ -488,6 +832,61 @@ class PhasingKeepingController(sysModel.SysModel):
     is read the same way (the co-located controller's own
     ``dvBudgetMps`` -- see that class's docstring) rather than
     recomputed here, for the same one-tank-no-disagreement reason.
+
+    Numerical conditioning of the phase error
+    ------------------------------------------
+    The ported original measured along-track phase error from the
+    difference of each spacecraft's osculating MEAN ANOMALY
+    (``orbitalMotion.rv2elem`` -> ``f2E`` -> ``E2M``, i.e. via each
+    spacecraft's own, individually-decomposed eccentricity/argument-of
+    -periapsis/true-anomaly). Real bug, found by audit after a real
+    user's Vizard screenshot kept showing the along-track separation
+    diverging without bound even after the cold-start fix above had
+    landed: reproduced directly against a genuine Basilisk build with
+    real (degree >= 2) spherical-harmonics Earth gravity active on the
+    exact chief/follower elements this module's own formation-flying
+    template uses (``a`` = 6928 km, ``e`` = 0.001) -- the classical
+    orbital-element decomposition is numerically SINGULAR as
+    eccentricity -> 0 (argument of periapsis, hence true/mean anomaly
+    measured from it, becomes meaningless once the osculating
+    eccentricity vector's direction is undefined), a well-known
+    limitation of classical (as opposed to non-singular/equinoctial)
+    element sets. J2's own short-period oscillation of the osculating
+    eccentricity vector is, by itself, enough to carry a near-circular
+    orbit's ``e`` through numerically-zero every orbit -- confirmed
+    directly: with the above elements, ``e`` dipped to ~7.5e-5 and the
+    recovered argument of periapsis swung by ~180 deg within three 30 s
+    ticks, while the REAL geometric along-track separation
+    (``orbitalMotion.rv2hill``, i.e. exactly ``lastTransverseKm`` below)
+    barely moved at all over that same interval. The resulting
+    mean-anomaly-difference "error" read as large as several THOUSAND
+    km of spurious phase error within a handful of ticks, which this
+    controller's own control law (faithfully) acted on as if it were
+    real -- computing a wildly wrong ``deltaA``/burn direction from it,
+    actually perturbing the real orbit, and in the reproduction that
+    exposed this, tripping the divergence guard (below) after just one
+    such bogus cycle, suspending all further automatic correction for
+    the rest of the run while the real separation then free-drifted,
+    uncorrected, off whatever the bogus burn had left it at -- matching
+    a real user's "pinned at the Vizard gauge ceiling" screenshot
+    exactly.
+
+    Fixed by :func:`_argument_of_latitude`: the angle ``u = omega + f``,
+    computed DIRECTLY from each spacecraft's instantaneous position/
+    velocity via the ascending-node/orbit-normal geometry, never
+    decomposing ``e``/``omega``/``f`` individually. ``u`` stays
+    numerically well-behaved all the way through ``e -> 0`` -- it is
+    exactly the quantity non-singular/equinoctial element sets are built
+    around retaining, for exactly this reason -- at the (textbook,
+    standard) cost of a tiny, un-corrected equation-of-center bias
+    (true, not mean, argument of latitude) of order ``2*e`` radians,
+    utterly negligible for the near-circular (``e`` well under ~0.05)
+    LEO constellations this controller targets (``engine.constellation``'s
+    own Walker-pattern generator defaults ``eccentricity`` to 0.0 "for
+    the usual circular case"). A rigorous equinoctial-element
+    reformulation (correct at any eccentricity, including the
+    classical-element-friendly high-``e`` regime this approximation does
+    NOT cover) is a real, documented follow-on, not implemented here.
 
     Publishes two more live-Vizard-only messages (see this module's
     docstring and ``engine.vizard``), same "never fed back into simulated
@@ -624,8 +1023,26 @@ class PhasingKeepingController(sysModel.SysModel):
         self._lastT: Optional[float] = None  # [s]
         self._targetDv = 0.0  # [m/s]
         self._accumDv = 0.0  # [m/s]
-        self._burnSign = 1.0  # [-] +1 prograde (raise a), -1 retrograde (lower a)
+        self._burnSign = 1.0  # [-] direction of the CURRENT burn: +1 prograde (raise a), -1 retrograde
+        self._pendingLegDv = 0.0  # [m/s] signed second leg of a two-firing trim (0 = none), see _start_burn
+        self._driftSign = 1.0  # [-] sign of the planned drift offset (= sign of the error being corrected)
         self._driftStartT = 0.0  # [s]
+        # Closed-loop relative semi-major axis (see UpdateState): one-orbit
+        # boxcar of (a_follower - a_chief), the planned offset the current
+        # cycle wants, and when the last thrust (ours or station-keeping's)
+        # ended, so a measurement is only trusted once a full window of
+        # unthrusted samples has accumulated.
+        self._relAHistory: list = []  # list of (t [s], aB - aA [m])
+        self._relAStartT: Optional[float] = None  # [s]
+        self._quietSinceT: Optional[float] = None  # [s]
+        self._plannedDeltaA = 0.0  # [m]
+        self._trimOnly = False  # current BURN_RESTORE is a disturbance trim, not a phasing cycle's restore
+        # Firing model of the shared physical thruster -- replaced by the
+        # co-located StationKeepingController's own instance in
+        # build_phasing_keeping (one thruster, one firing state).
+        self.thruster = ThrusterOnTimeModel()
+        self.lastRelativeSmaM = 0.0  # [m] latest one-orbit-mean relative SMA (telemetry)
+        self._lastInSun: Optional[bool] = None  # for _log_sunlit_transition
         # Divergence guard -- see UpdateState's own comment at the
         # BURN_RESTORE -> IDLE transition.
         self._errorAtCycleStartRad = 0.0  # [rad] error when the ACTIVE cycle started
@@ -640,11 +1057,13 @@ class PhasingKeepingController(sysModel.SysModel):
         # don't silently drop it" discipline elsewhere).
         self.suspendedDueToNonConvergence = False
 
+        self.logThinner = LogThinner()  # see sim_settings.record_interval_s
         self.tLog: list = []
         self.errorDegLog: list = []
         self.stateLog: list = []
         self.propellantLog: list = []
         self.deltaVLog: list = []
+        self.relativeSmaLog: list = []  # [m] one-orbit-mean a_follower - a_chief
         self._cumulativeDv = 0.0  # [m/s]
 
     def Reset(self, CurrentSimNanos):
@@ -669,15 +1088,96 @@ class PhasingKeepingController(sysModel.SysModel):
         self._consecutiveNonConvergentCycles = 0
         self._lastScheduledTargetRad = 0.0
         self.suspendedDueToNonConvergence = False
+        self._relAHistory = []
+        self._relAStartT = None
+        self._quietSinceT = None
+        self._plannedDeltaA = 0.0
+        self._trimOnly = False
+        self._pendingLegDv = 0.0
         if self.extForceEffectorB is not None:
             self.extForceEffectorB.extForce_N = [0.0, 0.0, 0.0]
 
+    def _burn_complete(self) -> bool:
+        # Relative slack: partial-tick thrust (see UpdateState) lands the
+        # accumulated delta-V on the target itself, give or take rounding.
+        if self._accumDv < self._targetDv * (1.0 - 1e-9):
+            return False
+        if self._pendingLegDv != 0.0:
+            # First leg of a two-firing trim done: fly the second.
+            self._targetDv = abs(self._pendingLegDv)
+            self._burnSign = float(np.sign(self._pendingLegDv))
+            self._pendingLegDv = 0.0
+            self._accumDv = 0.0
+            return False
+        return True
+
+    def _start_burn(self, deltaA_needed_m: float) -> None:
+        """Arms a tangential burn that changes this follower's semi-major
+        axis by ``deltaA_needed_m`` (linearized: deltaA/a = 2*dv/v)."""
+        vCirc = np.sqrt(self.mu / self.aNom)  # [m/s]
+        dv = deltaA_needed_m / self.aNom * vCirc / 2.0  # [m/s]
+        self._pendingLegDv = 0.0
+        bitA = self._impulse_bit_delta_a_m()  # [m]
+        bitDv = bitA / self.aNom * vCirc / 2.0  # [m/s]
+        roundingErrorA = min(abs(deltaA_needed_m), bitA - abs(deltaA_needed_m))  # [m] skip or one bit
+        if 0.0 < abs(dv) < bitDv * (1.0 - 1e-6) and roundingErrorA > _RELATIVE_SMA_TRIM_TOLERANCE_M:
+            # Finer than one minimum firing, and neither skipping it nor
+            # rounding it to one firing lands within tolerance: fly (one bit
+            # + dv) then one bit back, which nets exactly dv. Rounding
+            # instead left up to half a bit (~130 m of semi-major axis for a
+            # 300 s firing of 0.05 N), which drifts the formation ~18 km/day,
+            # so a coarse thruster cycled a full correction every day.
+            self._pendingLegDv = -float(np.copysign(bitDv, dv))
+            dv = float(np.copysign(bitDv + abs(dv), dv))
+        self._targetDv = abs(dv)
+        self._burnSign = 1.0 if dv >= 0.0 else -1.0
+        self._accumDv = 0.0
+        self.thruster.reset()
+
+    def _impulse_bit_delta_a_m(self) -> float:
+        """Semi-major-axis change [m] of one minimum thruster firing (0 for
+        an ideal thruster) -- the finest correction the hardware can make."""
+        mass = self.dryMass + self._propellant_tracker().propellant  # [kg]
+        vCirc = np.sqrt(self.mu / self.aNom)  # [m/s]
+        return 2.0 * self.aNom * self.thruster.minimum_impulse_dv(self.thrustN, mass) / vCirc
+
     @staticmethod
-    def _mean_anomaly(mu, rVec, vVec):
-        oe = orbitalMotion.rv2elem(mu, rVec, vVec)
-        eccAnom = orbitalMotion.f2E(oe.f, oe.e)
-        meanAnom = orbitalMotion.E2M(eccAnom, oe.e)
-        return oe.a, meanAnom
+    def _argument_of_latitude(rVec, vVec):
+        """True argument of latitude ``u = omega + f`` [rad], in
+        (-pi, pi] -- the in-plane angle from the ascending node to the
+        spacecraft's actual current position. See this class's own
+        docstring ("Numerical conditioning of the phase error") for why
+        this replaces an earlier osculating-mean-anomaly-based error
+        metric: ``u`` is computed DIRECTLY from the instantaneous
+        position/velocity via the orbit-normal/ascending-node geometry
+        (same inertial +Z-pole convention ``orbitalMotion.rv2elem``
+        itself uses internally) -- never decomposing eccentricity,
+        argument of periapsis, or true anomaly individually, which keeps
+        it numerically well-behaved all the way through ``e -> 0``
+        (classical elements are not: "where periapsis is" becomes
+        meaningless once the osculating eccentricity vector's direction
+        is undefined).
+
+        Undefined, in the same well-known way classical RAAN is, only
+        for an exactly equatorial orbit (``i == 0``, orbit normal along
+        +/-Z, so the ascending node itself is undefined) -- falls back
+        to the inertial +X axis as an arbitrary but FIXED reference in
+        that case. This loses no accuracy for THIS controller's own use
+        (only the difference ``uB - uA`` is ever used below, and both
+        spacecraft share the same orbit-normal sign whenever they share
+        the same orbital plane, as every caller of this class assumes --
+        see ``PhasingKeepingConfig``'s own docstring), it just picks a
+        consistent zero-point instead of an undefined one.
+        """
+        rHat = rVec / np.linalg.norm(rVec)
+        hVec = np.cross(rVec, vVec)
+        hHat = hVec / np.linalg.norm(hVec)
+        nVec = np.cross(np.array([0.0, 0.0, 1.0]), hHat)
+        nNorm = np.linalg.norm(nVec)
+        nHat = nVec / nNorm if nNorm > 1e-9 else np.array([1.0, 0.0, 0.0])
+        cosU = np.dot(rHat, nHat)
+        sinU = np.dot(rHat, np.cross(hHat, nHat))
+        return float(np.arctan2(sinU, cosU))
 
     @staticmethod
     def _circular_mean(angles_rad):
@@ -703,31 +1203,67 @@ class PhasingKeepingController(sysModel.SysModel):
         # hold state this tick instead. Also guards vA/vB against being
         # exactly zero -- a real gap found by audit: this method reads
         # vB's norm to compute a burn direction further down
-        # (`vHatB = vB / np.linalg.norm(vB)`), and _mean_anomaly() below
-        # feeds vA/vB into orbitalMotion.rv2elem(), which also divides by
-        # velocity-derived quantities internally -- either was previously
-        # only checked for NaN/inf, not for exactly zero, unlike this
-        # class's own StationKeepingController sibling.
+        # (`vHatB = vB / np.linalg.norm(vB)`), and _argument_of_latitude()
+        # below divides by norm(cross(r, v)) (the orbit-normal magnitude --
+        # zero whenever r/v happen to be parallel, e.g. a purely radial
+        # trajectory, not just when either is individually zero; same
+        # degenerate case ConstantFrameThrustController's own matching
+        # guard already checks for) -- either was previously only checked
+        # for NaN/inf, not for exactly zero, unlike this class's own
+        # StationKeepingController sibling.
         if not (np.all(np.isfinite(rA)) and np.all(np.isfinite(vA)) and np.linalg.norm(vA) > 0.0
-                and np.all(np.isfinite(rB)) and np.all(np.isfinite(vB)) and np.linalg.norm(vB) > 0.0):
+                and np.all(np.isfinite(rB)) and np.all(np.isfinite(vB)) and np.linalg.norm(vB) > 0.0
+                and np.linalg.norm(np.cross(rA, vA)) > 0.0 and np.linalg.norm(np.cross(rB, vB)) > 0.0):
             if self.extForceEffectorB is not None:
                 self.extForceEffectorB.extForce_N = [0.0, 0.0, 0.0]
-            self.tLog.append(t)
-            self.errorDegLog.append(float("nan"))
-            self.stateLog.append(self.state)
-            self.propellantLog.append(self._propellant_tracker().propellant)
-            self.deltaVLog.append(self._cumulativeDv)
+            if self.logThinner.due(t):
+                self.tLog.append(t)
+                self.errorDegLog.append(float("nan"))
+                self.stateLog.append(self.state)
+                self.propellantLog.append(self._propellant_tracker().propellant)
+                self.deltaVLog.append(self._cumulativeDv)
+                self.relativeSmaLog.append(float("nan"))
             return
 
-        _, mA = self._mean_anomaly(self.mu, rA, vA)
-        _, mB = self._mean_anomaly(self.mu, rB, vB)
+        mA = self._argument_of_latitude(rA, vA)
+        mB = self._argument_of_latitude(rB, vB)
+
+        # Relative semi-major axis, closed loop. Real bug behind this (see
+        # StationKeepingController's "Formation-follower mode" docstring):
+        # this controller used to size every burn open-loop and "restore"
+        # by replaying its own delta-V backwards, so it could never notice,
+        # let alone remove, a semi-major-axis mismatch something ELSE made
+        # (a lone station-keeping reboost left a real user's follower 5 km
+        # high, drifting ~6 deg/day for 90 days). The instantaneous
+        # osculating difference swings +/-135 m under J2, but its one-orbit
+        # mean is steady to ~0.1 m (measured on the formation template), so
+        # every burn is now sized from that measured value.
+        aA = 1.0 / (2.0 / np.linalg.norm(rA) - np.dot(vA, vA) / self.mu)  # [m]
+        aB = 1.0 / (2.0 / np.linalg.norm(rB) - np.dot(vB, vB) / self.mu)  # [m]
+        if self._relAStartT is None:
+            self._relAStartT = t
+        if self._quietSinceT is None:
+            self._quietSinceT = t
+        self._relAHistory.append((t, aB - aA))
+        while self._relAHistory and (t - self._relAHistory[0][0]) > self.smoothingWindowS:
+            self._relAHistory.pop(0)
+        relA = float(np.mean([d for _, d in self._relAHistory]))  # [m]
+        self.lastRelativeSmaM = relA
+        # Trusted only once a full orbit of samples taken WITHOUT any thrust
+        # on this follower has accumulated (a burn shifts the true value
+        # mid-window, and the boxcar would otherwise lag it by half an orbit).
+        relASettled = (t - max(self._relAStartT, self._quietSinceT)) >= self.smoothingWindowS
 
         scheduledTargetRad = self.separationSchedule.value_at(t)
         referenceTargetRad = scheduledTargetRad if self.state == self.IDLE else self._activeTargetRad
 
         # error > 0 means B's phase leads the target separation (B is "too
         # far ahead" of A); error < 0 means B trails. Smoothed over one
-        # orbital period to reject J2 short-period osculating-element noise.
+        # orbital period to reject J2 short-period noise (real, physical
+        # short-period oscillation of the argument of latitude itself --
+        # NOT the numerical-conditioning artifact _argument_of_latitude
+        # was specifically chosen to avoid; see this class's own
+        # docstring).
         rawError = _wrap_pm_pi((mB - mA) - referenceTargetRad)  # [rad]
         self._errorHistory.append((t, rawError))
         while self._errorHistory and (t - self._errorHistory[0][0]) > self.smoothingWindowS:
@@ -742,9 +1278,9 @@ class PhasingKeepingController(sysModel.SysModel):
         # wizard itself uses to PLACE a follower, so these numbers are
         # directly comparable to what a user typed into that wizard's R/T/N
         # fields. Deliberately NOT derived from mB - mA (the control law's
-        # own mean-anomaly-difference approximation, still what actually
-        # drives burns below, unchanged) -- real user feedback: a single,
-        # abstract "separation" scalar wasn't interpretable ("vague");
+        # own argument-of-latitude-difference approximation, still what
+        # actually drives burns below, unchanged) -- real user feedback: a
+        # single, abstract "separation" scalar wasn't interpretable ("vague");
         # three real distances in a named, familiar frame are.
         rhoH, _rhoPrimeH = orbitalMotion.rv2hill(rA, vA, rB, vB)
         radialKm = float(rhoH[0]) / 1000.0  # [km]
@@ -824,19 +1360,23 @@ class PhasingKeepingController(sysModel.SysModel):
             # was never involved. This call site remains tolerant of both
             # Basilisk API generations regardless.
             illumB = _eclipse_illumination_fraction(self.eclipseInMsgB())
-            _LOGGER.debug("%s: t=%.3f s eclipse illumination read=%r", self.ModelTag, t, illumB)
             inSun = illumB > self.sunlitThreshold
+            self._lastInSun = _log_sunlit_transition(self.ModelTag, t, illumB, inSun, self._lastInSun)
 
         # Thruster arbitration: altitude keeping owns the effector whenever
         # it is actively burning. Log telemetry and return without
         # touching the effector or advancing the state machine's clocks.
-        thrusterHeldByAltCtrl = self.altitudeControllerB is not None and self.altitudeControllerB.burnOn
+        thrusterHeldByAltCtrl = self.altitudeControllerB is not None and (
+            self.altitudeControllerB.burnOn or self.thruster.firing_owned_by(self.altitudeControllerB))
         if thrusterHeldByAltCtrl:
-            self.tLog.append(t)
-            self.errorDegLog.append(np.degrees(error))
-            self.stateLog.append(self.state)
-            self.propellantLog.append(self._propellant_tracker().propellant)
-            self.deltaVLog.append(self._cumulativeDv)
+            self._quietSinceT = t  # station-keeping is changing this orbit -- re-measure afterwards
+            if self.logThinner.due(t):
+                self.tLog.append(t)
+                self.errorDegLog.append(np.degrees(error))
+                self.stateLog.append(self.state)
+                self.propellantLog.append(self._propellant_tracker().propellant)
+                self.deltaVLog.append(self._cumulativeDv)
+                self.relativeSmaLog.append(relA)
             return
 
         thrustMag = 0.0  # [N]
@@ -871,38 +1411,83 @@ class PhasingKeepingController(sysModel.SysModel):
                 self._activeTargetRad = scheduledTargetRad
                 self._errorAtCycleStartRad = error
                 n = np.sqrt(self.mu / self.aNom ** 3)  # [rad/s] mean motion
-                # Two-body mean-motion offset from an SMA offset:
+                # error is an argument-of-latitude difference (see this
+                # class's own docstring), whose drift rate equals the
+                # two-body mean motion n to within O(e) for the
+                # near-circular orbits this controller targets -- so the
+                # same two-body mean-motion-offset-from-an-SMA-offset
+                # relation below still applies directly:
                 #   dn = -1.5 * n * (deltaA / a)
                 # Solve deltaA so the accumulated drift over the correction
                 # window exactly cancels the current error:
                 #   error + dn * T = 0  =>  deltaA = error * a / (1.5 * n * T)
                 deltaA = error * self.aNom / (1.5 * n * self.correctionWindowS)  # [m]
+                # A correction finer than the thruster's minimum impulse bit
+                # can't be flown: plan at least one bit (a slightly faster
+                # correction) rather than a burn that would be skipped.
+                bitA = self._impulse_bit_delta_a_m()
+                if 0.0 < abs(deltaA) < bitA:
+                    deltaA = float(np.copysign(bitA, deltaA))
                 deltaA = float(np.clip(deltaA, -self.maxDeltaA, self.maxDeltaA))
-                vCirc = np.sqrt(self.mu / self.aNom)  # [m/s]
-                # Linearized tangential-burn SMA change: deltaA/a = 2*dv/vCirc
-                dv = deltaA / self.aNom * vCirc / 2.0  # [m/s]
-                self._targetDv = abs(dv)
-                self._burnSign = 1.0 if dv >= 0.0 else -1.0
-                self._accumDv = 0.0
+                self._plannedDeltaA = deltaA
+                self._driftSign = 1.0 if deltaA >= 0.0 else -1.0
+                # The max-drift clock starts once per correction (not again
+                # after a mid-drift re-steer -- see DRIFT below).
+                self._driftStartT = t
+                # Burn from where the relative SMA actually IS (when that's
+                # known), not from an assumed zero.
+                self._start_burn(deltaA - (relA if relASettled else 0.0))
+                self._trimOnly = False
                 self.state = self.BURN_OUT
+            elif relASettled and abs(relA) > _RELATIVE_SMA_TRIM_TOLERANCE_M:
+                # Not a phasing correction: something else (e.g. a reboost
+                # only one spacecraft made) left the two orbits at different
+                # semi-major axes, which would otherwise drift the formation
+                # apart unchecked. Trim it out -- allowed even while
+                # suspended, since this can only REDUCE the drift.
+                self._plannedDeltaA = 0.0
+                self._start_burn(-relA)
+                self._trimOnly = True
+                self.state = self.BURN_RESTORE
 
         elif self.state == self.BURN_OUT:
             thrustMag = self.thrustN if inSun else 0.0
-            if self._accumDv >= self._targetDv:
+            if self._burn_complete():
                 self._accumDv = 0.0
-                self._driftStartT = t
                 self.state = self.DRIFT
                 thrustMag = 0.0
 
         elif self.state == self.DRIFT:
             restoreTolRad = self.restoreToleranceFraction * abs(self._activeTargetRad)
-            overshot = np.sign(error) != self._burnSign if error != 0.0 else False
+            # "Overshot" = the error crossed ZERO. Real bug: this used to be
+            # a bare sign comparison, so an error wrapping through +/-180 deg
+            # (the follower having drifted half an orbit away) also counted
+            # as "target reached", triggering a restore burn at the worst
+            # possible moment (seen at day 28 of a real user's run).
+            overshot = _crossed_zero(error, self._driftSign)
             if abs(error) < restoreTolRad or overshot or (t - self._driftStartT) > self.maxDriftS:
+                # Null the MEASURED relative SMA, not just this cycle's own
+                # delta-V, so the drift really stops.
+                self._start_burn(-(relA if relASettled else self._plannedDeltaA))
+                self._plannedDeltaA = 0.0
+                self._trimOnly = False
                 self.state = self.BURN_RESTORE
+            elif relASettled and abs(relA - self._plannedDeltaA) > max(
+                    _RELATIVE_SMA_TRIM_TOLERANCE_M, 0.5 * abs(self._plannedDeltaA)):
+                # Disturbed mid-drift (e.g. a station-keeping burn): steer back
+                # to the planned offset, keeping this cycle's target/clock.
+                self._start_burn(self._plannedDeltaA - relA)
+                self.state = self.BURN_OUT
 
         elif self.state == self.BURN_RESTORE:
             thrustMag = self.thrustN if inSun else 0.0
-            if self._accumDv >= self._targetDv:
+            if self._burn_complete() and self._trimOnly:
+                # A disturbance trim, not the end of a phasing cycle -- the
+                # divergence guard below judges phasing cycles only.
+                self.state = self.IDLE
+                self._trimOnly = False
+                thrustMag = 0.0
+            elif self._burn_complete():
                 self.state = self.IDLE
                 thrustMag = 0.0
                 # Real numerical confirmation (not just reasoned about, see
@@ -960,6 +1545,25 @@ class PhasingKeepingController(sysModel.SysModel):
             else (self.dryMass + tracker.propellant)
         )
 
+        if self.state in (self.BURN_OUT, self.BURN_RESTORE):
+            # Partial-tick thrust via the shared thruster's on-time model:
+            # never more than the delta-V this burn still needs, rounded to
+            # the thruster's minimum impulse bit, optionally gated for
+            # eccentricity neutrality. Real limitation the partial-tick part
+            # removed: whole 30 s ticks of the formation template's 0.05 N
+            # thruster moved the semi-major axis ~26 m each, while a typical
+            # correction needs ~2 m, so every correction overshot ~10x.
+            remainingDv = max(self._targetDv - self._accumDv, 0.0)  # [m/s]
+            thrustMag, extraDv, tooSmall = self.thruster.command(
+                owner=self, want_firing=thrustMag > 0.0 or self.thruster.firing_owned_by(self),
+                remaining_dv=remainingDv,
+                sign=self._burnSign, thrust_n=self.thrustN, mass_kg=trueTotalMass, dt_s=dt, in_sun=inSun,
+                u_rad=mB, v_mps=float(np.linalg.norm(vB)), mean_motion=np.sqrt(self.mu / self.aNom ** 3))
+            if extraDv > 0.0:
+                self._targetDv += extraDv  # rounded up to one minimum firing: fly all of it
+            if tooSmall:
+                self._targetDv = self._accumDv  # below half an impulse bit: nothing to fire, burn done
+
         if thrustMag > 0.0:
             accel = thrustMag / trueTotalMass  # [m/s^2]
             self._accumDv += accel * dt
@@ -977,9 +1581,9 @@ class PhasingKeepingController(sysModel.SysModel):
 
         forceVec = np.zeros(3)
         if thrustMag > 0.0:
+            self._quietSinceT = t
             vHatB = vB / np.linalg.norm(vB)
-            sign = self._burnSign if self.state == self.BURN_OUT else -self._burnSign
-            forceVec = thrustMag * sign * vHatB
+            forceVec = thrustMag * self._burnSign * vHatB
         if self.extForceEffectorB is not None:
             self.extForceEffectorB.extForce_N = forceVec.tolist()
 
@@ -988,11 +1592,13 @@ class PhasingKeepingController(sysModel.SysModel):
         deltaVMsg.storageCapacity = self.dvBudgetMps  # [m/s] shared-tank total (see this class's docstring)
         self.deltaVOutMsg.write(deltaVMsg, CurrentSimNanos, self.moduleID)
 
-        self.tLog.append(t)
-        self.errorDegLog.append(np.degrees(error))
-        self.stateLog.append(self.state)
-        self.propellantLog.append(tracker.propellant)
-        self.deltaVLog.append(self._cumulativeDv)
+        if self.logThinner.due(t):
+            self.tLog.append(t)
+            self.errorDegLog.append(np.degrees(error))
+            self.stateLog.append(self.state)
+            self.propellantLog.append(tracker.propellant)
+            self.deltaVLog.append(self._cumulativeDv)
+            self.relativeSmaLog.append(relA)
 
     def _propellant_tracker(self):
         # Satellite B's thruster (and hence its one physical propellant
@@ -1007,8 +1613,15 @@ class PhasingKeepingController(sysModel.SysModel):
 def build_phasing_keeping(scSim, task_name: str, tag: str, mu: float, chief_sc_object, follower_sc_object,
                            follower_station_keeping_controller: StationKeepingController,
                            follower_eclipse_out_msg, chief_semi_major_axis_km: float,
-                           config: PhasingKeepingConfig) -> PhasingKeepingController:
+                           config: PhasingKeepingConfig,
+                           chief_station_keeping_controller: Optional[StationKeepingController] = None,
+                           ) -> PhasingKeepingController:
     """Builds and wires one follower spacecraft's :class:`PhasingKeepingController`.
+
+    Also switches ``follower_station_keeping_controller`` into formation
+    -follower mode, following ``chief_station_keeping_controller`` (``None``
+    if the chief has no station-keeping) -- see
+    :class:`StationKeepingController`'s "Formation-follower mode" docstring.
 
     Shares ``follower_station_keeping_controller``'s ``extForceEffector``
     (no second effector is created -- see ``PhasingKeepingConfig``'s
@@ -1050,6 +1663,9 @@ def build_phasing_keeping(scSim, task_name: str, tag: str, mu: float, chief_sc_o
     # Thruster-arbitration link: phasing pauses while the follower's own
     # altitude controller is actively reboosting (see UpdateState).
     controller.altitudeControllerB = follower_station_keeping_controller
+    controller.thruster = follower_station_keeping_controller.thruster  # one physical thruster
+    follower_station_keeping_controller.formationFollower = True
+    follower_station_keeping_controller.formationReference = chief_station_keeping_controller
     scSim.AddModelToTask(task_name, controller)
     return controller
 
@@ -1136,6 +1752,7 @@ class ConstantFrameThrustController(sysModel.SysModel):
         self._initialPropellantKg = propellant_kg  # [kg] fixed tank capacity, for fuelTankOutMsg.maxFuelMass
 
         self._lastT: Optional[float] = None  # [s]
+        self.logThinner = LogThinner()  # see sim_settings.record_interval_s
         self.tLog: list = []
         self.propellantLog: list = []
         self.deltaVLog: list = []
@@ -1169,9 +1786,10 @@ class ConstantFrameThrustController(sysModel.SysModel):
                 and np.linalg.norm(np.cross(rVec, vVec)) > 0.0):
             if self.extForceEffector is not None:
                 self.extForceEffector.extForce_N = [0.0, 0.0, 0.0]
-            self.tLog.append(t)
-            self.propellantLog.append(self.propellant)
-            self.deltaVLog.append(self._cumulativeDv)
+            if self.logThinner.due(t):
+                self.tLog.append(t)
+                self.propellantLog.append(self.propellant)
+                self.deltaVLog.append(self._cumulativeDv)
             return
 
         axis1, axis2, axis3 = _vnb_basis(rVec, vVec) if self.frame == "VNB" else _rtn_basis(rVec, vVec)
@@ -1212,9 +1830,10 @@ class ConstantFrameThrustController(sysModel.SysModel):
         fuelTankMsg.maxFuelMass = self._initialPropellantKg  # [kg]
         self.fuelTankOutMsg.write(fuelTankMsg, CurrentSimNanos, self.moduleID)
 
-        self.tLog.append(t)
-        self.propellantLog.append(self.propellant)
-        self.deltaVLog.append(self._cumulativeDv)
+        if self.logThinner.due(t):
+            self.tLog.append(t)
+            self.propellantLog.append(self.propellant)
+            self.deltaVLog.append(self._cumulativeDv)
 
 
 def build_constant_thrust(scSim, task_name: str, tag: str, sc_object, dry_mass_kg: float,

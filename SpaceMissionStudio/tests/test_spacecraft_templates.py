@@ -1,6 +1,8 @@
-"""Tests for spacemissionstudio.engine.spacecraft_templates -- no Basilisk
-import, runs anywhere.
+"""Tests for spacemissionstudio.engine.spacecraft_templates. All but the
+last run without Basilisk.
 """
+
+import pytest
 
 from spacemissionstudio.engine.spacecraft_templates import SPACECRAFT_TEMPLATES
 
@@ -38,20 +40,72 @@ def test_build_returns_a_fresh_instance_each_call():
             assert len(second.sensors) != len(first.sensors)
 
 
-def test_passive_cubesat_has_no_adcs_but_enables_drag_and_srp():
-    template = next(t for t in SPACECRAFT_TEMPLATES if "passive" in t.name.lower())
-    config = template.build()
-    assert config.sensors == []
-    assert config.actuators == []
-    assert config.fsw_mode is None
-    assert config.enable_drag is True
-    assert config.enable_srp is True
+def test_presets_cover_the_100_to_500_kg_class_with_fitting_inertias():
+    """The class this app is for: no CubeSats."""
+    masses = sorted(t.build().dry_mass_kg for t in SPACECRAFT_TEMPLATES)
+    assert masses == [100.0, 150.0, 300.0, 500.0]  # [kg]
+    for template in SPACECRAFT_TEMPLATES:
+        config = template.build()
+        mean_inertia = sum(config.inertia_kg_m2[i] for i in (0, 4, 8)) / 3.0  # [kg*m^2]
+        assert config.dry_mass_kg * 0.5 ** 2 / 6.0 <= mean_inertia <= config.dry_mass_kg * 2.5 ** 2 / 6.0
 
 
-def test_stabilized_cubesat_has_reaction_wheels_and_fsw_mode():
-    template = next(t for t in SPACECRAFT_TEMPLATES if "stabilized" in t.name.lower() and "3u" in t.name.lower())
-    config = template.build()
-    assert len(config.actuators) == 3
-    assert all(a.kind == "reaction_wheel" for a in config.actuators)
-    assert config.fsw_mode is not None
-    assert config.power is not None
+def test_sun_safe_presets_put_array_sensor_and_sun_axis_on_the_same_face():
+    for template in SPACECRAFT_TEMPLATES:
+        config = template.build()
+        if config.fsw_mode != "sunSafePoint":
+            continue
+        sun_axis = config.fsw_params["sHatBdyCmd"]
+        assert config.power.panel_normal_b == sun_axis
+        assert any(s.kind == "coarse_sun_sensor" and s.params["nHat_B"] == sun_axis for s in config.sensors)
+        assert [a.kind for a in config.actuators] == ["reaction_wheel"] * 3 + ["magnetic_torque_rod"] * 3
+        assert config.magnetic_momentum_management.wheel_speed_biases_rad_s == [0.0, 0.0, 0.0]
+        assert config.enable_drag and config.enable_srp
+
+
+@pytest.mark.requires_basilisk
+@pytest.mark.parametrize("template", [t for t in SPACECRAFT_TEMPLATES if t.build().fsw_mode == "sunSafePoint"],
+                         ids=lambda t: t.name)
+def test_sun_safe_preset_points_at_the_sun_at_the_default_step(template):
+    """Flown as built, at SimSettings' default 10 s step: +Z settles on the
+    Sun (70 s in a real run) and stays there."""
+    from spacemissionstudio.engine.service import SimulationService
+    from spacemissionstudio.schema.scenario import GravityConfig, Scenario, SimSettings
+
+    spacecraft = template.build()
+    spacecraft.name = "sat-1"
+    scenario = Scenario(name=template.name, epoch_utc="2030-01-01T00:00:00", simulation_mode="full_attitude",
+                        gravity=GravityConfig(central_body="earth", central_body_degree=2,
+                                              third_body_perturbers=["sun"]),
+                        sim_settings=SimSettings(duration_days=20.0 / 1440.0), spacecraft=[spacecraft])  # [day]
+    sun = SimulationService(scenario).run().series["sat-1.sun_heading_body"]
+    assert sun.data[sun.time_s >= 300.0, 2].min() > 0.99  # [-] +Z on the Sun from 5 minutes on
+
+
+@pytest.mark.requires_basilisk
+@pytest.mark.parametrize("template", [t for t in SPACECRAFT_TEMPLATES if t.build().magnetic_momentum_management],
+                         ids=lambda t: t.name)
+def test_torque_rods_unload_spun_up_wheels_within_an_orbit(template):
+    """Wheels spun to 1500/-1000/800 RPM are back under 10 RPM after one
+    ~95 min orbit (under 2 RPM in a real run), while +Z stays on the Sun."""
+    import numpy as np
+
+    from spacemissionstudio.engine.orbit_design import raan_for_ltan_deg
+    from spacemissionstudio.engine.service import SimulationService
+    from spacemissionstudio.schema.scenario import GravityConfig, Scenario, SimSettings
+
+    spacecraft = template.build()
+    spacecraft.name = "sat-1"
+    spacecraft.orbit.raan_deg = raan_for_ltan_deg("2030-01-01T00:00:00")  # [deg] 10:30 LTAN
+    wheels = [a for a in spacecraft.actuators if a.kind == "reaction_wheel"]
+    for wheel, rpm in zip(wheels, (1500.0, -1000.0, 800.0)):  # [RPM]
+        wheel.params["Omega"] = rpm
+    scenario = Scenario(name=template.name, epoch_utc="2030-01-01T00:00:00", simulation_mode="full_attitude",
+                        gravity=GravityConfig(central_body="earth", central_body_degree=2,
+                                              third_body_perturbers=["sun"]),
+                        sim_settings=SimSettings(duration_days=100.0 / 1440.0), spacecraft=[spacecraft])  # [day]
+    result = SimulationService(scenario).run()
+    final_rpm = result.series["sat-1.rw_speeds"].data[-1] * 30.0 / np.pi  # [RPM]
+    assert np.abs(final_rpm).max() < 10.0  # [RPM]
+    sun = result.series["sat-1.sun_heading_body"]
+    assert sun.data[sun.time_s >= 600.0, 2].min() > 0.99  # [-]

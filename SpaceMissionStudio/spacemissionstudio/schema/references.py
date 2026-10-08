@@ -86,10 +86,8 @@ class ReferenceError(ValueError):
 
 def _command_references(commands: List["Command"], path_prefix: str) -> List[Reference]:
     """Recursively scans a command list (and every ``if``/``while``
-    subtree) for spacecraft-name references. Ground-station references
-    aren't scanned here -- no command kind in this project's current
-    minimum set (:data:`schema.command.SUPPORTED_COMMAND_KINDS`) targets
-    one; add a case here if/when one does.
+    subtree) for spacecraft- and ground-station-name references (a
+    propagate that stops at a pass names its station).
     """
     refs: List[Reference] = []
     for i, command in enumerate(commands):
@@ -101,6 +99,10 @@ def _command_references(commands: List["Command"], path_prefix: str) -> List[Ref
             name = command.params["spacecraft"]
             if name:
                 refs.append(Reference(path=f"{path}.params['spacecraft']", resource_kind="spacecraft", name=name))
+            station = command.params.get("ground_station")
+            if command.kind == "propagate" and isinstance(station, str) and station:
+                refs.append(Reference(path=f"{path}.params['ground_station']", resource_kind="ground_station",
+                                      name=station))
         elif command.kind == "assignment" and isinstance(command.params.get("target"), str):
             # "sat-1.station_keeping.thrust_n" -- the first dotted segment
             # is the spacecraft this assignment targets. See module
@@ -168,6 +170,8 @@ def find_ground_station_references(scenario: "Scenario", name: str) -> List[Refe
                 path=f"spacecraft[{i}] ({sc.name!r}).comms_pointing.target_ground_station",
                 resource_kind="ground_station", name=name,
             ))
+    refs.extend(r for r in _command_references(scenario.mission_sequence, "mission_sequence")
+                if r.resource_kind == "ground_station" and r.name == name)
     return refs
 
 
@@ -219,6 +223,7 @@ def rename_ground_station(scenario: "Scenario", old_name: str, new_name: str) ->
         if sc.comms_pointing is not None and sc.comms_pointing.target_ground_station == old_name:
             sc.comms_pointing.target_ground_station = new_name
             updated += 1
+    updated += _rename_in_commands(scenario.mission_sequence, "ground_station", old_name, new_name)
 
     target.name = new_name
     return updated
@@ -243,6 +248,10 @@ def _rename_in_commands(commands: List["Command"], resource_kind: str, old_name:
                     if isinstance(series, str) and "." in series and series.split(".", 1)[0] == old_name:
                         series_list[j] = new_name + series[len(old_name):]
                         updated += 1
+        elif (resource_kind == "ground_station" and command.kind == "propagate"
+                and command.params.get("ground_station") == old_name):
+            command.params["ground_station"] = new_name
+            updated += 1
         if command.kind in ("if", "while"):
             updated += _rename_in_commands(command.children, resource_kind, old_name, new_name)
     return updated

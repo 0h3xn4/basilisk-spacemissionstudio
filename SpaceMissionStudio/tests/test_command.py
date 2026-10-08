@@ -4,6 +4,8 @@ runs anywhere.
 
 from dataclasses import asdict
 
+import pytest
+
 from spacemissionstudio.schema.command import Command
 
 
@@ -58,6 +60,14 @@ def test_propagate_event_valid():
 def test_propagate_event_missing_spacecraft_is_rejected():
     errors = Command(kind="propagate", params={"stop_condition": "event", "event_kind": "periapsis"}).validate("p")
     assert any("spacecraft" in e for e in errors)
+
+
+def test_propagate_pass_event_needs_a_ground_station():
+    command = Command(kind="propagate", params={"stop_condition": "event", "event_kind": "pass_start",
+                                                "spacecraft": "sat-1"})
+    assert any("propagate.ground_station must name the station" in e for e in command.validate("c"))
+    command.params["ground_station"] = "berlin-gs"
+    assert command.validate("c") == []
 
 
 def test_propagate_event_bad_kind_is_rejected():
@@ -255,3 +265,137 @@ def test_from_dict_defaults_missing_optional_fields():
     assert rebuilt.label is None
     assert rebuilt.params == {}
     assert rebuilt.children == []
+
+
+# -- report before any propagate ------------------------------------------------
+
+def _report(label="r"):
+    return Command(kind="report", label=label, params={"series": []})
+
+
+def _propagate():
+    return Command(kind="propagate", params={"stop_condition": "duration", "duration_days": 0.01})
+
+
+def test_a_report_before_any_propagate_is_flagged():
+    """The engine fails on such a report at run time ("no recorded samples
+    yet") -- template 16 shipped that way; it is now caught up front."""
+    from spacemissionstudio.schema.command import report_before_propagate_errors
+
+    errors = report_before_propagate_errors([_report(), _propagate(), _report()])
+    assert len(errors) == 1
+    assert errors[0].startswith("mission_sequence[0]") and "before any propagate" in errors[0]
+
+
+def test_a_report_after_a_propagate_is_fine():
+    from spacemissionstudio.schema.command import report_before_propagate_errors
+
+    assert report_before_propagate_errors([_propagate(), _report(), _report()]) == []
+    assert report_before_propagate_errors([]) == []
+
+
+def test_only_certain_cases_are_flagged():
+    """A report inside if/while may never run, and a propagate nested in an
+    earlier command may have run -- flagging either would block Run on a
+    sequence that can work, so neither is an error."""
+    from spacemissionstudio.schema.command import report_before_propagate_errors
+
+    skipped = Command(kind="if", params={"condition": "t_s > 0.0"}, children=[_report()])
+    assert report_before_propagate_errors([skipped, _propagate()]) == []
+    loop = Command(kind="while", params={"condition": "t_s < 10.0"}, children=[_propagate()])
+    assert report_before_propagate_errors([loop, _report()]) == []
+
+
+def test_scenario_validation_reports_it(tmp_path):
+    from pathlib import Path
+
+    import pytest
+
+    from spacemissionstudio.schema import ScenarioValidationError, load_scenario, validate_all
+
+    templates = Path(__file__).resolve().parent.parent / "spacemissionstudio" / "scenarios" / "templates"
+    scenario = load_scenario(templates / "08_mission_sequence_orbit_raise.json")
+    scenario.mission_sequence.insert(0, _report("too early"))
+    with pytest.raises(ScenarioValidationError, match="before any propagate"):
+        scenario.validate()
+    assert any("before any propagate" in error for error in validate_all(scenario))
+
+
+# -- if/while conditions and script blocks (R15, security_analysis.md) ------
+
+_CONTEXT = {"t_s": 120.0, "duration_days": 1.0,
+            "spacecraft": {"sat-1": {"altitude_m": 400e3, "r_BN_N": [6778e3, 0.0, 0.0]}}}
+
+
+@pytest.mark.parametrize("expression, expected", [
+    ("t_s > 60", True),
+    ("t_s < 60 or duration_days == 1", True),
+    ("not (t_s >= 60 and t_s <= 180)", False),
+    ("spacecraft['sat-1']['altitude_m'] < 500e3", True),
+    ("spacecraft['sat-1']['r_BN_N'][0] / 1e3 > 6000", True),
+    ("-t_s + 2 ** 3 * 15", 0.0),
+    ("0 < t_s < 100", False),
+    ("'sat-1' in spacecraft", True),
+    ("1 if t_s > 100 else 2", 1),
+    ("True", True),
+])
+def test_conditions_evaluate_like_python(expression, expected):
+    """The allowed subset gives Python's own value for each expression."""
+    from spacemissionstudio.schema.command import evaluate_condition
+
+    assert evaluate_condition(expression, _CONTEXT) == expected
+
+
+@pytest.mark.parametrize("expression", [
+    "().__class__.__base__.__subclasses__()",
+    "t_s.real",
+    "__import__('os')",
+    "open('/etc/passwd')",
+    "(lambda: 1)()",
+    "[x for x in spacecraft]",
+])
+def test_conditions_cannot_reach_beyond_their_values(expression):
+    """Attribute access, calls, lambdas and comprehensions are refused, so
+    a condition from a scenario file cannot reach any Python object
+    (finding S-02)."""
+    from spacemissionstudio.schema.command import ConditionError, evaluate_condition
+
+    with pytest.raises(ConditionError, match="is not allowed in a condition"):
+        evaluate_condition(expression, _CONTEXT)
+
+
+def test_condition_errors_name_the_problem():
+    """Unknown names list the available ones; a syntax error and a huge
+    exponent are refused with a message."""
+    from spacemissionstudio.schema.command import ConditionError, evaluate_condition
+
+    with pytest.raises(ConditionError, match="unknown name 'alt'.*spacecraft"):
+        evaluate_condition("alt < 500", _CONTEXT)
+    with pytest.raises(ConditionError, match="not a valid expression"):
+        evaluate_condition("t_s >", _CONTEXT)
+    with pytest.raises(ConditionError, match="exponent"):
+        evaluate_condition("10 ** 10 ** 10", _CONTEXT)
+
+
+def test_validation_reports_a_condition_outside_the_allowed_set():
+    """The editor shows a disallowed condition before the run, with the
+    command's path."""
+    command = Command(kind="if", params={"condition": "t_s.real > 0"})
+    assert any("if.condition: Attribute is not allowed" in error for error in command.validate("mission_sequence[0]"))
+
+
+def test_script_blocks_are_found_at_any_depth():
+    """script_blocks() lists every script_block with its item path, so the
+    CLI and the GUI can ask for consent naming each one (SRS-S-03)."""
+    from spacemissionstudio.schema.command import script_blocks
+
+    commands = [
+        Command(kind="script_block", params={"code": "pass"}),
+        Command(kind="while", params={"condition": "t_s < 10"}, children=[
+            Command(kind="if", params={"condition": "True"}, children=[
+                Command(kind="script_block", params={"code": "pass"}),
+            ]),
+        ]),
+    ]
+    assert [path for path, _ in script_blocks(commands)] == [
+        "mission_sequence[0]", "mission_sequence[1].children[0].children[0]"]

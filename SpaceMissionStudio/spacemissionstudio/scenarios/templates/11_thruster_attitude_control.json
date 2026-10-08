@@ -25,17 +25,17 @@
         "tle_line1": null,
         "tle_line2": null
       },
-      "dry_mass_kg": 100.0,
+      "dry_mass_kg": 300.0,
       "inertia_kg_m2": [
-        10.0,
+        92.2,
         0.0,
         0.0,
         0.0,
-        10.0,
+        92.2,
         0.0,
         0.0,
         0.0,
-        10.0
+        72.0
       ],
       "sigma_bn_init": [
         0.3,
@@ -53,6 +53,7 @@
       "enable_srp": false,
       "srp_coeff": 1.3,
       "srp_area_m2": 1.0,
+      "facets": [],
       "enable_gravity_gradient": false,
       "sensors": [],
       "actuators": [
@@ -61,9 +62,9 @@
           "name": "thr-1",
           "params": {
             "r_B": [
-              -1,
-              -1,
-              1.28
+              -0.6,
+              -0.6,
+              0.75
             ],
             "tHat_B": [
               1,
@@ -78,9 +79,9 @@
           "name": "thr-2",
           "params": {
             "r_B": [
-              1,
-              -1,
-              -1.28
+              0.6,
+              -0.6,
+              -0.75
             ],
             "tHat_B": [
               -1,
@@ -95,9 +96,9 @@
           "name": "thr-3",
           "params": {
             "r_B": [
-              1,
-              -1,
-              1.28
+              0.6,
+              -0.6,
+              0.75
             ],
             "tHat_B": [
               0,
@@ -112,9 +113,9 @@
           "name": "thr-4",
           "params": {
             "r_B": [
-              1,
-              1,
-              -1.28
+              0.6,
+              0.6,
+              -0.75
             ],
             "tHat_B": [
               0,
@@ -129,9 +130,9 @@
           "name": "thr-5",
           "params": {
             "r_B": [
-              1,
-              1,
-              1.28
+              0.6,
+              0.6,
+              0.75
             ],
             "tHat_B": [
               -1,
@@ -146,9 +147,9 @@
           "name": "thr-6",
           "params": {
             "r_B": [
-              -1,
-              1,
-              -1.28
+              -0.6,
+              0.6,
+              -0.75
             ],
             "tHat_B": [
               1,
@@ -163,9 +164,9 @@
           "name": "thr-7",
           "params": {
             "r_B": [
-              -1,
-              1,
-              1.28
+              -0.6,
+              0.6,
+              0.75
             ],
             "tHat_B": [
               0,
@@ -180,9 +181,9 @@
           "name": "thr-8",
           "params": {
             "r_B": [
-              -1,
-              -1,
-              -1.28
+              -0.6,
+              -0.6,
+              -0.75
             ],
             "tHat_B": [
               0,
@@ -206,11 +207,13 @@
       "rf_link": null,
       "comms_pointing": null,
       "station_keeping": null,
+      "geo_station_keeping": null,
       "phasing_keeping": null,
       "constant_thrust": null,
       "momentum_dumping": null,
       "magnetic_momentum_management": null,
       "fuel_tank": null,
+      "propellant_budget": null,
       "vizard_model_path": null,
       "vizard_model_offset_m": [
         0.0,
@@ -231,17 +234,18 @@
   ],
   "ground_stations": [],
   "space_weather": {
-    "source": "synthetic",
+    "source": "bundled",
     "local_file_path": null,
     "cache_dir": null,
     "atmosphere_model": "nrlmsise00",
-    "activity_level": "nominal",
-    "activity_percentile": 95.0
+    "forecast_percentile": 50.0,
+    "msfc_file_path": null
   },
   "sim_settings": {
     "duration_days": 0.01,
     "dynamics_task_rate_s": 0.5,
-    "integrator": "rkf78"
+    "integrator": "rkf78",
+    "record_interval_s": 0.0
   },
   "monte_carlo": {
     "enabled": false,
@@ -251,6 +255,6 @@
     "dispersions": []
   },
   "mission_sequence": [],
-  "description": "The thruster counterpart to '06'/'07': instead of reaction wheels or an idealized actuator, this spacecraft points itself using eight real ACS thrusters (an 8-thruster corner-mounted cube layout, the same real configuration examples/scenarioAttitudeFeedback2T_TH.py/scenarioMomentumDumping.py ship) via Basilisk's real thrForceMapping -> thrFiringSchmitt -> thrusterDynamicEffector chain (see engine.fsw.build_thrusters/build_thruster_force_mapping). fsw_mode 'inertial3D' commands a fixed inertial attitude; the spacecraft starts tipped away from it with a small initial body rate.\n\nWhat to look at: result series '{sat-1}.thruster_on_time' (one column per thruster, seconds) shows which thrusters fired and for how long as the controller worked to null the attitude error -- compare against '07''s '{sat-1}.rw_speeds' to see the equivalent signal for the reaction-wheel case. In Vizard, thruster plumes render natively (engine.vizard.enable_vizard's thr_effectors_by_spacecraft) when a thruster is firing.\n\nTry changing: each actuator's MaxThrust (weaker thrusters take longer to null the same attitude error), or the thruster layout itself (fewer than 6 well-placed thrusters cannot produce a pure torque about all three axes -- thrForceMapping will report a degraded/saturated solution).",
-  "schema_version": 2
+  "description": "Attitude control with eight 1 N thrusters on the corners of a 300 kg bus, instead of reaction wheels, pointing at a fixed inertial attitude from an initial tip.\n\nWhat to look at:\n- sat-1.thruster_on_time: which thrusters fire, and for how long.\n- sat-1.attitude_sigma_BN: from the initial tip to within a few degrees in about 2 minutes, then a small limit cycle as the thrusters pulse.\n- Thruster plumes in Vizard.\n\nTry changing:\n- Thrust per thruster: weaker ones take longer to settle.\n- The layout: fewer than 6 well-placed thrusters can't produce torque about every axis.",
+  "schema_version": 4
 }

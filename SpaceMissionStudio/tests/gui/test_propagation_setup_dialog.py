@@ -5,6 +5,30 @@ import pytest
 pytestmark = pytest.mark.requires_gui
 
 
+@pytest.fixture(autouse=True)
+def _no_real_cached_fetch(monkeypatch):
+    """Real bug, found on a real (non-sandbox) dev machine: the dialog's
+    own __init__ calls ``engine.spaceweather.cached_fetch_path()``
+    directly (see that module's own prefill logic) to decide whether to
+    pre-fill ``local_file_edit`` -- un-isolated, this reads the ACTUAL
+    on-disk cache (``~/.cache/SpaceMissionStudio/spaceweather/...``),
+    which is empty in an ephemeral sandbox (where this test suite always
+    happened to pass) but genuinely populated on a real, persistent dev
+    machine that has actually run the startup-fetch flow before --
+    silently breaking every test built on the plain ``dialog`` fixture
+    (e.g. ``test_defaults_round_trip``, which assumes a pristine
+    ``SpaceWeatherConfig()`` with ``local_file_path=None``). Defaults
+    every test in this file to "no cache" so results don't depend on
+    what some other, unrelated command happened to leave on disk; the
+    three tests that specifically exercise the prefill behavior already
+    apply their own ``monkeypatch.setattr(sw, "cached_fetch_path", ...)``
+    override, which simply takes precedence over this one.
+    """
+    from spacemissionstudio.engine import spaceweather as sw
+
+    monkeypatch.setattr(sw, "cached_fetch_path", lambda *a, **k: None)
+
+
 def _dialog(gravity=None, sim_settings=None, space_weather=None):
     from spacemissionstudio.gui.propagation_setup_dialog import PropagationSetupDialog
     from spacemissionstudio.schema.scenario import GravityConfig, SimSettings, SpaceWeatherConfig
@@ -59,22 +83,33 @@ def test_srp_pointer_label_gets_its_full_wrapped_height_not_clipped(dialog):
 
         QApplication.processEvents()
 
-    srp_labels = [w for w in dialog.findChildren(QLabel) if "PER SPACECRAFT" in w.text()]
+    srp_labels = [w for w in dialog.findChildren(QLabel) if "set per spacecraft" in w.text()]
     assert srp_labels, "expected to find the SRP-pointer QLabel"
     label = srp_labels[0]
     needed_height = label.heightForWidth(label.geometry().width())
     assert label.geometry().height() >= needed_height
 
 
-def test_dialog_resizes_to_its_own_sizehint_on_construction(dialog):
-    """Regression guard: this dialog's window used to stay at whatever
-    size Qt's FIRST layout pass guessed (871x734, measured directly),
-    smaller than its own later-computed sizeHint() (871x768) once every
-    group was actually built -- clipping the bottom rows of the last
-    group against its own border. Explicitly resizing to sizeHint() at
-    the end of __init__ (after every group exists) fixes it.
+def test_no_group_is_squashed_below_its_minimum_height(dialog):
+    """Regression guard: the three groups need ~800 px of height. On an
+    800 px-tall screen (this offscreen test platform's own default, and a
+    common laptop height) the window got clamped and Qt squashed the
+    "Atmosphere & drag" rows until their text was cut off. The content
+    now sits in a QScrollArea, so every group keeps at least its own
+    minimum height and the dialog scrolls instead -- and is still wide
+    enough that no horizontal scrolling is ever needed.
     """
-    assert dialog.size() == dialog.sizeHint()
+    from PySide6.QtWidgets import QApplication, QGroupBox, QScrollArea
+
+    dialog.show()
+    for _ in range(3):
+        QApplication.processEvents()
+
+    for group in dialog.findChildren(QGroupBox):
+        assert group.height() >= group.minimumSizeHint().height(), group.title()
+
+    scroll = dialog.findChildren(QScrollArea)[0]
+    assert scroll.widget().minimumSizeHint().width() <= scroll.viewport().width()
 
 
 def test_defaults_round_trip(dialog):
@@ -86,6 +121,24 @@ def test_defaults_round_trip(dialog):
     assert got_gravity == GravityConfig()
     assert got_sim == SimSettings()
     assert got_sw == SpaceWeatherConfig()
+
+
+def test_cache_dir_round_trips(qtbot):
+    """Regression test for a real gap found by audit: cache_dir had no
+    editor at all, so a hand-edited scenario that already set it would
+    silently lose it on save through this dialog.
+    """
+    from spacemissionstudio.schema.scenario import SpaceWeatherConfig
+
+    d = _dialog(space_weather=SpaceWeatherConfig(cache_dir="/tmp/custom-sw-cache"))
+    qtbot.addWidget(d)
+    assert d.cache_dir_edit.text() == "/tmp/custom-sw-cache"
+    assert d.to_space_weather().cache_dir == "/tmp/custom-sw-cache"
+
+
+def test_cache_dir_blank_stays_none(dialog):
+    assert dialog.cache_dir_edit.text() == ""
+    assert dialog.to_space_weather().cache_dir is None
 
 
 def test_central_body_removed_from_third_body_choices(dialog):
@@ -107,20 +160,41 @@ def test_space_weather_local_file_field_enabled_only_for_local_file_source(dialo
     assert not dialog.local_file_edit.isEnabled()
     dialog.space_weather_source_combo.setCurrentText("local_file")
     assert dialog.local_file_edit.isEnabled()
-    dialog.space_weather_source_combo.setCurrentText("synthetic")
+    dialog.space_weather_source_combo.setCurrentText("bundled")
     assert not dialog.local_file_edit.isEnabled()
 
 
 def test_local_file_field_prefills_from_a_cached_startup_fetch_when_empty(qtbot, monkeypatch, tmp_path):
+    from spacemissionstudio.engine import spaceweather as sw
+    from spacemissionstudio.schema.scenario import SpaceWeatherConfig
+
+    cached = tmp_path / "SW-All.csv"
+    cached.write_text("DATE\n")
+    monkeypatch.setattr(sw, "cached_fetch_path", lambda *a, **k: cached)
+
+    d = _dialog(space_weather=SpaceWeatherConfig(source="local_file"))
+    qtbot.addWidget(d)
+
+    assert d.local_file_edit.text() == str(cached)
+
+
+def test_cached_fetch_is_suggested_only_once_the_source_is_local_file(qtbot, monkeypatch, tmp_path):
+    """Real bug, found on a real user's machine: the cached path was
+    pre-filled for EVERY scenario, so opening this dialog on a bundled
+    -source scenario and clicking OK wrote the user's own absolute cache
+    path into it (and into any file they then saved and shared)."""
     from spacemissionstudio.engine import spaceweather as sw
 
     cached = tmp_path / "SW-All.csv"
     cached.write_text("DATE\n")
     monkeypatch.setattr(sw, "cached_fetch_path", lambda *a, **k: cached)
 
-    d = _dialog()
+    d = _dialog()  # default source: bundled
     qtbot.addWidget(d)
+    assert d.local_file_edit.text() == ""
+    assert d.to_space_weather().local_file_path is None  # open + OK changes nothing
 
+    d.space_weather_source_combo.setCurrentText("local_file")
     assert d.local_file_edit.text() == str(cached)
 
 
@@ -234,40 +308,23 @@ def test_exponential_atmosphere_model_disables_space_weather_controls(dialog):
 
     assert not dialog.space_weather_source_combo.isEnabled()
     assert not dialog.local_file_edit.isEnabled()
-    assert not dialog.activity_level_combo.isEnabled()
-    assert not dialog.activity_percentile_spin.isEnabled()
+    assert not dialog.forecast_percentile_combo.isEnabled()
 
     dialog.atmosphere_model_combo.setCurrentIndex(0)  # back to nrlmsise00
     assert dialog.space_weather_source_combo.isEnabled()
     assert dialog.local_file_edit.isEnabled()  # source is still "local_file" from above
-    assert dialog.activity_level_combo.isEnabled()
+    assert dialog.forecast_percentile_combo.isEnabled()
 
 
-def test_activity_level_defaults_to_nominal_with_percentile_disabled(dialog):
-    assert dialog._selected_activity_level() == "nominal"
-    assert not dialog.activity_percentile_spin.isEnabled()
-    assert dialog.to_space_weather().activity_level == "nominal"
-
-
-def test_selecting_conservative_activity_level_enables_percentile_and_round_trips(dialog):
-    dialog.activity_level_combo.setCurrentIndex(1)  # conservative
-    assert dialog._selected_activity_level() == "conservative"
-    assert dialog.activity_percentile_spin.isEnabled()
-
-    dialog.activity_percentile_spin.setValue(97.7)
-    sw = dialog.to_space_weather()
-    assert sw.activity_level == "conservative"
-    assert sw.activity_percentile == pytest.approx(97.7)
-
-
-def test_loading_existing_conservative_config_checks_the_right_controls(qtbot):
-    from spacemissionstudio.schema.scenario import SpaceWeatherConfig
-
-    d = _dialog(space_weather=SpaceWeatherConfig(activity_level="conservative", activity_percentile=90.0))
-    qtbot.addWidget(d)
-    assert d._selected_activity_level() == "conservative"
-    assert d.activity_percentile_spin.isEnabled()
-    assert d.activity_percentile_spin.value() == pytest.approx(90.0)
+def test_solar_activity_offers_nominal_conservative_and_low(dialog):
+    """One choice: nominal (MSFC 50th), conservative (95th, ESA AD10
+    operations) or low (5th); nominal by default."""
+    labels = [dialog.forecast_percentile_combo.itemText(i) for i in range(dialog.forecast_percentile_combo.count())]
+    assert [label.split(":")[0] for label in labels] == ["Nominal", "Conservative", "Low"]
+    assert "95th" in labels[1] and "AD10" in labels[1]
+    assert dialog.to_space_weather().forecast_percentile == 50.0
+    dialog.forecast_percentile_combo.setCurrentIndex(1)
+    assert dialog.to_space_weather().forecast_percentile == 95.0
 
 
 def test_srp_location_pointer_label_is_present(dialog):
@@ -281,3 +338,26 @@ def test_srp_location_pointer_label_is_present(dialog):
     labels = [w.text() for w in dialog.findChildren(QLabel)]
     assert any("solar radiation pressure" in text.lower() and "per spacecraft" in text.lower()
                for text in labels)
+
+
+def test_record_interval_round_trips_and_zero_reads_every_step(qtbot):
+    from spacemissionstudio.schema.scenario import SimSettings
+
+    dialog = _dialog(sim_settings=SimSettings(duration_days=30.0, record_interval_s=600.0))
+    qtbot.addWidget(dialog)
+    assert dialog.to_sim_settings().record_interval_s == 600.0  # [s]
+    dialog.record_interval_spin.setValue(0.0)
+    assert dialog.record_interval_spin.text() == "Every step"
+    assert dialog.to_sim_settings().record_interval_s == 0.0
+
+
+def test_forecast_percentile_and_msfc_file_round_trip(qtbot):
+    """AD10's 95th-percentile operations setting and a study's own MSFC
+    file survive opening and OK-ing the dialog."""
+    from spacemissionstudio.schema.scenario import SpaceWeatherConfig
+
+    d = _dialog(space_weather=SpaceWeatherConfig(forecast_percentile=95.0, msfc_file_path="/study/oct2026f10-prd.txt"))
+    qtbot.addWidget(d)
+    weather = d.to_space_weather()
+    assert weather.forecast_percentile == 95.0 and weather.msfc_file_path == "/study/oct2026f10-prd.txt"
+    assert _dialog().to_space_weather().forecast_percentile == 50.0

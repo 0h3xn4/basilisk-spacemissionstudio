@@ -1,32 +1,157 @@
 """Tests for spacemissionstudio.engine.spaceweather -- no Basilisk import, runs
-anywhere. resolve() itself makes no network calls at all (see its own
-"Closed-off/offline policy" docstring) -- only "local_file" and "synthetic"
-are valid source values; "celestrak" (and anything else) is rejected as an
-unknown source. fetch() is a separate, never-automatically-called utility
-(only reached via gui.startup_fetch_dialog's consent-gated prompt) --
-its own network calls are mocked here (urllib.request.urlopen), same as
-gui/test_vizard_launcher.py's fetch_vizard() tests.
+anywhere. Real data only: "bundled" (CelesTrak's SW-All shipped with the app)
+and "local_file" are the sources; the fixtures below are excerpts of that
+real record. resolve() makes no network calls; fetch() (only reached via
+gui.startup_fetch_dialog's consent-gated prompt) is tested with
+urllib.request.urlopen mocked.
 """
 
-from datetime import datetime
+import csv
+from datetime import date, datetime
+from pathlib import Path
 
+import numpy as np
 import pytest
 
 from spacemissionstudio.engine import spaceweather as sw
 
-
-def test_generate_synthetic_passes_its_own_validation(tmp_path):
-    start, end = datetime(2030, 1, 1), datetime(2030, 1, 10)
-    path = sw.generate_synthetic(start, end, tmp_path / "synth.csv")
-    result = sw.validate_file(path, start, end)
-    assert result.ok, result.message
+_KIND_TO_TYPE = {"observed": "OBS", "daily_forecast": "PRD", "monthly_forecast": "PRM"}
+_SHIPPED = sw.BUNDLED_DATA_PATH  # kept: some tests point BUNDLED_DATA_PATH elsewhere
 
 
-def test_generate_synthetic_is_deterministic(tmp_path):
-    start, end = datetime(2030, 1, 1), datetime(2030, 1, 5)
-    path_a = sw.generate_synthetic(start, end, tmp_path / "a.csv", seed=7)
-    path_b = sw.generate_synthetic(start, end, tmp_path / "b.csv", seed=7)
-    assert path_a.read_text() == path_b.read_text()
+def _real_excerpt_csv(path, first, last):
+    """Days ``first``..``last`` of the shipped CelesTrak record, written in
+    CelesTrak's own CSV layout (monthly-forecast rows once per month,
+    with no Ap, as CelesTrak publishes them)."""
+    data = sw.load_celestrak(_SHIPPED)
+    with open(path, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["DATE"] + [f"AP{k}" for k in range(1, 9)]
+                        + ["AP_AVG", "F10.7_OBS", "F10.7_DATA_TYPE", "F10.7_OBS_CENTER81"])
+        for day in sorted(d for d in data.days if first <= d <= last):
+            rec = data.days[day]
+            if rec.kind == "monthly_forecast":
+                if day.day == 1:
+                    writer.writerow([day.isoformat()] + [""] * 9 + [rec.f107_obs, "PRM", rec.f107_center81])
+                continue
+            writer.writerow([day.isoformat()] + list(rec.ap)
+                            + [rec.ap_avg, rec.f107_obs, _KIND_TO_TYPE[rec.kind], rec.f107_center81])
+    return path
+
+
+def test_the_shipped_record_parses_as_published():
+    """Spot checks against the raw lines of data/spaceweather/SW-All.txt."""
+    data = sw.load_celestrak(sw.BUNDLED_DATA_PATH)
+    assert data.updated == "2025 Jul 21 10:37:15 UTC"
+    assert (data.first_date, data.last_date) == (date(1957, 10, 1), date(2041, 10, 31))
+    first = data.days[date(1957, 10, 1)]
+    assert first.ap == (32, 27, 15, 7, 22, 9, 32, 22) and first.ap_avg == 21
+    assert (first.f107_obs, first.f107_center81) == (269.3, 266.6)
+    assert data.days[date(2025, 7, 20)].kind == "observed"
+    assert data.days[date(2025, 7, 21)].kind == "daily_forecast"
+    month = data.days[date(2030, 1, 17)]
+    assert month.kind == "monthly_forecast" and month.f107_obs == 77.8  # [sfu] NOAA's January 2030 value
+    assert month.ap_avg == pytest.approx(data.long_term_ap)
+    observed = [r.ap_avg for r in data.days.values() if r.kind == "observed"]
+    assert data.long_term_ap == pytest.approx(np.mean(observed)) == pytest.approx(12.83, abs=0.01)
+
+
+@pytest.mark.requirement("E-ST-10-04C 6.2.3b")
+def test_a_past_run_gets_the_observed_days_unchanged(tmp_path):
+    """The 2003 Halloween storms, as observed."""
+    resolved = sw.resolve("bundled", datetime(2003, 10, 28), datetime(2003, 11, 2), cache_dir=tmp_path)
+    assert resolved.data_file == sw.BUNDLED_DATA_PATH and resolved.warnings == []
+    rows = {row["DATE"]: row for row in csv.DictReader(open(resolved.path))}
+    record = sw.load_celestrak(sw.BUNDLED_DATA_PATH).days[date(2003, 10, 29)]
+    assert float(rows["2003-10-29"]["AP_AVG"]) == record.ap_avg > 150.0
+    assert float(rows["2003-10-29"]["F10.7_OBS"]) == record.f107_obs
+    assert sw.validate_file(resolved.path, datetime(2003, 10, 28), datetime(2003, 11, 2)).ok
+
+
+@pytest.mark.requirement("E-ST-10-04C 6.2.3b", "E-ST-10-04C 7.2.1.2e")
+def test_a_future_run_uses_msfcs_prediction_at_the_chosen_percentile(tmp_path):
+    """January 2030 from MSFC's October 2026 table: 74.2 sfu / Ap 11.5 at
+    the 50th percentile, 78.7 / 16.2 at the 95th (AD10: operations)."""
+    for percentile, f107, ap in ((50.0, 74.2, 11.5), (95.0, 78.7, 16.2)):  # [%], [sfu], [-]
+        resolved = sw.resolve("bundled", datetime(2030, 1, 1), datetime(2030, 2, 1), cache_dir=tmp_path,
+                              forecast_percentile=percentile)
+        assert resolved.warnings == [f"space weather uses MSFC's prediction (oct2026f10-prd.txt), "
+                                     f"{percentile:g}th percentile F10.7 and Ap"]
+        row = next(r for r in csv.DictReader(open(resolved.path)) if r["DATE"] == "2030-01-15")
+        assert (float(row["F10.7_OBS"]), float(row["F10.7_OBS_CENTER81"]), float(row["AP_AVG"])) == (f107, f107, ap)
+        assert all(float(row[f"AP{k}"]) == ap for k in range(1, 9))
+
+
+def test_noaa_fills_only_the_months_before_msfc_starts(tmp_path):
+    """The shipped CelesTrak file ends its 45-day forecast in August 2025;
+    MSFC's table starts in April 2026. In between, NOAA's monthly F10.7
+    (with the observed-mean Ap) is all the real data there is."""
+    resolved = sw.resolve("bundled", datetime(2025, 11, 1), datetime(2026, 5, 1), cache_dir=tmp_path)
+    assert any("NOAA's monthly F10.7 forecast" in w and "where MSFC's prediction does not reach" in w
+               for w in resolved.warnings)
+    rows = {r["DATE"]: r for r in csv.DictReader(open(resolved.path))}
+    assert float(rows["2026-01-15"]["F10.7_OBS"]) == sw.load_celestrak(_SHIPPED).days[date(2026, 1, 15)].f107_obs
+    assert float(rows["2026-04-15"]["F10.7_OBS"]) == 133.9  # [sfu] MSFC, April 2026, 50th
+
+
+def test_msfc_parses_as_published_and_repeats_its_last_132_months():
+    """AD10 Sec. 5.9: past the prediction's end, its last 132 months repeat."""
+    msfc = sw.load_msfc(sw.MSFC_BUNDLED_PATH)
+    assert (msfc.first_month, msfc.last_month, len(msfc.months)) == (date(2026, 4, 1), date(2041, 10, 1), 187)
+    assert msfc.months[date(2026, 4, 1)] == ((137.7, 133.9, 131.3), (13.9, 13.1, 12.1))
+    assert msfc.values(date(2041, 10, 1), 50.0) == (70.0, 8.9, False)
+    assert msfc.values(date(2041, 11, 1), 50.0) == (*msfc.values(date(2030, 11, 1), 50.0)[:2], True)
+    assert msfc.values(date(2052, 10, 1), 95.0) == (*msfc.values(date(2041, 10, 1), 95.0)[:2], True)
+    assert msfc.values(date(2026, 3, 1), 50.0) is None
+
+
+def test_runs_past_2041_continue_on_the_repeated_cycle(tmp_path):
+    resolved = sw.resolve("bundled", datetime(2041, 6, 1), datetime(2045, 1, 1), cache_dir=tmp_path)
+    assert "past 2041-10 MSFC's last 132 months repeat (ESA AD10 Sec. 5.9)" in resolved.warnings
+    assert sw.data_coverage("bundled") == (date(1957, 10, 1), None)
+
+
+def test_a_run_before_the_record_is_refused_with_the_range(tmp_path):
+    with pytest.raises(sw.SpaceWeatherError, match=r"covers 1957-10-01; this run needs"):
+        sw.resolve("bundled", datetime(1957, 9, 1), datetime(1957, 11, 1), cache_dir=tmp_path)
+
+
+def test_an_unknown_forecast_percentile_is_refused():
+    with pytest.raises(sw.SpaceWeatherError, match="forecast_percentile"):
+        sw.resolve("bundled", datetime(2030, 1, 1), datetime(2030, 1, 5), forecast_percentile=90.0)
+
+
+def test_a_short_table_is_not_taken_for_an_msfc_prediction(tmp_path):
+    path = tmp_path / "short.txt"
+    path.write_text("".join(sw.MSFC_BUNDLED_PATH.read_text().splitlines(keepends=True)[:40]))
+    with pytest.raises(sw.SpaceWeatherError, match="needs at least 132"):
+        sw.load_msfc(path)
+
+
+def test_a_celestrak_csv_with_forecast_rows_reads_like_the_text_file(tmp_path):
+    """CelesTrak's CSV layout (OBS/PRD/PRM rows, monthly rows without Ap)
+    gives the same days as its text file."""
+    path = _real_excerpt_csv(tmp_path / "SW-excerpt.csv", date(2025, 6, 1), date(2025, 12, 31))
+    from_csv = sw.load_celestrak(path)
+    shipped = sw.load_celestrak(sw.BUNDLED_DATA_PATH)
+    for day in (date(2025, 6, 10), date(2025, 7, 25), date(2025, 11, 20)):
+        assert from_csv.days[day].kind == shipped.days[day].kind
+        assert from_csv.days[day].f107_obs == shipped.days[day].f107_obs
+    # the excerpt's own observed days set its long-term Ap
+    assert from_csv.days[date(2025, 11, 20)].ap_avg == pytest.approx(from_csv.long_term_ap)
+
+
+def test_the_newer_of_the_shipped_and_downloaded_files_is_used(tmp_path, monkeypatch):
+    """A startup download observed further than the shipped file wins."""
+    older = _real_excerpt_csv(tmp_path / "old.csv", date(2023, 1, 1), date(2024, 12, 31))
+    monkeypatch.setattr(sw, "BUNDLED_DATA_PATH", older)
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    newer = _real_excerpt_csv(cache / "SW-All.csv", date(2024, 1, 1), date(2025, 7, 20))
+    assert sw.real_data_path("bundled", cache_dir=cache) == newer
+    monkeypatch.setattr(sw, "BUNDLED_DATA_PATH", newer)
+    _real_excerpt_csv(cache / "SW-All.csv", date(2023, 1, 1), date(2024, 6, 30))
+    assert sw.real_data_path("bundled", cache_dir=cache) == newer
 
 
 def test_validate_file_rejects_missing_file(tmp_path):
@@ -96,18 +221,12 @@ def test_validate_file_detects_duplicate_dates(tmp_path):
     assert result.duplicate_dates == ["2030-01-01"]
 
 
-def test_resolve_synthetic_source_returns_flagged_synthetic(tmp_path):
-    resolved = sw.resolve("synthetic", datetime(2030, 1, 1), datetime(2030, 1, 5), cache_dir=tmp_path)
-    assert resolved.is_synthetic
-    assert any("SYNTHETIC" in w for w in resolved.warnings)
-
-
-def test_resolve_local_file_source_uses_exact_file(tmp_path):
-    start, end = datetime(2030, 1, 1), datetime(2030, 1, 5)
-    local_path = sw.generate_synthetic(start, end, tmp_path / "mine.csv")
-    resolved = sw.resolve("local_file", start, end, local_file_path=str(local_path))
-    assert resolved.path == local_path
-    assert not resolved.is_synthetic
+def test_resolve_local_file_source_reads_that_file(tmp_path):
+    local_path = _real_excerpt_csv(tmp_path / "mine.csv", date(2024, 1, 1), date(2024, 3, 1))
+    resolved = sw.resolve("local_file", datetime(2024, 1, 20), datetime(2024, 2, 1),
+                          local_file_path=str(local_path), cache_dir=tmp_path / "cache")
+    assert resolved.data_file == local_path
+    assert sw.validate_file(resolved.path, datetime(2024, 1, 20), datetime(2024, 2, 1)).ok
 
 
 def test_resolve_local_file_source_raises_if_missing():
@@ -125,117 +244,41 @@ def test_resolve_unknown_source_raises():
         sw.resolve("magic", datetime(2030, 1, 1), datetime(2030, 1, 5))
 
 
-def test_resolve_celestrak_source_is_rejected_as_unknown():
-    """"celestrak" used to be a real fetch-from-network source; the
-    closed-off/offline policy removed it entirely (not just defaulted away
-    from -- see spaceweather.py's own module docstring), so it must now be
-    rejected the same as any other unknown source string, never silently
-    treated as "local_file" or "synthetic".
-    """
+@pytest.mark.parametrize("source", ["celestrak", "synthetic"])
+def test_removed_sources_are_rejected_as_unknown(source):
+    """"celestrak" (a runtime network fetch) and "synthetic" (a generated
+    profile) were both removed; neither is quietly read as another source."""
     with pytest.raises(sw.SpaceWeatherError, match="unknown space_weather.source"):
-        sw.resolve("celestrak", datetime(2030, 1, 1), datetime(2030, 1, 5))
+        sw.resolve(source, datetime(2030, 1, 1), datetime(2030, 1, 5))
 
 
-# -- Conservative ("worst-case") drag margin -------------------------------
-# See this module's own docstring, "Conservative ('worst-case') drag
-# margin", for the real user request this implements. generate_synthetic()
-# stands in for "a real historical CSV" purely as test data here (its
-# solar-cycle-shaped F10.7 and storm-episode Ap give a genuinely varied
-# distribution to compute a percentile over) -- compute_worst_case_activity
-# itself is source-agnostic file parsing + percentile math; the "must
-# actually BE real data" policy is enforced one layer up, in resolve()'s
-# own source handling, and tested separately below.
+# -- Conservative = MSFC's 95th percentile (ESA AD10 Sec. 5.9) -------------
 
-def _write_long_history(tmp_path, years: int = 15, seed: int = 3):
-    start = datetime(2000, 1, 1)
-    end = datetime(2000 + years, 1, 1)
-    return sw.generate_synthetic(start, end, tmp_path / "history.csv", seed=seed), start, end
-
-
-def test_compute_worst_case_activity_matches_numpy_percentile(tmp_path):
-    import numpy as np
-
-    path, _start, _end = _write_long_history(tmp_path)
-    f107_all, ap_all = sw._load_historical_activity(path)
-
-    f107_p, ap_p, n_samples = sw.compute_worst_case_activity(path, 95.0)
-
-    assert n_samples == len(f107_all) == len(ap_all)
-    assert f107_p == pytest.approx(np.percentile(f107_all, 95.0))
-    assert ap_p == pytest.approx(np.percentile(ap_all, 95.0))
+def test_the_conservative_case_is_msfcs_predicted_cycle_at_the_95th_percentile(tmp_path):
+    """Conservative is no constant: the same predicted solar cycle as
+    nominal, at MSFC's 95th percentile, so higher every month and still
+    rising and falling with the cycle (2030 to 2034 here)."""
+    start, end = datetime(2030, 1, 1), datetime(2034, 12, 31)
+    rows = {}
+    for percentile in (50.0, 95.0):
+        resolved = sw.resolve("bundled", start, end, cache_dir=tmp_path, forecast_percentile=percentile)
+        rows[percentile] = {r["DATE"]: float(r["F10.7_OBS"]) for r in csv.DictReader(open(resolved.path))}
+        assert any(f"{percentile:g}th percentile" in w for w in resolved.warnings)
+    months = [f"{year}-{month:02d}-15" for year in range(2030, 2035) for month in (1, 7)]
+    assert all(rows[95.0][m] > rows[50.0][m] for m in months)
+    assert max(rows[95.0][m] for m in months) - min(rows[95.0][m] for m in months) > 30.0  # [sfu] a cycle, not flat
 
 
-def test_compute_worst_case_activity_rejects_short_history(tmp_path):
-    start, end = datetime(2030, 1, 1), datetime(2030, 6, 1)  # well under a year
-    path = sw.generate_synthetic(start, end, tmp_path / "short.csv")
-    with pytest.raises(sw.SpaceWeatherError, match="need at least"):
-        sw.compute_worst_case_activity(path, 95.0)
-
-
-def test_generate_worst_case_holds_values_constant_and_validates(tmp_path):
-    start, end = datetime(2030, 1, 1), datetime(2030, 1, 10)
-    path = sw.generate_worst_case(230.5, 45.0, start, end, tmp_path / "worst.csv")
-
-    result = sw.validate_file(path, start, end)
-    assert result.ok, result.message
-
-    import csv as _csv
-    with open(path, newline="") as f:
-        rows = list(_csv.DictReader(f))
-    assert rows  # non-empty
-    for row in rows:
-        assert float(row["F10.7_OBS"]) == pytest.approx(230.5)
-        assert float(row["F10.7_OBS_CENTER81"]) == pytest.approx(230.5)
-        assert float(row["AP_AVG"]) == pytest.approx(45.0)
-        for i in range(1, 9):
-            assert float(row[f"AP{i}"]) == pytest.approx(45.0)
-
-
-def test_resolve_conservative_local_file_computes_real_percentile(tmp_path):
-    import numpy as np
-
-    history_path, _hist_start, _hist_end = _write_long_history(tmp_path)
-    f107_all, ap_all = sw._load_historical_activity(history_path)
-    expected_f107 = np.percentile(f107_all, 95.0)
-    expected_ap = np.percentile(ap_all, 95.0)
-
-    scenario_start, scenario_end = datetime(2030, 1, 1), datetime(2030, 1, 5)
-    resolved = sw.resolve("local_file", scenario_start, scenario_end, local_file_path=str(history_path),
-                           cache_dir=tmp_path / "cache", activity_level="conservative", activity_percentile=95.0)
-
-    assert resolved.is_synthetic  # not real per-day data for THESE dates -- see resolve()'s own docstring
-    assert any("CONSERVATIVE" in w for w in resolved.warnings)
-    result = sw.validate_file(resolved.path, scenario_start, scenario_end)
-    assert result.ok, result.message
-
-    import csv as _csv
-    with open(resolved.path, newline="") as f:
-        first_row = next(_csv.DictReader(f))
-    # abs=0.05: generate_worst_case's CSV rounds to 1 decimal place, so the
-    # round-tripped value can differ from the unrounded percentile by up to
-    # half of that -- real float formatting, not slack for a bug.
-    assert float(first_row["F10.7_OBS"]) == pytest.approx(expected_f107, abs=0.05)
-    assert float(first_row["AP_AVG"]) == pytest.approx(expected_ap, abs=0.05)
-
-
-def test_resolve_conservative_synthetic_source_raises():
-    with pytest.raises(sw.SpaceWeatherError, match="needs REAL historical"):
-        sw.resolve("synthetic", datetime(2030, 1, 1), datetime(2030, 1, 5), activity_level="conservative")
-
-
-def test_resolve_conservative_local_file_without_path_raises():
-    with pytest.raises(sw.SpaceWeatherError, match="local_file_path was not set"):
-        sw.resolve("local_file", datetime(2030, 1, 1), datetime(2030, 1, 5), activity_level="conservative")
-
-
-def test_resolve_unknown_activity_level_raises():
-    with pytest.raises(sw.SpaceWeatherError, match="unknown space_weather.activity_level"):
-        sw.resolve("synthetic", datetime(2030, 1, 1), datetime(2030, 1, 5), activity_level="extreme")
+def test_resolve_has_no_activity_level_any_more():
+    """Schema v3's historical-percentile "conservative" mode is gone (schema
+    v4: conservative is forecast_percentile 95)."""
+    with pytest.raises(TypeError):
+        sw.resolve("bundled", datetime(2030, 1, 1), datetime(2030, 1, 5), activity_level="conservative")
 
 
 def test_resolve_never_calls_fetch(tmp_path, monkeypatch):
     """resolve() itself must NEVER touch the network, regardless of
-    source/activity_level -- fetch() is only ever reached explicitly, via
+    source -- fetch() is only ever reached explicitly, via
     gui.startup_fetch_dialog's consent-gated prompt. Fails loudly (instead
     of quietly passing) if resolve() is ever wired to call it.
     """
@@ -243,11 +286,10 @@ def test_resolve_never_calls_fetch(tmp_path, monkeypatch):
         raise AssertionError("resolve() must never call fetch() itself")
 
     monkeypatch.setattr(sw, "fetch", _unexpected_fetch)
-    start, end = datetime(2030, 1, 1), datetime(2030, 1, 5)
-    local_path = sw.generate_synthetic(start, end, tmp_path / "local.csv")
-
-    sw.resolve("synthetic", start, end)
-    sw.resolve("local_file", start, end, local_file_path=str(local_path))
+    local_path = _real_excerpt_csv(tmp_path / "local.csv", date(2024, 1, 1), date(2024, 3, 1))
+    sw.resolve("bundled", datetime(2030, 1, 1), datetime(2030, 1, 5), cache_dir=tmp_path)
+    sw.resolve("local_file", datetime(2024, 1, 20), datetime(2024, 2, 1), local_file_path=str(local_path),
+               cache_dir=tmp_path)
 
 
 class _FakeFetchResponse:
@@ -358,3 +400,75 @@ def test_cached_fetch_path_finds_a_real_fetch(tmp_path, monkeypatch):
     fetched = sw.fetch(dataset="SW-All", cache_dir=tmp_path)
 
     assert sw.cached_fetch_path(cache_dir=tmp_path) == fetched
+
+
+def test_a_cut_short_cached_file_is_written_again(tmp_path):
+    """Finding F-09: a resolved file cut short (a parallel writer, or a run
+    that died while writing) used to be reused because it existed. It is
+    now written again in full."""
+    window = (datetime(2003, 10, 1), datetime(2003, 12, 1))
+    first = sw.resolve("bundled", *window, cache_dir=tmp_path)
+    full = first.path.read_text()
+    first.path.write_text("".join(full.splitlines(keepends=True)[:10]))
+    again = sw.resolve("bundled", *window, cache_dir=tmp_path)
+    assert again.path == first.path
+    assert again.path.read_text() == full
+
+
+def test_a_failed_write_leaves_no_file_behind(tmp_path, monkeypatch):
+    """Finding F-09: the resolved file appears only complete; a write that
+    fails part-way leaves neither it nor its temporary file."""
+    real_writer = sw.csv.writer
+
+    def failing_writer(f):
+        writer = real_writer(f)
+        calls = []
+
+        class Writer:
+            def writerow(self, row):
+                calls.append(row)
+                if len(calls) == 5:
+                    raise OSError("disk full")
+                writer.writerow(row)
+        return Writer()
+
+    monkeypatch.setattr(sw.csv, "writer", failing_writer)
+    with pytest.raises(OSError, match="disk full"):
+        sw.resolve("bundled", datetime(2003, 10, 1), datetime(2003, 12, 1), cache_dir=tmp_path)
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_a_refused_replace_keeps_the_complete_file_another_process_wrote(tmp_path, monkeypatch):
+    """F-09 on Windows: a file another process has open cannot be replaced
+    (PermissionError). That process wrote the same window, so its complete
+    file is kept and the new copy dropped, instead of the run failing."""
+    window = (datetime(2003, 10, 1), datetime(2003, 12, 1))
+    first = sw.resolve("bundled", *window, cache_dir=tmp_path)
+    full = first.path.read_text()
+    first.path.write_text("".join(full.splitlines(keepends=True)[:10]))  # force a rewrite
+
+    def refuse(src, dst):
+        Path(dst).write_text(full)  # meanwhile another process finished the same file
+        raise PermissionError("Access is denied")
+
+    monkeypatch.setattr(sw.os, "replace", refuse)
+    again = sw.resolve("bundled", *window, cache_dir=tmp_path)
+    assert again.path.read_text() == full
+    assert sorted(p.name for p in tmp_path.iterdir()) == [first.path.name]  # no temporary file left
+
+
+def test_a_refused_replace_of_an_incomplete_file_is_reported(tmp_path, monkeypatch):
+    """If the file held open never becomes complete, the error is raised
+    rather than a short file being used."""
+    window = (datetime(2003, 10, 1), datetime(2003, 12, 1))
+    first = sw.resolve("bundled", *window, cache_dir=tmp_path)
+    first.path.write_text("DATE\n")
+    monkeypatch.setattr(sw, "_REPLACE_RETRY_S", 0.0)
+
+    def refuse(src, dst):
+        raise PermissionError("Access is denied")
+
+    monkeypatch.setattr(sw.os, "replace", refuse)
+    with pytest.raises(PermissionError):
+        sw.resolve("bundled", *window, cache_dir=tmp_path)
+    assert sorted(p.name for p in tmp_path.iterdir()) == [first.path.name]

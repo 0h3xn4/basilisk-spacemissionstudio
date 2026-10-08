@@ -6437,3 +6437,1424 @@ The audit's §3 Gantt gap, scoped down per the roadmap's own call: rather than a
 **Verified**: 8 new tests in `tests/gui/test_results_widget.py` -- the view combo defaults to "Single series"; switching disables/re-enables `series_combo` correctly; the combined chart produces the right trace count per pair (including the always-present no-access placeholder row for a pair with zero windows); the no-access-series-at-all case shows the empty-state annotation; the x-axis stays elapsed time even when `x_axis_combo` is explicitly set to Epoch; switching back to "Single series" restores the exact previous series selection and plot; the PNG save dialog's default filename becomes `access_timeline.png` in that view; and a real end-to-end check that the generated HTML actually loads in the offscreen `QWebEngineView` without error (catches a figure that builds fine as a Python object but would be malformed Plotly JSON, which the other, Python-object-level assertions can't). All 47 pre-existing tests in that file pass completely UNMODIFIED. Full non-Basilisk suite: 1134 passed, 2 skipped, zero regressions.
 
 This completes every item in the user-approved Phase 3 sequence (Q1 -> M1 -> Q3 -> Q2 -> M2/M3 -> M4 -> M5). Everything remaining in `docs/ux_roadmap.md` is Strategic-tier and explicitly gated on a decision from the user before starting, per that document's own Decisions section.
+
+---
+
+## Real UI regression fix: Results tab's top row was squeezing the Series combo to unreadable fragments
+
+Caught directly from a real screenshot of the running app (template 19), not a test: the Series combo (`gui/results_widget.py`) was showing only a few garbled characters (e.g. ",powerS") of whatever series was selected, instead of its real name (e.g. "leo-comms-1.battery_net_power"). Root cause: every control on the Results tab's top row -- the View/Series/X-axis combos AND all three action buttons (Export, Save PNG, Save SVG) -- shared one `QHBoxLayout`. Adding the "View" combo (roadmap item M5) and the "Save plot as SVG..." button (roadmap item M2) earlier this session, on top of what was already a fairly full row, pushed total width demand past what the Results panel (never full window width -- it shares a splitter with the Scenario Editor) actually has. Qt's layout resolved that overflow by shrinking `series_combo` (the one widget with `stretch=1`, i.e. the one actually meant to use leftover space) down toward its minimum size rather than shrinking anything else -- which is exactly backwards from what a user needs, since that's the ONE control whose content (a real series name, sometimes 40+ characters long) is the least tolerant of truncation.
+
+**Fix**: split the row into two -- "what am I looking at" (View/Series/X-axis combos) stays on its own row with nothing else competing for its space, and "do something with it" (Export/Save PNG/Save SVG buttons) moved to a new row below. `series_combo` also gained an explicit `setMinimumWidth(220)` as a second, independent safety margin, so even a genuinely narrow window can't squeeze it back down to unreadable -- the row before this fix had no floor on it at all, which is the same underlying gap that let this regression happen invisibly (every automated test constructs the widget off-screen or at a generous default size, so none of them would ever have caught a real window's width pressure).
+
+**Verified**: all 55 `tests/gui/test_results_widget.py` tests pass unmodified (purely a layout change -- no widget was removed or renamed, so nothing the existing tests reference moved). Additionally confirmed VISUALLY, not just via passing tests: rendered the real widget off-screen at both an 820px and a 600px panel width (matching the proportions in the reported screenshot) and grabbed a screenshot of each -- the full series name now displays correctly at both widths, with the three action buttons clearly separated onto their own row beneath. Full non-Basilisk suite: 1135 passed, 2 skipped (one single-run QtWebEngine-teardown crash reproduced once, same known flake pattern already documented elsewhere in this file -- confirmed non-reproducible on an immediate re-run, clean 1135/2).
+
+---
+
+## Real UI bug fix: a huge blank gap above the Results plot, pushing the actual chart off-screen
+
+Caught from a second real screenshot of the running app (template 05, formation flying): a large blank area sat between the provenance/button rows and the actual Plotly chart, with the chart itself continuing well past the bottom of the visible window (a scrollbar was needed to see any of it).
+
+**Root cause, confirmed by directly inspecting live Qt widget geometry (not guessed at)**: `provenance_label` and `web_view` both default to `QSizePolicy.Preferred` vertically with a stretch factor of 0 -- `gui/results_widget.py`'s `QVBoxLayout` had no explicit stretch factors anywhere to break that tie. Qt's layout engine resolved the resulting ambiguity by handing almost ALL of the column's leftover vertical space to the one-line `provenance_label` (confirmed directly: its allocated geometry was 386px tall at a 950px window height, for a label whose own `sizeHint()` is 14px) while `web_view` stayed pinned at its generic, content-independent default `sizeHint()` of 640x480 -- exactly backwards from the obviously-intended behavior (the label should stay compact; the chart should fill whatever room is left).
+
+**Fix**: `provenance_label` and `warnings_label` both get an explicit `QSizePolicy(Preferred, Fixed)` (pinning them to their own natural height regardless of surplus space), and `web_view` is now added with `layout.addWidget(self.web_view, stretch=1)` -- the standard, deterministic Qt mechanism for "this widget gets all the leftover space," rather than relying on size-policy tie-breaking that turned out not to behave as expected here.
+
+**Verified**: reproduced the exact bug first -- rendered the real widget off-screen at a 1210x950 window (matching the reported screenshot's proportions) with real provenance text set and inspected `provenance_label.geometry()` directly: `QRect(11, 67, 1188, 386)`, confirming the 386px overgrowth non-anecdotally before writing any fix. After the fix, the same inspection shows `web_view.geometry()` = `QRect(11, 87, 1188, 852)` -- claiming the correct leftover space -- and a fresh screenshot shows the chart filling the window immediately below the button row, with zero blank gap. `tests/gui/test_results_widget.py`: 55/55 passing unmodified. Full non-Basilisk suite: 1135 passed, 2 skipped, zero regressions.
+
+---
+
+## Real bug fix: StationKeepingController cold-start altitude-smoothing bias corrupts phasing-keeping
+
+A user, watching a real run of `05_formation_flying_phasing.json` live in Vizard, flagged that the "R vs chief-1"/"T vs chief-1" `GenericStorage` panels were both pinned at their 100 km ceiling partway through a 7-day run -- not just the previously-investigated along-track-overshoot issue (see this file's earlier "phasing-keeping along-track separation overshoots target badly" entry), but now the RADIAL separation too, which this controller never actively manages and should stay near zero for two near-identical coplanar orbits.
+
+**Root cause, found by reproducing the template with REAL Basilisk dynamics** (point-mass Earth gravity, both the default fixed-step integrator and the production `rkf78` -- confirmed identical results either way, ruling out integrator truncation error as a factor) and instrumenting `PhasingKeepingController`'s own `lastRadialKm`/`lastTransverseKm`/`errorDegLog` directly: the along-track separation diverged monotonically from -60 km to -595 km over 7 days (more than 10x the 50 km target, in the WRONG direction) while the controller sat frozen in its DRIFT state for the entire run, having fired exactly one, correctly-computed 0.057 m/s correction burn that should have been converging the error, not growing it.
+
+Tracing the discrepancy down to the actual semi-major-axis history (not just the controller's own interpretation of it) found the true cause: NOT a sign error in phasing-keeping's own control law (confirmed correct by hand-deriving the deltaA/burn-direction chain and by independently confirming the applied burn direction against Basilisk's real dynamics), but a cold-start bug in the CO-LOCATED `StationKeepingController`, which shares the same thruster. `StationKeepingController.UpdateState()`'s "orbit-period boxcar smoothing" (`_altHistory`, meant to "reject short-period altitude oscillation and only respond to secular decay") starts EMPTY on every `Reset()` -- so at the very first tick, the smoothed altitude is averaged over exactly ONE sample: the raw osculating altitude at whatever point in the orbit the spacecraft happens to start. The template places both spacecraft AT PERIGEE (`true_anomaly_deg: 0`/`-0.5`), where the osculating altitude is genuinely, normally below the orbit's mean -- nothing secular is wrong at all. With only one sample in the averaging window, that single low perigee reading alone was enough to trip `burnOn = True` immediately, and the controller then burned continuously for roughly half an orbital period (confirmed: exactly 96 ticks x 30s = 2880s, matching the window's own fill time) before the smoothing average caught up -- injecting a real, unintended ~540 m semi-major-axis change into the follower's orbit purely as a filter-startup artifact. `PhasingKeepingController` has no way to distinguish that perturbation from a genuine orbital anomaly, and its own correctly-sized correction burn was overwhelmed by it from that point on.
+
+**Fix** (`engine/orbit_maintenance.py`, `StationKeepingController`): a new burn may only START once the altitude-history window actually holds a FULL orbital period of real samples (tracked via a new `_historyStartT`, set once on the first tick after `Reset()` -- NOT measured against the oldest entry still in the pruned window, which structurally can never itself reach the window length and would make the guard permanently unsatisfiable; this exact mistake was caught and fixed during this same session, before it shipped, by the regression tests below). The symmetric burn-STOP condition is left untouched -- it only matters once a burn has legitimately started, by which point the window is always full. This delays reacting to a genuinely real altitude deficiency at simulation start by at most one orbital period, which is consistent with, not a new tradeoff against, this controller's own stated purpose of responding only to secular decay (which by definition unfolds over many orbits anyway).
+
+**Verified**: re-running the same real-dynamics 7-day reproduction with the fix applied: ZERO spurious station-keeping burns (`skBurnOn` never true), max radial separation drops from 26.1 km to 0.37 km, and the along-track separation now converges smoothly and monotonically from -60 km toward the 50 km target (reaching -20 km by day 7, correctly trending toward target instead of diverging away from it) -- the controller's own `errDeg` metric shrinks monotonically too, matching. Two new regression tests in `tests/test_orbit_maintenance.py` (`test_station_keeping_cold_start_does_not_spuriously_burn_on_one_low_sample`, confirming a single below-deadband sample no longer trips `burnOn`; `test_station_keeping_cold_start_guard_only_gates_the_start_not_the_stop`, confirming an already-in-progress burn still exits immediately and isn't delayed by this fix) plus an existing test (`test_station_keeping_publishes_delta_v_message_after_update`) updated to run a full settle phase first, since its old "burns on the very first tick" premise is exactly the bug this fixes. Three mass-bookkeeping tests in `tests/test_orbit_maintenance_true_mass.py` needed a matching update (a settle phase before the measured tick, plus real point-mass gravity attached -- their spacecraft previously coasted ungoverned with no gravity at all, harmless for a single-tick test but not for a multi-thousand-second settle phase) -- all three pass with real per-tick dv/mass deltas isolated via before/after snapshots rather than the old single-tick cumulative values. Full `tests/test_orbit_maintenance.py` (29/29) and `tests/test_orbit_maintenance_true_mass.py` (3/3) pass; a broader sweep (`pytest -k "station_keeping or orbit_maintenance or formation or phasing"`, 144 tests) shows exactly two pre-existing failures, both confirmed (via `git stash`) to fail identically without this fix -- this sandbox's standing, already-documented SPICE/no-network limitation, unrelated to this change. Full non-Basilisk suite: 1135 passed, 2 skipped, zero regressions.
+
+---
+
+## Two real bugs found from the first genuine full-suite run on a real (non-sandbox) dev machine
+
+The user ran the full suite for real for the first time this session, on their own machine with a real Basilisk install, real SPICE kernels, and a real, persistent filesystem -- none of which this project's own development sandbox has ever had. Result: 1301 passed, 11 skipped, 3 failed. Two of the three failures were real, previously-undetectable-in-this-sandbox bugs (the third was this session's own, already-known, already-documented SPICE/no-network sandbox gap re-surfacing under a different test name -- not investigated further here).
+
+**Bug 1 -- `gui/propagation_setup_dialog.py`'s "cached startup fetch" prefill read the REAL filesystem cache, un-isolated, in every test built on the plain `dialog` fixture.** `PropagationSetupDialog.__init__` calls `engine.spaceweather.cached_fetch_path()` directly to decide whether to pre-fill its local-file field -- correct production behavior, and already correctly tested with its own `monkeypatch` in the three tests that specifically exercise it. But the SHARED `dialog`/`_dialog()` fixture used by most of this file's other tests never isolated that same call, so every one of them (e.g. `test_defaults_round_trip`, which asserts a pristine `SpaceWeatherConfig()` round-trips with `local_file_path=None`) was silently depending on whatever happened to be in `~/.cache/SpaceMissionStudio/spaceweather/` on whatever machine ran the tests. This sandbox's own ephemeral container never had anything cached there, so the gap was invisible here; the user's real, persistent dev machine had genuinely already run the startup-fetch flow before, populating that cache for real -- exactly the scenario this test suite should have been resilient to from the start.
+
+**Fix**: a new file-wide `autouse=True` fixture in `tests/gui/test_propagation_setup_dialog.py` defaults `cached_fetch_path` to "no cache" (`None`) for every test, closing the isolation gap at its root rather than patching each affected test individually; the three tests that deliberately exercise the real prefill behavior keep their own explicit overrides, which simply take precedence per pytest's usual fixture-then-test-body ordering.
+
+**Bug 2 -- `tests/test_gravity_gradient.py` used a physically-impossible inertia tensor that a NEWER Basilisk build now correctly rejects.** The test picked `diag(5, 10, 20) kg*m^2` to get an "elongated," non-spherical inertia for a nonzero gravity-gradient torque -- but no rigid body can actually have those three principal moments: the triangle inequality requires the largest to be no more than the sum of the other two, and `5 + 10 = 15 < 20`. The Basilisk 2.12.0 build this project was built and verified against never checked this at runtime, so the mistake shipped unnoticed; the user's newer Basilisk build has since added `HubEffector::validateConfiguration()` (confirmed directly by reading `src/architecture/utilities/avsEigenSupport.cpp`'s `eigenIsValidInertiaMatrix()` in this monorepo's own Basilisk source tree -- symmetric, at-most-one-zero-eigenvalue, and exactly this triangle-inequality check), which now correctly rejects it during `InitializeSimulation()` with a cryptic C++ message naming `IHubPntBc_B`, not the actual problem.
+
+**Fix**: changed the test's inertia to `diag(5, 8, 10)` -- still clearly non-spherical (the real requirement the comment above it already documented) while comfortably satisfying the triangle inequality (`5 + 8 = 13 > 10`). Also added a genuinely new, scoped validity check to `schema.scenario.SpacecraftConfig.validate()` itself: for a DIAGONAL `inertia_kg_m2` (confirmed, by sweeping every bundled template/scenario JSON file, to be the only shape this project's own content ever uses), the diagonal entries -- which ARE the principal moments directly for a diagonal matrix, no eigendecomposition needed -- must be positive and satisfy the same triangle inequality, with a message that actually names the violated values instead of a generic Basilisk C++ string. A fully general (off-diagonal-populated) inertia tensor is deliberately left unchecked here (this schema module has no numpy dependency by design -- see its own "standalone, no Basilisk needed" docstring) and still reaches Basilisk's own runtime check unvalidated, just without this earlier message.
+
+**Verified**: `tests/gui/test_propagation_setup_dialog.py`: 23/23 passing (unaffected in this sandbox, since nothing was ever cached here either way -- the fix is about determinism on OTHER machines, confirmed by inspecting the fixture's own isolation, not by a before/after sandbox comparison this sandbox can't produce). Four new tests in `tests/test_scenario_schema.py` for the new triangle-inequality check: rejects the exact `diag(5, 10, 20)` mistake with a message naming "triangle inequality"; rejects a non-positive diagonal entry; accepts the corrected `diag(5, 8, 10)`; and confirms a non-diagonal tensor is deliberately left unchecked (scoped as documented, not silently over-reaching). `tests/test_scenario_schema.py` (207/207) and `tests/test_scenario_templates.py` (every bundled template, unmodified) both pass, confirming the new check doesn't false-positive on anything this project already ships. `tests/test_gravity_gradient.py` itself could not be re-run in this sandbox (needs SPICE/network, this sandbox's own standing, already-documented limitation) -- the fix is grounded in reading Basilisk's own real C++ validation source directly, not assumed. Full non-Basilisk suite: 1139 passed, 2 skipped, zero regressions.
+
+---
+
+## Comprehensive audit: phasing-keeping still broken under real J2 dynamics -- two more real bugs, found and fixed, after this session got genuine Basilisk access
+
+A later screenshot (different numeric values than the earlier cold-start-fix investigation, so a fresh run) STILL showed `05_formation_flying_phasing.json`'s "R vs chief-1"/"T vs chief-1" Vizard panels pinned at their 100 km ceiling. The user asked for a complete audit of what was going wrong, with a quick primer on real-world phasing-keeping practice first.
+
+**Industry practice, briefly.** Real along-track/phasing control for formation-flying and co-located constellations (GPS, Iridium-class LEO formations, co-located GEO pairs) is built on a small set of standard ideas this controller already follows in spirit: (1) phase/separation is tracked via a drift-and-correct cycle -- raise or lower the semi-major axis slightly for a bounded window to accumulate the needed mean-motion offset, then restore it, rather than continuously thrusting; (2) the tracked phase quantity and any altitude deadband are evaluated on MEAN, not raw osculating, elements/altitude, specifically to avoid reacting to short-period (once-per-orbit) oscillation that isn't real secular drift; (3) for near-circular orbits specifically, mission designers use non-singular ("equinoctial") orbital elements rather than classical (semi-major axis, eccentricity, inclination, RAAN, argument of periapsis, mean anomaly) ones, because classical elements have a well-known mathematical singularity as eccentricity -> 0 (where "the direction to periapsis" stops being meaningful) and near i -> 0; (4) any deadband is sized with real margin over the orbit's own natural, non-decaying short-period variation (eccentricity- and J2-driven), not picked as tight as the mission's propellant budget allows. This audit found this project's own controller violating (2)/(3)/(4) in ways invisible in this sandbox until a real Basilisk build with real J2 gravity became available to test against (see below) -- (1) was already correct.
+
+**This sandbox finally has a real Basilisk build to test against.** Earlier entries in this file repeatedly documented "could not verify here, no Basilisk install" as a standing limitation; that changed mid-audit (`pip download bsk` succeeded through this session's proxy, and a prior session had already built a working venv) -- real SPICE kernel hosts (`naif.jpl.nasa.gov`, its `hanspeterschaub.info` backup) remain unreachable (re-confirmed directly: a live fetch attempt gets a proxy 403 from both), so Sun/Moon third-body gravity specifically still could not be exercised, but Earth's own spherical-harmonics gravity field (`GGM03S`, bundled locally, no network needed) now could be, for the first time, against this template's exact real orbital elements.
+
+**Bug 1 -- `PhasingKeepingController`'s phase-error metric is numerically singular for a near-circular orbit, and this template's own orbit is near-circular (`e = 0.001`) on purpose.** The control law measured along-track phase from the difference of each spacecraft's osculating MEAN ANOMALY (`orbitalMotion.rv2elem` -> `f2E` -> `E2M`), which decomposes eccentricity, argument of periapsis, and true anomaly individually. Reproduced directly, against a real Basilisk build with real (degree >= 2) spherical-harmonics Earth gravity active on this template's exact elements: the osculating eccentricity vector's own real, physical J2 short-period oscillation is, by itself, enough to carry this near-circular orbit's `e` through numerically-zero every single orbit -- confirmed by instrumentation, `e` dipped to ~7.5e-5 and the recovered argument of periapsis swung by ~180 deg within three 30 s ticks, while the REAL geometric along-track separation (`orbitalMotion.rv2hill`) barely moved at all over that same interval. The resulting mean-anomaly-difference "error" read as large as several THOUSAND km of spurious phase error within a handful of ticks, which the controller (faithfully, correctly given its input) acted on as real -- computing a wildly wrong `deltaA`/burn direction from it and actually perturbing the real orbit.
+
+**Fix** (`engine/orbit_maintenance.py`, `PhasingKeepingController`): replaced the osculating-mean-anomaly difference with a new `_argument_of_latitude(rVec, vVec)` -- the angle `u = omega + f`, computed DIRECTLY from each spacecraft's instantaneous position/velocity via the ascending-node/orbit-normal geometry, never decomposing eccentricity/argument-of-periapsis/true-anomaly individually. This is exactly the quantity non-singular/equinoctial element theory is built around retaining for this reason, and it is numerically well-behaved all the way through `e -> 0` (confirmed: re-running the exact same real-J2 reproduction with the fix, the along-track error is smooth and stable to within ~0.5 km across the same interval that used to show thousand-km spikes). The one real approximation this introduces -- a true, not mean, argument of latitude, carrying an uncorrected equation-of-center bias of order `2*e` radians -- is utterly negligible for the near-circular (well under ~0.05) orbits this controller targets; a rigorous equinoctial-element reformulation (correct at any eccentricity) is a real, documented follow-on, not implemented here. Undefined, in the same well-known way classical RAAN is, only for an exactly equatorial orbit (`i == 0`) -- falls back to the inertial +X axis as an arbitrary but fixed reference in that case, which loses no accuracy for this controller's own use (only the difference `uB - uA` is ever used, and both spacecraft always share the same orbital plane).
+
+**Bug 2 -- this template's own `station_keeping.deadband_km` (2 km) had no margin over this orbit's real, natural, non-decaying altitude variation.** Tracing WHY the fixed phase-error metric was STILL drifting under the full control loop (not just the one function) found a second, independent problem: the co-located `StationKeepingController` (which `phasing_keeping` always shares a thruster with) fired a real, continuous ~7-hour reboost burn, confirmed via direct instrumentation of its own burn log, purely from boxcar-averaging raw osculating altitude over one orbital period and comparing it against an absolute 550 km target with only a 2 km deadband. Measured directly: for this exact orbit (`a` = 6928 km, `e` = 0.001) under real J2 gravity, the time-average of raw altitude over ANY integer number of orbital periods (tested 1 through 10 -- ruling out an averaging-window-length artifact) converges to a STABLE ~545 km, not 550 km -- a genuine ~5 km secular offset between this orbit's initializing semi-major axis and its own true time-averaged radius under real J2, on top of which J2's short-period term adds further swing. A 2 km deadband has no margin over either, so the controller was doing exactly what it was configured to do: reacting to ordinary orbital mechanics, not real secular (e.g. drag) decay. (A tempting alternative fix -- average the osculating semi-major axis, or use Basilisk's own `orbitalMotion.clMeanOscMap` Brouwer mean-element mapping instead of raw altitude -- was tried and rejected: SMA's own short-period swing at this geometry is LARGER than altitude's (~19 km peak-to-peak, confirmed), and `clMeanOscMap` depends on the same individually-decomposed eccentricity/argument-of-periapsis internals Bug 1 just found to be singular at this exact eccentricity.)
+
+**Fix**: widened `05_formation_flying_phasing.json`'s own `station_keeping.deadband_km` from 2.0 to 15.0 (`scripts/_generate_templates.py`, regenerated) -- comfortably covering this orbit's real natural swing while still catching genuine drag decay (this template's own `enable_drag=True`) well before it could matter, matching the industry practice above (size the deadband with margin over natural short-period variation, not as tight as the budget allows). The template's own `description` and the `orbit=`/`station_keeping=` comments in the generator were corrected in place -- the old comment's claim that 7 km of eccentricity-driven swing was "well inside" a 2 km deadband was itself simply wrong, never actually checked against real J2 dynamics until this audit.
+
+**Verified**: both fixes confirmed together, end-to-end, against the real Basilisk build on this template's exact elements (degree-2 Earth gravity -- Sun/Moon third-body remains genuinely unverified, see above): zero station-keeping burns over 7 simulated days (previously one real ~7-hour burn), and the along-track error converges smoothly and monotonically from its real -110 km starting value toward the +50 km target (reaching -71 km by day 7, consistent with the 21-day correction window design) instead of diverging past -5000 km. Four new unit tests in `tests/test_orbit_maintenance.py` for `_argument_of_latitude` directly (matches true anomaly/`rv2elem` for a well-conditioned orbit; stays exactly continuous as `e` is swept through zero where the classical decomposition is undefined; matches hand-computed equatorial reference cases) plus one new guard test (`test_phasing_keeping_skips_thrust_on_parallel_r_and_v`, the same `cross(r, v) == 0` degenerate case `ConstantFrameThrustController` already guards against, newly needed since `_argument_of_latitude` divides by the orbit-normal magnitude). A new `tests/test_orbit_maintenance_j2_regression.py` (2 tests) runs the FULL control loop end-to-end against real degree-2 spherical-harmonics gravity via the same bare-`SimulationBaseClass`-plus-builder-functions pattern `tests/test_gravity_gradient.py` already established (bypassing `engine.service`'s own SPICE requirement, which real `central_body_degree > 0` always triggers there) -- a standing regression guard for both bugs together, not just the one function. `tests/test_orbit_maintenance.py` (33/33, up from 29) and the new file (2/2) both pass against a real Basilisk 2.12.0 build.
+
+**The user then ran the full suite for real**, on their own machine (real Basilisk, real SPICE, Python 3.14.4): 1314 passed, 11 skipped, 0 failed -- up from the prior real-machine baseline of 1301/11/3 (see "Two real bugs found from the first genuine full-suite run" above), confirming both this entry's fixes and that earlier entry's fixes are ALL still green together, including the two new `_argument_of_latitude` unit tests and both `test_orbit_maintenance_j2_regression.py` integration tests, for real, with genuine SPICE access this sandbox still doesn't have.
+
+**A follow-up real screenshot (with both fixes above already applied) then asked whether the along-track separation "drifting toward the chief" down to ~20 km at t=7 days was a THIRD bug.** Re-run directly against the real Basilisk build, same real J2 gravity, extended to 25 simulated days: it is not a bug -- `hillT_km` (the real geometric along-track separation) grows smoothly and monotonically from -60.4 km at t=0 to +49.1 km by t=20 days and HOLDS there (48-49 km, `IDLE` state, zero further station-keeping burns) for the rest of the run; at t=7.0 days specifically it reads -21.1 km, matching the user's screenshot's `|T| = 20.66 km` (the Vizard panel shows magnitude only, see `_clamp_magnitude`'s own docstring) to within 2%. The real explanation: `follower-1` actually starts ~60 km BEHIND `chief-1` (`true_anomaly_deg=-0.5`), not ahead, and `phasing_keeping.correction_window_days=21` deliberately spreads that catch-up over 21 days, not instantly -- the shortest, most fuel-efficient path from "60 km behind" to "50 km ahead" necessarily passes close by the chief partway through (confirmed: ~0.9 km minimum separation at day ~11, entirely in-track -- radial/cross-track both stay under 0.3 km throughout, a controlled same-track catch-up, not a collision course across orbit planes). The REAL bug this surfaced: this template's own `sim_settings.duration_days` (7.0) was shorter than its own `phasing_keeping.correction_window_days` (21.0), so the template's DEFAULT run never actually let a user see the maneuver finish -- only the alarming-looking close-approach partway through, directly contradicting the template's own description ("the along-track separation should stay near target_separation_km"). A separate, smaller documentation bug was also caught while fixing this: the description claimed the follower holds station BEHIND the chief, when `target_separation_km`'s own sign convention (`PhasingKeepingController`'s docstring: always a positive, "B leads A" distance) actually settles it AHEAD.
+
+**Fix**: widened `05_formation_flying_phasing.json`'s own `sim_settings.duration_days` from 7.0 to 24.0 -- 3 days of margin past the 21-day correction window so a default run shows the maneuver actually settle and hold at the target, not just the close-approach partway through. Rewrote the template's `description` to explain the close-approach as expected/safe up front (so a user isn't alarmed watching it happen live in Vizard) and fixed the "behind"/"ahead" wording. `scripts/_generate_templates.py`'s own `duration_days=` now carries a comment explaining why, regenerated into the JSON.
+
+**Verified**: re-ran the extended (25-day) reproduction above directly against the real Basilisk build (degree-2 Earth gravity) to confirm the fix's premise before shipping it, not just asserted it; `tests/test_scenario_templates.py`, `tests/test_orbit_maintenance.py`, `tests/test_orbit_maintenance_j2_regression.py`, and `tests/gui/test_scenario_templates_gui.py` (149 tests total, none of them duration-coupled) all still pass against the real Basilisk build after the change.
+
+## Real requirement correction: template 05 was built as a one-time realignment, not the fixed-distance formation-keeping the user actually asked for
+
+The previous entry's fix made the default run "work" in the narrow sense of not showing an alarming close-approach unexplained, but a direct user correction made clear the underlying design was still wrong: "my requirement was... that the follower is maintaining certain distance to the chief, and not that it is basically alternating between trailing behind the chief and leading ahead of the chief. It has to be maintaining this fixed distance with a certain margin of error." The user also flagged that `chief-1` ran no `station_keeping` of its own at all, which "definitely should not be the case" since the chief also needs to hold its own altitude.
+
+**Root cause.** `follower-1` was placed at `true_anomaly_deg=-0.5`, ~60 km BEHIND `chief-1`, while `phasing_keeping.target_separation_km=[50.0]` targets 50 km AHEAD (a positive, "B leads A" distance -- `PhasingKeepingController`'s own docstring). The default run therefore demonstrated a one-time ~110 km realignment maneuver (passing close by the chief on the way, per the previous entry), not steady-state formation-keeping -- the exact behavior the user said they did not want. This also directly contradicted `engine/formation.py`'s own stated design intent for this two-spacecraft shape ("the two-satellite 'chief holds station, follower holds formation' case"): the chief was never actually given that station-keeping role in this template.
+
+**The correct pattern already existed, unused by this template.** `engine.formation.generate_phasing_follower()` (the "Generate phasing formation..." GUI generator) has always placed a NEW follower EXACTLY on its target separation from the chief, by shifting the follower's own mean anomaly by the along-track arc length corresponding to the target separation: `along_track_rad = target_separation_km * 1000 / chief_sma_m`. This template's hand-authored JSON had simply never been updated to match that same, already-correct design -- it wasn't a controller bug, just a stale scenario.
+
+**Fix** (`scripts/_generate_templates.py`, `build_05_formation_flying_phasing()`): changed `follower-1`'s orbit from `true_anomaly_deg=-0.5` to `anomaly_type="mean", mean_anomaly_deg=0.413509` -- computed via the same arc-length relation above (`50000 m / 6928000 m = 0.0072171 rad = 0.413509 deg`), exploiting that `chief-1` sits at `true_anomaly_deg=0.0`, where true and mean anomaly are identically equal for ANY eccentricity (both are exactly 0 at periapsis), so no Kepler's-equation solve was needed to get the exact value. Added a matching `station_keeping=StationKeepingConfig(target_altitude_km=550.0, deadband_km=15.0, thrust_n=0.05, isp_s=1500.0, propellant_kg=5.0)` to `chief-1` (identical hardware to `follower-1`'s own, already-present station-keeping -- a realistic "sister satellite" pair, not a special case). Rewrote the template's `description` to describe formation-KEEPING from the start, not a transition, and added an "Audit history" paragraph to its own text documenting this and the prior two fixes for future readers.
+
+**Verified** directly against a real Basilisk build (degree-2 Earth gravity, same bare-`SimulationBaseClass`-plus-builder-functions pattern as the regression tests above): over a 24-day run, `hillT_km` starts at 50.05 km and drifts only within about +/-3.5 km of target from real J2/differential-drag perturbations, with neither spacecraft's `station_keeping` needing to fire even once -- steady-state holding, never a transition, never passing the chief. `tests/test_scenario_templates.py` and the full non-Basilisk suite stay green after the change.
+
+## Long-term-simulation feedback, and a real Basilisk platform limit found while acting on it
+
+Having fixed template 05 to show correct steady-state formation-keeping, the user pointed out the 24-day run itself wasn't interesting: "for phasing keeping, short term simulations are not really interesting. its the long term simulations, that give much more insight into this type of mission, particularly the phasing keeping deltaV and the behaviour of the RTN separation between both satellites. but not limited to them of course." This was a fair complaint against the fix just shipped -- a direct re-run confirmed the 24-day duration produces ZERO station-keeping or phasing-keeping burns and essentially zero delta-V, because the formation never drifts far enough to cross `phasing_keeping`'s own 10% tolerance band in that short a window. Pedagogically correct ("it just holds") but not demonstrative of what the controller actually does under real drift.
+
+**Investigating longer durations surfaced a real, previously-unknown Basilisk platform limit**, not a SpaceMissionStudio bug: Basilisk's own `nanoToSec()` (C++, `src/architecture/utilities/macroDefinitions.h`) converts simulated nanoseconds to a `double` and can only exactly represent integers up to `2**53` (`DBL_MANT_DIG`) -- `9007199254740992` ns, ~104.25 days. Past that limit it `fprintf`s a stderr error on EVERY call (apparently made many times per simulation tick) and returns `NaN`, which poisons every downstream time-dependent computation for the rest of the run. Confirmed directly: a 180-day test run hit this cliff and became severely, visibly degraded -- across 500,000+ repeated stderr error lines, simulated time barely progressed past ~104.25 days at all (advancing only ~5.84 more simulated days despite running far longer in real time). This is a real, hard ceiling on any duration this app -- or any Basilisk-based tool -- can safely request, independent of anything SpaceMissionStudio's own schema previously checked (`SimSettings.validate()` had no upper bound on `duration_days` at all before this fix).
+
+**A 90-day run was verified to stay safely clear of that cliff while finally showing the long-term dynamics the user asked for.** Re-run against the real Basilisk build (degree-2 Earth gravity, chief-1 now also holding its own station-keeping per the fix above): the along-track separation drifts naturally between roughly 45 km and 50 km, crossing `phasing_keeping`'s 10% tolerance band TWICE over the run (around day 35 and again around day 70), each crossing firing a real along-track correction burn and accumulating about 0.015 m/s of delta-V by day 90 -- `Max |T - 50km| over run: 5.0997 km`, `Total follower-1 PK dv: 0.01481 m/s`, ending `IDLE` with `suspendedDueToNonConvergence: False`. Exactly the "drift, then correct" behavior `phasing_keeping` exists to demonstrate, invisible at 24 days.
+
+**Fix, two parts.** (1) `scripts/_generate_templates.py`: changed `05_formation_flying_phasing.json`'s `sim_settings.duration_days` from 24.0 to 90.0, regenerated, and rewrote the template's description/comments to explain the new long-term drift-and-correct behavior instead of the old (shorter-duration) "it just holds, no corrections" framing. (2) `schema/scenario.py`: added a real upper bound to `SimSettings.validate()` -- `duration_days <= 100.0`, with an error message naming `nanoToSec()`'s `2**53`-ns/~104.25-day limit directly -- so this failure mode can never be silently hit by ANY scenario built through the GUI or hand-authored, bundled template or otherwise, not just this one. 100.0 days keeps real margin under the actual ~104.25-day cliff rather than sitting right on it.
+
+**Verified**: regenerated all 20 bundled templates and confirmed via `git diff` that only `05_formation_flying_phasing.json` changed (the new validation ceiling is far above every other template's own duration); two new tests in `tests/test_scenario_schema.py` (`test_duration_days_at_the_100_day_cap_validates`, `test_duration_days_beyond_the_basilisk_nanotosec_limit_rejected`) guard the new ceiling directly; the full non-Basilisk suite (`pytest tests/ -q --ignore=tests/gui`: 550 passed, 184 skipped) and `tests/test_scenario_schema.py`/`tests/test_scenario_templates.py` together (303 passed) both stay green.
+
+## Full audit: the app was "a black box" -- six real GUI-vs-template fidelity gaps found and closed, plus a new live "Explain" recipe layer
+
+A real user raised a core product complaint directly: the bundled example templates demonstrate real fidelity, but a user cannot reproduce that same fidelity by building a bespoke scenario from scratch through the app's own GUI -- some of what makes the templates work is either missing from the GUI entirely, or trapped in the dev-only generator script and never wired into the shipped package at all. Confirmed via a full field-by-field audit (every schema dataclass, every GUI editor, every helper in `scripts/_generate_templates.py`, cross-referenced against all 20 bundled templates) that this was real, and worse than a missing-feature gap in two places -- an active, silent DATA-LOSS bug.
+
+**Gap 1/2 (the real bugs): `CommsPointingConfig` and `RFLinkConfig.antenna_beamwidth_deg` had NO editor anywhere in `spacecraft_editor.py`.** Opening a spacecraft that already had either set (e.g. template 19's "leo-comms-1") in the ordinary Spacecraft "Edit..." dialog and clicking OK with ZERO edits permanently deleted them, because `SpacecraftEditorDialog.to_dataclass()` always rebuilds a fresh `SpacecraftConfig(...)` from widget state alone, and no widget existed for either field. **Fix**: added a `comms_pointing_group` to the Attitude control (FSW) tab -- a `target_ground_station` combo (populated via a new `set_ground_station_names_provider()`, plumbed down from `ScenarioEditorWidget` the same way `central_body`/`simulation_mode` already flow to this dialog; same stale-reference-preserved-not-silently-swapped fallback as `pk_chief_combo`'s own precedent), `antenna_boresight_b`/`sun_pointing_axis_b` (a "use default" checkbox gating the latter, since it has a real semantic `None` default) xyz rows, and a `comms_power_w` spin box -- plus an `antenna_beamwidth_deg` optional field on the existing RF link group. Force-cleared to `None` in `simulation_mode="orbit_only"` the same way `fsw_mode`/`power` already are. **Verified**: a new end-to-end regression test loads the REAL bundled template 19, opens "leo-comms-1" in this dialog with zero edits, and confirms both fields survive `to_dataclass()` unchanged -- the exact bug scenario, not just a dataclass-level round-trip check -- plus 15 more unit tests for the new widgets. `tests/gui/test_spacecraft_editor.py` went from 70 to 82 passing tests.
+
+**Gap 3: `sun_synchronous_inclination_deg()`/`raan_for_ltan_deg()` existed ONLY as private helpers inside the dev-only `scripts/_generate_templates.py`**, never importable by the running app -- affecting orbit reproducibility for 12 of the 20 bundled templates (every SSO-orbit one). **Fix**: moved both (verbatim, same docstrings/verified reference values) into a new Basilisk-free `engine/orbit_design.py`; the generator script now imports them instead of defining its own copy (one shared implementation, zero drift risk). Added "Compute Sun-sync inclination for this altitude"/"Compute RAAN for LTAN..." buttons to `orbit_ic_widget.py`'s classical-elements page (a new `set_epoch_provider()`, plumbed the same way, supplies the epoch the RAAN computation needs) -- buttons, not auto-apply, matching this app's "compute a sane starting point, let the user keep tweaking" convention elsewhere. **Verified**: regenerating all 20 templates after the move produces a diff in exactly ONE file (`01_two_body_circular_orbit.json`'s own description text, updated to point at the new importable location) -- confirmed a pure refactor otherwise; a new `tests/test_orbit_design.py` (8 tests) turns this module's own docstring reference-value claims (97.40 deg at 6878.1366 km; the three real Sun-right-ascension reference points at the equinoxes/solstice) into real pytest asserts, previously only "verified directly" in prose.
+
+**Gap 4/5 (lower severity -- a workaround already existed for each): `PhasingFormationRequest.station_keeping_target_altitude_km`/`.eclipse_sunlit_threshold` missing from `phasing_formation_dialog.py`; `SpaceWeatherConfig.cache_dir` missing from `propagation_setup_dialog.py`'s `to_space_weather()`.** Fixed: a "derive from chief's own altitude" checkbox (default-checked, matching that field's own `None`="derive" semantics) plus an `eclipse_sunlit_threshold` spin box in the phasing-formation dialog; a plain optional `cache_dir` line edit (blank keeps the `None` default) in the propagation setup dialog. Both are real gaps, but neither was a data-loss bug the way gaps 1/2 were -- editing an already-generated spacecraft's `station_keeping`/propagation-setup blocks directly already worked.
+
+**Gap 6: no "how do I build this myself" layer at all -- only the 20 bundled templates' own hand-written `description` text, which a from-scratch scenario never has.** Asked the user directly whether, beyond raw field exposure, a "recipe/explain" layer was also wanted -- confirmed yes. Went through two further rounds of direct user correction on HOW to present it: an initial prose-paragraph design was rejected ("what users don't like are endlessly long prose... keep the app clean and clear"); the terse-bullet-point redesign that followed was ALSO rejected ("isn't there a visually and graphically better way to convey information? users don't like these raw text bullet points either") before landing on the stat-tile/badge/table shape actually built, informed directly by the `dataviz` skill's own form guidance ("a handful of headline numbers -> a KPI row of stat tiles," "more than ~7 same-shape items -> a table").
+
+**Built**: `engine/scenario_explainer.py` (Basilisk-free, same independently-testable precedent as `engine/constellation.py`) -- `explain(scenario) -> ScenarioExplanation` (`StatTile`/`Badge`/`SpacecraftFactRow`/`ExplanationSection` dataclasses), NEVER raises (called on every keystroke, often against a mid-edit/invalid scenario), builds each stat tile/section/table row CONDITIONALLY so a trivial from-scratch scenario renders a short tile row and maybe one badge, not a wall of empty sections. SSO detection reuses Gap 3's own `engine.orbit_design.sun_synchronous_inclination_deg()` directly -- zero duplicated math. Every string stays short by construction (a dedicated test enforces a 90-char ceiling on every `StatTile.value`/`Badge.label` across all 20 real bundled templates, a permanent regression guard against this quietly regrowing into prose or a bullet wall later). Extracted `mission_dashboard_widget.py`'s own `_badge_style()`/color-tuple helper into a new, shared `gui/badges.py` (added one new semantic color, `PALETTE["warning"]`, alongside the existing danger/success/accent/muted set) so both widgets draw from the exact same visual language rather than inventing a second one -- `mission_dashboard_widget.py` now imports from `badges.py` instead of defining its own copy, zero behavior change there (its own 11 tests still pass unchanged). New `gui/scenario_explainer_widget.py` renders the structured output as a KPI stat-tile row, per-section colored badge rows, and (for 2+ spacecraft) a `QTableWidget` comparison -- never prose, never a bullet-point wall -- inside its own `QScrollArea` so it never forces the window taller. Wired into `main_window.py` as a new "Explain" tab, driven by the ALREADY-EXISTING `ScenarioEditorWidget.changed` signal (zero new plumbing for the common edit case) plus explicit calls at every other state-reset point that doesn't itself emit `changed` (`on_new`, `open_path`/`_on_load_scenario_customized`'s shared `_open_scenario()` tail, and the autosave-recovery-restore path) -- found directly by testing each one, not assumed. Does NOT touch or replace `scenario_editor.py`'s own free-text `description` box -- different pane, different job (that one is hand-written narrative/pedagogical prose for the 20 bundled templates specifically; this is a terse, ALWAYS-CURRENT fact summary for any scenario).
+
+Added short, same-style glossary entries to `USER_MANUAL.md` Section 12 for the terms this feature newly references but the glossary didn't yet define (Sun-synchronous orbit, spherical-harmonics gravity, third-body perturbation, phasing/along-track separation) -- a badge/note that needs a definition points at that section by name rather than inlining the explanation. Also fixed that same manual's own stale "Three tabs on the right" claim (it was already wrong before this work -- Mission Dashboard had no mention at all) while touching the adjacent text for the new Explain tab.
+
+**Verified**: `tests/test_scenario_explainer.py` (49 tests) -- a trivial one-spacecraft scenario produces a short `stat_tiles` row and no `spacecraft_table`; a template-05-shaped chief/follower pair produces a 2-row `spacecraft_table`, a "Formation / orbit maintenance" section badge, and a note specifically flagging a spacecraft with `phasing_keeping` but no `station_keeping`; SSO detection fires at 97.40 deg/6878 km and doesn't at 51.6 deg/same altitude; degree-10 + Sun/Moon gravity shows up as a tile; `explain()` doesn't raise on any of the 20 real bundled templates nor a zero-spacecraft scenario; every rendered string stays short, checked against all 20 real templates, not just synthetic cases. `tests/gui/test_scenario_explainer_widget.py` (5 pytest-qt tests) covers `set_scenario(None)`/rich/trivial/switching-between-scenarios. Four new `tests/gui/test_main_window.py` tests confirm the Explain tab actually exists and genuinely refreshes on startup, on edit, on an invalidating edit (shows the placeholder, not stale content), and on File > New -- the real wiring, not just the widget in isolation. Full suite: 1226 passed, 186 skipped (Basilisk-requiring, this sandbox's standing limitation), one pre-existing unrelated Qt test-ordering flake (confirmed to pass standalone) deselected -- up from 1140 before this whole six-fix audit began.
+
+## Explain tab, round two: a real formation-geometry diagram, not just badges
+
+The stat-tile/badge/table design above landed the SHAPE a real user had converged on through two earlier, explicitly rejected drafts (prose, then plain bullet points), but the very next piece of direct feedback on it was clear: "it already looks quite good but it still lacks a certain professionality and a certain depth of information." Badges alone name a mechanism ("Phasing-keeping") without showing what it actually does -- the along-track separation drifting inside a hysteresis control band is exactly the kind of thing a picture conveys and a badge cannot.
+
+**Built**: `engine.scenario_explainer.FormationDiagram`, a new small dataclass (`chief_name`, `follower_name`, `target_separation_km`, `tolerance_fraction`, `restore_tolerance_fraction`) plus `ScenarioExplanation.formation_diagrams: List[FormationDiagram]`, one entry per spacecraft with `phasing_keeping` configured -- `target_separation_km` takes the FIRST entry of a (possibly multi-step) separation schedule, i.e. the current/initial target. Deliberately holds only fields already fixed at scenario-design time (no live telemetry -- that stays `mission_dashboard_widget.py`'s own job, which needs an actual run to mean anything).
+
+**New `gui/formation_diagram_widget.py`** (`FormationDiagramWidget`) draws it procedurally with `QPainter` -- same precedent as `icons.py`'s own app-icon glyph, no new bitmap/SVG asset or dependency to keep in sync with the theme. Not real-distance-scaled (the separation always fills the available width): a chief marker and a follower marker on a labeled along-track baseline with a direction arrowhead, and -- the actual "depth of information" the feedback asked for -- TWO concentric, translucent bands centered on the follower's target position: a wider warning-colored band for the trigger tolerance (where a correction STARTS) and a narrower, nested success-colored band for the restore tolerance (where a correction STOPS) -- literally the deadband/hysteresis control law this controller runs, not just two separate numbers in a table cell. Collapses to zero height when there's no diagram to show (`set_diagram(None)`), matching `ScenarioExplainerWidget`'s own "clear, don't just hide" idiom.
+
+Wired into `gui/scenario_explainer_widget.py`: one `FormationDiagramWidget` per `formation_diagrams` entry, placed directly inside the "Formation / orbit maintenance" section (right below its badges/notes) -- the diagram sits next to the badge that names the mechanism it depicts, not in some separate, disconnected part of the tab.
+
+**Verified**: rendered directly (grabbed to PNG, visually inspected) both against synthetic data at several separation/tolerance scales and against the REAL bundled template 05 (90-day phasing-keeping demo) -- the diagram correctly reflects that template's real 50 km target, 10%/2% trigger/restore tolerances, and renders legibly alongside its stat tiles, badges, and the existing spacecraft comparison table. New `tests/gui/test_formation_diagram_widget.py` (5 tests): zero-height with no diagram, real height once one is set, collapses back to zero on clear, `paintEvent` doesn't raise across a deliberately wide range of separation/tolerance combinations (including the edge case where the restore band would be wider than a naive implementation might clip), accepts an initial diagram via the constructor. Three new `tests/test_scenario_explainer.py` tests cover the extraction logic directly (correct fields for a template-05-shaped pair; the first-entry-of-a-schedule rule for a multi-step separation list; no diagram without `phasing_keeping`). Three new `tests/gui/test_scenario_explainer_widget.py` tests confirm the widget is actually instantiated for a rich (chief/follower) scenario, absent for a trivial one, and correctly removed when switching from rich back to trivial (a real `deleteLater()`-timing bug was caught and fixed here: `QObject.findChildren()` still sees a widget until the NEXT event-loop pass actually runs its deferred deletion, so the test needed a `qtbot.wait(10)` after the switch -- the same reason `ScenarioExplainerWidget._render()`'s own clear-and-repopulate pattern works correctly in the app itself, where the event loop keeps running). Full suite: 1236 passed, 186 skipped, same one pre-existing unrelated flake deselected -- up from 1226.
+
+## Full code + GUI audit: stale code removed, real bugs fixed, every dialog visually reviewed
+
+A request for a complete audit of the whole codebase and GUI, covering stale code, GUI elements with no remaining purpose, visual polish, and any real bugs. Static analysis (ruff/pyflakes/vulture) came first, then every main-window state and every dialog was rendered offscreen and inspected. Then came a mechanical open-then-OK round trip of every editor dialog over all 20 bundled templates, a schema probe with invalid values, a CLI-vs-GUI parity check, and a loop of the GUI suite to chase an intermittent crash.
+
+**Real bugs found and fixed**
+
+* **Opening an editor and clicking OK changed the data.** A plain `QDoubleSpinBox` rounds every value to its *display* decimals as soon as the value is set. So with zero edits, the spacecraft dialog rewrote template 13's 0.00667 kg*m^2 inertia as 0.007 (a 5% change), its 2-hour duration (0.08333 d) as 0.0833, a 7078.1366 km semi-major axis as 7078.137, and more.
+  * The fix is a new `gui/widgets.py` `PreciseDoubleSpinBox`. It stores 10 decimals, treats `setDecimals()` as the *minimum* shown, and so always displays what will actually be saved. It always uses `.` as the decimal point (a typed `,` is also accepted), matching every other number the app prints, instead of switching to `,` under e.g. a German locale. It replaces all 17 spin-box constructions across the GUI.
+  * The same class of bug existed in two comma-separated list fields (`target_separation_km`, `wheel_speed_biases_rad_s`), which were formatted with `{:g}` (6 significant digits). These now use `exact_number_text()`.
+  * New regression test: `test_opening_then_okaying_every_editor_leaves_template_values_unchanged`, parametrized over every template and every spacecraft/sensor/actuator/propagation/ground-station/dispersion dialog.
+* **Intermittent whole-process abort: "QThread: Destroyed while thread is still running".** Workers emit their terminal signal from inside `run()`, so the thread can still be returning when that signal's slot runs. Dropping the last reference to it at that point aborts the process.
+  * In the app, `on_run()`/`on_run_monte_carlo()` replaced `self._run_worker`/`self._mc_worker` unconditionally. They now call `_join_finished_worker()` first.
+  * In the tests, this is the long-standing "pre-existing flake" that earlier entries deselected: looping `test_run_worker.py` alone aborted 8 runs in 25. Three tests returned right after the `failed` signal, so the worker was garbage-collected mid-return. A new autouse fixture in `tests/gui/conftest.py` now joins every QThread a test started, and the affected tests wait on their worker explicitly. After the fix: 0 aborts in 25 loops of every QThread-using test file, and 5 of 5 full GUI-suite runs clean.
+* **Locale-dependent SPICE epoch strings.** `QApplication` calls `setlocale(LC_ALL, "")` on Linux, which made `strftime("%b")` locale-dependent. Under a German locale, any epoch in March, May, October, or December produced e.g. `2030 MÄR 01`, which SPICE rejects. `engine/time_system.py` now uses a fixed English month table.
+* **Zero or non-finite direction vectors passed validation.** Only the length of these vectors was checked: `comms_pointing.antenna_boresight_b`, `comms_pointing.sun_pointing_axis_b`, `power.panel_normal_b`, `constant_thrust.direction`, CSS/thermal `nHat_B`, RW `gsHat_B`, and MTB `gtHat_B`. A `[0, 0, 0]` or NaN axis only failed mid-run, as a NaN attitude target. The new shared check `_is_direction_vector()` requires three finite components and non-zero length.
+* **Template 05's Customize wizard said the opposite of the truth.** It told the user `follower-1` holds station *behind* `chief-1`. `target_separation_km` is a "follower leads chief" distance, so it now says *ahead*.
+* **CLI/GUI parity gap.** `generate-phasing-formation` had no `--eclipse-sunlit-threshold`, though `PhasingFormationRequest` and the GUI dialog both support it. A new test asserts that every `PhasingFormationRequest` field is reachable from the CLI.
+* `SimulationService.log_last_known_state()`'s docstring promised "never raises", but its station-keeping/phasing controller log reads were unguarded. They are now guarded too.
+
+**Stale code removed**
+
+* The five unused `diagnostic_05*.json` debug scenarios, which shipped in every wheel. The one still used by a test moved to `tests/data/vizard_station_keeping_crash_regression.json`.
+* `time_system.py`'s dead, never-called SPICE helpers (`utc_to_et`, `et_to_utc_iso`, `EpochTimes`, `epoch_times`, `build_epoch_msg`) were removed. The module is now Basilisk-free and its tests run everywhere.
+* Unused imports across `gui/` and the tests.
+
+**GUI cleanup**
+
+* **Combo boxes and spin boxes had no arrows at all.** Styling the `::drop-down`/`::up-button` subcontrols makes Qt stop drawing the native arrow, so every dropdown looked like a plain text field. The fix ships SVG chevrons, plus themed check-mark and radio indicators, in `gui/assets/` (added to `package-data`, and verified in a built wheel). `test_theme.py` checks that every referenced asset exists and that the SVG colours match `PALETTE`.
+* **Grey bands in group boxes.** The theme's base `QWidget` background rule painted a grey band behind every checkbox row and stacked-widget page inside a white group box, and across the Explain tab's sections. Those widgets are now transparent.
+* **Load Scenario tab.** It had 20 full-width "Customize: <whole title>..." buttons below the list, which forced a ~690 px minimum width and a horizontal scrollbar at the default window size. They are replaced by a compact **Customize...** button on each row. The buttons sit above the list, and the list fits its rows.
+* **Toolbar.** The platform's mixed stock pixmaps (colour folder/floppy bitmaps, a ▶▶ glyph, no icon at all for Live Plot) are replaced with one consistent SVG line-icon set (`icons.toolbar_icon()`). A checked toolbar action, like Live Plot, now looks different from an unchecked one.
+* **Propagation setup.** The content is now in a scroll area sized to the screen. On an 800 px screen, the window manager had clamped the dialog and squashed the "Atmosphere & drag" rows until their text was cut off. Over-long field labels were shortened, taking the dialog from 905 to 671 px wide.
+* **Phasing formation dialog.** A flat 20-row form (830 px tall) is now five titled groups (Spacecraft, Initial offset, Propulsion, Station-keeping, Phasing-keeping) in two columns, 594 px tall.
+* **Sensor/actuator editor.** The reaction-wheel help was a 16-bullet wall that made the dialog 896 px tall. It is now a recessed reference panel capped at 150 px, with warnings first. An empty catalog-info label that left a 40 px gap is now hidden.
+* **Spacecraft editor.**
+  * The tab bar was clipped, because it was measured before the stylesheet's bold tab font was applied.
+  * The Attitude control tab now puts the Comms pointing group directly under FSW mode, with a hint that changes with context, and the JSON boxes are height-capped.
+  * Tab labels are shortened.
+* **Smaller fixes.**
+  * Disabled primary buttons no longer look enabled.
+  * Explain-tab stat tiles no longer draw nested borders.
+  * The formation diagram's trigger band is no longer clipped at the widget edge.
+  * The Scenario Editor button rows no longer overflow the left pane.
+  * The wizard's Finish button no longer renders clipped ("Finisl"): bold is now reserved for `[primary="true"]`, not the dynamic `:default` state.
+  * Long scenario names no longer open scrolled to their end.
+  * The Vizard dialog's camera placeholder is no longer truncated.
+  * The spacecraft-template list's horizontal scrollbar is gone.
+  * The Mission Dashboard empty state is centred.
+  * Validation-label colours now come from `PALETTE`.
+
+**Docs**
+
+* `USER_MANUAL.md`'s three screenshots were regenerated from the current GUI (they showed the old Load Scenario design and 18 templates).
+* The manual's, README's, and templates README's Customize instructions now describe the per-row button.
+* The README file layout now lists every module and test file (several were missing).
+* The test counts and the Basilisk-independence list were corrected; `time_system.py` is now Basilisk-free.
+
+**Verified**: full suite 1298 passed, 183 skipped (Basilisk-dependent), with nothing deselected (up from 1252 passed at the start of this audit). `scripts/_generate_templates.py` still regenerates all 20 templates byte-identically. A wheel built from a clean tree contains the SVG assets and no diagnostic scenarios. Every dialog and main-window state was re-rendered after the fixes and inspected.
+
+## Real failure analysis: a 90-day formation run where the follower lapped the chief
+
+A real user re-ran template 05 for 90 days and reported it "full of errors". They sent the run's log, both spacecraft's `position_N` CSVs, and the follower's `phasing_keeping.separation_error`/`state` CSVs.
+
+**What the data showed.** The run completed. Its only real warning came at day 46: the phasing controller "did not reduce its own tracking error (179.987 deg -> -2.006 deg)" and suspended itself. Rebuilding the true along-track separation from the two position files showed:
+* The follower started 50 km ahead, exactly as placed.
+* It then fell behind at ~780 km/day and lapped the chief.
+* It crossed through ±180° at day 28, crossed 0° at day 46, and kept lapping to day 90.
+
+**Root cause, confirmed by reproducing it exactly with Basilisk 2.12.0 (the user's version) and real J2/degree-10 gravity.**
+* **The scenario had been edited.** The error at t = 0 was −0.4127°, which is the true 0.4143° separation minus a 0.827° target, i.e. a 100 km target, not 50 km. The follower's station-keeping fired at t = 0.0667 d, the first tick with a full smoothing window, and stopped at a smoothed altitude of exactly 550.000 km. That means a deadband under ~5.1 km, not the template's 15 km.
+* **Independent station-keeping broke the formation.** The orbit's natural mean altitude is ~545 km, because template 05's a = 6928 km is osculating at the starting point (~6916 km mean). So the follower's 550 km target made it reboost alone to ~5.25 km above the chief, an along-track drift of ~6.2°/day, while the chief never reboosted.
+* **The phasing controller couldn't undo it.** Its burns were open-loop: its restore burn only replayed its own Δv backwards. It never measured the actual relative semi-major axis, so it could never remove a mismatch something else had created.
+* **A ±180° wrap counted as "target reached".** At day 28 the "overshoot" check, a bare sign comparison, fired on the error wrapping from −180° to +180°.
+* **The log file reached 116 MB.** Three controllers each DEBUG-logged their eclipse reading every 30 s tick.
+
+**Fixes** (`engine/orbit_maintenance.py`):
+* **Formation-follower station-keeping.** `build_phasing_keeping` switches the follower's controller into a mode where it mirrors the chief's station-keeping burns, rather than reboosting toward its own absolute target. It reboosts on its own only if it falls more than `deadband_km` below the chief's smoothed altitude, as a safety floor. The service passes in the chief's controller.
+* **Closed-loop relative SMA.** Every phasing burn is now sized from the *measured* one-orbit mean of (a_follower − a_chief), which is steady to ~0.1 m under J2 against ±135 m instantaneous. The measurement is trusted only after a full orbit with no thrust. The restore burn nulls the measured mismatch. A disturbed drift gets re-steered to its planned offset, and an idle mismatch is trimmed out even while suspended. The trim tolerance is 25 m, or 1.5× one thruster tick's semi-major-axis change if that's larger, so a strong thruster can't ping-pong. The value is exported as a new result series, `<follower>.phasing_keeping.relative_semi_major_axis`.
+* **Wrap-safe zero crossing** (`_crossed_zero`).
+* **Eclipse logging only on sunlit/eclipse transitions.**
+* **Docs:** schema `PhasingKeepingConfig`, the spacecraft editor's phasing tooltip, and template 05's description (regenerated) now explain the relative station-keeping.
+
+**Verified with real Basilisk dynamics over 90 days** (direct-builder harness: degree-10 gravity, no SPICE/eclipse, since the sandbox can't fetch SPICE kernels):
+
+| configuration | before | after |
+|---|---|---|
+| the user's configuration: placed 50 km ahead, 100 km target, 2 km follower deadband | laps the chief | closes to 98 km by day 15 and holds 91–98 km, no stray reboost, not suspended |
+| both spacecraft with a 2 km deadband, so the chief reboosts at t = 0.07 d | — | follower mirrors it, 286/286 burn ticks; separation holds 45–50 km |
+| stock template 05 | — | bit-identical to the old code (same 0.1143 m/s, same four correction cycles) |
+| the user's configuration with a 0.5 N thruster (~260 m of SMA per tick) | — | converges in ~10 days, holds 89–98 km, three cycles, no ping-pong |
+
+New `tests/test_formation_keeping_regression.py` covers:
+* the user's configuration;
+* the mirrored chief reboost;
+* the follower burn logic;
+* the wrap cases;
+* the tick-quantum trim tolerance.
+
+All orbit-maintenance/formation tests pass under Basilisk.
+
+**Follow-up: partial-tick thrust** (requested by the user after the fix above). One 30 s tick of the template's 0.05 N thruster moves the semi-major axis ~26 m, while a typical correction needs ~2 m. So every phasing correction overshot about tenfold: the separation sawed against the bottom of its tolerance band and propellant was wasted.
+* Each burn tick's thrust is now capped to exactly the Δv the burn still needs (`remaining_dv * mass / dt`). The very first tick (dt = 0) waits one tick instead of firing uncounted thrust.
+* With burns exact, the tick-quantum trim tolerance from the fix above is no longer needed: a plain 25 m.
+
+**Verified over 90 days** (same harness):
+
+| configuration | phasing Δv before → after | separation after |
+|---|---|---|
+| stock template 05 | 0.114 → 0.0027 m/s | 45.4–52.2 km, one correction (day 28) |
+| the user's configuration | 0.057 → 0.018 m/s | closes over the designed ~21-day correction window, holds 94.8–98.7 km |
+| the user's configuration with a 0.5 N thruster | identical to 0.05 N | — |
+| mirrored chief reboost | 0.086 → 0.0023 m/s | 45.0–49.5 km |
+
+A single correction now lands on its planned relative SMA (−16.7 m planned, −16.1 m measured). New tests cover burn accuracy and thrust-independence. Template 05's description now quotes these re-verified numbers in place of the old degree-2 ones (two corrections, ~0.015 m/s).
+
+## Finite-burn realism: thruster minimum on-time, and eccentricity-neutral burns
+
+The user asked whether finite burns had been considered. Burns already were finite: the thrust is applied as a continuous force over many 30 s ticks, never as an impulse. Two real effects were missing, though, and the user asked for both.
+
+**1. Thruster minimum on-time / minimum impulse bit.** A real thruster can't fire for an arbitrarily short time. The partial-tick fix above made a 2 m correction a sub-second firing, which no real 50 mN thruster can do.
+* New `StationKeepingConfig.min_on_time_s` (default 0 = the old ideal thruster). The minimum impulse bit is `thrust_n * min_on_time_s`.
+* New `ThrusterOnTimeModel` in `engine/orbit_maintenance.py`. A firing, once started, runs for at least the minimum on-time, even across several ticks and even after the controller that asked for it stops. A burn needing less than one minimum firing is rounded up to it when it needs at least half of one, and skipped otherwise.
+* The phasing controller plans with it. A planned phasing correction smaller than one impulse bit is rounded up to one bit (a slightly faster correction). A *trim* finer than one bit is flown as an exact pair: (one bit + Δv), then one bit back. Any extra Δv a rounded-up firing delivers is counted.
+* The station-keeping and phasing controllers of one spacecraft share ONE model instance, because they drive one physical thruster.
+* **Real bug caught in verification, fixed before commit.** A firing belonged to no one, and station-keeping (which runs first each tick) continued any firing still in progress. It therefore took 30 s of every multi-tick phasing firing each tick: it logged those ticks as its own burns and debited their propellant a second time, while phasing's force overwrote its own on the shared effector. Every phasing firing was cut to half its on-time, and the follower's station-keeping logged 692 burn ticks against the chief's 205 in a 90-day mirrored-reboost run. This also hit default settings for any phasing burn longer than one tick. Now each firing records which controller started it, and only that controller continues it. Phasing also yields the thruster while a station-keeping firing is still committed after `burnOn` drops. The burn-accuracy regression test gained a 120 s minimum-on-time case (a 4-tick firing) that fails without the fix.
+
+**2. Eccentricity-neutral burns.** Tangential thrust at argument of latitude u changes the eccentricity vector by about (2Δv/v)(cos u, sin u). A burn spread evenly over whole orbits cancels out. But eclipse gating removes the same arc from every orbit, so a multi-orbit reboost builds up a one-sided eccentricity change.
+* Measured with Basilisk (degree-2 gravity, a real `eclipse` module fed static Sun/Earth messages, compared against an unthrusted twin): a ~5 km reboost changed e by 4.9e-4 and a 15 km reboost by 1.1e-3. Template 05's own e is 0.001.
+* New `StationKeepingConfig.eccentricity_neutral_burns` (default off). With it on, the model tracks the maneuver's accumulated eccentricity-vector change. A new firing only starts if it keeps that change within one orbit's natural excursion of continuous thrust, a circle of diameter 4·accel/(v·n). Firings are capped at `max(min_on_time_s, dt)` so the gate is re-checked often. The thruster simply waits for the balancing side of the orbit.
+* Results: the ~5 km reboost's Δe fell from 4.9e-4 to 2.3e-4, which is the one-orbit bound. The 15 km reboost's Δe fell from 1.1e-3 to 2.1e-4, at the cost of spreading the burn over 0.71 d instead of 0.35 d. Δa per unit Δv is unchanged, since Gauss's equation for a doesn't depend on where tangential thrust is applied.
+
+**Why Basilisk's `thrusterDynamicEffector` was NOT used.** Its thrusters are fixed in the body frame, so an along-track burn would need the spacecraft to point along its velocity. An orbit-only scenario has no attitude control at all. The model keeps the ideal inertial force but gives it real firing constraints. A firing shorter than a tick is applied as its average force over that tick, which delivers the same impulse.
+
+**Wiring.** Schema validation (`min_on_time_s` must be finite and in [0, 86400] s). The Spacecraft editor's station-keeping group, the Phasing Formation dialog's propulsion group, and the CLI (`--min-on-time-s`, `--eccentricity-neutral-burns`) all expose both fields. Old scenario files without them load with the defaults, and the defaults reproduce the previous behaviour bit-for-bit.
+
+**Three more real bugs, found by the 90-day verification runs and fixed.** One run had both deadbands at 2 km (so the chief reboosts), a 300 s minimum on-time and eccentricity-neutral burns. It used 33.6 m/s over 115 phasing cycles. A per-tick diagnosis showed:
+* **The follower overshot after the chief's reboost.** The follower carried its *mirrored* reboost on as if it were a safety-floor burn, until its one-orbit smoothed altitude caught up with the chief's. That average lags a burn, so the follower overshot by ~730 m of semi-major axis. A mirrored burn now ends with the chief's.
+* **A coarse thruster ran a correction every day.** A trim finer than one impulse bit was rounded to whole firings. That left up to half a bit (~130 m of semi-major axis, ~18 km/day of drift), so a full correction ran every day. Such a trim is now flown as an exact pair of opposite firings, but only when neither skipping it nor rounding it to one firing lands within the 25 m tolerance. (Splitting every sub-bit trim doubled the stock formation's cost, because a typical restore needs just under one bit.)
+* **Eccentricity-neutral splitting left too-short pieces.** It could leave a remainder shorter than one minimum firing. It no longer does.
+
+**Verified over 90 days with Basilisk:** degree-2 gravity, a real `eclipse` module with a static Sun, a 50 mN thruster and 105 kg spacecraft. "300 s" means a 300 s minimum on-time with eccentricity-neutral burns.
+
+| configuration | thruster | phasing Δv | separation, last 30 days | corrections |
+|---|---|---|---|---|
+| the user's case (100 km target, placed 50 km, deadbands 2/15 km) | ideal | 0.017 m/s | 104–109 km | the initial one |
+| same | 1 s on-time + e-neutral | 0.017 m/s (identical) | 104–109 km | the initial one |
+| same | 300 s | 0.29 m/s (1.43 before the fixes) | 90–94 km | the initial one |
+| stock 50 km formation (deadbands 15/15 km) | 300 s | 0.29 m/s (0.86 before) | 49.9–51.2 km | 1 (day 35) |
+| chief reboosting (deadbands 2/2 km) | ideal | 0.014 m/s; station-keeping 276/275 burn ticks | 46.2–47.9 km | none |
+| same | 300 s | 0.59 m/s (33.6 at worst before); 205/204 burn ticks | 45.8–47.0 km | 1 |
+
+No run suspended. A 300 s firing of 50 mN is ~260 m of semi-major axis, so a coarse thruster costs real Δv: it is roughly one impulse bit (0.14 m/s) per firing the formation needs. A realistic on-time for this thruster class (well under one 30 s tick) costs nothing. Template 05 keeps both settings off, so its published numbers are unchanged. New unit tests cover firing ownership, the mirror end, the exact pair, the no-split cases and the chunking rule.
+
+## Real bug from a user's full test run: opening Propagation Setup wrote their cache path into the scenario
+
+The user's first complete `pytest` run on their own machine: 1479 passed, 11 skipped, 20 failed. All 20 failures were the template round-trip test (open every editor on every template, click OK, nothing may change), and all at `space_weather.local_file_path: None -> '/home/<user>/.cache/SpaceMissionStudio/spaceweather/SW-All.csv'`.
+* **Real dialog bug.** The Propagation Setup dialog pre-filled "Local CSV file" with the most recently startup-fetched CelesTrak CSV for *every* scenario. Merely opening it on a `synthetic`-source scenario and clicking OK wrote the user's absolute cache path into the scenario, which marked it modified and leaked that path into any file they saved and shared. The cached file is now suggested only when the source is, or is switched to, `local_file`.
+* **Why the sandbox never saw it.** The sandbox has no cache file. An earlier fix had isolated only that dialog's own test file from the real cache, which hid the dialog bug instead of fixing it. The real cache was also reachable from any test: `spaceweather.DEFAULT_CACHE_DIR` is computed from `Path.home()` at import time, often during collection, before `conftest`'s `Path.home` patch. `tests/conftest.py` now redirects it for every test.
+* Reproduced with a populated fake home directory: the old code gives 21 failures (the 20, plus the new regression test), the fixed code none.
+
+## Real performance bug from a user's 30-day run log: live runs slowed down quadratically
+
+The user's 30-day template 05 run log was clean: no warnings, no errors, no phasing suspension, and 435 KB against the 116 MB of the earlier 90-day run, so the eclipse-logging fix works. But the run slowed down as it went. Each 1.7% progress step (half a simulated day) took ~3 s at the start and ~22 s at the end, 11 minutes in total.
+* **Cause.** `run_live` extracts the results 60 times per run to feed the live plots. Each extraction recomputed every recorded sample's osculating and mean orbital elements: a Python loop of `rv2elem` / `clMeanOscMap` calls, measured at 9.6 s + 3.2 s per spacecraft for a 30-day, 30 s-step history. The work per step grew with simulated time, so the total grew with the square of the duration. A 90-day run would have spent over an hour on it.
+* **Fix.** `SimulationService._orbit_elements` caches each spacecraft's elements and computes only samples not computed before. Both mappings are pointwise, so the result is identical (asserted bit-for-bit against one full pass). The NaN guard's message still reports the recorded sample index.
+* **Measured.** For the user's run's pattern (60 updates, 2 spacecraft, 30 days), element extraction drops from ~13 minutes to 27 s here.
+
+## Phasing was too slow: correction window default 21 -> 3 days
+
+The user's next 30-day run (their 100 km configuration, follower placed 50 km ahead) behaved correctly: it closed steadily to ~97 km, then held 97–98 km for 0.018 m/s, with no station-keeping burns. But they found it "very slow": reaching the target took ~22 days. That's by design rather than a bug. Every correction is planned to take `correction_window_days`, which defaulted to 21 days, so the drift rate was only ~2.2 km/day. A correction's Δv scales roughly as 1 / window.
+
+Verified with Basilisk (eclipse harness, the user's configuration, 30 days):
+
+| window | target reached | phasing Δv | separation afterwards |
+|---|---|---|---|
+| 21 days | day ~21.6 | 0.017 m/s | 94–99 km |
+| 5 days | day ~5 | 0.077 m/s | 95–98 km |
+| 3 days | day ~3 | 0.13 m/s | 98–102 km |
+| 1 day | day ~1 | 0.38 m/s | 97–100 km |
+
+No overshoot, cycling or suspension in any case. The default is now **3 days** in the schema, the phasing-formation generator and its dialog, the spacecraft editor and the CLI, and a new test keeps them in agreement. The editor's tooltip states the Δv trade-off.
+
+Over 90 days, stock template 05 still fires its one drift correction (day ~28 in the degree-10 no-eclipse harness, ~35 with eclipses). That correction now finishes in ~2.4 days instead of ~2 weeks, with the separation held at 45–52 km, for 0.014 m/s instead of 0.003 m/s. The chief-reboost case is unchanged (one trim, 0.014 m/s, burns 276/275). The template's description now quotes these numbers. Old scenario files that set the window explicitly keep their value; only files that omit it pick up the new default.
+
+## Device catalog from the user's supplier database (+31 devices), and an editor precision bug
+
+The user supplied a supplier database: a market survey of 609 products for 100–500 kg LEO/SSO satellites, dated 07 Oct 2026, with ITAR status, heritage, sources and an audit column. They asked for every applicable sensor and actuator to be considered. 165 rows are ADCS, GNSS or propulsion products.
+
+**Inclusion rule** (the database's own criteria, applied mechanically). A product is added to `engine/device_catalog.py` only if all five hold:
+1. It maps to a kind the app simulates (star tracker, IMU, sun sensor, magnetometer, reaction wheel, magnetorquer, thruster).
+2. It has flight heritage; "Development – monitor" rows are excluded.
+3. The database doesn't flag it "Check / export risk".
+4. The database gives the numbers its kind needs.
+5. The database doesn't call it too small or oversized for 100–500 kg.
+
+That gives 31 new entries:
+* 8 star trackers;
+* 1 IMU;
+* 3 sun sensors;
+* 2 magnetometers;
+* 2 reaction wheels;
+* 3 magnetorquers;
+* 12 thrusters.
+
+Every entry cites the database's own source link, and every datasheet-to-parameter conversion is stated in the entry's notes. The conversions follow the existing entries:
+* noise is converted to 1-sigma, using the worse axis or range end;
+* angular random walk is converted to per-tick noise for a 1 s tick;
+* sun-sensor angle × sin 45° gives the cosine-law noise;
+* wheel inertia is momentum / top speed, with 6,000 RPM assumed where the speed isn't published.
+
+Two new fields, `heritage` and `procurement_status`, are shown in the editor's catalog preview. The seven original entries were updated from the database:
+* **Teldix RSI 04-33-60A:** the database flags it "Check / export risk" (US parent); it is kept for existing scenarios, with the flag in its note.
+* **SS200 and MTQ800:** the database's audit found no ITAR-free statement on the vendor pages the old notes relied on.
+
+**Not added**, with reasons:
+* **No matching simulation model:** CMGs, Earth/horizon sensors, GNSS receivers and integrated ADCS units.
+* **Missing numbers:** for example Sodern Auriga, Exail Astrix NS and Astrofein wheels, which have no torque or accuracy figures in the database.
+* **Flagged "Check / export risk":** for example Honeywell, LITEF and Safran PPS.
+* **Development status:** for example ASPINA and SITAEL HT100.
+* **Sizing called out by the database:** for example SteamJet, ThrustMe NPT30 and CubeSat-class wheels.
+
+**Real bug found while verifying.** Applying each preset through the real editor (a new test does this for all 38 entries, then validates the resulting spacecraft) showed that the existing MM200 magnetometer's 1.18e-9 T noise came back as 1.2e-9 T. `gui/widgets.PreciseDoubleSpinBox`, used in 18 places, kept values to 10 decimal places, so anything finer was silently rounded on open + OK. It now keeps values exactly (40-decimal internal storage, shortest-exact display text), with a parametrized round-trip test.
+
+## The template "Customize" wizards were very incomplete: every setting is now reachable
+
+The user found the wizards "very incomplete": template 05's offered no correction window and nothing for the chief, and they asked for an audit of all of them. A measured audit nudged each wizard field and recorded which scenario settings moved. Every wizard reached only 5–20% of its template's numeric and on/off settings, for example 6 of 71 for template 05 and 2 of 56 for template 17.
+
+**Fix.**
+* **Generated sections.** A new `gui/wizard_settings.py` builds sections for every remaining setting from the scenario itself, grouped by spacecraft and component: orbit; mass, drag & radiation pressure; attitude; station-keeping; phasing keeping; sensors & actuators; power; and so on. It then adds ground stations, the mission sequence, Monte Carlo and environment & simulation. Because the sections come from the scenario, nothing can be left out.
+* **Labels and units.** These come from a curated table. Sensor and actuator parameters use the device editor's own descriptions, with a sub-heading per device, and vectors are shown on one row.
+* **What isn't offered.** Text settings (names, epoch, mode names) need the full editor. Vizard model offset, rotation and scale are only offered when a model is set.
+* **No duplicates.** The curated "key settings" pages stay first, and the generated sections leave out anything they already offer.
+* **Two-pane dialog.** The wizard is now a dialog with a section list and a filter box (typing "correction" jumps to the correction window), instead of a 16-step Next/Next/Next flow. Only fields the user actually changed are written back.
+* **Tests.** New tests check that every template's wizard offers 100% of its settings with nothing twice, that template 05's wizard sets the correction window and the chief's orbit and station-keeping, and that the filter works. The existing round-trip tests (no edits reproduce the template exactly) pass for all 20 templates.
+* **Layout fix found while checking.** Each field reserved width for its ±1e15 range, and a 9-element inertia row made the dialog 3,454 px wide. Fields now have a modest minimum width, and the inertia tensor shows as three rows.
+
+**The other wizards, audited the same way.**
+* **Phasing Formation generator** (Spacecraft list → "Generate phasing formation…"): every request field was already in the dialog, but nothing could be set on the chief. The follower's station-keeping mirrors the chief's reboosts, so the chief's own station-keeping is part of the formation's design. A new "Chief station-keeping" section is prefilled from the selected chief, with defaults when it has none and the target altitude taken from its orbit. Unchecking it removes the chief's station-keeping. The follower's groups are now labelled as the follower's, and the intro is one line instead of a paragraph.
+* **Walker Constellation generator:** every request field was already in the dialog. It gains a "Sun-synchronous" button that sets the inclination for the entered altitude and eccentricity (Earth only), as the orbit editor already had.
+* **Spacecraft Template dialog:** a preset picker that opens the full editor, so there was nothing to add.
+
+## The Load tab's template description was "just awful UI/UX"
+
+The user's screenshot showed the Load tab's description panel for template 05: about 7,200 characters of grey prose, including the template's development audit history, class and docstring references, and verification notes. It sat below the 20-row template list, so it was only visible after scrolling the whole tab.
+
+* **All 20 descriptions rewritten** (new `scripts/_template_descriptions.py`, used by the generator). Each is a one- or two-sentence summary followed by short "What to look at" and "Try changing" bullets, plus a "Note" or "Limitations" bullet where it matters. They now run 470–1,000 characters each, down from up to 7,200. Development history stays in this file and the generator's code comments.
+* **Two wrong series names fixed** in the rewrite: template 19 pointed to `power.battery_soc` (the real series is `battery_charge`), and template 20 to `sensor.therm-1.temperature` (it is `sensor.therm-1`).
+* **The Load tab** now has a title-and-description card below the list, split by a draggable divider, each scrolling on its own, and visible as soon as a template is selected. Descriptions are rendered as rich text, with bold headings and bullet lists. The intro and hint are one line each, and the hint now says that Customize changes any setting.
+* **Tests** keep descriptions short and structured: under 1,400 characters, summary under 300, bullets under 200, with no development-history wording. They also check the rich-text rendering, including escaping, and that the card is visible without scrolling the tab.
+
+**Follow-up: "a lot of unused empty space".** Showing one section at a time left a one-field section ("Reaction wheels" in template 07) as a nearly empty dialog with an 800 px wide field. The Customize dialog now shows every section as a compact card on one scrolling page. The left list is a table of contents: click to jump, and it follows the scroll. Fields have a fixed, readable width; a curated field's help text sits to its right instead of in a narrow column underneath; and card titles no longer repeat the spacecraft name that heads their group.
+
+## Sensor/actuator and attitude-control editors: forms instead of bullet lists over JSON
+
+The user sent four screenshots:
+* The Edit sensor/actuator dialog was "cramped": a bullet-list parameter reference squeezed into a small scroll box, above a JSON box.
+* The selected device's information was "raw text … unclear, confusing, all over the place and not professional". The IMU with the ARIETIS-NS preset was a second example.
+* The spacecraft editor's Attitude control tab had the same pattern: bullet lists of keys above two raw JSON boxes.
+
+**A shared parameter form.** New `gui/param_form.py` (`ParamForm`) turns a list of parameter specs into labelled rows:
+* **Labels.** Each row has a short name. The unit is in the field (`rad/s`, `N*m`, …) and the full description is in the tooltip.
+* **Optional parameters.** Each has a checkbox. Unticked means the key is left out and Basilisk's default applies.
+* **Field types.** On/off values are checkboxes, and named options (fault modes) are drop-downs. A 3-component vector gets x/y/z boxes on their own line, with Normalize only for directions.
+* **Other keys.** Any key the specs don't know stays editable in a collapsed "Advanced: other parameters (JSON)" box. It opens automatically when such keys are present, so nothing is lost on open + OK.
+* **Labels for every parameter.** Each sensor/actuator parameter got an explicit short label (for example "Bias random-walk bound" instead of "Long-run random-walk BOUND on the noise above").
+
+**Sensor/actuator dialog.**
+* **Layout.** Kind and Name at the top, a note banner only when the kind has a note, the device picker and card on the left, and the parameter form on the right. Required and optional parameters are grouped.
+* **Device card.** It is now structured rich text: name and country, the summary, a labelled table (Heritage, Procurement in its status colour, Export control, Source link), and "How the values were set" in small print.
+* **Defaults.** A new item starts with the required parameters at a working example and the optional ones at Basilisk's defaults. Switching Kind away and back keeps edits, and Reset to template restores the defaults.
+* **No toast over the buttons.** The "Applied … values" toast covered the OK button and has been removed, since the form visibly changes.
+
+**Attitude control tab.**
+* **Mode description.** A one-line description of the selected mode replaces the key list.
+* **Pointing parameters.** A form, hidden when no mode is selected. locationPointing's "Point at ground station" lists the scenario's stations, and it is mutually exclusive with "Point at celestial body". The mode's values are kept when switching modes away and back.
+* **Control gains.** A form in which unticked gains use the defaults.
+* **Comms pointing.** The group has shorter labels, collapses to its title while unticked, and shows its unit in the field.
+
+**New catalog device: VECTRONIC Aerospace VRW-D-6.** Added from the user's datasheet (A4, 25 Apr 2024):
+* **Values.** 6.0 N*m*s, ±6,000 RPM, 50 mN*m (90 mN*m variant noted), and rotor inertia 9.56e-3 kg*m^2.
+* **Status.** Built in Berlin; the datasheet has no ITAR statement, so the entry is "RFI - confirm ITAR in writing".
+* **Basilisk check.** Basilisk's `rwFactory` builds it with H_max = 6.007 N*m*s, matching the datasheet's 6.0 N*m*s. A full simulation was not possible in this container because the SPICE kernels are not cached and there is no network.
+
+**Tests.** New tests cover:
+* the device card's structure;
+* units in fields and optional-parameter checkboxes;
+* the attitude tab's form (station list, exclusive targets, no bullets, JSON collapsed);
+* round-tripping existing fsw/control params, including unknown keys;
+* mode switching that keeps edits.
+
+The tests that assumed JSON boxes now use the form. The catalog test applies and validates all 39 entries through the dialog.
+
+## Typed lists replaced: wheel biases, separation stages, report series
+
+A follow-up check of every other editor found no more bullets-over-JSON boxes. It did find three fields where you had to know a hidden structure to type them; the user asked for all three to be fixed.
+
+**Wheel speed biases** (magnetic momentum management):
+* **Before.** A comma-separated list matched to the reaction wheels by position, with nothing showing which number belonged to which wheel.
+* **Now.** One labelled `rad/s` box per wheel, named after the wheel, in the actuator-list order the engine uses.
+* **Kept in step.** Adding or removing a wheel on the Sensors/actuators tab adds or removes its row (new wheels start at 0).
+* **No wheels.** The group says so, and OK explains that a reaction wheel is needed.
+* **Shared widget.** This uses the new `gui/number_list.NumberListEditor`.
+
+**Target separation** (phasing keeping):
+* **Before.** A comma-separated km list.
+* **Now.** Numbered stages ("Stage 1", "Stage 2", …), each a km box with Remove, plus "Add stage"; the last stage can't be removed. It uses the same widget.
+
+**Report command series** (mission sequence):
+* **Before.** Typed one per line from memory, where a single typo stopped the run.
+* **Now.** A checkable list of the series this scenario will produce, with a filter and "Clear selection". Nothing ticked still means "every series".
+* **Unknown names.** A saved name the scenario doesn't produce is kept, so open + OK changes nothing, but it is shown in red with "(not produced by this scenario)".
+* **Where the list comes from.** A new Basilisk-free `engine/series_names.expected_series_names()` mirrors the engine's own rules for which series exist.
+  * **Checked against a real run.** For template 05 it matches the user's own exported results exactly (40 series).
+  * **Basilisk check.** A new `requires_basilisk` test compares it with a shortened real run of every template. It could not run here, because the SPICE kernels aren't cached in this container.
+* **Half-edited scenarios.** The scenario editor feeds the list from an unvalidated draft, so it works mid-edit.
+
+**Tests.**
+* Per-wheel rows follow the actuator list, including the no-wheel case.
+* Separation stages add and remove, and never go below one.
+* The report list ticks, filters and clears, and keeps and flags an unknown series.
+* The series prediction is checked for templates 05, 07 and 19, plus the real-run comparison above.
+* The tests that typed comma lists now use the new widgets.
+
+## Full-suite run on the user's machine: all green, plus a NaN in GEO mean elements
+
+The user's run with Basilisk: **1649 passed, 11 skipped, 1 warning**.
+* **Skips.** The 11 skips are the "without Basilisk" tests, which can't run when Basilisk is installed.
+* **Series prediction confirmed.** The new real-run check passed for all 20 templates, so the Report command's series list is right for every bundled template.
+
+**The warning was a real bug.** It was "invalid value encountered in scalar divide" inside Basilisk's `orbitalMotion.clMeanOscMap`, for template 03 (GEO).
+* **Cause.** The J2 osc → mean mapping divides by tan(i). An exactly equatorial sample (template 03 starts at i = 0) came back with NaN mean inclination and RAAN, which showed as a gap at the start of those plots.
+* **Fix.** `engine/service._mean_elements` now keeps the inclination it passes in at least 1e-9 rad away from 0 and 180 deg, which changes no plotted or reported value.
+* **Test.** A new Basilisk test maps exactly equatorial samples (i = 0 and 180 deg, e = 0 and 1e-5) with warnings turned into errors. It fails without the fix and passes with it.
+
+## Customize dialog: the value boxes had lost their borders
+
+The user's screenshot of the Customize dialog (template 05): "I can't really distinguish if the values are editable or not, there is no box around them."
+* **Cause.** Each row's holder widget had the stylesheet `background: transparent; border: none;`. That is unscoped, so Qt applied it to every child, including the spin boxes, and their frames disappeared. The values looked like plain text.
+* **Fix.** The rule is now scoped to the holder alone (`QWidget#wizardRow { … }`), so the spin boxes get the app's normal bordered style back. A scan of every other `setStyleSheet` call in the GUI found no other unscoped container rule.
+* **Alignment.** While checking, the labels sat above their values in rows with help text, because the form places labels at the top of a row. Labels are now as tall as their box, with the text centred, and the box is pinned to the top of the row, so each label lines up with its value.
+* **Test.** A new test renders the template-05 dialog and checks that each value field draws a visible edge, distinct from its interior. It fails with the old stylesheet and passes with the fix.
+
+## Missing-border check across every dialog
+
+After the Customize-dialog fix, the user asked for the other dialogs to be checked for the same missing borders.
+
+**How it was checked.** By rendering each dialog, not by reading the code, with a new permanent test, `tests/gui/test_input_borders.py`:
+* **Coverage.** It covers 47 dialogs and editors in total:
+  * the spacecraft editor, loaded with templates 07, 13, 19 and the template 05 follower;
+  * the sensor/actuator dialog, for every kind with a catalog device selected;
+  * the mission-sequence command dialog, for every command kind;
+  * the Customize dialog, for all 20 templates;
+  * the propagation setup, ground station, Monte Carlo dispersion, phasing formation, Walker constellation and Vizard dialogs;
+  * the main window, with template 19 loaded.
+* **Method.** Each one is shown with the app's theme, every optional group and "Advanced" disclosure is switched on, and every tab is visited. Each visible spin box, text field, drop-down and text area must render a left edge that differs from its interior.
+* **Guard against an empty check.** The test also fails if a dialog has no inputs to check. The Spacecraft Template dialog (a preset list) and the startup fetch dialog (checkboxes) have no input boxes, so they are not listed.
+
+**Result.** Every dialog already draws its input borders correctly; the Customize dialog was the only one affected, and it was fixed in the previous commit.
+
+**Proof that the test works.** With the old unscoped rule put back in the Customize dialog, all 20 Customize cases fail.
+
+## Customize dialog: short one-line hints instead of cramped help paragraphs
+
+The user's screenshot showed the Target separation note: "The along-track distance phasing_keeping actively holds 'follower-1' at, ahead of 'chief-1' (always a positive, 'follower leads chief' distance)." It was wrapped over three lines in small grey type beside the field: "cramped text is also bad UX/UI".
+
+**Hints.**
+* **Short and plain.** Each curated field now has a one-line hint of at most 60 characters, with no code names, for example "Distance the follower holds ahead of the chief".
+* **How they look.** Hints are in normal-size muted type, kept on one line and centred on their box.
+* **Full text on hover.** The full explanation moved to the tooltip, on the field and on its hint.
+* **Which fields changed.** Help text already 60 characters or shorter is used as the hint. The 34 longer ones got a hand-written hint (`WizardField.hint`).
+* **Tooltips cleaned.** Two tooltips that named code fields (`phasing_keeping`, `target_position_m`) were rewritten.
+
+**Section intros.** 30 of the 46 intros were shortened to one sentence of at most 90 characters, without code or documentation references. Examples:
+* Template 05's station-keeping section said "… see PhasingKeepingConfig's own docstring". It now says "follower-1's altitude-holding burns, which phasing needs."
+* Template 04's 450-character constellation note is now "Applied to every satellite. Change the satellite count with Generate Walker constellation."
+
+**Tests.**
+* A new test checks every curated hint (present, at most 60 characters, no code names) and every intro (at most 90 characters).
+* It also checks that template 05's hint renders on one line with its full text as the tooltip.
+* The round-trip and coverage tests pass for all 20 templates.
+
+## Scroll wheel no longer changes values; cramped help text fixed in every dialog
+
+**Scroll wheel.** The user asked: "Don't allow scrolling to change the values in any boxes. That's annoying."
+* **Change.** A new app-wide guard (`gui/widgets.install_wheel_guard`, installed at startup in `gui/app.py`) stops the mouse wheel from changing any spin box or drop-down.
+* **The page still scrolls.** The wheel event is passed to the nearest scroll area, so scrolling over a box scrolls the page instead.
+* **Still works.** An open drop-down list still scrolls, and values still change by typing, the arrow buttons and the keyboard.
+* **Test.** A new test sends wheel events to several kinds of box (including the text field inside a spin box) and to a drop-down. None of the values change, and the page scrolls. Without the guard, the same events change both a spin box and a drop-down.
+
+**Cramped help text, checked in every dialog.** The same rendering approach as the border check was used: every dialog and tab, with each visible label's length, wrapped height and any code names measured. Fixed:
+* **Spacecraft editor.**
+  * The labels "Momentum threshold hs_max" and "Control gain c_gain" no longer show code names.
+  * The Vizard model note went from 234 characters to one line.
+* **Propagation setup.** The intro and the drag/SRP note are each one line (they were 188 and 230 characters).
+* **Walker constellation and Vizard dialogs.** The intros are shorter. The Vizard intro had pointed users to the README.
+* **Mission sequence commands.**
+  * Set parameter is no longer 230 characters naming `thrust_n`/`isp_s`.
+  * The if/while hint is now an example plus the available names.
+  * The script-block hint is one plain sentence instead of a pointer to an engine docstring.
+* **Sensor/actuator dialog.**
+  * The torque-rod note is one sentence (it was 295 characters and named `magnetic_momentum_management`).
+  * Device cards now show parameter names as the form's own labels.
+  * The 7 original catalog entries and the VRW-D-6 had notes of up to 1,076 characters; they were rewritten to the concise style of the supplier-database entries, with the same figures and derivations.
+  * The "How the values were set" note is no longer in small type.
+* **Load tab and Mission Dashboard.**
+  * The Load tab hint is shorter.
+  * The empty Mission Dashboard message is one sentence instead of naming `comms_pointing`.
+  * Template 15 is renamed from "(locationPointing + target_body)" to "(Moon)"; the generator and the JSON were regenerated together, and only the name changed.
+
+**New permanent test.** `tests/gui/test_label_text.py` renders the same 47 dialogs as the border test. Every visible plain-text label must be at most 160 characters with no code names. The exceptions are rich-text cards and the if/while hint, where Python syntax is the content. With the old `hs_max` label put back, the test fails.
+
+## Scroll wheel, every dialog: tab bars too, and a crash in the first fix
+
+The user asked for every dialog to be checked for the scroll-wheel issue. A new rendered test, `tests/gui/test_wheel_in_dialogs.py`, does that for 46 dialogs: it visits every tab with every optional group switched on and wheels over every visible spin box, drop-down and tab bar. No value, selection or tab may change, and the state is checked after every single wheel step. The Vizard dialog is not included, because it has only text fields.
+
+**What it found.**
+* **Tab bars.** Spin boxes and drop-downs were already safe, but tab bars switched tabs when scrolled over; in the spacecraft editor the wheel jumped from "Orbit / mass" to "Attitude control". Tab bars now ignore the wheel too.
+* **A crash in the first fix.** The previous commit's app-wide guard was a Python event filter on the whole application, so Python was called for every event on every object. Under gdb, PySide crashed inside `getWrapperForQObject` (re-entering itself through a dynamic-property event) while wrapping an object Qt had created internally. It reproduced intermittently by wheeling over the main window's Scenario Editor; moving the scroll bar directly instead of re-sending the event did not remove the crash.
+
+**Fix: per-class instead of app-wide.**
+* **New widget classes.** `gui/widgets.py` adds `SpinBox`, `DoubleSpinBox`, `ComboBox` and `TabWidget` (with a no-wheel tab bar), and `PreciseDoubleSpinBox` now ignores the wheel as well. They are used at all 44 creation sites in 12 GUI modules.
+* **How the page scrolls.** Each ignores the wheel event. Qt then passes real input on to the parent, so the page scrolls, with no event filter and no re-sent events.
+* **Removed.** The app-wide filter (`install_wheel_guard`) is gone.
+
+**Checks.**
+* The dialog test passed in repeated runs, with no crash.
+* The unit test checks that every kind of box and tab bar leaves the wheel event unaccepted (so real scrolling reaches the page) and that its value does not change.
+* Putting a plain `QComboBox` back in the propagation dialog makes the dialog test fail. That needed the per-step check: wheeling up then down on a drop-down's last item lands back where it started.
+
+## Results plots that wouldn't switch, and a confusing Vizard view
+
+**Plots stuck on the previous series.** The user reported that during a live run, switching to `chief-1.position_N` or `chief-1.velocity_N` "just doesn't change", and the previous plot stayed.
+* **Cause.** Each plot is a page loaded with `QWebEngineView.setHtml()`, which silently shows nothing above 2 MB. With the user's own template-05 data (86,400 samples):
+  * position and velocity pages were 5.8 MB each (three lines);
+  * delta-V was 2.1 MB and orbit elements 1.9 MB, so longer runs would have broken nearly every plot.
+* **Not only live runs.** Measured directly with that data, before the fix none of these plots loaded after switching, even with the run finished.
+* **Fix.**
+  * Plot pages are written to a temporary file and loaded from it, which has no size limit. They are written to alternating file names, so a new page never overwrites one still loading.
+  * Each drawn line is thinned to at most 10,000 points. The minimum and maximum of every stretch are kept, so burns and spikes still show.
+  * CSV export keeps every sample.
+* **Tests.**
+  * A 90,000-sample, three-line series renders after switching to it; this fails without the fix.
+  * Thinning caps the point count, keeps a one-sample spike, and leaves small series untouched.
+  * All 55 existing results tests pass.
+
+**Vizard: a solid cyan band** (user screenshot of a 26-day template-05 run). The flown-path trail (`trueTrajectoryLinesOn`) keeps every orbit flown. As the orbit plane precesses, hundreds of overlapping lines merge into a solid band, and the ground tracks (left at Vizard's own default) add to it.
+* **New defaults.** Each spacecraft's current orbit is still shown as one ring. The flown-path trail and the ground tracks are now off unless asked for, and each is sent to Vizard explicitly as on or off.
+* **How to turn them on.** The Vizard dialog has new checkboxes ("Show the flown path (builds up over long runs)", "Show ground tracks"), and the CLI has `--vizard-trail` and `--vizard-ground-tracks`.
+* **Tests.** A Basilisk test reads the settings Vizard receives, for both defaults and opt-in. Dialog and CLI tests cover the new options.
+
+## Every plot checked after the large-plot fix
+
+The user asked for the other plots to be checked for the same issue.
+
+**Only the Results tab is affected.** It is the only web view in the app, and since the previous commit it loads every plot page from a file, so the 2 MB `setHtml()` limit can no longer hit any plot.
+
+**Rendered check.** Every series in the user's own template-05 results (40 series, 86,400 samples each) was switched to and confirmed rendered in the page, with the right title and line count. Heavier synthetic cases were checked the same way:
+* an 8-thruster on-time plot (8 lines x 90,000 samples);
+* six ground-station access pairs over 31 days;
+* the access timeline view.
+
+**Result.** All 48 views loaded correctly. Pages are now 0.1-2.0 MB (position/velocity went from 5.8 to 0.67 MB), and each switch takes 0.4-1.6 s.
+
+**One improvement found.** The access timeline drew each pass as its own trace: 2,865 traces for six pairs over a month, which Plotly is slow to draw and which grows with run length. Each pair is now one trace, with its passes as separate segments split by gaps.
+* For the same data that is 6 traces and a 0.26 MB page (it was 1.03 MB), and the chart looks the same, with one row per pair and separate bars per pass.
+* The existing timeline test now checks one trace per pair, with one segment per access window.
+
+## Every Vizard view checked for the same clutter
+
+The user asked for the other Vizard views to be checked. Vizard itself can't be run in this container, so the check was done against the Vizard source (`0h3xn4/vizard`, `VizardGUISettings.cs`, `UserGUISettings.cs`, `FullLocationMethods.cs`). It covered everything `engine.vizard.enable_vizard()` sends, plus each setting it leaves at Vizard's default.
+
+**Correction to the previous entry.** In Vizard, ground tracks are off by default, while the flown-path trail is on (`TruePathLineMode = 1`), and we also turned it on. So the solid cyan band was most likely the trail, not ground tracks. The previous change already covers it: the trail is now sent as off (-1), which Vizard honours (`TruePathLinesVisible = TrueTrajectoryLinesOn > 0`).
+
+**Found and fixed: ground-station cones.**
+* **Cause.** Each station got a ~160 deg coverage cone with no range. Without a range, Vizard draws the cone 0.4 planet radii tall at 20% opacity, so its rim reaches ~2.3 planet radii out: a faint disc wider than Earth around every station.
+* **Fix.** The cone now gets the slant range from the station to the highest spacecraft's starting orbit, at the station's minimum elevation. Vizard then draws a dome that reaches exactly the orbit, about 1,800 km for a 550 km LEO at 10 deg.
+* **When the orbit is unknown.** If no orbit radius is available, the cone is left at Vizard's default.
+
+**Checked and left alone.**
+* **Off unless set:** ground tracks, spacecraft and planet axes, and the Hill/velocity frames.
+* **Comm lines:** station-to-spacecraft lines appear only while in contact.
+* **Labels:** explicitly on.
+* **Info panels:** one window per spacecraft, with one row per value.
+* **Each spacecraft's orbit ring:** on.
+
+**Tests.**
+* The slant-range geometry is checked at zenith, at the horizon, and with no orbit or one below the surface.
+* A Basilisk test builds a real ground station with two spacecraft and checks that the cone Vizard receives has the slant range to the higher orbit, a LEO-sized value rather than a planet-sized one.
+
+## Mission Dashboard: decluttered
+
+The user asked for the Mission Dashboard to be checked for clutter. It was rendered with template-19-style telemetry at a typical and a narrow pane width. The information was right, but the layout was cluttered:
+* **Empty cards.** The four cards sat in one row and each stretched to the full tab height, about 85% empty white.
+* **Stretched badges.** The status badges (Mode, Ground station, Tracking, Link status) stretched into full-width bars.
+* **Hard-to-read battery level.** The "67% SOC" text was drawn across the bar, grey on blue.
+* **Buried margin.** The RF card had ten equally weighted rows, so the one number that answers "is the link OK?" (the margin) was second from last.
+
+**Changes.**
+* **Card layout.** Cards keep their content height, in two independent columns (state and attitude, then power and RF), with spare height left below them. Below 760 px the cards stack in one column, so text is no longer clipped in a narrow pane.
+* **Badges.** They are compact pills at their natural width.
+* **Battery.** State of charge is a slim gauge with the percentage beside it (`battery_soc_label`).
+* **RF link.** The card leads with Link status, a bold Link margin, and Slant range. The link budget (EIRP, path loss, pointing loss, received power, N0, C/N0, Eb/N0) follows as a muted "Link budget" breakdown.
+* **Label.** "Ground-station visibility" is now "Ground station".
+
+All displayed values and label texts the tests check are unchanged.
+
+**Tests.** A new test checks the following, and fails against the old layout:
+* no card stretches to the pane;
+* Attitude keeps its own height instead of matching RF's;
+* the cards form two columns at 1000 px and one at 620 px;
+* badges stay pills.
+
+The battery test also checks the new percentage label.
+
+## Explain tab: decluttered
+
+The user asked for the Explain tab to be checked for the same clutter. It was rendered for templates 04 (six-satellite constellation), 05 (formation) and 19 (comms) at 1000 px and 620 px. Problems found:
+* **Repeated rows.** Template 04's spacecraft table had six identical rows, one per satellite.
+* **Misused status colours.** Drag and SRP showed as orange "warning" badges, and Power/RF link budget as green "success" badges. They are model settings, not states, so the colours suggested a problem or a pass that wasn't there.
+* **Code names.** Attitude modes showed as `hillPoint`, `sunSafePoint` and so on, and gravity as "Degree-10 earth + sun/moon".
+* **Duplicated stations.** The Ground stations section showed a "1 station(s)" badge and then repeated the names as a text line.
+* **Clipped table.** In a narrow pane the table scrolled sideways, but its height did not allow for the scroll bar, so the last row was hidden behind it. A second, vertical scroll bar appeared as well.
+
+**Changes.**
+* **Table.** Spacecraft with identical facts share one row, labelled "leo-01-01 ... leo-02-03 (6)" (or both names when there are two).
+* **Badges.** Enabled models (Drag, Solar radiation pressure, Gravity gradient, Power budget, RF link budget, attitude modes) use the accent colour. Status colours stay reserved for states.
+* **Names.** Attitude modes use plain names (e.g. "Orbit-frame (nadir) pointing", "Sun pointing"), in the badges and in the table's Control column. Body names are capitalized.
+* **Stations.** One badge per station name, with no extra text line.
+* **Formation note.** Shortened to "phasing keeping needs station-keeping on the same spacecraft (User Manual Sec. 12)".
+* **Table height.** The table never scrolls vertically, and it reserves room for the horizontal scroll bar when it is wider than the pane. It refits on every resize.
+
+**Tests.**
+* Template 04 gives one table row covering all six satellites.
+* Badges use plain names and no status colours.
+* The table in a narrow pane shows every row with no vertical scroll bar. This test fails without the height fix.
+
+## Results tab: decluttered
+
+The user asked for the Results tab to be checked for the same clutter. It was rendered from a real template-05 run (40 series, with provenance), with ground-station access series and drift warnings added, at 1000 px and 620 px. Problems found:
+* **Code names.** The Series list showed 40 dotted code names such as `follower-1.orbit_elements_mean.semi_major_axis`. In a narrow pane the box showed only their tail ("_keeping.separation_error").
+* **Too wide.** A one-line provenance label and a five-control toolbar forced the tab to about 780 px, wider than a typical right-hand pane.
+* **Scroll bar.** Every plot had a scroll bar beside it. Plotly's page kept the browser's default 8 px body margin under a 100%-height plot.
+* **Long warnings.** Each drift warning was a ~330-character paragraph, with up to two per spacecraft, all in the error red.
+* **Pointless control.** The View selector was shown even when the result had no ground stations, so there was nothing to choose.
+* **Invisible passes.** On a month-long run in a narrow pane, an access pass is narrower than a pixel, so the access timeline looked empty.
+* **Precise timestamp.** The provenance line ended "run started 2026-10-07T14:33:38.434854+00:00".
+
+**Changes.**
+* **Series list.** Entries read like their plot titles ("chief-1: Mean (first-order J2) Semi-Major Axis"). The code name, which is also the CSV file name, is the item's tooltip and data (`current_series_name()`). Typing a full code name still selects it. Two series that would share a label keep their code names.
+* **Toolbar.** Series and X-axis share the top row. The buttons are "Export CSV...", "Save PNG..." and "Save SVG...", with View at the right end of that row. View appears only when the result has access series, and its option is now "Access timeline". The provenance line wraps.
+* **Plot page.** No body margin and no overflow, so the plot fills the view exactly.
+* **Warnings.** One short line each, e.g. "chief-1: orbital energy drifted 5.1% (limit 1%) -- try a smaller dynamics step or a higher-order integrator". The two-body reasoning moved to the tooltip, and the colour is the palette's warning amber.
+* **Access timeline.** Each pass gets a 1 px tick at its start and end, on the same trace, so it stays visible at any zoom and hover shows the real times. The x-axis is fixed to the run, so the ticks don't pad it to before t = 0.
+* **Provenance.** Reads "... · RKF78, 30 s step · 2026-10-07 14:33 UTC".
+
+**Docs.** USER_MANUAL Section 7 describes the new list, buttons, View selector and warning line. It no longer claims that positions plot in km; they plot in metres.
+
+**Tests.** Seven new tests, each failing against the old code:
+* the list shows titles, with code names as tooltip and data;
+* typing a code name selects it;
+* View is hidden without access series;
+* the tab fits 620 px;
+* the plot page has no scroll bar (checked in the real web view);
+* passes carry end ticks and the axis starts at 0;
+* warnings stay at or under 120 characters.
+
+Tests that read the combo text as a code name now use `current_series_name()` and `findData()`.
+
+## Mission Output tab: a table instead of a text dump
+
+The user asked for the Mission Output tab to be checked for the same clutter. It was rendered with template 08's two reports ("Before burn" / "After burn"). Each report snapshots all 14 of sat-1's series, because the report commands list no series. The tab was a monospace text dump:
+* **Raw values.** Each line read like `sat-1.orbit_elements_mean.arg_periapsis = [2.4334567000000003]`: a code name, raw SI units with no unit shown (radians, metres), float noise, and list brackets around single numbers.
+* **Wrapping.** Long lines wrapped mid-value in a narrow pane.
+* **Raw times.** Times showed as "t = 8640.000 s".
+* **No comparison.** The two reports were stacked as separate blocks, so the before/after comparison template 08 exists to teach meant scrolling between them.
+* **Filter didn't narrow.** Filtering "inclination" kept every line of every report that mentioned it anywhere: all 28 lines.
+
+**Changes.**
+* **Table.** The tab is now one row per quantity and one column per report. Each column header carries the report's label and its mission time ("Before burn / 2.4 h").
+* **Change column.** With exactly two reports, a Change column shows the difference. It is rounded to the precision of the values, so a change too small to show reads "0", and angle changes go the short way round.
+* **Names and units.** Quantities use the Results tab's plot names and display units, e.g. "Semi-Major Axis [km]" and "Inclination [deg]". Vector components get their own rows, and numbers are right-aligned without float noise. `set_command_summary()` takes the run's ResultSet for each series' units and components, and MainWindow passes it for finished and cancelled runs.
+* **Groups.** Osculating and mean elements sit under "Osculating elements" / "Mean elements (first-order J2)" header rows, so row labels stay short. With several spacecraft, rows and groups are prefixed with the spacecraft name.
+* **Filter.** Matching a report label shows only that report's column; otherwise only matching rows stay (by name, code name or value). A muted status line reads e.g. "5 commands run · 2 of 18 rows match".
+* **Toolbar.** "Export CSV..." sits next to the filter. Its behaviour is unchanged: every report, SI units.
+
+**Docs.** USER_MANUAL Section 7 describes the table, the Change column and the filter.
+
+**Tests.** The widget's tests now read the table (`table_text()`) rather than the old text box. New tests cover:
+* units, groups and the Change column on template-08-shaped data;
+* the short-way-round angle change;
+* filtering to a report's column, and to matching rows;
+* two-spacecraft prefixes.
+
+## Template 16 (Lambert transfer): would fail at its first step
+
+Found while checking the Mission Output tab: template 16's first command was the "Before transfer" report, ahead of any propagate. `MissionEngine.run()` builds the simulation and goes straight into the commands. Recorders only get a sample once the simulation has ticked, so `_run_report` raises "no recorded samples yet": the template fails at its first step. HISTORY's own Lambert entry explains how this slipped through. The Lambert step was verified on its own, and the template wrapped it in a Mission Sequence that was never run end to end.
+
+**A second problem behind it.** The template claims the same configuration as Basilisk's `examples/scenarioLambertSolver.py`, but the example burns a quarter orbit in (`tm = tau/4`, 2490 s) and arrives half an orbit in. The template burned immediately, from a different point on the orbit. A numpy two-body check of both Lambert arcs:
+* **Burn at t = 0 (as shipped):** the lowest point is about 6366 km, below the template's own `min_orbit_radius_m` (Earth's radius, 6378 km). `lambertValidator` would reject it.
+* **Burn at t = 2490 s (the example's timing):** the lowest point is the 6578 km target itself, and the arc hits it.
+
+Both problems were found by reading the code and running that offline check. Neither could be confirmed with Basilisk itself here, because the SPICE kernels can't be downloaded in this environment.
+
+**Fix.**
+* **Template.** Template 16 now starts with a "Coast to burn point" propagate of 2490 s (a quarter of the 9952 s orbit, on the 10 s step), then the report, the Lambert burn, the 2490 s coast to arrival and the final report. Only template 16 changed on regeneration. Its "Try changing" line now suggests shortening the coast to 10 s to see the minimum-radius check reject a path through the Earth.
+* **Customize wizard.** It gained a "Coast to burn point" field. Its time-of-flight setter used to keep "the first propagate" in step with the time of flight; with the new coast that would have edited the wrong command. It now targets the first propagate after the burn.
+* **Validation.** `schema.command.report_before_propagate_errors()`, used by `Scenario.validate()` and `validate_all()`, flags a top-level report that runs before any propagate. The scenario editor now shows this before a run. Only certain cases are flagged: a report inside `if`/`while` may never run, and a propagate nested in an earlier command may have run, so the engine's run-time message still covers those. The Basilisk test that relied on a leading report (`test_report_unknown_series_raises`) now propagates first.
+
+**Tests.** Six new tests:
+* the rule flags a leading report and ignores later or uncertain ones;
+* `Scenario.validate()` and `validate_all()` report it;
+* template 16's sequence and its quarter-orbit timing;
+* the wizard's time of flight moves the arrival coast, not the pre-burn coast.
+
+Against the old template, every template-16 test fails, since the new rule rejects it at load time.
+
+## Templates: claims checked against what each template actually does
+
+Prompted by template 16, whose configuration had been verified only outside its own Mission Sequence. The only Basilisk test covering every template (`test_prediction_matches_a_real_run`) strips the Mission Sequence and runs two minutes, so a template's "What to look at" claims are only verified where a dedicated test exists. Every template's description and catalog entry was checked against its JSON, the engine code, Basilisk's module source, and offline numpy models where geometry or dynamics decide the claim. None of this could be run in Basilisk here: there are no SPICE kernels in this environment.
+
+**Fixed.**
+* **20 (thermal).** Sun-safe pointing turns its default `sHatBdyCmd` (+Z) to the Sun (`engine/fsw.py`), but therm-1 faced +X. Basilisk's `sensorThermal` uses `A * max(0, s.n)` for solar input, so once the attitude settled the sensor got zero solar input: it would only have cooled, with no sunlight/eclipse cycle at all. That cycle was the template's headline lesson. therm-1 now faces +Z, the panel's Sun-facing side. The motor-temperature line now says what can actually happen (it starts at its 20 C ambient and rises above it), instead of "drifting toward" a temperature it starts at.
+* **07 and 20 (sun sensor).** The single sun sensor css-1 faced +X too, so it would never see the Sun. It now faces +Z.
+* **02 (precession).** It promised the orbit "visibly precesses" in position_N over 3 days. J2 turns the perigee about 1.5 deg in that time (about +0.5 deg/day; RAAN about -0.3 deg/day), which is invisible in the position plot. It now points at the mean argument of periapsis and RAAN, with those rates.
+* **15 (Moon pointing).** It promised Moon pointing "for the whole orbit" over a 72-minute run of a 95.6-minute orbit. It now says the whole run, about three-quarters of an orbit.
+* **01 (Sun-synchronous).** It called its point-mass orbit "Sun-synchronous". It now says the inclination is a Sun-synchronous one, but without oblateness the plane doesn't follow the Sun.
+* **Explain tab.** It badged templates 01/09/10/12 "Sun-synchronous" from inclination alone. That now requires the gravity model to include J2 (Earth, degree 2 or more).
+* **Catalog README** (`scenarios/templates/README.md`):
+  * 05 said the follower holds "behind" the chief; it is 50 km ahead.
+  * 04/05/07/08/18 described drag as a CelesTrak historical margin needing network access; all of them use the offline synthetic profile.
+  * 16's "this exact configuration was confirmed" claim is replaced with what was actually verified.
+  * 20's thermal wording is updated.
+
+**Checked and consistent** (offline numpy where noted):
+* 01: 92.6 min period, 15.6 orbits/day (numpy).
+* 04: plane and phasing spacing.
+* 07/19/20: eclipses fall inside each run (numpy).
+* 12: the initial wheel momentum (~115 N*m*s) exceeds the 80 N*m*s dump threshold, so dumps happen.
+* 13: the bias targets are 800/600/400/200 RPM, and the run is 2 h.
+* 14: eight sun sensors, four of them facing the +Z Sun axis.
+* 17: the run covers the claimed 100-150 s window.
+* 19: two Berlin passes above 10 deg, at about 8.2 h and 9.7 h, inside the 12 h run (numpy).
+* 09/10/11/18: sensor/actuator counts and enabled effects match the text.
+
+**Found, not fixed (needs a decision).** 03 (GEO station-keeping): a 14-day offline model (J2, J22, Sun, Moon, SRP) gives a one-orbit-averaged altitude that stays 0.26-0.65 km below target. The ±5 km deadband never trips, so the thruster never fires. The starting longitude, 259 E, sits near the 255 E stable point, so even the tesseral drift is tiny. The template's lesson ("propellant used", "turn off third bodies or SRP and it fires less") therefore can't happen. Lunisolar gravity and SRP mainly change a GEO orbit's inclination and eccentricity, not its mean altitude, which is all this controller holds.
+
+**Tests.**
+* For every Sun-pointing template, each thermal sensor and at least one sun sensor faces the commanded Sun axis (fails for the old 07 and 20).
+* 15's description no longer promises a whole orbit.
+* The Explain tab doesn't call a point-mass orbit Sun-synchronous.
+
+## Template 03: recast as "at GEO this controller has almost nothing to do"
+
+This follows up the 03 finding in the entry above. The user chose to recast the lesson rather than make the thruster fire. Only text changed; the scenario's physics is untouched.
+
+* **Description.** It now says what the run shows:
+  * the smoothed `station_keeping.altitude` stays within about 1 km of target for 14 days, so the 5 km deadband never trips and no propellant is used;
+  * compare 18, where drag forces repeated burns;
+  * why: lunisolar gravity and SRP tilt and stretch a GEO orbit but don't move its average altitude, and real GEO station-keeping corrects longitude and inclination, which this controller doesn't model.
+
+  "Try changing" now says that only a deadband below about 1 km makes it fire. It also says that even over months the average altitude moves only a few km. Near the 255 E stable point, J22 makes the longitude librate with a period of about 800 days; starting 4.3 deg away, that moves the mean semi-major axis by at most about 2.6 km. The old claim that turning off the third bodies or SRP "fires less" is gone.
+* **Template 18.** Its comparison line now reads "compare 03, where at GEO the thruster never fires".
+* **Customize wizard.** The 03 intro is now "The altitude-hold thruster. At GEO it only fires with a deadband below about 1 km."
+* **Catalog README.** The 03 and 18 rows now state the contrast, noting that it comes from the offline model and is not yet confirmed in a Basilisk run.
+
+## Template 19: ground-station contact at the start of the run
+
+**Problem.** Real user report on template 19 (Sun pointing plus a Berlin downlink): "there's never ground station contact between the satellite and the ground station".
+
+**Cause.** The orbit was fine; the start time was wrong for it. A Sun-synchronous orbit crosses a given latitude only at two fixed local solar times. For this 10:30-LTAN orbit, Berlin (52.5 N) passes under it around 09:50 and 23:10 local time. The template started at midnight UTC (00:50 in Berlin), so the first pass came about 8.2 h into its 12 h run. With a 0.1 s attitude step, that is most of a long run with nothing to see. The generator's own comment had assumed the opposite ("covers every longitude ... within about one nodal period regardless of the exact RAAN"), which ignores the Sun-synchronous local-time constraint.
+
+**Fix.**
+* **Start time.** The epoch is now 2030-01-01T08:30:00 UTC (09:23 in Berlin). The RAAN is recomputed for the same 10:30 LTAN, and the starting true anomaly stays 0. This choice came from a search over epoch (10 min steps) and starting anomaly, using a J2 secular orbit and SPICE's IAU_EARTH rotation (pck00010), for a sunlit, high first pass shortly after the attitude settles plus a second pass one orbit later.
+* **Passes.** An independent RK4 J2 propagation of the regenerated file gives:
+  * a 61 deg sunlit pass at 10.3-18.2 min;
+  * a 16 deg sunlit pass at 106.8-111.7 min (the "worse at low elevation" case the description already promised);
+  * an eclipse in between (23-58 min);
+  * Berlin's next passes about 13.2 h later.
+* **Duration.** The run is now 2 h 15 min instead of 12 h, about 5x faster.
+* **Customize wizard.** Its duration field is now in hours, with a hint that the next passes come about 13 h later. It used to be in days with a 0.1-day minimum, which would have clamped the new run.
+* **Docs.** The description and catalog README say when the passes come.
+
+**Tests.** A new offline check (`test_comms_template_has_ground_station_passes_early_in_its_run`) propagates the template's orbit against Berlin's rotation and requires at least two passes, the first within 5-20 min and above 45 deg. Against the old template it fails with the first pass at 490 min.
+
+**Not yet confirmed in Basilisk** in this sandbox (no SPICE kernels). The model differences (degree-10 gravity, Sun/Moon, exact SPICE frames) shift pass times by well under a minute over two hours.
+
+## Explain tab: pre-run checks and ground-station pass prediction
+
+This follows today's template fixes. Each of them (19's missing contact, 07/20's sun sensor on the wrong face, 03's deadband that never trips) was visible from the scenario's own settings before running, but nothing in the app said so. The user agreed to add that check for any scenario, not just the templates.
+
+**New `engine/scenario_checks.py`** (Basilisk-free, never raises, a few ms per call since the Explain tab refreshes on every edit):
+
+* **`predict_passes(scenario)`.** Ground-station passes for every station/spacecraft pair, from each spacecraft's initial orbit:
+  * the orbit is Keplerian, with J2 secular drift of RAAN, perigee and mean anomaly only when the gravity model includes J2;
+  * stations sit on a spherical Earth at `R + altitude`, as Basilisk's `groundLocation` places them;
+  * Earth rotates per SPICE's IAU_EARTH model (pck00010; prime meridian at `90 + W` from the inertial x axis);
+  * classical and Cartesian orbits are supported; TLE orbits and non-Earth central bodies return `None` rather than a guess;
+  * maneuvers, drag and higher-order gravity are ignored.
+
+  For template 19 it matches the independent RK4 check from the template fix to within a minute.
+* **`pass_summary(scenario)`.** One line per station, e.g. "berlin-gs: 2 passes, first at 10 min (peak 61 deg)". Shown under the Explain tab's Ground stations badges.
+* **`scenario_warnings(scenario)`.** Short warnings, shown first in a "Check before running" section with a warning badge:
+  * a station with no pass in the run (with when the first one comes, or "not in the 2 days after"), or whose first pass comes after half the run;
+  * a Sun-pointing spacecraft (`sunSafePoint`, or `comms_pointing`'s Sun axis) with no sun sensor within 60 deg of that axis;
+  * station-keeping with drag off, whose deadband may never trip.
+
+  Mission-sequence runs skip the pass check, because their length comes from their commands.
+
+**On the bundled templates.** Only 03 is flagged, as its recast lesson intends. The previous versions of 19, 07 and 20 (from git) are each flagged with the problem fixed earlier today.
+
+**Seeing the warnings.** The main window's tab title becomes "Explain (1 to check)" while there are warnings, so they are seen even without opening the tab before pressing Run.
+
+**Duration tile.** It now reads in a readable unit: "2.25 h" instead of "0.09375 d", minutes under an hour, days from 2 d up.
+
+**Docs.** USER_MANUAL Section 7 describes the pass list and the checks.
+
+**Tests.** `tests/test_scenario_checks.py` (9) covers:
+* pass timing against the independent propagation;
+* Cartesian orbits matching classical ones;
+* unsupported cases;
+* late, missing and impossible passes;
+* mission sequences skipping the pass check;
+* each warning;
+* every template checked in under 0.5 s with only 03 flagged;
+* never raising on a half-edited scenario.
+
+Further tests cover the Checks section's position and wording, the duration label, and the tab title.
+
+## Results tab: one-click "What to look at" series
+
+The template descriptions name the series to look at, e.g. template 19's `berlin-gs.access_to_leo-comms-1.link_margin_db`. Users then had to find each one among 30-40 entries. The user asked for this next, from the improvement list.
+
+**How it works.**
+* **`engine/series_names.featured_series(scenario)`** (Basilisk-free) reads the description's "What to look at" section and returns, in order, every series name there that a run will actually produce (`expected_series_names`). It expands shorthand siblings ("sat-1.orbit_elements_mean.arg_periapsis and .raan"). Typos and names of renamed spacecraft are skipped, so it only offers series that exist. It works for user-written descriptions too.
+* **ResultsWidget** gains a "Suggested:" row of chips (new wrapping `gui/flow_layout.py`) under the Series/X-axis toolbar, one per featured series in the result:
+  * each chip is labelled with its plot title, minus the spacecraft when the result has only one and minus the station -> spacecraft pair when there is only one; the tooltip still gives the code name;
+  * the chip for the series on screen is highlighted, and clicking one shows it, leaving the access timeline view if needed;
+  * a new result opens on the first featured series instead of whatever series comes first;
+  * the row is hidden when there's nothing to suggest.
+* **MainWindow** passes `featured_series(scenario)` when a run starts.
+
+At 620 px, template 19's five chips (Access Window, Pointing Mode, Pointing Error, Battery State of Charge, Link Margin) fit on two lines.
+
+**Found along the way.**
+* **Raw code names.** `comms_pointing.active_mode`, `comms_pointing.pointing_error_deg`, the reaction-wheel `motor_temperature` and the thermal sensor had no display category, so plots, the series list and chips showed raw code names. They now read "Pointing Mode (0 Sun, 1 ground station)", "Pointing Error", "Motor Temperature: rw-1" and "Thermal Sensor: therm-1", with units.
+* **No attitude for uncontrolled spacecraft.** An uncontrolled full-attitude spacecraft (template 10) recorded no attitude at all, because the attitude series came only from the navigation module, which exists only with attitude control. Its gravity-gradient drift was visible only in Vizard. `engine.service` now records `attitude_sigma_BN` and `body_rate_omega_BN_B` from the spacecraft-state message (`SCStatesMsgPayload` carries both) when there is no navigation recorder. `expected_series_names` mirrors that. Not run in Basilisk here (no SPICE kernels); `test_prediction_matches_a_real_run` checks the two agree in a Basilisk run.
+* **Descriptions without series names.** Template 18's and 10's descriptions now name their series (altitude/propellant, attitude).
+* **Shutdown crash.** At shutdown, Python can remove the plot page's temporary directory before Qt destroys the widget; a late redraw (the Series box losing focus) then raised `FileNotFoundError`. That redraw is now skipped.
+
+**Tests.**
+* `featured_series`: order, siblings, and skipping unknown names and other sections.
+* For every template, each series name its "What to look at" mentions really exists. This catches description typos from now on.
+* Template 10 now has attitude series predicted.
+* The chips: labels, default selection, clicking from the access timeline, hiding.
+* The new display names.
+* A run handing the featured series to the Results tab.
+
+USER_MANUAL Section 7 describes "Suggested".
+
+## First real Basilisk runs of the templates; fix for a regression in the previous commit
+
+The user opened the environment's network access, so the SPICE kernels could finally be fetched (`spacemissionstudio kernels-status`: all six support files cached). The first real CLI runs of templates 03, 07, 10, 16, 19 and 20 followed.
+
+**Regression found and fixed.** The previous commit ("one-click suggested series") moved the uncontrolled-attitude branch one line too early in `SimulationService._extract_results`. As a result:
+* `sun_heading_body` was no longer recorded for any attitude-controlled spacecraft;
+* an uncontrolled full-attitude run (template 10, or any such user scenario) failed with "cannot access local variable 'nav_t_s'".
+
+Fixed: `sun_heading_body` is back in the navigation branch, and template 10 now runs and records its attitude. `sigma_BN` drifts from 0 to ~0.9 over 12 h, which is the gravity-gradient lesson, now visible in Results.
+
+**Confirmed in Basilisk:**
+* **16:** the full sequence runs, and both reports fire, at 2490 s and 4980 s. The arrival is about 1.6 m from `target_position_m`. The description said "within millimetres" and now says "within about 2 m (the solver accepts up to 500 m)"; the catalog README states the real result.
+* **19:** passes at 10.5-18.2 min and 106.9-111.7 min, peak 61.5 deg. The offline predictor had said 10.5-18.0 min and 60.6 deg. Comms mode switches exactly with access, link margin spans -18.6 to +20.2 dB, and the battery dips in eclipse.
+* **03:** no burns and 0 kg propellant; the smoothed altitude error is -0.71 to +0.08 km. This matches the recast lesson.
+* **20:** therm-1 (now on +Z) cycles between ~80 C in sunlight and ~11 C in eclipse.
+* **07:** css-1 (now on +Z) reads 1.03 once Sun-pointed.
+
+**Found, still open:**
+* **20's motor temperature** moves only 0.0002 C: the wheel starts at rest and makes one gentle slew.
+* **07's battery** stays at 80 Wh: it starts full with a 0 W bus load. Its "through sunlight and eclipse" lesson shows nothing.
+
+## Real runs of the remaining templates: three more fixed, and a test per headline claim
+
+All remaining templates were run in Basilisk and checked against their descriptions. Fixed:
+* **07's battery** now starts at 80% charge with a 12 W bus load (`battery_initial_soc=0.8`, `bus_idle_power_w=12.0`). It charges in sunlight and drains in eclipse: 64 -> 80 -> 73.8 -> 80 Wh over the first orbits.
+* **11 and 17's thrusters** barely fired. The default MRP-feedback gains are scaled to the spacecraft's inertia (reference 900 kg*m^2). At these templates' 10 kg*m^2 that gave on-times under 2.8 ms, below the thrusters' 20 ms minimum on-time, so most pulses were dropped. Template 17 used no propellant at all. Both templates now set explicit gains (`K=3.5`, `P=30`):
+  * 11 settles to a ~0.015 limit cycle within about 2 minutes;
+  * 17 drains about 0.013 kg and is settled by ~300-400 s.
+  Their descriptions and the catalog README now give those figures.
+* **20's motor** honestly moves only ~0.0002 C (the wheel starts at rest and makes one gentle slew). Spinning the wheel up to heat it broke Sun pointing, so the description now says the motor stays within 0.001 C, rather than promising a visible rise.
+
+**Not changed, open:** the same inertia scaling can starve thruster-only attitude control in any small user scenario. The engine docstring warns that unscaled gains can diverge on large spacecraft, so the default is left as it is.
+
+**Tests.** New `tests/test_template_claims.py` (12 tests, `requires_basilisk`) runs templates 03, 07, 08, 10, 11, 12, 13, 14, 16, 17, 19 and 20 as shipped, shortened only where the claim allows, and checks each headline claim. All pass. Full suite with Basilisk at that point: 1901 pass, 11 skip.
+
+## Every template flies a 100-500 kg spacecraft; a wheel setting that crashed the app
+
+The user: "Small spacecraft are never relevant. Spacecraft between 100 kg to 500 kg are actually relevant."
+
+Six templates were outside that range: 13 was a 10 kg CubeSat, 07/14/20 were 50 kg, 19 was 60 kg, and 12 was 2500 kg. Most also carried a 10 kg*m^2 inertia whatever their mass; 11 and 17 had their thrusters ~1 m from the centre, as on a 2.5 m bus.
+
+**Buses.** The generator now derives each inertia from the mass and size of a uniform box (`_box_inertia`), using three buses:
+* **150 kg microsatellite,** 0.8 x 0.8 x 1.0 m (20.5/20.5/16.0 kg*m^2): templates 07, 13, 14, 19 and 20.
+* **300 kg,** 1.2 x 1.2 x 1.5 m: templates 06, 11, 15 and 17.
+* **500 kg,** 1.2 x 1.2 x 1.6 m: templates 01, 02, 03 (with 8 m^2 SRP area), 08, 09 and 12.
+
+Template 10 is a 500 kg, 1 x 1 x 2 m bus, elongated for gravity gradient. 04, 05, 16 and 18 keep their masses (180-400 kg) and get matching inertias.
+
+**Hardware sized to the bus:**
+* 07, 13, 14 and 20: 6 N*m*s, 50 mN*m wheels (the size of the catalog's VRW-D-6), not 100 N*m*s Honeywell HR16s.
+* 13: 15 A*m^2 torque rods (were 0.1).
+* 12: 12 N*m*s Honeywell HR12 wheels; eight 1 N MOOG Monarc-1 dump thrusters (were 5 N); dump threshold 9.6 N*m*s (was 80, the same fraction of the wheels' capacity).
+* 11 and 17: eight 1 N thrusters on the bus corners.
+
+**Gains.** All explicit `control_params` overrides are gone. The inertia-scaled defaults now work for every template. That includes the thruster-only 11 and 17: at these inertias the commanded pulses clear the 20 ms minimum on-time.
+
+**Confirmed in Basilisk:**
+* **11:** within 0.03 in ~110 s, then a ~0.01 limit cycle; pulses up to 40 ms.
+* **17:** ~0.3 g of propellant (was 13 g with the overridden gains).
+* **12:** three dumps (2, 103, 204 s) take the stored momentum from 13.8 to 9.4 N*m*s.
+* **13:** every wheel within 0.5 RPM of its target after 104 min.
+* **20:** therm-1 cycles between -5 and 85 C, and the motor now rises ~0.05 C.
+* **07 and 14:** +Z settles on the Sun.
+* **10:** tumbles to sigma ~0.52 over 12 h.
+* **19:** the two Berlin passes and the mode switches are unchanged.
+
+Descriptions and the catalog README give the new sizes and figures.
+
+**Crash fixed.** Basilisk builds Honeywell HR12/HR14/HR16 wheels only with `maxMomentum` set to one of three sizes (12/25/50, 25/50/75 and 50/75/100 N*m*s). Any other value, or none, makes `rwFactory.create()` call `exit(1)`, which closes the whole app with no message. Template 07's wizard offered any momentum from 1 to 1000 N*m*s on those wheels. Scenario validation now rejects such a wheel with a message naming the allowed sizes. 07's wheels are now "custom", which derives the rotor inertia from any momentum. Test fixtures that built HR16s without a momentum (they would have crashed if simulated) now set one.
+
+**Tests:**
+* New: every template is 100-500 kg with an inertia that fits its mass.
+* New: the wheel-size check.
+* `test_template_claims.py` now checks 12's three dumps, 17's propellant figure and 20's motor rise.
+
+Full suite with Basilisk: 1924 pass, 11 skip; without it, 1688 pass and 247 skip.
+
+## Spacecraft presets: 150, 300 and 500 kg buses replace the CubeSats
+
+The user asked for the two 4 kg 3U CubeSat presets ("New from template...") to be replaced with 150, 300 and 500 kg presets. The 100 kg ESPA preset stays, since it's already in range.
+
+The new presets use the same buses as the scenario templates, with inertias from their box dimensions:
+
+| Preset | Bus | Wheels | Array | Battery | Bus load |
+|---|---|---|---|---|---|
+| 150 kg | 0.8 x 0.8 x 1.0 m | 6 N*m*s | 1 m^2 | 300 Wh | 60 W |
+| 300 kg | 1.2 x 1.2 x 1.5 m | 12 N*m*s HR12 | 2.5 m^2 | 700 Wh | 150 W |
+| 500 kg | 1.2 x 1.2 x 1.6 m | 25 N*m*s HR12 | 4 m^2 | 1.2 kWh | 250 W |
+
+Each carries a star tracker, an IMU and a sun sensor, and starts in Sun-safe pointing with the array, sun sensor and Sun axis all on +Z. Drag and SRP are on.
+
+**Confirmed in Basilisk** at the default 10 s step: all three turn +Z onto the Sun within 70 s and hold it. In a 10:30-LTAN orbit the 150 kg bus drains ~35 Wh per eclipse and recharges in sunlight. The placeholder orbit (RAAN 0 at a January epoch) is dawn-dusk, so it sees no eclipse; the user sets the real orbit in the editor that opens next.
+
+**Tests:**
+* Every preset is 100-500 kg with a fitting inertia.
+* The Sun-safe presets keep array, sensor and Sun axis on one face.
+* A new Basilisk test flies each Sun-safe preset.
+
+Full suite with Basilisk: 1927 pass, 11 skip; without it, 1688 pass and 250 skip.
+
+## Propagate until the next ground-station pass; pass lengths in the Explain tab
+
+**Explain tab.** Each station's line now gives the first pass's length too: "berlin-gs: 2 passes, first at 10 min for 8 min (peak 61 deg)".
+
+**New stop condition.** A propagate can now stop at a pass. Its event list gains two kinds, both naming a ground station:
+* `pass_start`: stop when the next pass begins (the station's `groundLocation` access turns on).
+* `pass_end`: stop when the current or next pass ends.
+
+A `pass_start` issued during a pass waits for the next one: the first sample only seeds the detector.
+
+Mission Sequence editor: a "Ground station" picker appears for the two pass events, filled from the scenario's stations; a station that no longer exists stays visible rather than being swapped silently. Station references in commands are now found (blocking a delete), renamed with the station, and checked by validation.
+
+**Confirmed in Basilisk** on template 19's orbit, with a pass_start, pass_end, pass_start, pass_start sequence. The stops land at 10.5, 18.2 and 106.9 min, matching the real pass times, and the last stop skips the pass already under way.
+
+**Also:** fixed the two old lint errors in `tests/test_formation.py` (imports after `pytestmark`). `ruff check .` is now clean.
+
+## Angle plots break at the 360 -> 0 deg wrap
+
+RAAN, argument of periapsis and true anomaly (osculating and mean) run over [0, 360) deg. Drawn as one line, every wrap became a false vertical stroke across the plot: once per orbit for true anomaly.
+
+**Fix.** `SeriesDisplay.wrap_period` marks these series, and the Results plot inserts a gap wherever consecutive samples jump by more than half a period. Every sample is still drawn, still in [0, 360).
+
+**Thinning.** Long wrapping series are thinned evenly rather than by min-max: min-max would pick ~0 and ~360 deg from every stretch and paint a solid band. Unwrapping was rejected because true anomaly would climb to thousands of degrees.
+
+Mission Output's Change column already took the short way round for degree values, so it needed no change.
+
+## Spacecraft presets unload their wheels with torque rods
+
+The 150, 300 and 500 kg presets now carry three orthogonal magnetic torque rods (15, 30 and 50 A*m^2) and `magnetic_momentum_management`. That steers every wheel toward rest against Earth's field, as on most LEO spacecraft of this class. Without it, momentum from any disturbance would build up in the wheels until they saturate.
+
+**Confirmed in Basilisk** in a 10:30-LTAN orbit at the default 10 s step: wheels spun to 1500/-1000/800 RPM are back under 2 RPM within one ~95 min orbit on all three buses. +Z stays on the Sun the whole time (>= 0.9988). The rods run at full dipole while unloading.
+
+A new Basilisk test checks this for each preset.
+
+`test_set_live_result_throttles_rapid_webview_redraws` failed once under an 8-worker run with Basilisk jobs alongside. Its four "rapid" redraws took longer than the 300 ms throttle window, so one push was legitimate. The test now freezes the throttle clock, so "rapid" no longer depends on machine load.
+
+## Facet models: attitude-dependent drag and solar pressure, with their torques
+
+Drag and SRP used to treat every spacecraft as a sphere (`dragDynamicEffector`, `radiationPressure`): a force with no dependence on attitude, and no torque. For a 100-500 kg spacecraft with a large solar array, the array's off-centre pressure is a steady disturbance torque that the wheels must absorb and something must unload.
+
+**New: `SpacecraftConfig.facets`** (`FacetConfig`). Each facet is a flat plate with:
+* area;
+* outward normal;
+* centre of pressure;
+* drag coefficient;
+* specular and diffuse reflection fractions.
+
+When facets are present, enabled drag and SRP use Basilisk's `facetDragDynamicEffector` and `facetSRPDynamicEffector` instead of the sphere model. Each plate facing the flow or the Sun pushes at its own centre of pressure. Facets need `full_attitude` mode. Every facet field is validated, since Basilisk's `bskError` would exit the app.
+
+**`engine.facets.box_facets()`** builds the usual first model: a box bus centred on the body origin plus a two-sided solar array. It uses the optical coefficients of Basilisk's `examples/scenarioSepMomentumManagement.py`.
+
+**GUI:**
+* The spacecraft editor's orbit & mass tab gains a "Surface facets" table with Add / Remove / "Box + solar array...".
+* The Explain tab shows a "Facet model" badge.
+* A warning flags facets left unused (drag and SRP both off).
+* Template wizards give facets their own labelled page.
+
+**Presets.** The 150, 300 and 500 kg presets now carry a facet model: their box plus the array on the +Z face. Centred there it adds no torque until moved.
+
+**New template 21, "Disturbance torques from a facet model".** Two copies of one 300 kg Sun-pointing spacecraft with the 2.5 m^2 array on a boom 1.5 m off to +Y; `rods-off` has only wheels, `rods-on` adds 30 A*m^2 torque rods.
+
+**Confirmed in Basilisk:**
+* **Template 21** (one simulated day, 5 s wall time): rods-off's stored momentum climbs steadily, 0.14 -> 0.85 -> 1.56 -> 3.17 N*m*s at 1/6/12/24 h. rods-on stays between 0.08 and 0.22 N*m*s, ending under 80 RPM. Both stay Sun-pointed.
+* **Facet SRP vs the sphere model.** An absorbing plate held facing the Sun moves the spacecraft like the sphere model with the same area and Cr = 1. They agree to 1.5% of the SRP displacement (0.016 m against 1.09 m after 1.6 h).
+* **Sunlit torque from the offset array:** 2.24e-5 N*m. The hand estimate is (1 + s + 2d/3) P A arm = 1.267 * 4.73e-6 N/m^2 * 2.5 m^2 * 1.5 m = 2.25e-5 N*m, with P scaled to Earth's 0.983 AU in January. Centred on +Z, the array gives ~1e-7 N*m.
+
+The wizard field "Array offset" moves the arrays of both spacecraft, so the comparison stays fair.
+
+**Tests:**
+* New `tests/test_facets.py`: the generator, validation, round-trip, warning and Explain badge, plus two Basilisk physics checks.
+* New `tests/gui/test_facet_editor.py`.
+* Template 21's claim in `test_template_claims.py`.
+
+All twenty existing template files gained an empty `"facets": []`, nothing else.
+
+Full suite with Basilisk: 1977 pass, 11 skip; without it, 1730 pass and 258 skip.
+
+## GEO station-keeping: longitude box and inclination limit
+
+Template 03's altitude-hold lesson showed what the app could not do: real GEO station-keeping holds a longitude box (east-west) and an inclination limit (north-south).
+
+**New: `SpacecraftConfig.geo_station_keeping`** (`GeoStationKeepingConfig`), with these settings:
+* slot longitude;
+* box half-width;
+* inclination limit;
+* thrust, Isp and propellant.
+
+It is controlled by `engine.geo_station_keeping.GeoStationKeepingController`. It is Earth-only and replaces altitude station-keeping and phasing-keeping. It is validated, round-trips, has its own group in the spacecraft editor, its own Explain badge, plot titles, and wizard fields.
+
+**Measured in Earth's frame.** Longitude and inclination come every tick from the central body's SPICE `J20002Pfix`, the same frame Basilisk's gravity rotates with.
+
+**East-west control.** It fits a day of longitude samples and burns along-track when the spacecraft leaves the box heading outward. The burn reverses the drift onto a parabola that reaches the far edge, using Earth's J22 drift acceleration, or just stops the drift if that acceleration already points back in.
+
+**North-south control.** One burn per crossing of the limit, centred on the node and sized to take the inclination to a quarter of the limit. Thrust is held along Earth's pole axis.
+
+**Found and fixed while building it** (each in a real Basilisk run):
+* **i = 0 is not equatorial.** In J2000, i = 0 is 0.167 deg inclined to Earth's 2030 equator (IAU_EARTH pole precession), and the starting longitude was 0.2 deg off. The first run fired a north-south burn at once. New `engine.orbit_design.geostationary_elements_deg(epoch, longitude)` places a satellite in the true equator over its slot. Template 03 now starts at exactly 10.0000 E, 0.0000 deg.
+* **The drift estimate was biased.** A straight-line drift fit over exactly one day does not cancel the eccentricity libration. It biased the slope by up to ~1.9 x the libration amplitude per day, twice the drift being controlled, and gave nearly daily burns with the longitude leaving the box. The fit now includes a once-per-day sine and cosine.
+* **North-south burns chased the node.** Burning whenever "near a node" doesn't work at these tiny inclinations: every off-node bit of thrust moves the node, and the first version rode the window's edge, firing one step in five. Now one burn is centred on a node fixed at its start.
+* **Touch-up burns.** A full burn left the inclination just above the stop level, so touch-ups fired at every node. A burn that delivered its planned delta-V now ends the maneuver.
+
+**Template 03 rebuilt:** 500 kg at 10 E, 1 N hydrazine thruster (Isp 220 s), 45 days. Real run:
+* east-west burns at days 13, 20, 32 and 41;
+* north-south burns at days 16 and 30, each 0.051 -> ~0.013 deg in ~1150 s;
+* the day-averaged longitude stays within 9.948-10.050 deg;
+* 4.4 m/s and 1.1 kg in all, about 36 m/s per year, typical for GEO. 90 days gave the same pattern (8.7 m/s).
+
+The free-drift J22 acceleration at 10 E, measured with the boxes opened wide, is +0.00113 deg/day^2, against +0.0013 from the formula. The daily eccentricity wobble (+/-0.01 deg in 45 days, +/-0.03 deg after 3 months) is not controlled; that is noted as a limitation.
+
+**Tests:**
+* New `tests/test_geo_station_keeping.py`: IAU placement, validation, the J22 sign at stable and unstable points, and the libration-proof drift fit.
+* Template 03's claim test: 32 days, three east-west and two north-south burns, in the box.
+
+Full suite with Basilisk: 1986 pass, 11 skip; without it, 1737 pass and 260 skip.
+
+## Synthetic solar activity follows the calendar
+
+The synthetic space-weather profile (the default, and what every drag template uses) started each run two years before a solar maximum, whatever its date. A 2030-2035 mission, really the quiet end of cycle 25, therefore saw F10.7 ~127 sfu rising to 150: near-maximum drag, and propellant budgets overstated by a factor of several. Found while answering "what about a 5-year LEO station-keeping run?".
+
+**Now** the envelope follows the calendar:
+* cycle 25's minimum (December 2019) and maximum (about October 2024), repeating every 11 years;
+* the usual lopsided shape: rising for 44% of the cycle, falling for the rest;
+* between the same 70 and 150 sfu.
+
+So 2030-01 is 74 sfu, December 2030 the next minimum (70), and late 2035 cycle 26's maximum (150). It is still a shape, not a forecast; a real file (`source="local_file"`) remains the way to model actual activity. Cached synthetic files now carry a profile version (`synthetic_v2_...`), so files written by the old profile are never reused.
+
+**Re-verified in Basilisk** (every drag template starts in January 2030, now near minimum):
+* **Template 21:** rods-off stores ~1.7 N*m*s by the end of the day (was 3.2: less drag torque on the array); rods-on stays under ~20 RPM.
+* **Template 05** (90 days, 582 s wall): the separation leaves its band at day 20.7 (was ~28), one correction brings it back in ~2.5 days, and it stays within 45-54 km for 0.013 m/s.
+* **Template 18:** its claims still hold. Its description no longer says 03's GEO thruster never fires.
+
+Descriptions, the catalog README and `test_template_claims.py` now give these figures. New tests check the cycle's calendar alignment and the cache-name version.
+
+## Recording interval for long runs
+
+Every Basilisk recorder and every controller's own telemetry used to record every dynamics step: a 100-day run at a 30 s step is 288,000 samples per series, and 5 years would be ~5 million.
+
+**New: `sim_settings.record_interval_s`** (0 = every step, the default). It is the "Record every [s]" field in Propagation setup, and appears in the editor's propagation summary when set.
+* All Basilisk recorders sample at it (`msg.recorder(interval)`).
+* The station-keeping, GEO, phasing, constant-thrust and comms-pointing controllers log through a shared `orbit_maintenance.LogThinner`.
+* Burn flags record "fired since the last sample", so a burn shorter than the interval still shows.
+* Positions, angles and access flags are snapshots, so the pre-run checks warn when passes are not much longer than the interval.
+
+**Confirmed in Basilisk** (template 18, 2 and 5 days): every 10 minutes instead of every 30 s gives the identical final position and propellant (to 0 m / 0 kg), 1/20 of the samples, and the same burn count.
+
+**Tests:** new `tests/test_record_interval.py` (validation, old files, the pass warning, physics equivalence in Basilisk, the thinner) and a GUI round-trip test.
+
+## Runs longer than 100 days
+
+**Correction.** An earlier answer to "can it do a 5-year LEO station-keeping run?" said yes. It could not: `SimSettings` capped every run at 100 days. The cap is real: Basilisk's `nanoToSec()` returns NaN past 2**53 ns (~104.25 days), so one Basilisk simulation cannot go further.
+
+**Now** a run of up to 3660 days (about 10 years) is split into a chain of simulations of at most 90 days (`engine/long_run.py`). Each segment starts where the last ended:
+* epoch, position and velocity (as a Cartesian state), attitude, body rate, wheel speeds;
+* remaining propellant (station keeping, GEO, constant thrust, fuel tank) and battery charge;
+* thermal-sensor and wheel-motor temperatures.
+
+Results come back as one run on one time axis; cumulative delta-V carries on across segments. Generated space weather is made once for the whole span, so solar activity is continuous. `SimulationService.run()` and `run_live()` split automatically, so the GUI and CLI need no change. Progress and Abort cover the whole run.
+
+**Not carried:** controllers' internal filters (station keeping's altitude smoothing refills over one orbit, the GEO drift fit over one day) and sensor noise sequences. **Refused past 100 days:** mission sequences, phasing keeping and Monte Carlo (each runs as one simulation) and the Vizard view. A long run that records every step now gets a pre-run warning to set "Record every".
+
+**Confirmed in Basilisk:**
+* Template 18's orbit, 2 days, single run vs four half-day segments: final positions agree to 1e-5 m.
+* Template 18 started 1.5 km low, 4 days, single vs one-day segments: identical delta-V (4.71 m/s) and propellant.
+* The 150 kg preset pointing at the Sun with spun-up wheels: no jump in wheel speed, attitude or battery charge at the boundary.
+
+**A real 5-year run** (template 18's 120 kg spacecraft at 400 km, 0.05 N at 1500 s Isp, 5 kg propellant, 2030-2035 with the calendar solar cycle, recorded every 600 s):
+
+| | Year 1 | Year 2 | Year 3 | Year 4 | Year 5 | Total |
+|---|---|---|---|---|---|---|
+| Delta-V [m/s] | 23.7 | 22.0 | 34.7 | 60.9 | 83.9 | 225.2 |
+
+* 1.90 kg propellant used of 5 (the rocket equation gives the same 225.2 m/s), in 292 burns.
+* The daily-mean orbital radius stays within 6777.0-6780.2 km (target 6778) in every year.
+* Year 2 is the cycle-26 minimum (December 2030); years 4-5 climb towards its maximum (late 2035).
+* 21 segments, 49 min wall time, 441 MB peak memory, 263,000 samples per series.
+
+**Tests:** new `tests/test_long_run.py` (segment lengths, refusals, stitching, the warning, and the Basilisk comparisons above plus live progress and Abort across segments).
+
+## End of life: orbital lifetime and deorbit burns
+
+After a 5-year mission the next questions are when the spacecraft comes down, and whether that meets the disposal rules: 5 years under ESA's Zero Debris approach and the FCC, 25 years under the IADC guideline. Simulating decades of decay in Basilisk would take hours, so `engine/lifetime.py` follows the mean orbit instead, one orbit-averaged drag step at a time:
+* drag on a ring of 16 points around the orbit changes the semi-major axis and eccentricity vector (Gauss's equations in vector form), with the atmosphere turning with the Earth as in the simulations;
+* J2 turns the node and perigee;
+* density comes from Basilisk's own `msisAtmosphere` and `spaceWeatherData`, run standalone on the scenario's space-weather file (or the exponential model);
+* re-entry is the perigee reaching 120 km.
+
+**New:** an **End of Life** tab and `spacemissionstudio lifetime`. From the scenario's start, or the end of the last run with the propellant it left. An optional deorbit burn (one retrograde apogee burn) lowers the perigee to a target, or as far as the propellant allows. Shown as re-entry date, lifetime, mass and burn tiles, a badge per rule, and a perigee/apogee chart.
+
+**Two things the Basilisk comparison caught:**
+* **The ring has to follow the real path.** A plain Keplerian ring from mean elements sits 4.6 km below the actual orbit at 300 km (J2's short-period terms), where the density is 12% higher. The ring now adds those terms back (Basilisk's `clMeanOscMap`).
+* **Step from the middle.** Rates taken at the start of each step lag the rising density and decayed ~2% slow; a midpoint step fixed it.
+
+**Confirmed against full Basilisk decay runs** of template 18's spacecraft (120 kg, 1.5 m², Cd 2.2), synthetic 2030 space weather:
+
+| Start | Estimate | Basilisk | Difference |
+|---|---|---|---|
+| 300 km circular | 27.15 days | 26.78 days | +1.4% |
+| 400 km circular | 354.8 days | 351.0 days | +1.1% |
+| 250 x 700 km | 130.3 days | 133.1 days | -2.1% |
+
+Each estimate takes 1-2 s; each Basilisk run took up to 5 minutes. The standalone density matches the simulation's own to 1.4% at the same instants (the rest is Earth's precession, ignored).
+
+**Fixed along the way:**
+* **Synthetic space weather depended on the span asked for.** Its random storms were drawn in an order set by the file's length, and its F10.7 noise and 81-day average restarted at each file's edges. So a 14-day run and a 5-year run (or a lifetime estimate) starting on the same day saw different storms. Each date's values are now fixed: generated from 1990 on, one random stream per quantity. Profile version 3; older cached files are not reused.
+* **A run that re-entered failed at the end** with `M2E() received e = 1.15`: mean elements cannot be computed for a path inside the Earth. Those samples are now NaN, and the run warns "re-entered: below 100 km from t = ... days".
+
+**Limits:** Earth only; sphere drag, or the facets' tumbling average (sum of areas / 4); no SRP, third bodies or higher harmonics, which matter little for orbits that decay within decades. With the exponential atmosphere (fitted at sea level, ~1e9 times too thin at 400 km) the estimate warns that the lifetime is overstated.
+
+**Tests:** new `tests/test_lifetime.py` (burn arithmetic, facet area, rules; Basilisk: density against the simulation's, re-entry date against a decay run, end-of-run start and a short-propellant burn), `tests/gui/test_lifetime_widget.py`, a CLI test, and a span-independence test for synthetic space weather.
+
+## Real space weather only: synthetic profile removed
+
+User requirement: "never ever use synthetic space weather. Only real atmospheric models and data."
+
+**Now** `space_weather.source` is `"bundled"` (the default) or `"local_file"`:
+* **bundled:** CelesTrak's `SW-All` file shipped in `spacemissionstudio/data/spaceweather/` (CSSI format, updated 2025-07-21; taken unmodified from the `spaceweather` 0.4.2 package, which redistributes it with CelesTrak's permission; source <https://celestrak.org/SpaceData/>). A newer copy downloaded by the consent-gated startup prompt is used instead when it is newer.
+* **local_file:** your own CelesTrak file, `.txt` or `.csv`.
+
+The file holds observed daily Kp/Ap and F10.7 from 1957-10-01 to 2025-07-20, CelesTrak's 45-day forecast, and NOAA's monthly F10.7 forecast to 2041-10. That monthly forecast has no Ap, which NRLMSISE-00 needs. User decision: Ap there is held at the mean of every observed day (12.8), and runs say so in their warnings. A run outside the data's dates is refused, naming the range. The orbital-lifetime estimate stops where the data ends and says so; the rules it cannot decide read "not known".
+
+Kept, by user decision: the exponential atmosphere, and the `conservative` worst case (now a percentile of the bundled file's observed days by default, not only of a local file).
+
+**Migration:** schema version 3 rewrites `"synthetic"` to `"bundled"`; every template now uses `"bundled"`. The synthetic generator, its cycle shape and its cache files are gone. The 5-year and lifetime figures in the two entries above were measured with the synthetic profile; they are re-measured on the real data below.
+
+**Tests:** `tests/test_spaceweather.py` rewritten on excerpts of the real record (parsing against the raw file, observed and forecast windows, the coverage refusal, CelesTrak CSV parity, choosing the newer file, conservative percentiles), plus migration and GUI updates.
+
+**Re-measured on the real data** (template 18's spacecraft, 2030-2035, CelesTrak/NOAA with Ap 12.8, recorded every 600 s):
+
+| | Year 1 | Year 2 | Year 3 | Year 4 | Year 5 | Total |
+|---|---|---|---|---|---|---|
+| Delta-V [m/s] | 28.0 | 23.9 | 39.7 | 75.9 | 107.5 | 275.0 |
+
+* 2.32 kg of 5 kg propellant in 358 burns (the rocket equation gives the same 275.0 m/s); the synthetic profile had given 225 m/s, mainly by underestimating cycle 26 (NOAA: ~148 sfu in 2034-35).
+* The daily-mean semi-major axis held 394.5-397.2 km above the equatorial radius, the same every year.
+* 53 min wall time (on a shared machine), 454 MB peak.
+* Lifetime against Basilisk decay runs: 300 km 24.0 vs 23.8 days (+0.9%), 400 km 321.7 vs 318.7 days (+0.9%), 250 x 700 km 120.1 vs 121.7 days (-1.4%).
+* Templates: 05 leaves its band at day 19.9, recovers in ~3 days, then holds 48.8-52.0 km for 0.013 m/s; 21 stores 1.8 N*m*s rods-off (rw-x -860 RPM), rods-on under ~25 RPM.
+
+These use NOAA's middle forecast and Cd 2.2 -- nominal figures, not an ESA AD10-style budget (95th-percentile MSFC activity and Cd 3.0 for operations).
+
+**Also fixed:** a run whose spacecraft re-enters now stops there with its results and a warning (perigee checked every 6 h, every 5 min below 200 km). Integrating on through the Earth had gone non-physical and lost a whole 250 x 700 km decay run.
+
+## NASA MSFC solar activity and an ESA AD10-style propellant budget
+
+User request: apply ESA's "Guidelines for the computation of the Delta-V and Propellant Mass budgets" (AD10, EOP-FM/2024-07-177 v3.0) wherever applicable. The guideline is not stored in this repository; code and docs cite it by section.
+
+**Solar activity (AD10 Sec. 5.9).** NASA MSFC's October 2026 prediction now ships in `data/spaceweather/` (monthly 13-month-smoothed F10.7 and Ap at the 95th/50th/5th percentiles, 2026-04 to 2041-10). Past the CelesTrak observations and 45-day forecast, every day uses it at `space_weather.forecast_percentile` (default 50; AD10: 95 for operations budgets, 50 for end of life), and its last 132 months repeat past its end, as AD10 prescribes. MSFC's own Ap replaces the fixed 12.8, which now only fills the months before MSFC's first (September 2025 to March 2026 with the shipped files). A study can point at its own MSFC file. Runs now report which data they used in their warnings (the service used to drop them). The lifetime estimate uses the 50th percentile and is no longer capped at 2041.
+
+**Budget (AD10 Secs. 5-7).** A new Budget (AD10) tab in the spacecraft editor holds the inputs (saved as `propellant_budget`). A new Budget tab and `spacemissionstudio budget` (with `--run`) give the table in AD10's summary layout, per phase:
+* **beginning of life:** injection-error correction (the larger of the a and e-vector corrections; inclination separately), RAAN, orbit acquisition;
+* **operations:** transfers; in- and out-of-plane control and formation keeping from the last run (delta-V and propellant as flown, scaled to the mission if the run is shorter; GEO station keeping now records east-west and north-south apart); collision avoidance (+-100 m of semi-major axis each, count x4); thruster attitude control (+100%);
+* **end of life:** clearance; disposal by uncontrolled re-entry (the perigee is lowered until the lifetime is 5 years, found with the lifetime estimate at the 50th percentile, Cd 2.2 and the tumbling area: about a minute), controlled re-entry (+15% on the last burn), or a GEO graveyard orbit 235 + 1000 Cr A/m km up;
+* residual 1% and uncertainty 2% of the tank load; 15% dry-mass margin unless included; thruster efficiency from the four AD10 factors.
+
+Propellant per contributor is the phase's starting mass times exp(dV/Ve) - 1, iterated until the total moves by under 0.1 kg. The notes flag a run shorter than the mission, one not at the 95th percentile or Cd 3.0, a missing collision-avoidance count (AD10 takes it from DRAMA), and the summary table's 10%/20% against the equations' 1%/2%.
+
+**Checked:** the formulas against hand calculations (a CAM at 400 km is 0.113 m/s; a 5 km clearance 2.83 m/s; the GEO graveyard for Cr 1.3, 10 m^2, 500 kg is 261 km up, 9.5 m/s); from 550 km in 2035 the disposal search lowers the perigee to ~513 km (6.8 m/s) for a 4.9-5.0-year lifetime.
+
+**Re-measured on MSFC's 50th percentile:** template 21 rods-off 1.77 N*m*s (rw-x -843 RPM), rods-on under ~20 RPM; template 05 recovers by day 23 and holds 48-55 km for 0.013 m/s; 300 km lifetime 25.66 vs 25.43 days in Basilisk (+0.9%).
+
+**Five years on MSFC** (template 18's spacecraft, 2030-2035, 5 kg at Isp 1500 s, recorded every 600 s):
+
+| Delta-V [m/s] | Year 1 | Year 2 | Year 3 | Year 4 | Year 5 | Total |
+|---|---|---|---|---|---|---|
+| 50th percentile, Cd 2.2 (nominal) | 25.7 | 23.0 | 39.7 | 77.5 | 109.1 | 274.9 |
+| 95th percentile, Cd 3.0 (AD10 operations) | 39.3 | 41.7 | 121.8 | 263.4 | 134.4* | 600.5* |
+
+* Nominal: 2.31 kg in 364 burns, 2.69 kg left; within 0.1 m/s of the CelesTrak/NOAA run above. Semi-major axis held 394.4-397.2 km above the equatorial radius. 54 min wall time, 459 MB peak.
+* AD10 operations: 5 kg is not enough. The tank ran dry at day 1595.8 after 676 burns; the spacecraft then decayed and re-entered at day 1633.3, and the run stopped there with a warning (49 min, 434 MB). The figures marked * are therefore cut short.
+
+**Not covered yet:** the number of collision avoidances (DRAMA). (The launch-delay sweep and Cd 3.0 in the templates followed; see the next entry.)
+
+## AD10 launch-delay sweep; templates at Cd 3.0
+
+User request: do the launch-delay sweep and switch the templates to Cd 3.0.
+
+**Drag make-up estimate.** Six five-year Basilisk runs per sweep would take hours, so `engine.lifetime.drag_makeup` estimates the delta-V that holds an orbit against drag over a window: the lifetime estimator's drag ring (NRLMSISE-00, MSFC data, osculating ring, J2 turning the node), integrated along track every 6 h at a fixed orbit, about 15 s for five years. The orbit is held where station keeping holds it: mean radius at Req + target. A first try at the initial orbit's mean elements sat 5.4 km lower (the J2 short-period offset) and read 6% high.
+
+Against the two five-year runs of the previous entry, the estimate is low by:
+
+| | Year 1 | Year 2 | Years 3-5 |
+|---|---|---|---|
+| MSFC 50th, Cd 2.2 | -15.9% | -9.6% | -6.7% to -5.0% |
+| MSFC 95th, Cd 3.0 | -9.8% | -6.0% | -4.8% to -4.9% |
+
+The simulated controller spends ~5% more than the drag it replaces; why is not pinned down. Ratios between launch windows carry over; the notes say "full runs spent ~5% more" wherever the estimate is used alone. Against the decay propagator over 5 days, the estimate agrees to 1.9% (1.3% already over one day, from the propagator taking the mean semi-major axis with osculating velocities).
+
+**Budget without a run.** A LEO station keeper with drag and no entered or flown in-plane figure now gets the estimate at the 95th percentile (source "estimated") instead of 0.
+
+**Launch-delay sweep (AD10 Sec. 5.5).** `propellant_budget.launch_delay_sweep`, the Budget tab's **Launch delays** button and `spacemissionstudio budget --launch-delays` repeat the budget for the planned launch and 1-5 years later (same calendar date, so an SSO keeps its local time):
+* in-plane control: the entered or flown figure times the drag make-up ratio of the late window over the planned one (at the run's percentile and Cd); without either, the estimate itself;
+* the disposal is re-solved from each end of life; other contributors are kept;
+* the worst case is marked; in the GUI it is bold, and picking a row shows that launch date's full budget; a sweep can be cancelled.
+
+Template 18 (400 km, 5-year mission, 95th percentile, Cd 3.0, no run):
+
+| Launch | 2030 | 2031 | 2032 | 2033 | 2034 | 2035 |
+|---|---|---|---|---|---|---|
+| In-plane control [m/s] | 815.8 | 1125.9 | 1377.0 | **1450.1** | 1306.9 | 1026.1 |
+| Propellant [kg] | 8.61 | 12.33 | 15.53 | **16.50** | 14.62 | 11.10 |
+
+From 400 km no disposal burn is needed at any date. A launch three years late needs ~1.9x the propellant of the planned one. The whole sweep took ~80 s.
+
+**Cd 3.0.** The templates with drag (04, 05, 07, 08, 18, 21; spheres and template 21's facets) now use 3.0, AD10's operations value (Sec. 5.2); `box_facets` takes a `drag_coeff`. The End of Life tab and `spacemissionstudio lifetime` default to AD10's end-of-life 2.2, with "the spacecraft's own" (`--drag-coeff own`) as the alternative. Regenerating also wrote the `propellant_budget: null` key the previous regeneration had missed.
+
+**Re-measured at Cd 3.0:** template 05 is unchanged (leaves its band at day 19.9, back by day 23.1, then 48.9-51.6 km for 0.0136 m/s); template 21's off-centre array drags harder: rods-off stores 2.02 N*m*s (rw-x -938 RPM, was 1.77 and -843), rods-on ends under 30 RPM (28.2, was 18.8); descriptions updated.
+
+**Checked:** the full Basilisk suite (2051 passed; the one failure, the 300 km re-entry test landing in its first segment at Cd 3.0, now pins the 2.2 its quoted figures were measured at).
+
+## "Conservative" solar activity is MSFC's 95th percentile
+
+User requirement: the conservative setting follows the ESA guideline -- NASA MSFC's prediction at the 95th percentile -- not historical data.
+
+The old "conservative" drag margin held F10.7 and Ap constant at a percentile of the observed 1957-2025 record for a whole run. AD10 Sec. 5.9 instead takes the predicted solar cycle at the 95th percentile. That cycle still rises and falls, so a 2030 and a 2033 launch differ, as the launch-delay sweep shows. The constant mode is gone: `activity_level` and `activity_percentile` are removed (schema v4), and solar activity is one choice in Propagation setup -- Nominal (MSFC 50th), Conservative (95th, AD10 operations) or Low (5th). Observed days are always the observations. Saved scenarios migrate: "conservative" becomes the 95th percentile. Templates stay nominal.
+
+## Altitude trade
+
+User request: an altitude trade, after the launch-delay sweep showed template 18 at 400 km needing up to 16.5 kg against a 2 kg tank.
+
+`propellant_budget.altitude_trade`, the Budget tab's **Altitude trade** and `spacemissionstudio budget --altitudes [KM,...]` run the launch-delay sweep at each altitude (default: five around the spacecraft's own, 50 km apart, from 250 km) and hold each altitude's worst launch date against the tank (`tank_capacity_kg`, else the station-keeping propellant):
+* the orbit moves to the altitude, station keeping with it; a Sun-synchronous orbit gets the new altitude's SSO inclination;
+* an entered or flown in-plane figure belongs to the scenario's own altitude and planned launch, and is scaled by each case's drag against that one;
+* the altitudes run in parallel worker processes (spawned, not forked, so a GUI's threads are not copied); a sweep is sequential within one;
+* the GUI marks the lowest altitude that fits; picking a row shows its launch dates, and picking one of those its full budget.
+
+Template 18 (5-year mission, 95th percentile, Cd 3.0, no run; worst launch 2033 at every altitude):
+
+| Altitude [km] | 350 | 400 | 450 | 500 | 550 |
+|---|---|---|---|---|---|
+| Inclination [deg] | 96.85 | 97.03 | 97.21 | 97.40 | 97.59 |
+| In-plane control [m/s] | 3213 | 1450 | 690 | 342 | 175 |
+| Disposal [m/s] | 0 | 0 | 0 | 6.4 | 29.7 |
+| Propellant [kg] | 46.4 | 16.5 | 7.18 | 3.49 | 2.02 |
+
+None fits the template's 2 kg tank (550 km misses by 0.02 kg). 9 min on 3 processes; the disposal searches at 500-550 km (about a minute each) take most of it.
+
+**Fixed on the way:** picking an altitude whose worst launch sat in the same sweep-table row as the previous one left the previous altitude's budget below (the row was re-selected, so no selection change fired). The Budget tab now scrolls, as its three tables outgrow short windows.
+
+**Checked at the worst launch:** a full five-year Basilisk run of template 18 launched 2033-01-01 (95th percentile, Cd 3.0, a 20 kg tank so it never runs dry) spent 1333.6 m/s in 1520 burns (51 min, 452 MB). The drag estimate for the same case gives 1263.7 m/s, 5.2% low, as at the planned launch:
+
+| | Year 1 | Year 2 | Year 3 | Year 4 | Year 5 | Total |
+|---|---|---|---|---|---|---|
+| Basilisk [m/s] | 230.9 | 324.3 | 320.8 | 275.5 | 182.2 | 1333.6 |
+| Estimate [m/s] | 223.9 | 311.0 | 302.0 | 255.9 | 170.8 | 1263.7 |
+| Difference | -3.0% | -4.1% | -5.8% | -7.1% | -6.3% | -5.2% |
+
+The bias is steady enough for ratios between launch windows to carry over; the absolute figure needs the ~5% the notes already flag.
+
+## Validation against GMAT, IERS and SOFA; two Basilisk accuracy defects corrected
+
+The ECSS/CCSDS audit's validation phase (`compliance/phase3_log.md`, tests in `tests/validation/`) compared the tool with GMAT R2026a, IERS 20 C04 Earth orientation and SOFA. Two results were wrong because of Basilisk 2.12, and both are corrected in the tool without changing Basilisk:
+
+* **Gravity** (F-01, `engine/planet_rotation.py`): Basilisk extrapolates the Earth's orientation linearly inside each step, which stretches every gravity evaluation. At the 10 s default a 400 km orbit drifted 148 m/day from Kepler's solution (1.2 km at 30 s). Now under 1 mm/day.
+* **Drag** (F-07, `engine/geodetic_atmosphere.py`): Basilisk feeds NRLMSISE-00 a spherical altitude and latitude instead of geodetic ones, so densities away from the equator were too high (decay 10 % faster than GMAT at 52.5 deg, about 25 % for polar orbits at 300 km). Now 1.6 % from GMAT.
+
+**Results that change:** every drag result. From 300 km template 18's spacecraft now re-enters after 34 days (was 25), from 400 km in March 2031 (was 2030). The drag-dependent figures in the entries above (5-year delta-V, altitude trade, lifetime) were measured before this correction and are not re-measured here; expect lower drag make-up and longer lifetimes.
+
+**Also:** the Earth GM the simulation uses is 398600.436 km^3/s^2 (Basilisk's, deviation D-07); OPM export now states that value. A run with a gravity field and no IERS Earth orientation files warns of the ~160 m/day it costs at 400 km. `spacemissionstudio run --oem-interpolation lagrange` writes OEMs GMAT can read (GMAT reads only Lagrange, and only version 1.0 messages).
+
+**Validated (all within stated tolerances):** time scales (TAI/TT to 0.2 us, TDB to GMAT's two-term series), Earth frame vs IERS C04 (0.43 m at the surface, 1990-2026), propagation vs GMAT (two-body 4 mm/day, 20x20 field 0.12 m/day, Sun/Moon 9 mm and SRP 1.1 m over 7 days at GEO, drag 2.4 %), ground-station passes (0.08 s), OEM exchange both ways (8 mm).
+
+## Script blocks ask first; conditions no longer use eval()
+
+The audit's security analysis (`compliance/docs/security_analysis.md`, R15) found two ways a scenario file from someone else could run code on your computer:
+
+* **`script_block`** runs Python with your rights, and pressing Run was enough to run it. Now a run with script blocks asks first. The GUI shows each block's code and defaults to No. The CLI refuses with exit code 1 unless you pass `spacemissionstudio run --allow-scripts`, and `validate` lists the blocks. Nothing in the scenario file can give this consent.
+* **`if`/`while` conditions** went through Python's `eval()`. Even without builtins, that lets a crafted condition reach any Python object. Conditions are now evaluated over a fixed set of expressions: names, numbers, `[ ]` indexing, arithmetic, comparisons, `and`/`or`/`not`. Every condition in the templates and tests still works. One that used attribute access or a call (for example `.max()` on a vector) is now refused, with the reason shown at the field.
+
+**Also:**
+* The Vizard download records its URL, size and SHA-256 (`download.json`, next to it), and shows the hash.
+* The build scripts write `SHA256SUMS` and `<package>.sha256`.
+* ruff's security rules (S) now run in CI over the package; each remaining finding carries its reason.
+
+**Not changed:** Vizard live streaming still listens on all network interfaces, as Basilisk sets it. Binding it to this computer only needs checking against a real Vizard first (human action H11).
+
+## Parallel runs could read a half-written space-weather file (F-09)
+
+Found by the new Windows CI job: the altitude trade's 400 km case gave
+1.45 kg of propellant on Windows and 7.26 kg on Linux.
+
+**Cause:** every run and every density estimate converts the real space
+weather into a file Basilisk reads, cached by window and percentile. It was
+written in place after an `exists()` check. Processes running in parallel
+(the altitude trade's workers, one per CPU by default; Monte Carlo runs)
+resolve the same window to the same file. One could see the file already
+there while another was still writing it, and Basilisk then read a file cut
+short ("Failed to retrieve a state. Publishing the last available data").
+A run that died while writing left a short file that every later run
+reused. Reproduced on Linux: of five trials of eight processes, two read a
+short file (down to 512 of 3674 lines).
+
+**Fix:** the file is written to a temporary file of its own and moved into
+place in one step (`os.replace`); a cached file with the wrong number of
+lines is written again. After the fix, five trials gave no short read. Tests:
+`test_a_cut_short_cached_file_is_written_again`,
+`test_a_failed_write_leaves_no_file_behind`.
+
+**Effect on earlier results:** any parallel run with NRLMSISE-00 drag may
+have used wrong solar activity: altitude trades with more than one worker,
+and Monte Carlo runs. Re-run them. Single runs were not affected, except
+through a short file left in the cache by an earlier failure; such a file is
+now replaced.
+
+**Correction to the entry above:** Vizard live streaming does not listen on
+all interfaces. In live-stream mode Basilisk connects to Vizard; the tool
+opens no port (security analysis S-06, corrected).
+
+## Windows and macOS CI: two more defects, and test portability
+
+The new Windows and macOS CI jobs (SRS-PO-01) also found:
+
+* **F-10:** `propagate` until periapsis (or apoapsis), started on that apsis,
+  could stop after one step: the starting radial velocity is zero up to
+  rounding, and a negative rounding (Windows) looked like a crossing. The
+  apsis a run starts on no longer counts.
+* **F-11:** the template wizard scrolled sideways with wider fonts (Windows,
+  high DPI). Hints and long rows now wrap when they do not fit; nothing
+  changes at the normal font size.
+* Test-only defects: a test left `sys.platform` set to "linux" for the rest of
+  its process; the Vizard download tests assumed the Linux layout; a path test
+  expected `/`; three width limits were pixel counts at the Linux font.
+
+Details in `compliance/review_log.md`.
+* **F-12 (K-08):** saving a plot as PNG or SVG polled the page with
+  overlapping asynchronous queries; a late timer tick raised the
+  "'NoneType' object is not subscriptable" tracebacks seen in the CI logs,
+  and several answers could save the file twice. One query at a time now.

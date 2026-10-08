@@ -30,6 +30,7 @@ def test_run_without_basilisk_emits_failed(qtbot):
     worker = RunWorker(_load_two_body_scenario())
     with qtbot.waitSignal(worker.failed, timeout=5000) as blocker:
         worker.start()
+    assert worker.wait(5000)  # join it: GC of a still-running QThread aborts the process
     assert "Basilisk is not installed" in blocker.args[0]
 
 
@@ -44,6 +45,7 @@ def test_live_run_without_basilisk_emits_failed(qtbot):
     worker = RunWorker(_load_two_body_scenario(), live=True)
     with qtbot.waitSignal(worker.failed, timeout=5000) as blocker:
         worker.start()
+    assert worker.wait(5000)  # join it: GC of a still-running QThread aborts the process
     assert "Basilisk is not installed" in blocker.args[0]
 
 
@@ -57,6 +59,7 @@ def test_monte_carlo_worker_without_basilisk_emits_failed(qtbot, tmp_path):
     worker = MonteCarloWorker(scenario, mc_config, tmp_path / "mc")
     with qtbot.waitSignal(worker.failed, timeout=5000) as blocker:
         worker.start()
+    assert worker.wait(5000)  # join it: GC of a still-running QThread aborts the process
     assert "Basilisk is not installed" in blocker.args[0]
 
 
@@ -110,10 +113,11 @@ def _install_fake_mission_engine(monkeypatch, run_impl):
     import types
 
     class FakeMissionEngine:
-        def __init__(self, scenario, service=None, should_cancel=None):
+        def __init__(self, scenario, service=None, should_cancel=None, allow_scripts=False):
             self.scenario = scenario
             self.service = service
             self.should_cancel = should_cancel
+            self.allow_scripts = allow_scripts
 
         def run(self):
             return run_impl(self)
@@ -286,5 +290,3 @@ def test_mission_engine_cancelled_emits_cancelled_signal_with_partial_result_and
     qtbot.waitUntil(lambda: not worker.isRunning(), timeout=5000)
 
     assert blocker.args == [partial, summary]
-
-

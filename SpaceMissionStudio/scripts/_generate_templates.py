@@ -30,14 +30,25 @@ place to regenerate from.
 from __future__ import annotations
 
 import math
-from datetime import datetime
+import sys
 from pathlib import Path
 
 from spacemissionstudio.engine.constellation import WalkerConstellationRequest, generate_walker_constellation
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _template_descriptions import DESCRIPTIONS  # noqa: E402 -- short, user-facing; see that module
+from spacemissionstudio.engine.facets import box_facets
+from spacemissionstudio.engine.propellant_budget import OPERATIONS_DRAG_COEFF  # 3.0: ESA AD10 Sec. 5.2
+from spacemissionstudio.engine.orbit_design import (
+    geostationary_elements_deg,
+    raan_for_ltan_deg,
+    sun_synchronous_inclination_deg,
+)
 from spacemissionstudio.schema.scenario import (
     CommsPointingConfig,
     DispersionConfig,
     FuelTankConfig,
+    GeoStationKeepingConfig,
     GravityConfig,
     GroundStationConfig,
     MagneticMomentumManagementConfig,
@@ -58,9 +69,45 @@ from spacemissionstudio.schema.scenario import (
 
 OUT_DIR = Path(__file__).resolve().parent.parent / "spacemissionstudio" / "scenarios" / "templates"
 
-_INERTIA_SMALL = [5.0, 0.0, 0.0, 0.0, 5.0, 0.0, 0.0, 0.0, 5.0]
-_INERTIA_MEDIUM = [12.5, 0.0, 0.0, 0.0, 12.5, 0.0, 0.0, 0.0, 7.5]
 _RPM_TO_RAD_S = math.pi / 30.0
+
+
+def _box_inertia(mass_kg: float, size_m: tuple) -> list:
+    """Row-major principal inertia [kg*m^2] of a uniform box of ``size_m``
+    (x, y, z) [m]: I_xx = m (y^2 + z^2) / 12, and so on."""
+    x, y, z = size_m
+    return [round(mass_kg * (y * y + z * z) / 12.0, 1), 0.0, 0.0,
+            0.0, round(mass_kg * (x * x + z * z) / 12.0, 1), 0.0,
+            0.0, 0.0, round(mass_kg * (x * x + y * y) / 12.0, 1)]
+
+
+# Every template flies a 100-500 kg spacecraft, the class this app is for.
+# Three buses, each with an inertia derived from its own mass and size:
+_MICROSAT_MASS_KG = 150.0  # [kg]
+_MICROSAT_SIZE_M = (0.8, 0.8, 1.0)  # [m] -> I = 20.5, 20.5, 16.0 kg*m^2
+_SMALLSAT_MASS_KG = 300.0  # [kg]
+_SMALLSAT_SIZE_M = (1.2, 1.2, 1.5)  # [m] -> I = 92.3, 92.3, 72.0 kg*m^2
+_LARGE_SMALLSAT_MASS_KG = 500.0  # [kg]
+_LARGE_SMALLSAT_SIZE_M = (1.2, 1.2, 1.6)  # [m] -> I = 166.7, 166.7, 120.0 kg*m^2
+
+# A 6 N*m*s, 50 mN*m wheel at up to 6000 RPM: the size of the VECTRONIC
+# VRW-D-6 in engine/device_catalog.py, which suits the 150 kg bus. "custom"
+# derives the rotor inertia from maxMomentum/Omega_max, so any maxMomentum
+# a wizard sets stays valid (a named Honeywell type accepts only three).
+_MICROSAT_WHEEL = {"rw_type": "custom", "maxMomentum": 6.0, "Omega_max": 6000.0, "u_max": 0.05}
+
+
+def _corner_thrusters(half_size_m: tuple, max_thrust_n: float, **extra) -> list:
+    """Eight thrusters on the bus corners, two per couple axis (the layout
+    of Basilisk's examples/BskSim, scaled to this bus). Returns one
+    thruster ``params`` dict each."""
+    hx, hy, hz = half_size_m
+    positions = [[-hx, -hy, hz], [hx, -hy, -hz], [hx, -hy, hz], [hx, hy, -hz],
+                 [hx, hy, hz], [-hx, hy, -hz], [-hx, hy, hz], [-hx, -hy, -hz]]
+    directions = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0],
+                  [-1, 0, 0], [1, 0, 0], [0, -1, 0], [0, 1, 0]]
+    return [{"r_B": pos, "tHat_B": direction, "MaxThrust": max_thrust_n, **extra}
+            for pos, direction in zip(positions, directions)]
 
 # Skewed-pyramid 4-wheel layout, beta=52deg -- the exact spin axes
 # examples/scenarioMtbMomentumManagement.py uses, computed here (not
@@ -85,88 +132,15 @@ _MTB_DEMO_RW_AXES = [
 # orbit -- see each affected build_*() function's own comment for which
 # templates keep their existing orbit and why).
 #
-# J2/Req/mu below are Basilisk's own real Earth constants, confirmed
-# directly against a real build (not guessed):
-#   from Basilisk.utilities import orbitalMotion, simIncludeGravBody
-#   orbitalMotion.J2_EARTH == 0.001082616
-#   simIncludeGravBody.gravBodyFactory().createEarth().radEquator == 6378136.6 [m]
-#   simIncludeGravBody.gravBodyFactory().createEarth().mu == 398600436000000.0 [m^3/s^2]
-# _EARTH_REQUATOR_KM/_EARTH_MU_KM3_S2 match gui.template_wizard's own
-# already-established _EARTH_RADIUS_KM constant exactly (same source).
-_EARTH_J2 = 0.001082616  # [-]
-_EARTH_REQUATOR_KM = 6378.1366  # [km]
-_EARTH_MU_KM3_S2 = 398600.436  # [km^3/s^2]
-_TROPICAL_YEAR_DAYS = 365.2421897  # [day] mean interval between vernal equinoxes
-
-# Default LTAN for every SSO template below -- the real user request's own
-# number ("SSO (10:30 AM) orbits").
-_DEFAULT_LTAN_HOUR = 10.5  # [hr]
-
-
-def sun_synchronous_inclination_deg(semi_major_axis_km: float, eccentricity: float = 0.0) -> float:
-    """The real inclination (deg) whose J2 secular nodal regression rate
-    exactly matches the mean Sun's own apparent eastward motion
-    (360 deg / tropical year) -- the defining property of a Sun
-    -synchronous orbit (RAAN drifts in step with the Sun, so local solar
-    time at the ascending node stays constant year-round).
-
-    Standard first-order J2 secular RAAN-rate formula (e.g. Vallado,
-    *Fundamentals of Astrodynamics and Applications*):
-    ``dRAAN/dt = -1.5 * n * J2 * (Req/p)^2 * cos(i)``, ``n = sqrt(mu/a^3)``,
-    ``p = a*(1-e^2)``. Solved here for ``i`` given the target rate.
-
-    Verified directly against this project's own existing reference value
-    (not just derived in the abstract): evaluates to 97.40 deg at a
-    6878.1366 km semi-major axis (500 km altitude circular) -- matching
-    ``engine.spacecraft_templates._placeholder_orbit()``'s own
-    ``inclination_deg=97.4  # sun-synchronous at ~500 km`` comment exactly.
-    """
-    a = semi_major_axis_km
-    p = a * (1.0 - eccentricity**2)
-    mean_motion = math.sqrt(_EARTH_MU_KM3_S2 / a**3)  # [rad/s]
-    target_raan_rate = 2.0 * math.pi / (_TROPICAL_YEAR_DAYS * 86400.0)  # [rad/s]
-    cos_i = -target_raan_rate / (1.5 * mean_motion * _EARTH_J2 * (_EARTH_REQUATOR_KM / p) ** 2)
-    # Rounded to 2 decimal places: real orbit-insertion dispersion and the
-    # first-order J2-only model above both dwarf anything past this
-    # precision, so carrying more digits would be false precision -- and
-    # it keeps this value exactly representable by the Customize wizard's
-    # own 2-decimal inclination spin box (template_wizard.py).
-    return round(math.degrees(math.acos(cos_i)), 2)
-
-
-def _sun_right_ascension_deg(epoch_utc: str) -> float:
-    """The Sun's real right ascension (deg, J2000-ish mean-of-date frame)
-    at ``epoch_utc`` -- the Astronomical Almanac's own "low precision
-    formula for the Sun" (accurate to about 0.01 deg through 2050;
-    e.g. Vallado section 5.1 reproduces the identical formula), not a
-    guess: verified directly here against three real, independently-known
-    reference points before being trusted -- the Sun's RA is 0 deg at the
-    vernal equinox, 90 deg at the summer solstice, and 180 deg at the
-    autumnal equinox, and this function reproduces all three to within
-    0.25 deg (``2000-03-20T12:00``, ``2030-06-21T12:00``,
-    ``2030-09-23T06:00``).
-    """
-    days_since_j2000 = (datetime.fromisoformat(epoch_utc) - datetime(2000, 1, 1, 12, 0, 0)).total_seconds() / 86400.0
-    mean_longitude_deg = (280.460 + 0.9856474 * days_since_j2000) % 360.0
-    mean_anomaly_rad = math.radians((357.528 + 0.9856003 * days_since_j2000) % 360.0)
-    ecliptic_longitude_rad = math.radians((
-        mean_longitude_deg
-        + 1.915 * math.sin(mean_anomaly_rad)
-        + 0.020 * math.sin(2.0 * mean_anomaly_rad)
-    ) % 360.0)
-    obliquity_rad = math.radians(23.439 - 0.0000004 * days_since_j2000)
-    ra_rad = math.atan2(math.cos(obliquity_rad) * math.sin(ecliptic_longitude_rad), math.cos(ecliptic_longitude_rad))
-    return math.degrees(ra_rad) % 360.0
-
-
-def raan_for_ltan_deg(epoch_utc: str, ltan_hour: float = _DEFAULT_LTAN_HOUR) -> float:
-    """RAAN (deg) that gives an ascending node at local time of ascending
-    node ``ltan_hour`` (24h clock) at ``epoch_utc`` -- standard relation
-    ``RAAN = RA_sun + 15 deg/hr * (LTAN - 12h)`` (RAAN equals the Sun's own
-    RA exactly at a 12:00/noon LTAN, by definition of local solar time).
-    """
-    raan = (_sun_right_ascension_deg(epoch_utc) + 15.0 * (ltan_hour - 12.0)) % 360.0
-    return round(raan, 2)
+# sun_synchronous_inclination_deg()/raan_for_ltan_deg() used to be defined
+# HERE, as this dev-only generator script's own private helpers -- moved
+# to engine.orbit_design (Phase 6 audit fix) so the running app can import
+# the exact same, already-verified implementation these 12 templates rely
+# on, instead of a user having no way to reproduce a Sun-synchronous orbit
+# by hand when building a bespoke scenario from scratch. See that
+# module's own docstring for the full verification details (J2 secular
+# RAAN-rate derivation, the three real Sun-right-ascension reference
+# points). This is a pure import -- zero behavior change here.
 
 
 def _berlin_ground_station(**overrides) -> GroundStationConfig:
@@ -180,30 +154,15 @@ def _berlin_ground_station(**overrides) -> GroundStationConfig:
     return GroundStationConfig(**params)
 
 
-def _conservative_drag_margin() -> SpaceWeatherConfig:
-    """A nominal, synthetic atmospheric-drag environment -- a fresh
-    instance per call (like ``list(_INERTIA_SMALL)`` above, not a single
-    shared object, since ``SpaceWeatherConfig`` is mutable) for every
-    template where drag is physically relevant (a LEO altitude) and
-    doesn't undermine that template's own stated lesson (see each
-    ``build_*()`` function's own comment for why some are, or aren't,
-    drag-enabled at all).
-
-    This used to compute a real ``activity_level="conservative"``
-    sustained-worst-case margin from real historical CelesTrak data
-    (``source="celestrak"``). The app's closed-off/offline policy (see
-    ``engine/spaceweather.py``'s own docstring) removed that network fetch
-    entirely -- "conservative" mode is now ``local_file``-only, and these
-    bundled templates ship no historical CSV to point it at. Rather than
-    fabricate a fake "real historical" file, these templates honestly fall
-    back to the synthetic, solar-cycle-shaped generator at the default
-    ``activity_level="nominal"``. A user who wants the real worst-case
-    margin back can still get it: download a CelesTrak CSV themselves
-    (outside this app) and set ``space_weather.source="local_file"``,
-    ``activity_level="conservative"``, ``local_file_path=<that file>`` in
-    the Scenario Editor.
+def _real_space_weather() -> SpaceWeatherConfig:
+    """Drag from NRLMSISE-00 driven by real data shipped with the app
+    (``source="bundled"``: CelesTrak's observed record, then NASA MSFC's
+    50th-percentile prediction, the nominal case) -- a fresh instance per
+    call, since ``SpaceWeatherConfig`` is mutable. Solar activity
+    "Conservative" in Propagation setup is MSFC's 95th percentile (ESA
+    AD10 Sec. 5.9, operations).
     """
-    return SpaceWeatherConfig(source="synthetic", atmosphere_model="nrlmsise00", activity_level="nominal")
+    return SpaceWeatherConfig(source="bundled", atmosphere_model="nrlmsise00", forecast_percentile=50.0)
 
 
 def _save(scenario: Scenario, filename: str) -> None:
@@ -217,23 +176,7 @@ def build_01_two_body_circular_orbit() -> Scenario:
     return Scenario(
         name="01 - Two-body circular orbit",
         description=(
-            "The simplest possible orbit: a single spacecraft in a circular low-Earth orbit around a "
-            "point-mass Earth (no J2, no drag, no third-body gravity, no attitude dynamics -- "
-            "simulation_mode is 'orbit_only'). This is the orbital-mechanics equivalent of a 'hello "
-            "world' -- a clean two-body Keplerian orbit with nothing else going on.\n\n"
-            "What to look at: plot 'sat-1.position_N' after running -- it traces a perfect circle in "
-            "the orbit plane. The orbital period should match Kepler's third law, "
-            "T = 2*pi*sqrt(a^3/mu), for a = 6778 km and Earth's mu (~398600.4418 km^3/s^2): about "
-            "5554 s (~92.6 minutes), so a 1-day run completes about 15.5 orbits.\n\n"
-            "Try changing: the semi_major_axis_km (higher = slower, longer period), the "
-            "inclination_deg (watch the ground track in Vizard change), or the eccentricity (still "
-            "0 here -- see '02 - Elliptical orbit with perturbations' for a non-circular example).\n\n"
-            "Orbit is Sun-synchronous (inclination_deg derived via "
-            "scripts/_generate_templates.sun_synchronous_inclination_deg() from this real J2 "
-            "formula, not a round number picked by hand) at a 10:30 AM local time of ascending node "
-            "(raan_deg via raan_for_ltan_deg()) -- the most common real choice for an "
-            "Earth-observation/commercial smallsat, and the new default baseline orbit for this "
-            "template catalog's generic LEO examples."
+            DESCRIPTIONS["01"]
         ),
         epoch_utc="2030-01-01T00:00:00",
         simulation_mode="orbit_only",
@@ -246,7 +189,8 @@ def build_01_two_body_circular_orbit() -> Scenario:
                                inclination_deg=sun_synchronous_inclination_deg(6778.0),
                                raan_deg=raan_for_ltan_deg("2030-01-01T00:00:00"),
                                arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
-                dry_mass_kg=500.0,
+                dry_mass_kg=_LARGE_SMALLSAT_MASS_KG,
+                inertia_kg_m2=_box_inertia(_LARGE_SMALLSAT_MASS_KG, _LARGE_SMALLSAT_SIZE_M),
             ),
         ],
     )
@@ -256,25 +200,7 @@ def build_02_elliptical_orbit_with_perturbations() -> Scenario:
     return Scenario(
         name="02 - Elliptical orbit with perturbations",
         description=(
-            "A geostationary transfer orbit (GTO)-like eccentric orbit, with Earth's oblateness (J2 "
-            "and higher-order terms, via 10th-degree spherical harmonics) and third-body gravity from "
-            "the Sun and Moon all switched on. Drag is deliberately NOT enabled here (unlike other "
-            "templates updated for full perturbations) -- this one's whole point is isolating J2 + "
-            "third-body precession cleanly (see 'What to look at' below); a third perturbation source "
-            "would muddy that specific visual lesson. dynamics_task_rate_s is deliberately fine (1.0 s) "
-            "here: coarser rates "
-            "introduce real truncation error into the spherical-harmonics gravity term itself (see "
-            "this project's own HISTORY.md, 'What Phase 6 (Mission Sequence architecture) adds', for the "
-            "measured effect of this on a real Basilisk run) -- always use a fine rate together with "
-            "central_body_degree > 0, not just for point-mass orbits.\n\n"
-            "What to look at: plot 'sat-1.position_N' and watch the orbit visibly precess over the "
-            "3-day run -- J2 causes the right ascension of the ascending node (RAAN) to regress and "
-            "the argument of periapsis to rotate, effects a pure two-body orbit ('01') never shows. "
-            "Compare 'sat-1.velocity_N' magnitude at periapsis vs. apoapsis to see orbital speed vary "
-            "with a large eccentricity (0.7) -- much faster near Earth, much slower far away.\n\n"
-            "Try changing: central_body_degree back to 0 to see the perturbation-free case for "
-            "comparison, or third_body_perturbers to just [\"moon\"] or [\"sun\"] to isolate each "
-            "effect."
+            DESCRIPTIONS["02"]
         ),
         epoch_utc="2030-01-01T00:00:00",
         simulation_mode="orbit_only",
@@ -285,52 +211,44 @@ def build_02_elliptical_orbit_with_perturbations() -> Scenario:
                 name="sat-1",
                 orbit=OrbitIC(type="classical_elements", semi_major_axis_km=24396.0, eccentricity=0.7,
                                inclination_deg=28.5, raan_deg=0.0, arg_periapsis_deg=180.0, true_anomaly_deg=0.0),
-                dry_mass_kg=1000.0,
+                dry_mass_kg=_LARGE_SMALLSAT_MASS_KG,
+                inertia_kg_m2=_box_inertia(_LARGE_SMALLSAT_MASS_KG, _LARGE_SMALLSAT_SIZE_M),
             ),
         ],
     )
 
 
 def build_03_geo_station_keeping() -> Scenario:
+    # A 500 kg spacecraft in the 10 deg E slot (a European one), held in a
+    # +/-0.05 deg longitude box and below 0.05 deg inclination. It starts in
+    # Earth's TRUE equator (engine.orbit_design.geostationary_elements_deg):
+    # i = 0 in J2000 is already ~0.17 deg inclined to it by 2030, which the
+    # first real run showed as an immediate north-south burn. a = 42166.2 km
+    # is the geosynchronous radius once J2 is included. Confirmed in a real
+    # Basilisk run, see tests/test_template_claims.py.
+    epoch = "2030-01-01T00:00:00"
+    inclination_deg, raan_deg, true_anomaly_deg = geostationary_elements_deg(epoch, 10.0)
     return Scenario(
         name="03 - GEO station-keeping",
         description=(
-            "A geostationary communications satellite that actively maintains its altitude against "
-            "real perturbations (Sun/Moon third-body gravity and solar radiation pressure -- the "
-            "actual drivers of GEO longitude/altitude drift in practice) using a simple deadband "
-            "thrust controller: it fires station_keeping's thruster whenever the propagated altitude "
-            "drifts more than deadband_km from target_altitude_km, burning propellant tracked in "
-            "propellant_kg.\n\n"
-            "What to look at: run the CLI ('spacemissionstudio run ... --out-dir out') and check "
-            "command_summary/results for the propellant used over the 14-day run (see this project's "
-            "README, 'Running the CLI', for the station-keeping summary output) -- a real budget "
-            "question a mission designer has to answer: how much propellant does a decade of GEO "
-            "station-keeping cost?\n\n"
-            "Try changing: deadband_km (tighter = more frequent, smaller burns), thrust_n/isp_s (a "
-            "more efficient thruster uses less propellant per correction), or removing "
-            "third_body_perturbers/enable_srp to see how much slower the drift becomes without them "
-            "(and how rarely the controller then needs to fire).\n\n"
-            "central_body_degree is 10 (not 0) despite GEO altitude: geosynchronous longitude drift "
-            "is driven in real life partly by Earth's own longitudinal (tesseral) gravity anomalies, "
-            "not just Sun/Moon/SRP -- a real GEO perturbation this spherical-harmonics degree can "
-            "represent. Atmospheric drag is deliberately NOT enabled -- physically negligible at "
-            "42164 km (no meaningful atmosphere there); enabling it would misrepresent the physics, "
-            "not add realism."
+            DESCRIPTIONS["03"]
         ),
-        epoch_utc="2030-01-01T00:00:00",
+        epoch_utc=epoch,
         simulation_mode="orbit_only",
         gravity=GravityConfig(central_body="earth", central_body_degree=10, third_body_perturbers=["sun", "moon"]),
-        sim_settings=SimSettings(duration_days=14.0, dynamics_task_rate_s=30.0, integrator="rkf78"),
+        sim_settings=SimSettings(duration_days=45.0, dynamics_task_rate_s=30.0, integrator="rkf78"),
         spacecraft=[
             SpacecraftConfig(
                 name="geo-sat-1",
-                orbit=OrbitIC(type="classical_elements", semi_major_axis_km=42164.0, eccentricity=0.0,
-                               inclination_deg=0.0, raan_deg=0.0, arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
-                dry_mass_kg=1200.0,
-                enable_srp=True, srp_coeff=1.3, srp_area_m2=15.0,
-                station_keeping=StationKeepingConfig(
-                    target_altitude_km=35786.0, deadband_km=5.0, thrust_n=0.5, isp_s=1600.0,
-                    propellant_kg=50.0,
+                orbit=OrbitIC(type="classical_elements", semi_major_axis_km=42166.2, eccentricity=0.0,
+                               inclination_deg=inclination_deg, raan_deg=raan_deg, arg_periapsis_deg=0.0,
+                               true_anomaly_deg=true_anomaly_deg),
+                dry_mass_kg=_LARGE_SMALLSAT_MASS_KG,
+                inertia_kg_m2=_box_inertia(_LARGE_SMALLSAT_MASS_KG, _LARGE_SMALLSAT_SIZE_M),
+                enable_srp=True, srp_coeff=1.3, srp_area_m2=8.0,
+                geo_station_keeping=GeoStationKeepingConfig(
+                    target_longitude_deg=10.0, longitude_deadband_deg=0.05, inclination_max_deg=0.05,
+                    thrust_n=1.0, isp_s=220.0, propellant_kg=50.0,  # [N], [s] (hydrazine), [kg]
                 ),
             ),
         ],
@@ -341,14 +259,15 @@ def build_04_walker_constellation() -> Scenario:
     # 700 km is genuinely drag-relevant LEO altitude -- drag/SRP enabled
     # on the shared template so generate_walker_constellation() copies it
     # onto every satellite (see this function's own description update
-    # below for the reasoning and the conservative-margin caveat).
+    # below for the reasoning).
     template = SpacecraftConfig(
         name="placeholder",  # replaced per-satellite by generate_walker_constellation()
         orbit=OrbitIC(type="classical_elements", semi_major_axis_km=1.0, eccentricity=0.0,
                        inclination_deg=0.0, raan_deg=0.0, arg_periapsis_deg=0.0, mean_anomaly_deg=0.0,
                        anomaly_type="mean"),
         dry_mass_kg=180.0,
-        enable_drag=True, drag_coeff=2.2, drag_area_m2=1.0,
+        inertia_kg_m2=_box_inertia(180.0, _MICROSAT_SIZE_M),
+        enable_drag=True, drag_coeff=OPERATIONS_DRAG_COEFF, drag_area_m2=1.0,
         enable_srp=True, srp_coeff=1.3, srp_area_m2=1.0,
     )
     request = WalkerConstellationRequest(
@@ -359,38 +278,13 @@ def build_04_walker_constellation() -> Scenario:
     return Scenario(
         name="04 - Walker delta constellation",
         description=(
-            "A small 6-satellite Walker delta constellation (2 orbital planes, 3 satellites per "
-            "plane, phasing factor 1) at 700 km altitude / 53 deg inclination -- generated "
-            "programmatically via engine.constellation.generate_walker_constellation() rather than "
-            "hand-written, exactly how the GUI's 'Generate Walker constellation...' dialog "
-            "(gui/constellation_dialog.py, off the spacecraft list's own button) and "
-            "'spacemissionstudio generate-constellation' CLI subcommand build one.\n\n"
-            "What to look at: open this in the GUI and look at Vizard's ground track (or plot each "
-            "satellite's 'position_N' series) -- the 2 planes are spread 180 deg apart in RAAN "
-            "('delta' pattern; a 'star' pattern spreads them over 360 deg total instead), and "
-            "satellites within a plane are evenly spaced by mean anomaly, offset between planes by "
-            "the phasing factor. This is the standard way real LEO broadband/imaging constellations "
-            "(the thing 'Starlink-shell-like' parameters like these are modeled after) achieve "
-            "repeatable global coverage with a minimal satellite count.\n\n"
-            "Try changing: total_satellites/num_planes (regenerate via the CLI/GUI, not by hand "
-            "-editing this file's spacecraft list) to see how coverage geometry changes, or "
-            "phasing_factor to change how planes interleave relative to each other.\n\n"
-            "Updated to include 10th-degree spherical-harmonics gravity, Sun/Moon third-body gravity, "
-            "atmospheric drag, and solar radiation pressure on every satellite -- a 700 km Walker "
-            "constellation genuinely experiences all of these. Drag uses a nominal, SYNTHETIC "
-            "(solar-cycle-shaped, not a real forecast) space-weather profile, generated entirely "
-            "locally -- see engine/spaceweather.py's own 'Closed-off/offline policy' docstring: this "
-            "app makes no network calls at runtime, so a CONSERVATIVE, percentile-based worst-case "
-            "margin (which needs real historical F10.7/Ap data) isn't available out of the box here "
-            "anymore. To get that margin back, download a CelesTrak CSV yourself (outside this app) "
-            "and set space_weather.source='local_file', activity_level='conservative', "
-            "local_file_path=<that file> in the Scenario Editor."
+            DESCRIPTIONS["04"]
         ),
         epoch_utc="2030-01-01T00:00:00",
         simulation_mode="orbit_only",
         gravity=GravityConfig(central_body="earth", central_body_degree=10, third_body_perturbers=["sun", "moon"]),
         sim_settings=SimSettings(duration_days=1.0, dynamics_task_rate_s=30.0, integrator="rkf78"),
-        space_weather=_conservative_drag_margin(),
+        space_weather=_real_space_weather(),
         spacecraft=spacecraft,
     )
 
@@ -399,38 +293,7 @@ def build_05_formation_flying_phasing() -> Scenario:
     return Scenario(
         name="05 - Formation flying (phasing control)",
         description=(
-            "Two spacecraft in near-identical orbits, 'follower-1' actively holding a fixed in-track "
-            "separation behind chief 'chief-1' using phasing_keeping -- a closed-loop controller that "
-            "measures the along-track separation and fires small along-track burns to correct drift, "
-            "on top of its OWN station_keeping (phasing_keeping always needs station_keeping "
-            "configured on the same spacecraft -- see PhasingKeepingConfig's own docstring for why: "
-            "phasing needs altitude held steady first, or a semi-major-axis mismatch would make "
-            "along-track drift and true phasing error indistinguishable).\n\n"
-            "What to look at: after running, compare 'follower-1.position_N' and 'chief-1.position_N' "
-            "-- the along-track (velocity-direction) separation should stay near "
-            "target_separation_km despite neither orbit being perfectly matched to start, a basic "
-            "model of formation-flying/rendezvous-proximity-operations control (e.g. trailing "
-            "satellite formations, or a servicer holding station behind a target). "
-            "'spacemissionstudio run' also prints a phasing delta-V breakdown in its station-keeping "
-            "summary (see README, 'Running the CLI').\n\n"
-            "Try changing: target_separation_km (a schedule -- see PhasingKeepingConfig; a single "
-            "-element list holds one separation for the whole run, more elements step through a "
-            "schedule), or chief-1's own orbit to start with a larger initial mismatch and watch "
-            "follower-1 correct it.\n\n"
-            "Updated to include 10th-degree spherical-harmonics gravity, Sun/Moon third-body gravity, "
-            "atmospheric drag, and solar radiation pressure on both spacecraft (identically, so any "
-            "chief/follower difference in behavior is real physics, not asymmetric configuration) -- "
-            "drag uses a nominal, SYNTHETIC (solar-cycle-shaped, not a real forecast) space-weather "
-            "profile generated entirely locally, no network access needed (see "
-            "engine/spaceweather.py's own 'Closed-off/offline policy' docstring: this app makes no "
-            "network calls at runtime, so a real-historical-data CONSERVATIVE margin isn't available "
-            "out of the box here anymore -- see template 04's own description for how to restore it "
-            "via a self-supplied local CelesTrak CSV). NOTE: this specific change has NOT been "
-            "re-verified against a real multi-day Basilisk run the way this template's original "
-            "dynamics were (see README's 'Verification status') -- this development sandbox has no "
-            "route to the NAIF SPICE kernel host needed to run it at all; please report back if the "
-            "phasing controller's propellant budget or behavior looks off under the added "
-            "perturbations."
+            DESCRIPTIONS["05"]
         ),
         epoch_utc="2030-01-01T00:00:00",
         simulation_mode="orbit_only",
@@ -443,8 +306,32 @@ def build_05_formation_flying_phasing() -> Scenario:
         # "moon" added alongside "sun" for full-perturbation realism (see
         # this function's own description update above).
         gravity=GravityConfig(central_body="earth", central_body_degree=10, third_body_perturbers=["sun", "moon"]),
-        sim_settings=SimSettings(duration_days=7.0, dynamics_task_rate_s=30.0, integrator="rkf78"),
-        space_weather=_conservative_drag_margin(),
+        # duration_days=90.0 -- a real user pointed out that a short run here
+        # isn't interesting: phasing_keeping's whole point is the LONG-TERM
+        # along-track drift/correction cycle and its accumulated delta-V, and
+        # a 24-day run (an earlier revision of this template) never drifts
+        # far enough to trigger even one correction -- confirmed directly
+        # against a real Basilisk run (degree-10 Earth gravity, no Sun/Moon/
+        # drag): over 90 days the separation drifts to phasing_keeping's 10%
+        # tolerance band around day 28, which fires one real correction that
+        # brings it back in ~2.4 days, keeping it within ~45-52 km for
+        # ~0.014 m/s of phasing delta-V (re-verified with the 3-day default
+        # correction window; 21 days gave ~0.003 m/s over ~2 weeks) -- exactly the
+        # "drift, then correct" behavior this controller exists to show, not
+        # visible at 24 days.
+        #
+        # 90 days (not longer) is also a real platform ceiling, not just a
+        # stylistic choice: Basilisk's own nanoToSec() (C++,
+        # src/architecture/utilities/macroDefinitions.h) can only exactly
+        # represent a nanosecond count up to 2**53 ns (~104.25 days) as a
+        # double; past that it prints a stderr error on EVERY call and
+        # returns NaN, poisoning all downstream time-dependent math (hit
+        # directly in this audit with a 180-day test run: simulated time
+        # barely progressed past the cliff at all). 90 days stays safely
+        # clear of that limit with margin -- see SimSettings.validate()'s
+        # own upper bound on duration_days, added for exactly this reason.
+        sim_settings=SimSettings(duration_days=90.0, dynamics_task_rate_s=30.0, integrator="rkf78"),
+        space_weather=_real_space_weather(),
         spacecraft=[
             SpacecraftConfig(
                 name="chief-1",
@@ -458,33 +345,134 @@ def build_05_formation_flying_phasing() -> Scenario:
                 # propagated eccentricity above that -- at which point rv2elem()
                 # silently falls back to measuring phase from the eccentricity
                 # VECTOR's direction, which is numerically meaningless (noise
-                # -dominated) once eccentricity is that close to zero, and fed
-                # a garbage phasing error into the controller. A small,
-                # deliberate eccentricity (0.001, ~7 km of altitude variation --
-                # well inside station_keeping's 2 km deadband once smoothed over
-                # one orbital period, see StationKeepingController.UpdateState())
-                # keeps rv2elem() safely on its normal, stable branch instead,
-                # using Basilisk's own orbit-element math the way it's designed
-                # to be used rather than routing around it.
+                # -dominated) once eccentricity is that close to zero. A small,
+                # deliberate eccentricity (0.001) keeps rv2elem() safely on its
+                # normal, stable branch for SMA/e/i recovery -- but
+                # PhasingKeepingController no longer uses rv2elem()'s own
+                # (e, omega, f) decomposition for its phase error AT ALL (see
+                # that class's own "Numerical conditioning of the phase error"
+                # docstring section: it was found, by audit against a real
+                # Basilisk build with real J2 active on exactly these elements,
+                # to be independently singular at this same e -> 0 regime no
+                # matter how small a deliberate eccentricity is chosen --
+                # replaced with a numerically robust argument-of-latitude
+                # computed directly from r/v).
+                #
+                # The "~7 km of altitude variation -- well inside
+                # station_keeping's deadband once smoothed over one orbital
+                # period" claim this comment used to make here was WRONG,
+                # also found only once checked against a real Basilisk build
+                # with real (degree >= 2) spherical-harmonics gravity active:
+                # a one-orbital-period boxcar average of the RAW osculating
+                # altitude at these elements converges to a STABLE ~545 km,
+                # not the ~550 km target -- a genuine ~5 km secular offset
+                # between the osculating semi-major axis this orbit is
+                # initialized with and the true time-averaged radius under
+                # real J2 (confirmed stable across 1/2/3/5/10-orbital-period
+                # windows alike, so this is not averaging noise/bias from an
+                # imperfect window length -- it is real), on top of which
+                # J2's own short-period altitude oscillation adds further
+                # swing. A 2 km deadband has no margin over either -- see
+                # station_keeping's own deadband_km below, widened for
+                # exactly this reason.
                 orbit=OrbitIC(type="classical_elements", semi_major_axis_km=6928.0, eccentricity=0.001,
                                inclination_deg=sun_synchronous_inclination_deg(6928.0, 0.001),
                                raan_deg=raan_for_ltan_deg("2030-01-01T00:00:00"),
                                arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
                 dry_mass_kg=400.0,
-                enable_drag=True, drag_coeff=2.2, drag_area_m2=1.0,
+                inertia_kg_m2=_box_inertia(400.0, _SMALLSAT_SIZE_M),
+                enable_drag=True, drag_coeff=OPERATIONS_DRAG_COEFF, drag_area_m2=1.0,
                 enable_srp=True, srp_coeff=1.3, srp_area_m2=1.0,
+                # chief-1 needs its OWN station_keeping too -- a real
+                # design bug, found from direct user feedback: a "chief"
+                # that holds no altitude at all isn't a chief, it's just an
+                # uncontrolled object the follower happens to be phased
+                # against -- and it directly contradicts
+                # engine.formation.py's own stated design for this exact
+                # two-spacecraft shape ("the two-satellite 'chief holds
+                # station, follower holds formation' case
+                # 05_formation_flying_phasing.json demonstrates by hand" --
+                # see that module's own docstring, written when this
+                # template was first built but never actually implemented
+                # here). Same hardware as follower-1's own station_keeping
+                # below -- a realistic "sister satellite" pair, not a
+                # special case.
+                station_keeping=StationKeepingConfig(
+                    target_altitude_km=550.0, deadband_km=15.0, thrust_n=0.05, isp_s=1500.0, propellant_kg=5.0,
+                ),
             ),
             SpacecraftConfig(
                 name="follower-1",
+                # anomaly_type="mean", mean_anomaly_deg=0.413509 (not
+                # true_anomaly_deg=-0.5) -- a real design-intent bug, found
+                # from direct user feedback: the ORIGINAL -0.5 deg offset put
+                # follower-1 trailing chief-1 by ~60 km while
+                # phasing_keeping's target_separation_km=50.0 (below) is
+                # defined as a LEADING separation (see
+                # PhasingKeepingController's own docstring: always a
+                # positive, "B leads A" distance) -- so the default run
+                # didn't demonstrate "hold a fixed formation distance with a
+                # small margin of error" at all; it demonstrated a one-time,
+                # 110 km realignment maneuver that passes close by the chief
+                # on the way (see duration_days's own comment below for that
+                # whole investigation). phasing_keeping is a FORMATION
+                # -KEEPING controller, not a rendezvous/phasing-transfer
+                # planner -- its correct default demo is steady-state
+                # maintenance, not a transition between two different
+                # relative states.
+                #
+                # Fixed by placing follower-1's own initial mean anomaly
+                # EXACTLY at the target separation from chief-1's (chief is
+                # at true_anomaly_deg=0.0 above, which for ANY eccentricity
+                # is exactly mean anomaly 0.0 too -- true and mean anomaly
+                # are identically 0 at periapsis, no approximation here):
+                # along_track_rad = target_separation_km * 1000 / chief_sma_m
+                #                 = 50000 / 6928000 = 0.0072171 rad
+                #                 = 0.413509 deg
+                # -- the exact same arc-length relation both
+                # engine.orbit_maintenance.SeparationSchedule and
+                # engine.formation.generate_phasing_follower() already use
+                # (the latter is this exact fix's own precedent: the
+                # "Generate phasing formation..." GUI generator has ALWAYS
+                # placed a new follower exactly at its target separation --
+                # "Achieved to that exact value ... confirmed against a real
+                # Basilisk run" per that function's own docstring -- this
+                # template's hand-authored JSON was simply never updated to
+                # match that same, already-correct design). Starting exactly
+                # on target means the run now shows what phasing_keeping
+                # actually does in normal operation: small, periodic
+                # corrections holding the separation within
+                # tolerance_fraction of target as real perturbations
+                # (differential drag from follower-1's extra propellant
+                # mass, J2, Sun/Moon) nudge it off -- never a large
+                # transition, never passing the chief.
                 orbit=OrbitIC(type="classical_elements", semi_major_axis_km=6928.0, eccentricity=0.001,
                                inclination_deg=sun_synchronous_inclination_deg(6928.0, 0.001),
                                raan_deg=raan_for_ltan_deg("2030-01-01T00:00:00"),
-                               arg_periapsis_deg=0.0, true_anomaly_deg=-0.5),
+                               arg_periapsis_deg=0.0, anomaly_type="mean", mean_anomaly_deg=0.413509),
                 dry_mass_kg=400.0,
-                enable_drag=True, drag_coeff=2.2, drag_area_m2=1.0,
+                inertia_kg_m2=_box_inertia(400.0, _SMALLSAT_SIZE_M),
+                enable_drag=True, drag_coeff=OPERATIONS_DRAG_COEFF, drag_area_m2=1.0,
                 enable_srp=True, srp_coeff=1.3, srp_area_m2=1.0,
                 station_keeping=StationKeepingConfig(
-                    target_altitude_km=550.0, deadband_km=2.0, thrust_n=0.05, isp_s=1500.0, propellant_kg=5.0,
+                    # deadband_km=15.0, not 2.0 -- widened by audit (see the
+                    # orbit= comment above): this orbit's own real, natural
+                    # (non-decaying) J2 + eccentricity altitude variation is
+                    # already ~5-10 km, which a 2 km deadband has no margin
+                    # over at all, so the smoothed altitude reads "below
+                    # target" from legitimate orbital mechanics alone -- not
+                    # real secular (e.g. drag) decay -- and the controller
+                    # (correctly, by its own design) burns to correct it,
+                    # confirmed on a real Basilisk run to fire continuously
+                    # for ~7 real hours straight at deadband_km=2.0. Standard
+                    # industry practice for a real deadband is to size it
+                    # with margin over an orbit's own natural short-period
+                    # variation, not just "as tight as the mission can
+                    # tolerate" -- 15 km comfortably covers this orbit's
+                    # natural swing while still catching genuine drag decay
+                    # (this template's own enable_drag=True) well before it
+                    # could matter.
+                    target_altitude_km=550.0, deadband_km=15.0, thrust_n=0.05, isp_s=1500.0, propellant_kg=5.0,
                 ),
                 phasing_keeping=PhasingKeepingConfig(
                     chief_spacecraft="chief-1", target_separation_km=[50.0],
@@ -498,25 +486,7 @@ def build_06_attitude_pointing_basic() -> Scenario:
     return Scenario(
         name="06 - Basic attitude pointing (idealized actuation)",
         description=(
-            "A spacecraft pointing its body frame to track the local vertical/local horizontal frame "
-            "(fsw_mode 'hillPoint' -- nadir-pointing, the natural first attitude-control example: see "
-            "engine/fsw.py's own docstring, copied from examples/scenarioAttitudeGuidance.py) with NO "
-            "sensors or actuators configured -- with no 'reaction_wheel' actuators present, the "
-            "control torque is applied directly to the hub via an idealized ExtForceTorque effector "
-            "(see engine/fsw.py's build_idealized_actuation()), skipping real hardware modeling "
-            "entirely so this example is only about the pointing CONCEPT. See '07' for the same idea "
-            "with real ADCS hardware in the loop.\n\n"
-            "The spacecraft starts tipped away from the target attitude (sigma_bn_init is non-zero) "
-            "with a small initial body rate -- watch the attitude error converge to zero as the "
-            "controller (mrpFeedback, closing the loop on simpleNav's truth attitude) drives it to "
-            "track hillPoint's commanded frame.\n\n"
-            "What to look at: this scenario's own attitude state isn't in the CSV export series by "
-            "default; add a 'report' mission_sequence command (see '08') or inspect "
-            "sat-1.omega_BN_B/attitude state directly via the schema/engine layer if you extend this "
-            "-- or simplest, watch it converge visually in Vizard's live attitude indicator.\n\n"
-            "Try changing: fsw_mode to 'velocityPoint' (tracks the velocity vector instead of nadir) "
-            "or 'inertial3D' (points at a fixed inertial attitude, ignoring the orbit entirely) to "
-            "compare pointing behaviors."
+            DESCRIPTIONS["06"]
         ),
         epoch_utc="2030-01-01T00:00:00",
         simulation_mode="full_attitude",
@@ -532,7 +502,7 @@ def build_06_attitude_pointing_basic() -> Scenario:
         # Basilisk's own examples/BskSim reference, which runs its FSW task
         # at fswRate=0.1s) goes numerically unstable -- sigma_BN reaches
         # NaN within ~15 task ticks -- at 1.0s with this template's inertia
-        # (_INERTIA_MEDIUM), because mrpFeedback's commanded torque is a
+        # (then 12.5 kg*m^2), because mrpFeedback's commanded torque is a
         # zero-order hold applied for the WHOLE task period: a coarser
         # period needs a proportionally weaker P relative to inertia to stay
         # discrete-time stable (see _osculating_elements()'s own
@@ -551,8 +521,8 @@ def build_06_attitude_pointing_basic() -> Scenario:
                                inclination_deg=sun_synchronous_inclination_deg(6928.0),
                                raan_deg=raan_for_ltan_deg("2030-01-01T00:00:00"),
                                arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
-                dry_mass_kg=300.0,
-                inertia_kg_m2=list(_INERTIA_MEDIUM),
+                dry_mass_kg=_SMALLSAT_MASS_KG,
+                inertia_kg_m2=_box_inertia(_SMALLSAT_MASS_KG, _SMALLSAT_SIZE_M),
                 sigma_bn_init=[0.1, 0.2, -0.15],
                 omega_bn_b_init_rad_s=[0.001, -0.001, 0.0005],
                 fsw_mode="hillPoint",
@@ -565,29 +535,7 @@ def build_07_attitude_pointing_with_adcs_hardware() -> Scenario:
     return Scenario(
         name="07 - Attitude pointing with real ADCS hardware",
         description=(
-            "The realistic counterpart to '06': the same pointing problem, but with an actual ADCS "
-            "hardware suite modeled -- a star tracker and IMU for attitude/rate sensing, a coarse sun "
-            "sensor, and three reaction wheels (orthogonal spin axes) providing the real control "
-            "torque instead of an idealized effector, plus a solar array + battery power budget "
-            "(power draw from the sensors/wheels isn't modeled per-component here, but this shows how "
-            "a full spacecraft config -- attitude AND power -- fits together). fsw_mode 'sunSafePoint' "
-            "is a safe-mode-style controller that points a body axis at the Sun using simpleNav's own "
-            "Sun-direction output (see engine/fsw.py's docstring for why no separate sensor message "
-            "is strictly required even though a coarse_sun_sensor is configured here for realism).\n\n"
-            "What to look at: this is the shape a real small-sat's SpacecraftConfig looks like in "
-            "practice -- compare it side-by-side with '06' to see exactly what real hardware adds "
-            "(sensors/actuators/power blocks) on top of the bare pointing-mode concept.\n\n"
-            "Try changing: the reaction wheels' Js/u_max/maxMomentum (see the GUI's sensor/actuator "
-            "editor for the full per-kind parameter list and units), or swap fsw_mode to "
-            "'locationPointing' with fsw_params={'target_ground_station': '<name>'} once a "
-            "ground_stations entry exists in this scenario.\n\n"
-            "Updated to include 10th-degree spherical-harmonics gravity, Sun/Moon third-body gravity, "
-            "atmospheric drag, and solar radiation pressure -- consistent with this template's own "
-            "role as the 'realistic counterpart' to '06'. Drag uses a nominal, SYNTHETIC "
-            "(solar-cycle-shaped, not a real forecast) space-weather profile, generated entirely "
-            "locally, no network access needed (see engine/spaceweather.py's own 'Closed-off/offline "
-            "policy' docstring -- see template 04's own description for how to restore a real "
-            "historical-data CONSERVATIVE margin via a self-supplied local CelesTrak CSV)."
+            DESCRIPTIONS["07"]
         ),
         epoch_utc="2030-01-01T00:00:00",
         simulation_mode="full_attitude",
@@ -603,7 +551,7 @@ def build_07_attitude_pointing_with_adcs_hardware() -> Scenario:
         # update above).
         gravity=GravityConfig(central_body="earth", central_body_degree=10, third_body_perturbers=["sun", "moon"]),
         sim_settings=SimSettings(duration_days=0.05, dynamics_task_rate_s=1.0, integrator="rkf78"),
-        space_weather=_conservative_drag_margin(),
+        space_weather=_real_space_weather(),
         spacecraft=[
             SpacecraftConfig(
                 name="sat-1",
@@ -611,49 +559,39 @@ def build_07_attitude_pointing_with_adcs_hardware() -> Scenario:
                                inclination_deg=sun_synchronous_inclination_deg(6928.0),
                                raan_deg=raan_for_ltan_deg("2030-01-01T00:00:00"),
                                arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
-                dry_mass_kg=50.0,
-                enable_drag=True, drag_coeff=2.2, drag_area_m2=1.0,
+                dry_mass_kg=_MICROSAT_MASS_KG,
+                inertia_kg_m2=_box_inertia(_MICROSAT_MASS_KG, _MICROSAT_SIZE_M),
+                enable_drag=True, drag_coeff=OPERATIONS_DRAG_COEFF, drag_area_m2=1.0,
                 enable_srp=True, srp_coeff=1.3, srp_area_m2=1.0,
-                inertia_kg_m2=list(_INERTIA_SMALL),
                 sigma_bn_init=[0.1, 0.2, -0.15],
                 omega_bn_b_init_rad_s=[0.001, -0.001, 0.0005],
                 sensors=[
                     SensorConfig(kind="star_tracker", name="st-1", params={"noise_arcsec": 5.0}),
                     SensorConfig(kind="imu", name="imu-1", params={"gyro_noise_rad_s": 1e-5}),
-                    SensorConfig(kind="coarse_sun_sensor", name="css-1", params={"nHat_B": [1.0, 0.0, 0.0]}),
+                    # +Z: the face sunSafePoint turns to the Sun (its default
+                    # sHatBdyCmd); a +X sensor would see it edge-on, i.e. never.
+                    SensorConfig(kind="coarse_sun_sensor", name="css-1", params={"nHat_B": [0.0, 0.0, 1.0]}),
                 ],
                 actuators=[
                     ActuatorConfig(kind="reaction_wheel", name="rw-1",
-                                    params={"gsHat_B": [1.0, 0.0, 0.0], "rw_type": "Honeywell_HR16",
-                                            "maxMomentum": 100.0}),
+                                    params={"gsHat_B": [1.0, 0.0, 0.0], **_MICROSAT_WHEEL}),
                     ActuatorConfig(kind="reaction_wheel", name="rw-2",
-                                    params={"gsHat_B": [0.0, 1.0, 0.0], "rw_type": "Honeywell_HR16",
-                                            "maxMomentum": 100.0}),
+                                    params={"gsHat_B": [0.0, 1.0, 0.0], **_MICROSAT_WHEEL}),
                     ActuatorConfig(kind="reaction_wheel", name="rw-3",
-                                    params={"gsHat_B": [0.0, 0.0, 1.0], "rw_type": "Honeywell_HR16",
-                                            "maxMomentum": 100.0}),
+                                    params={"gsHat_B": [0.0, 0.0, 1.0], **_MICROSAT_WHEEL}),
                 ],
                 fsw_mode="sunSafePoint",
-                # DEFAULT_MRP_GAINS (engine/fsw.py: K=3.5, P=30.0) is lifted
-                # directly from Basilisk's own examples/BskSim reference
-                # (BSK_Fsw.py's mrpFeedbackRWs), which is tuned for THAT
-                # example's 900 kg*m^2 spacecraft (BSK_Dynamics.py's I_sc).
-                # Applied unscaled to this template's 5 kg*m^2 _INERTIA_SMALL
-                # hub, it is roughly 180x too stiff for this inertia and
-                # produces a persistent, non-decaying ~30-degree pointing
-                # oscillation (confirmed directly against a real Basilisk
-                # build: sigma_BN never settles, even from a dead-rest
-                # initial rate, over a 1500s run) -- bounded by RW torque
-                # saturation rather than NaN, but not a real "pointed and
-                # holding" safe mode. Scaled by this template's inertia
-                # relative to that reference (K,P both x (5/900)) converges
-                # cleanly instead (confirmed: sub-1e-6-degree final pointing
-                # error over the same run). See HISTORY.md for the full
-                # investigation -- this gain/inertia mismatch is a general
-                # risk for ANY small-sat-scale spacecraft left on
-                # DEFAULT_MRP_GAINS, not specific to this template.
-                control_params={"K": 0.0194, "P": 0.167},
-                power=PowerConfig(panel_area_m2=0.3, panel_efficiency=0.28, battery_capacity_wh=80.0),
+                # No control_params: the default gains are scaled to this
+                # bus's inertia (engine.fsw._default_mrp_gains_for_inertia).
+                # The unscaled K=3.5/P=30 (tuned for a 900 kg*m^2 spacecraft)
+                # left an earlier 5 kg*m^2 version of this template in a
+                # 30-degree oscillation.
+                # A 12 W bus load and a battery starting at 80%: with the old
+                # 0 W load and a full battery, charge sat flat at 80 Wh for
+                # the whole run (confirmed in a real Basilisk run). Now it
+                # charges to full in sunlight and drains ~6 Wh per eclipse.
+                power=PowerConfig(panel_area_m2=0.3, panel_efficiency=0.28, battery_capacity_wh=80.0,
+                                  bus_idle_power_w=12.0, battery_initial_soc=0.8),
             ),
         ],
     )
@@ -665,41 +603,13 @@ def build_08_mission_sequence_orbit_raise() -> Scenario:
     return Scenario(
         name="08 - Mission sequence: impulsive orbit raise",
         description=(
-            "Introduces the Mission Sequence layer (Resources/Mission Sequence/Output -- see this "
-            "project's HISTORY.md, 'What Phase 6 (Mission Sequence architecture) adds'): rather than one "
-            "single propagate-to-duration run, this scenario is a time-ordered list of commands, "
-            "editable as a tree in the GUI's 'Mission sequence' panel: coast, snapshot the orbit "
-            "state, apply a single prograde impulsive delta-V, coast again, snapshot again. The "
-            "maneuver command applies delta_v_m_s in the 'vnb' frame (velocity/normal/binormal -- "
-            "'inertial' applies it directly in the N frame instead, useful when you already know the "
-            "exact inertial-frame vector you want), so [50, 0, 0] here means '+50 m/s prograde', the "
-            "simplest kind of orbit-raising burn.\n\n"
-            "What to look at: run it and check the 'Mission Output' tab (or, from the CLI, "
-            "command_summary.csv) -- the two 'report' commands snapshot sat-1.position_N/velocity_N "
-            "before and after the burn. A prograde burn on a circular orbit raises the OPPOSITE side "
-            "of the orbit into an ellipse -- the orbit is no longer circular after the burn, with a "
-            "higher apoapsis where the spacecraft now moves slower and a periapsis back at the "
-            "original altitude.\n\n"
-            "Try changing: delta_v_m_s's magnitude (bigger burn = bigger apoapsis raise) or sign "
-            "(negative = retrograde, LOWERS the opposite side of the orbit instead), or add a second "
-            "maneuver command half an orbit later to circularize at the new higher altitude -- a "
-            "genuine two-burn Hohmann transfer, built entirely from this project's own mission "
-            "-sequence commands.\n\n"
-            "Updated to include 10th-degree spherical-harmonics gravity, Sun/Moon third-body gravity, "
-            "atmospheric drag, and solar radiation pressure -- physically relevant at 400 km, and this "
-            "template's own lesson (the Mission Sequence command layer / maneuver mechanics) doesn't "
-            "depend on a clean two-body baseline the way '01'/'09' deliberately do. Drag uses a "
-            "nominal, SYNTHETIC (solar-cycle-shaped, not a real forecast) space-weather profile, "
-            "generated entirely locally, no network access needed (see engine/spaceweather.py's own "
-            "'Closed-off/offline policy' docstring -- see template 04's own description for how to "
-            "restore a real historical-data CONSERVATIVE margin via a self-supplied local CelesTrak "
-            "CSV)."
+            DESCRIPTIONS["08"]
         ),
         epoch_utc="2030-01-01T00:00:00",
         simulation_mode="orbit_only",
         gravity=GravityConfig(central_body="earth", central_body_degree=10, third_body_perturbers=["sun", "moon"]),
         sim_settings=SimSettings(duration_days=1.0, dynamics_task_rate_s=10.0, integrator="rkf78"),
-        space_weather=_conservative_drag_margin(),
+        space_weather=_real_space_weather(),
         spacecraft=[
             SpacecraftConfig(
                 name="sat-1",
@@ -707,8 +617,9 @@ def build_08_mission_sequence_orbit_raise() -> Scenario:
                                inclination_deg=sun_synchronous_inclination_deg(6778.0),
                                raan_deg=raan_for_ltan_deg("2030-01-01T00:00:00"),
                                arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
-                dry_mass_kg=500.0,
-                enable_drag=True, drag_coeff=2.2, drag_area_m2=1.0,
+                dry_mass_kg=_LARGE_SMALLSAT_MASS_KG,
+                inertia_kg_m2=_box_inertia(_LARGE_SMALLSAT_MASS_KG, _LARGE_SMALLSAT_SIZE_M),
+                enable_drag=True, drag_coeff=OPERATIONS_DRAG_COEFF, drag_area_m2=1.0,
                 enable_srp=True, srp_coeff=1.3, srp_area_m2=1.0,
             ),
         ],
@@ -729,24 +640,7 @@ def build_09_monte_carlo_dispersion_analysis() -> Scenario:
     return Scenario(
         name="09 - Monte Carlo dispersion analysis",
         description=(
-            "The same circular LEO orbit as '01', but run as a Monte Carlo batch of 20 cases instead "
-            "of a single deterministic run: each case's dry_mass_kg is independently redrawn from a "
-            "normal distribution (mean 500 kg, std deviation 25 kg -- a stand-in for, e.g., propellant "
-            "-loading or manufacturing-tolerance uncertainty). This is the basic pattern behind real "
-            "uncertainty-quantification questions: 'given that I don't know this spacecraft's exact "
-            "mass to the kilogram, how much does that affect the outcome I care about?'\n\n"
-            "What to look at: run via the GUI's 'Run Monte Carlo...' action (or "
-            "'spacemissionstudio monte-carlo') and pick an archive directory -- each of the 20 runs is "
-            "archived separately, so you can compare e.g. final position across cases to see how much "
-            "(or how little) an 5% mass uncertainty actually perturbs the resulting orbit over a "
-            "1-day propagation (physically: not much, for pure two-body motion -- mass doesn't affect "
-            "trajectory at all, only propellant-consuming maneuvers/drag/SRP would show sensitivity; "
-            "try enabling one of those, or add an 'attitude_sigma_bn' dispersion, to see a case where "
-            "it does matter).\n\n"
-            "Try changing: num_runs (more runs = a smoother distribution of outcomes, at proportional "
-            "runtime cost), std_deviation (a wider spread), or add a second DispersionConfig with "
-            "quantity='attitude_sigma_bn'/kind='uniform_euler_mrp' for an initial-attitude dispersion "
-            "instead (needs simulation_mode='full_attitude')."
+            DESCRIPTIONS["09"]
         ),
         epoch_utc="2030-01-01T00:00:00",
         simulation_mode="orbit_only",
@@ -759,7 +653,8 @@ def build_09_monte_carlo_dispersion_analysis() -> Scenario:
                                inclination_deg=sun_synchronous_inclination_deg(6778.0),
                                raan_deg=raan_for_ltan_deg("2030-01-01T00:00:00"),
                                arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
-                dry_mass_kg=500.0,
+                dry_mass_kg=_LARGE_SMALLSAT_MASS_KG,
+                inertia_kg_m2=_box_inertia(_LARGE_SMALLSAT_MASS_KG, _LARGE_SMALLSAT_SIZE_M),
             ),
         ],
         monte_carlo=MonteCarloConfig(
@@ -776,24 +671,7 @@ def build_10_gravity_gradient_torque() -> Scenario:
     return Scenario(
         name="10 - Gravity gradient torque (uncontrolled)",
         description=(
-            "A spacecraft with NO attitude control (fsw_mode is None) and an elongated, non-spherical "
-            "inertia tensor (Ixx=Iyy=12.5, Izz=7.5 kg*m^2) with SpacecraftConfig.enable_gravity_gradient "
-            "set -- Basilisk's real GravityGradientEffector, the torque the central body's own gravity "
-            "exerts across a spacecraft's non-uniform mass distribution. With zero initial body rate "
-            "and no other torque source, a spacecraft normally stays frozen at its initial attitude for "
-            "the entire run (see '06'/'07' for what active control looks like); this one does NOT, "
-            "because gravity gradient torque is real physics, not a bug.\n\n"
-            "What to look at: this is a Basilisk-truth-level effect, not exposed as a named result "
-            "series when fsw_mode is None (see engine.service.SimulationService.run()'s own docstring) "
-            "-- the clearest way to see it is tests/test_gravity_gradient.py's own technique (reading "
-            "scStateOutMsg.sigma_BN directly), or simply watching the spacecraft's attitude indicator "
-            "drift in Vizard over the run instead of staying locked to its starting orientation. For a "
-            "spherically-symmetric inertia (Ixx=Iyy=Izz), this torque is identically zero -- try setting "
-            "all three equal and confirm it stays frozen again.\n\n"
-            "Try changing: the inertia spread (more elongated = stronger torque), the orbit altitude "
-            "(gravity gradient torque falls off as 1/r^3 -- much stronger effect in a very low orbit "
-            "than at GEO), or enable fsw_mode='inertial3D' with reaction wheels (see '07') to see an "
-            "active controller simply reject this as one more disturbance torque."
+            DESCRIPTIONS["10"]
         ),
         epoch_utc="2030-01-01T00:00:00",
         simulation_mode="full_attitude",
@@ -810,8 +688,10 @@ def build_10_gravity_gradient_torque() -> Scenario:
                                inclination_deg=sun_synchronous_inclination_deg(6778.0),
                                raan_deg=raan_for_ltan_deg("2030-01-01T00:00:00"),
                                arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
-                dry_mass_kg=500.0,
-                inertia_kg_m2=list(_INERTIA_MEDIUM),
+                # An elongated 1 x 1 x 2 m bus: the spread between Izz and
+                # Ixx/Iyy is what gravity gradient acts on.
+                dry_mass_kg=_LARGE_SMALLSAT_MASS_KG,
+                inertia_kg_m2=_box_inertia(_LARGE_SMALLSAT_MASS_KG, (1.0, 1.0, 2.0)),  # [kg*m^2] 208.3/208.3/83.3
                 sigma_bn_init=[0.0, 0.0, 0.0],
                 omega_bn_b_init_rad_s=[0.0, 0.0, 0.0],
                 enable_gravity_gradient=True,
@@ -824,23 +704,7 @@ def build_11_thruster_attitude_control() -> Scenario:
     return Scenario(
         name="11 - Attitude control via thrusters (no reaction wheels)",
         description=(
-            "The thruster counterpart to '06'/'07': instead of reaction wheels or an idealized "
-            "actuator, this spacecraft points itself using eight real ACS thrusters (an 8-thruster "
-            "corner-mounted cube layout, the same real configuration "
-            "examples/scenarioAttitudeFeedback2T_TH.py/scenarioMomentumDumping.py ship) via Basilisk's "
-            "real thrForceMapping -> thrFiringSchmitt -> thrusterDynamicEffector chain (see "
-            "engine.fsw.build_thrusters/build_thruster_force_mapping). fsw_mode 'inertial3D' commands a "
-            "fixed inertial attitude; the spacecraft starts tipped away from it with a small initial "
-            "body rate.\n\n"
-            "What to look at: result series '{sat-1}.thruster_on_time' (one column per thruster, "
-            "seconds) shows which thrusters fired and for how long as the controller worked to null "
-            "the attitude error -- compare against '07''s '{sat-1}.rw_speeds' to see the equivalent "
-            "signal for the reaction-wheel case. In Vizard, thruster plumes render natively "
-            "(engine.vizard.enable_vizard's thr_effectors_by_spacecraft) when a thruster is firing.\n\n"
-            "Try changing: each actuator's MaxThrust (weaker thrusters take longer to null the same "
-            "attitude error), or the thruster layout itself (fewer than 6 well-placed thrusters cannot "
-            "produce a pure torque about all three axes -- thrForceMapping will report a degraded/"
-            "saturated solution)."
+            DESCRIPTIONS["11"]
         ),
         epoch_utc="2030-01-01T00:00:00",
         simulation_mode="full_attitude",
@@ -851,21 +715,19 @@ def build_11_thruster_attitude_control() -> Scenario:
                 name="sat-1",
                 orbit=OrbitIC(type="classical_elements", semi_major_axis_km=6928.0, eccentricity=0.0,
                                inclination_deg=45.0, raan_deg=0.0, arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
-                dry_mass_kg=100.0,
-                inertia_kg_m2=[10.0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 10.0],
+                dry_mass_kg=_SMALLSAT_MASS_KG,
+                inertia_kg_m2=_box_inertia(_SMALLSAT_MASS_KG, _SMALLSAT_SIZE_M),
                 sigma_bn_init=[0.3, 0.2, -0.1],
                 omega_bn_b_init_rad_s=[0.0, 0.0, 0.0],
                 fsw_mode="inertial3D",
                 fsw_params={"sigma_R0N": [0.0, 0.0, 0.0]},
+                # Default (inertia-scaled) gains. On an earlier 10 kg*m^2
+                # version they asked for on-times below the thrusters' 20 ms
+                # minimum, so the thrusters barely fired; on this bus they
+                # do not.
                 actuators=[
-                    ActuatorConfig(kind="thruster", name=f"thr-{i + 1}",
-                                     params={"r_B": pos, "tHat_B": direction, "MaxThrust": 1.0})
-                    for i, (pos, direction) in enumerate(zip(
-                        [[-1, -1, 1.28], [1, -1, -1.28], [1, -1, 1.28], [1, 1, -1.28],
-                         [1, 1, 1.28], [-1, 1, -1.28], [-1, 1, 1.28], [-1, -1, -1.28]],
-                        [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0],
-                         [-1, 0, 0], [1, 0, 0], [0, -1, 0], [0, 1, 0]],
-                    ))
+                    ActuatorConfig(kind="thruster", name=f"thr-{i + 1}", params=params)
+                    for i, params in enumerate(_corner_thrusters((0.6, 0.6, 0.75), 1.0))  # [m], [N]
                 ],
             ),
         ],
@@ -876,23 +738,7 @@ def build_12_reaction_wheel_momentum_dumping() -> Scenario:
     return Scenario(
         name="12 - Reaction wheel momentum dumping",
         description=(
-            "A spacecraft under normal reaction-wheel attitude control (fsw_mode 'inertial3D', same "
-            "control chain as '07') whose four wheels start out already heavily spun up (the same "
-            "pre-saturated Omega values as examples/scenarioMomentumDumping.py) -- MomentumDumpingConfig "
-            "(hs_max=80 N*m*s) fires an 8-thruster desaturation cluster via thrMomentumManagement -> "
-            "thrForceMapping -> thrMomentumDumping (engine.fsw.build_momentum_dumping) to bleed the "
-            "excess momentum off, while the SAME reaction wheels stay in control of attitude the whole "
-            "time -- the thrusters here never do attitude control, only desaturation. "
-            "engine.service.SimulationService.build() automatically primes one dynamics tick and "
-            "re-Resets the desaturation module before the real run starts, a real Basilisk requirement "
-            "confirmed against this checkout's own build (see engine.fsw.build_momentum_dumping's "
-            "docstring) -- nothing about that is visible here, it just works.\n\n"
-            "What to look at: result series '{sat-1}.rw_speeds' should show all four wheel speeds "
-            "dropping in sharp steps (each step is one desaturation firing) rather than staying flat or "
-            "climbing; '{sat-1}.thruster_on_time' shows exactly when the desaturation thrusters fired.\n\n"
-            "Try changing: momentum_dumping.hs_max (a lower threshold triggers desaturation sooner/more "
-            "often), the wheels' initial Omega (closer to maxMomentum = desaturates almost immediately), "
-            "or remove momentum_dumping entirely to see the wheel speeds never decrease on their own."
+            DESCRIPTIONS["12"]
         ),
         epoch_utc="2030-01-01T00:00:00",
         simulation_mode="full_attitude",
@@ -905,38 +751,32 @@ def build_12_reaction_wheel_momentum_dumping() -> Scenario:
                                inclination_deg=sun_synchronous_inclination_deg(6928.0),
                                raan_deg=raan_for_ltan_deg("2030-01-01T00:00:00"),
                                arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
-                dry_mass_kg=2500.0,
-                inertia_kg_m2=[1700.0, 0.0, 0.0, 0.0, 1700.0, 0.0, 0.0, 0.0, 1800.0],
+                dry_mass_kg=_LARGE_SMALLSAT_MASS_KG,
+                inertia_kg_m2=_box_inertia(_LARGE_SMALLSAT_MASS_KG, _LARGE_SMALLSAT_SIZE_M),
                 sigma_bn_init=[0.0, 0.0, 0.0],
                 omega_bn_b_init_rad_s=[0.0, 0.0, 0.0],
                 fsw_mode="inertial3D",
                 fsw_params={"sigma_R0N": [0.0, 0.0, 0.0]},
                 actuators=[
                     ActuatorConfig(kind="reaction_wheel", name="rw-1",
-                                     params={"gsHat_B": [0.7071, 0.0, 0.7071], "rw_type": "Honeywell_HR16",
-                                             "maxMomentum": 100.0, "Omega": 4000.0}),
+                                     params={"gsHat_B": [0.7071, 0.0, 0.7071], "rw_type": "Honeywell_HR12",
+                                             "maxMomentum": 12.0, "Omega": 4000.0}),
                     ActuatorConfig(kind="reaction_wheel", name="rw-2",
-                                     params={"gsHat_B": [0.0, 0.7071, 0.7071], "rw_type": "Honeywell_HR16",
-                                             "maxMomentum": 100.0, "Omega": 2000.0}),
+                                     params={"gsHat_B": [0.0, 0.7071, 0.7071], "rw_type": "Honeywell_HR12",
+                                             "maxMomentum": 12.0, "Omega": 2000.0}),
                     ActuatorConfig(kind="reaction_wheel", name="rw-3",
-                                     params={"gsHat_B": [-0.7071, 0.0, 0.7071], "rw_type": "Honeywell_HR16",
-                                             "maxMomentum": 100.0, "Omega": 3500.0}),
+                                     params={"gsHat_B": [-0.7071, 0.0, 0.7071], "rw_type": "Honeywell_HR12",
+                                             "maxMomentum": 12.0, "Omega": 3500.0}),
                     ActuatorConfig(kind="reaction_wheel", name="rw-4",
-                                     params={"gsHat_B": [0.0, -0.7071, 0.7071], "rw_type": "Honeywell_HR16",
-                                             "maxMomentum": 100.0, "Omega": 0.0}),
+                                     params={"gsHat_B": [0.0, -0.7071, 0.7071], "rw_type": "Honeywell_HR12",
+                                             "maxMomentum": 12.0, "Omega": 0.0}),
                     *[
-                        ActuatorConfig(kind="thruster", name=f"desat-{i + 1}",
-                                         params={"r_B": pos, "tHat_B": direction, "MaxThrust": 5.0,
-                                                 "thruster_type": "MOOG_Monarc_5"})
-                        for i, (pos, direction) in enumerate(zip(
-                            [[-1, -1, 1.28], [1, -1, -1.28], [1, -1, 1.28], [1, 1, -1.28],
-                             [1, 1, 1.28], [-1, 1, -1.28], [-1, 1, 1.28], [-1, -1, -1.28]],
-                            [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0],
-                             [-1, 0, 0], [1, 0, 0], [0, -1, 0], [0, 1, 0]],
-                        ))
+                        ActuatorConfig(kind="thruster", name=f"desat-{i + 1}", params=params)
+                        for i, params in enumerate(_corner_thrusters(
+                            (0.6, 0.6, 0.8), 1.0, thruster_type="MOOG_Monarc_1"))  # [m], [N]
                     ],
                 ],
-                momentum_dumping=MomentumDumpingConfig(hs_max=80.0, thr_min_fire_time=0.02, max_counter_value=100),
+                momentum_dumping=MomentumDumpingConfig(hs_max=9.6, thr_min_fire_time=0.02, max_counter_value=100),  # [N*m*s], [s]
             ),
         ],
     )
@@ -946,26 +786,7 @@ def build_13_magnetic_torque_rod_momentum_management() -> Scenario:
     return Scenario(
         name="13 - Reaction wheel momentum management via magnetic torque rods",
         description=(
-            "The alternative desaturation strategy to '12': instead of waiting for total momentum to "
-            "cross a threshold and firing a discrete thruster burst, this spacecraft's four reaction "
-            "wheels (same skewed-pyramid layout as examples/scenarioMtbMomentumManagement.py) are "
-            "CONTINUOUSLY biased toward target speeds (800/600/400/200 RPM) the whole run, using four "
-            "magnetic torque rods and the real geomagnetic field (Basilisk's WMM model) via "
-            "MagneticMomentumManagementConfig (engine.fsw.build_mtb_desaturation: a dedicated "
-            "magnetometer + tamComm feed mtbMomentumManagement, which sits BETWEEN rwMotorTorque and "
-            "the RW hardware, modifying the commanded motor torque). No control-allocation conflict "
-            "with the fsw_mode='inertial3D' attitude pointing running at the same time -- magnetic "
-            "torque rods never do attitude control here, only this continuous momentum bias.\n\n"
-            "What to look at: result series '{sat-1}.rw_speeds' should climb from zero and settle near "
-            "800/600/400/200 RPM (converted: ~83.8/62.8/41.9/20.9 rad/s) over the ~2 hour run -- "
-            "confirmed by direct experimentation against a real Basilisk build to converge to within "
-            "about 0.5 RPM of each target. Compare the SHAPE of this convergence against '12''s sharp, "
-            "discrete desaturation steps -- same underlying problem (reaction wheels accumulating "
-            "momentum), two structurally different real Basilisk solutions.\n\n"
-            "Try changing: wheel_speed_biases_rad_s (different target speeds per wheel), c_gain (a "
-            "larger gain reacts faster but can overshoot/oscillate), or the orbit inclination (a "
-            "near-equatorial orbit sees a weaker, less favorably-oriented geomagnetic field than a "
-            "higher-inclination one, which can slow convergence noticeably)."
+            DESCRIPTIONS["13"]
         ),
         epoch_utc="2030-01-01T00:00:00",
         simulation_mode="full_attitude",
@@ -976,27 +797,26 @@ def build_13_magnetic_torque_rod_momentum_management() -> Scenario:
                 name="sat-1",
                 orbit=OrbitIC(type="classical_elements", semi_major_axis_km=6778.14, eccentricity=0.0,
                                inclination_deg=45.0, raan_deg=60.0, arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
-                dry_mass_kg=10.0,
-                inertia_kg_m2=[0.02 / 3, 0.0, 0.0, 0.0, 0.1256 / 3, 0.0, 0.0, 0.0, 0.1256 / 3],
+                dry_mass_kg=_MICROSAT_MASS_KG,
+                inertia_kg_m2=_box_inertia(_MICROSAT_MASS_KG, _MICROSAT_SIZE_M),
                 sigma_bn_init=[0.1, 0.2, -0.3],
                 omega_bn_b_init_rad_s=[0.001, -0.01, 0.03],
                 fsw_mode="inertial3D",
                 fsw_params={"sigma_R0N": [0.0, 0.0, 0.0]},
-                control_params={"K": 0.0001, "P": 0.002},
                 actuators=[
                     *[
                         ActuatorConfig(kind="reaction_wheel", name=f"rw-{i + 1}",
-                                         params={"gsHat_B": axis, "rw_type": "BCT_RWP015", "Omega_max": 5000.0})
+                                         params={"gsHat_B": axis, **_MICROSAT_WHEEL})
                         for i, axis in enumerate(_MTB_DEMO_RW_AXES)
                     ],
                     ActuatorConfig(kind="magnetic_torque_rod", name="mtb-1",
-                                     params={"gtHat_B": [1.0, 0.0, 0.0], "max_dipole_a_m2": 0.1}),
+                                     params={"gtHat_B": [1.0, 0.0, 0.0], "max_dipole_a_m2": 15.0}),
                     ActuatorConfig(kind="magnetic_torque_rod", name="mtb-2",
-                                     params={"gtHat_B": [0.0, 1.0, 0.0], "max_dipole_a_m2": 0.1}),
+                                     params={"gtHat_B": [0.0, 1.0, 0.0], "max_dipole_a_m2": 15.0}),
                     ActuatorConfig(kind="magnetic_torque_rod", name="mtb-3",
-                                     params={"gtHat_B": [0.0, 0.0, 1.0], "max_dipole_a_m2": 0.1}),
+                                     params={"gtHat_B": [0.0, 0.0, 1.0], "max_dipole_a_m2": 15.0}),
                     ActuatorConfig(kind="magnetic_torque_rod", name="mtb-4",
-                                     params={"gtHat_B": [0.70710678, 0.70710678, 0.0], "max_dipole_a_m2": 0.1}),
+                                     params={"gtHat_B": [0.70710678, 0.70710678, 0.0], "max_dipole_a_m2": 15.0}),
                 ],
                 magnetic_momentum_management=MagneticMomentumManagementConfig(
                     wheel_speed_biases_rad_s=[
@@ -1013,37 +833,7 @@ def build_14_css_sun_heading_estimation() -> Scenario:
     return Scenario(
         name="14 - Sun-heading estimation from coarse sun sensors",
         description=(
-            "Real sun-direction ESTIMATION (not truth) feeding a closed attitude-control loop: eight "
-            "coarse_sun_sensor devices in a cube layout (same directions as "
-            "examples/BskSim/models/BSK_Dynamics.py's SetCSSConstellation()) feed a dedicated "
-            "CSSConstellation + cssWlsEst weighted-least-squares estimator (engine.fsw."
-            "build_css_sun_estimation), and fsw_params['use_css_estimation']=True routes that ESTIMATE "
-            "(rather than simpleNav's truth) into fsw_mode 'sunSafePoint''s sunDirectionInMsg -- the "
-            "same architecture as examples/BskSim/scenarios/scenario_AttEclipse.py's real reference "
-            "(cssWlsEst -> sunSafePoint -> mrpFeedback -> reaction wheels).\n\n"
-            "control_params is deliberately NOT left at engine.fsw.DEFAULT_MRP_GAINS (K=3.5/P=30): that "
-            "default is lifted directly from Basilisk's own BSK_Fsw.py reference, tuned for THAT "
-            "example's 900 kg*m^2 spacecraft. Applied unscaled to this template's 5 kg*m^2 hub it is "
-            "roughly 180x too stiff -- confirmed directly against a real Basilisk build to produce a "
-            "persistent, non-decaying ~30-degree pointing oscillation (bounded by RW torque saturation, "
-            "not a crash, but never actually 'pointed and holding'). Scaling K and P by this hub's "
-            "inertia relative to that reference (both x 5/900) converges cleanly instead -- confirmed: "
-            "sub-1e-6-degree final pointing error. See HISTORY.md for the full investigation; this "
-            "gain/inertia mismatch is a general risk for ANY small-sat-scale spacecraft left on "
-            "DEFAULT_MRP_GAINS, worth checking on every new fsw_mode spacecraft this small, not "
-            "something specific to CSS estimation.\n\n"
-            "What to look at: '{sat-1}.sun_heading_body_estimated' (the CSS estimate) should settle near "
-            "[0, 0, 1] in the body frame as sunSafePoint drives the commanded body +Z axis "
-            "(sHatBdyCmd) onto the real sun direction -- compare its early, still-converging samples "
-            "against its settled final value to see the estimate itself stabilize as the attitude "
-            "stops moving. The WLS estimate's accuracy is purely geometry-dependent (how many of the "
-            "8 sensors are actually sunlit for the current sun direction, confirmed directly against a "
-            "real Basilisk build: an under-determined 2-of-8-illuminated case gave 14.5 degrees of "
-            "error, a well-conditioned 4-of-8 case gave an exact 0.0-degree match with zero sensor "
-            "noise) -- real hardware has exactly this coverage gap, it is not something to 'fix' here.\n\n"
-            "Try changing: the coarse_sun_sensor fov_deg values (a narrower FOV sees fewer sensors "
-            "illuminated at once, degrading the WLS conditioning), or fsw_params['use_css_estimation'] "
-            "to False to compare against simpleNav's noise-free truth sun direction instead."
+            DESCRIPTIONS["14"]
         ),
         epoch_utc="2030-01-01T00:00:00",
         simulation_mode="full_attitude",
@@ -1058,8 +848,8 @@ def build_14_css_sun_heading_estimation() -> Scenario:
                 name="sat-1",
                 orbit=OrbitIC(type="classical_elements", semi_major_axis_km=6928.0, eccentricity=0.0,
                                inclination_deg=45.0, raan_deg=0.0, arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
-                dry_mass_kg=50.0,
-                inertia_kg_m2=list(_INERTIA_SMALL),
+                dry_mass_kg=_MICROSAT_MASS_KG,
+                inertia_kg_m2=_box_inertia(_MICROSAT_MASS_KG, _MICROSAT_SIZE_M),
                 sigma_bn_init=[0.1, 0.2, -0.15],
                 omega_bn_b_init_rad_s=[0.001, -0.001, 0.0005],
                 sensors=[
@@ -1074,18 +864,14 @@ def build_14_css_sun_heading_estimation() -> Scenario:
                 ],
                 actuators=[
                     ActuatorConfig(kind="reaction_wheel", name="rw-1",
-                                     params={"gsHat_B": [1.0, 0.0, 0.0], "rw_type": "Honeywell_HR16",
-                                             "maxMomentum": 100.0}),
+                                     params={"gsHat_B": [1.0, 0.0, 0.0], **_MICROSAT_WHEEL}),
                     ActuatorConfig(kind="reaction_wheel", name="rw-2",
-                                     params={"gsHat_B": [0.0, 1.0, 0.0], "rw_type": "Honeywell_HR16",
-                                             "maxMomentum": 100.0}),
+                                     params={"gsHat_B": [0.0, 1.0, 0.0], **_MICROSAT_WHEEL}),
                     ActuatorConfig(kind="reaction_wheel", name="rw-3",
-                                     params={"gsHat_B": [0.0, 0.0, 1.0], "rw_type": "Honeywell_HR16",
-                                             "maxMomentum": 100.0}),
+                                     params={"gsHat_B": [0.0, 0.0, 1.0], **_MICROSAT_WHEEL}),
                 ],
                 fsw_mode="sunSafePoint",
                 fsw_params={"sHatBdyCmd": [0.0, 0.0, 1.0], "use_css_estimation": True},
-                control_params={"K": 0.0194, "P": 0.167},
             ),
         ],
     )
@@ -1093,26 +879,9 @@ def build_14_css_sun_heading_estimation() -> Scenario:
 
 def build_15_celestial_body_pointing() -> Scenario:
     return Scenario(
-        name="15 - Direct celestial-body pointing (locationPointing + target_body)",
+        name="15 - Direct celestial-body pointing (Moon)",
         description=(
-            "fsw_mode 'locationPointing' has TWO target options: '07'-style pointing at a ground "
-            "station (fsw_params['target_ground_station']), or pointing straight at a celestial body "
-            "(fsw_params['target_body']) -- this template is the second one. A body-fixed axis "
-            "(pHat_B, here the spacecraft +Z) stays pointed at the Moon throughout the orbit, built via "
-            "engine.fsw.build_ephemeris_converter() (SpicePlanetStateMsg -> EphemerisMsg -> "
-            "locationPointing.celBodyInMsg), the same converter + guidance pairing as Basilisk's own "
-            "examples/scenarioAsteroidArrival.py (there pointing an antenna at Earth and a camera at an "
-            "asteroid; here, at the Moon). target_body must name gravity.central_body or one of "
-            "gravity.third_body_perturbers -- 'moon' is SPICE-tracked here for exactly that reason.\n\n"
-            "What to look at: there is no separate result series for the body-to-target pointing error "
-            "yet (add a 'report' mission_sequence command on sat-1.attitude_sigma_bn, see '08', or watch "
-            "Vizard's live attitude indicator) -- but unlike '06'/'07's hillPoint/sunSafePoint, the "
-            "target direction here keeps changing as the Moon moves along its own orbit while the "
-            "spacecraft moves along its much faster one, so the commanded attitude is never constant.\n\n"
-            "Try changing: target_body to 'sun' (already SPICE-tracked here too) to compare a much "
-            "farther, slower-moving target's pointing behavior against the Moon's; or pHat_B to a "
-            "different body axis to re-point a different physical location on the spacecraft (e.g. a "
-            "antenna mounted off the +Z face) at the same target."
+            DESCRIPTIONS["15"]
         ),
         epoch_utc="2030-01-01T00:00:00",
         simulation_mode="full_attitude",
@@ -1131,8 +900,8 @@ def build_15_celestial_body_pointing() -> Scenario:
                                inclination_deg=sun_synchronous_inclination_deg(6928.0),
                                raan_deg=raan_for_ltan_deg("2030-01-01T00:00:00"),
                                arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
-                dry_mass_kg=300.0,
-                inertia_kg_m2=list(_INERTIA_MEDIUM),
+                dry_mass_kg=_SMALLSAT_MASS_KG,
+                inertia_kg_m2=_box_inertia(_SMALLSAT_MASS_KG, _SMALLSAT_SIZE_M),
                 sigma_bn_init=[0.1, 0.2, -0.15],
                 omega_bn_b_init_rad_s=[0.001, -0.001, 0.0005],
                 fsw_mode="locationPointing",
@@ -1146,32 +915,18 @@ def build_16_lambert_transfer() -> Scenario:
     from spacemissionstudio.schema.command import Command
 
     r_earth_m = 6378.0e3
-    time_of_flight_s = 2490.0
+    # Same timing as examples/scenarioLambertSolver.py: burn a quarter
+    # orbit in, arrive half an orbit in. Burning at t = 0 instead puts the
+    # transfer arc below Earth's surface (~6366 km), which
+    # min_orbit_radius_m rejects; the coast also gives the first report
+    # something recorded to show.
+    maneuver_time_s = 2490.0  # [s] a quarter of the 9952 s orbit
+    time_of_flight_s = 2490.0  # [s]
 
     return Scenario(
         name="16 - Lambert transfer: solving for a point-to-point delta-V",
         description=(
-            "A new Mission Sequence command kind: 'lambert_transfer' solves for whatever impulsive "
-            "delta-V takes the spacecraft from its CURRENT state to target_position_m after "
-            "time_of_flight_s, via Basilisk's own lambertPlanner -> lambertSolver -> lambertValidator "
-            "chain (engine.mission_engine.MissionEngine._run_lambert_transfer), then applies it "
-            "immediately -- unlike '08's 'maneuver' command, you specify WHERE you want to end up, not "
-            "the delta-V itself. Same underlying 3 Basilisk modules, same validation/reporting "
-            "philosophy as Basilisk's own examples/scenarioLambertSolver.py.\n\n"
-            "This exact configuration (orbit, target_position_m, time_of_flight_s) was confirmed "
-            "directly against a real Basilisk build to land within floating-point noise (sub-millimeter) "
-            "of target_position_m when the resulting delta-V is propagated forward by time_of_flight_s -- "
-            "not a hand-picked-to-look-plausible example.\n\n"
-            "What to look at: the 'Mission Output' tab's two 'report' commands snapshot "
-            "sat-1.position_N before and after the transfer -- after propagating for time_of_flight_s, "
-            "the 'after' position should sit almost exactly at target_position_m "
-            f"([{-(r_earth_m + 200.0e3):.0f}, 0, 0] m here).\n\n"
-            "Try changing: target_position_m (any reachable point works, not just ones near the current "
-            "orbit), time_of_flight_s (very short times need very large, often rejected, delta-Vs -- try "
-            "making it unreasonably small to see lambert_transfer raise a clear "
-            "'lambertValidator reported' error instead of silently doing nothing), or "
-            "min_orbit_radius_m (set it to the central body's own radius to reject any transfer "
-            "trajectory that would dip through the surface)."
+            DESCRIPTIONS["16"]
         ),
         epoch_utc="2030-01-01T00:00:00",
         simulation_mode="orbit_only",
@@ -1183,9 +938,12 @@ def build_16_lambert_transfer() -> Scenario:
                 orbit=OrbitIC(type="classical_elements", semi_major_axis_km=10000.0, eccentricity=0.001,
                                inclination_deg=5.0, raan_deg=10.0, arg_periapsis_deg=10.0, true_anomaly_deg=10.0),
                 dry_mass_kg=330.0,
+                inertia_kg_m2=_box_inertia(330.0, _SMALLSAT_SIZE_M),
             ),
         ],
         mission_sequence=[
+            Command(kind="propagate", label="Coast to burn point",
+                    params={"stop_condition": "duration", "duration_days": maneuver_time_s / 86400.0}),
             Command(kind="report", label="Before transfer", params={"series": []}),
             Command(kind="lambert_transfer", label="Lambert transfer burn", params={
                 "spacecraft": "sat-1",
@@ -1205,30 +963,7 @@ def build_17_fuel_tank_depletion() -> Scenario:
     return Scenario(
         name="17 - Real propellant depletion (fuel tank)",
         description=(
-            "The exact same 8-thruster attitude control setup as '11' (inertial3D pointing, the real "
-            "thrForceMapping -> thrFiringSchmitt -> thrusterDynamicEffector chain), with a real "
-            "FuelTankConfig added -- Basilisk's own fuelTank state effector (engine.fsw.build_fuel_tank, "
-            "confirmed against examples/MultiSatBskSim/modelsMultiSat/BSK_MultiSatDynamics.py's own "
-            "SetFuelTank()) now tracks REAL propellant depletion as the thrusters fire, reading the same "
-            "mass-flow rate (mDot = F / (steadyIsp * g0)) each thruster already computes for its own "
-            "physics -- unlike this app's older station-keeping/phasing/constant-thrust propellant "
-            "bookkeeping (engine.orbit_maintenance, a hand-rolled Python estimate), this is Basilisk's "
-            "own state effector doing the real physics, including the resulting center-of-mass shift as "
-            "propellant depletes.\n\n"
-            "This exact configuration was confirmed directly against a real Basilisk build: the "
-            "spacecraft's attitude error converges from its initial tip (sigma norm ~0.37) to near-zero "
-            "(~0.002) within about 100-150 seconds, consuming roughly 0.185 kg of the tank's 0.5 kg "
-            "starting load during that active correction burn -- then '{sat-1}.fuel_mass_remaining' goes "
-            "flat once the attitude has converged and the thrusters stop firing, a clean before "
-            "/during/after depletion curve.\n\n"
-            "What to look at: result series '{sat-1}.fuel_mass_remaining' alongside '{sat-1}"
-            ".thruster_on_time' -- the fuel-depletion curve's steep drop should line up exactly with the "
-            "period where thrusters are actively firing, then both go flat together.\n\n"
-            "Try changing: fuel_tank.propellant_mass_kg (set it below the ~0.185 kg this convergence "
-            "burn needs to see what happens when the tank runs dry mid-maneuver -- thrusterDynamicEffector "
-            "keeps commanding thrust, but fuelTank has nothing left to give), or each thruster's "
-            "steadyIsp (a lower Isp burns through the same delta-V budget using more propellant, a "
-            "higher Isp less)."
+            DESCRIPTIONS["17"]
         ),
         epoch_utc="2030-01-01T00:00:00",
         simulation_mode="full_attitude",
@@ -1239,21 +974,19 @@ def build_17_fuel_tank_depletion() -> Scenario:
                 name="sat-1",
                 orbit=OrbitIC(type="classical_elements", semi_major_axis_km=6928.0, eccentricity=0.0,
                                inclination_deg=45.0, raan_deg=0.0, arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
-                dry_mass_kg=100.0,
-                inertia_kg_m2=[10.0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 10.0],
+                dry_mass_kg=_SMALLSAT_MASS_KG,
+                inertia_kg_m2=_box_inertia(_SMALLSAT_MASS_KG, _SMALLSAT_SIZE_M),
                 sigma_bn_init=[0.3, 0.2, -0.1],
                 omega_bn_b_init_rad_s=[0.0, 0.0, 0.0],
                 fsw_mode="inertial3D",
                 fsw_params={"sigma_R0N": [0.0, 0.0, 0.0]},
+                # Default (inertia-scaled) gains. On an earlier 10 kg*m^2
+                # version they asked for on-times below the thrusters' 20 ms
+                # minimum, so the thrusters barely fired; on this bus they
+                # do not.
                 actuators=[
-                    ActuatorConfig(kind="thruster", name=f"thr-{i + 1}",
-                                     params={"r_B": pos, "tHat_B": direction, "MaxThrust": 1.0})
-                    for i, (pos, direction) in enumerate(zip(
-                        [[-1, -1, 1.28], [1, -1, -1.28], [1, -1, 1.28], [1, 1, -1.28],
-                         [1, 1, 1.28], [-1, 1, -1.28], [-1, 1, 1.28], [-1, -1, -1.28]],
-                        [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0],
-                         [-1, 0, 0], [1, 0, 0], [0, -1, 0], [0, 1, 0]],
-                    ))
+                    ActuatorConfig(kind="thruster", name=f"thr-{i + 1}", params=params)
+                    for i, params in enumerate(_corner_thrusters((0.6, 0.6, 0.75), 1.0))  # [m], [N]
                 ],
                 fuel_tank=FuelTankConfig(propellant_mass_kg=0.5, max_propellant_mass_kg=1.0),
             ),
@@ -1287,44 +1020,13 @@ def build_18_leo_station_keeping() -> Scenario:
     return Scenario(
         name="18 - LEO station-keeping",
         description=(
-            "The direct LEO counterpart to '03' (GEO station-keeping): a 400 km small satellite "
-            "actively maintaining its altitude against atmospheric drag -- the actual dominant driver "
-            "of LEO altitude decay, the same way Sun/Moon/SRP drive GEO drift in '03' -- using the "
-            "exact same station_keeping deadband thrust controller. Unlike GEO's typically-infrequent "
-            "corrections, LEO drag is continuous and altitude-dependent (denser air lower down means "
-            "faster decay), so this spacecraft needs noticeably more frequent, smaller corrections.\n\n"
-            "What to look at: same as '03' -- run the CLI and check command_summary/results for "
-            "propellant used over the 14-day run, and compare the number/frequency of burns against "
-            "'03's GEO case in the station-keeping summary (README, 'Running the CLI'). The contrast "
-            "is the lesson: GEO drift is slow and the deadband is wide (5 km) because the perturbing "
-            "forces are weak and roughly constant; LEO drag is faster and the deadband here is tight "
-            "(1 km) because a satellite this low can lose multiple km of altitude in days, not years.\n\n"
-            "Try changing: the orbit's semi_major_axis_km (lower = thicker atmosphere = much faster "
-            "decay = more frequent burns -- try 350 km or 300 km to see the effect accelerate "
-            "sharply), drag_area_m2/drag_coeff (a satellite with more cross-sectional area per unit "
-            "mass decays faster), or deadband_km (tighter means more frequent, smaller corrections, "
-            "the same trade '03' suggests for GEO).\n\n"
-            "enable_srp is deliberately OFF here (unlike '04'/'05', which enable it alongside drag): "
-            "the point of this template, like '03's point about GEO, is to isolate the ONE dominant "
-            "perturbation (drag) rather than mix in a secondary effect SRP is at this altitude. Uses "
-            "the same nominal, SYNTHETIC (solar-cycle-shaped, not a real forecast) nrlmsise00 "
-            "space-weather profile as '04'/'05'/'07'/'08' -- generated entirely locally, no network "
-            "access needed (see engine/spaceweather.py's own 'Closed-off/offline policy' docstring; "
-            "see template 04's own description for how to restore a real historical-data "
-            "CONSERVATIVE margin via a self-supplied local CelesTrak CSV). NOTE: like '05', this "
-            "template's exact "
-            "decay rate under the real nrlmsise00 model has NOT been re-verified against a real "
-            "multi-day Basilisk run in this development sandbox (no route to the NAIF SPICE kernel "
-            "host or CelesTrak here) -- the station_keeping/drag parameters were instead tuned and "
-            "confirmed against a bypass-SPICE build using a realistically-reparameterized simple "
-            "exponential atmosphere model (2-3 real reboost burns over 14 days, well under budget); "
-            "please report back if the real nrlmsise00 propellant budget looks off."
+            DESCRIPTIONS["18"]
         ),
         epoch_utc="2030-01-01T00:00:00",
         simulation_mode="orbit_only",
         gravity=GravityConfig(central_body="earth", central_body_degree=10, third_body_perturbers=["sun", "moon"]),
         sim_settings=SimSettings(duration_days=14.0, dynamics_task_rate_s=30.0, integrator="rkf78"),
-        space_weather=_conservative_drag_margin(),
+        space_weather=_real_space_weather(),
         spacecraft=[
             SpacecraftConfig(
                 name="leo-sat-1",
@@ -1333,7 +1035,8 @@ def build_18_leo_station_keeping() -> Scenario:
                                raan_deg=raan_for_ltan_deg("2030-01-01T00:00:00"),
                                arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
                 dry_mass_kg=120.0,
-                enable_drag=True, drag_coeff=2.2, drag_area_m2=1.5,
+                inertia_kg_m2=_box_inertia(120.0, _MICROSAT_SIZE_M),
+                enable_drag=True, drag_coeff=OPERATIONS_DRAG_COEFF, drag_area_m2=1.5,
                 station_keeping=StationKeepingConfig(
                     target_altitude_km=400.0, deadband_km=1.0, thrust_n=0.05, isp_s=1500.0,
                     propellant_kg=2.0,
@@ -1343,12 +1046,17 @@ def build_18_leo_station_keeping() -> Scenario:
     )
 
 
+# 08:30 UTC: Berlin is near this orbit's ~09:50-local crossing, so the
+# first pass comes ~10 min in (see build_19's comment).
+_COMMS_EPOCH_UTC = "2030-01-01T08:30:00"
+
+
 def build_19_sun_pointing_comms_link() -> Scenario:
     # Verification note (see this function's own user-facing description
     # below for the short version): this sandbox has no Basilisk build, so
     # nothing here could be run end-to-end. The ONE piece of numeric tuning
     # this template reuses -- idealized-torque mrpFeedback control on
-    # _INERTIA_MEDIUM at dynamics_task_rate_s=0.1s with DEFAULT_MRP_GAINS --
+    # dynamics_task_rate_s=0.1s with the inertia-scaled default gains --
     # is the EXACT combination '06' already confirmed stable against a real
     # Basilisk build (see build_06_attitude_pointing_basic()'s own comment);
     # comms_pointing only supports idealized actuation (see
@@ -1357,90 +1065,34 @@ def build_19_sun_pointing_comms_link() -> Scenario:
     # independently re-confirmed here: that this same combo stays stable
     # through MUCH LARGER-angle slews (Sun-pointing <-> ground-station
     # -pointing can be up to a ~180-degree reorientation, not '06's small
-    # initial offset) over a much longer, 12-hour run. MRP feedback's own
+    # initial offset) over a much longer run. MRP feedback's own
     # commanded-torque term is naturally bounded regardless of angle size
     # (sigma_BR's magnitude never exceeds 1, with the shadow-set switch
     # keeping it there), which is why this risk is believed low -- but
     # please report back if a real run shows otherwise.
     #
-    # Ground-station pass geometry: sun_synchronous_inclination_deg(6928.0)
-    # (see that function's own derivation/verification comment) is
-    # near-polar and covers every longitude under the station's latitude
-    # band within about one nodal period regardless of the exact RAAN
-    # chosen, so this doesn't depend on fine-tuning raan_deg/true_anomaly_deg
-    # against a specific station longitude the way, say, a GEO
-    # station-keeping template would -- but the exact NUMBER and duration of
-    # passes over half a day couldn't be independently re-confirmed against
-    # a real Basilisk run here either. If a run shows zero access windows,
-    # the most likely fix is sim_settings.duration_days (try 1.0 instead of
-    # 0.5) rather than the orbit geometry itself.
+    # Ground-station pass geometry. A Sun-synchronous orbit crosses a given
+    # latitude only at two fixed LOCAL times: for this 10:30-LTAN orbit,
+    # Berlin (52.5 N) passes under it around 09:50 and 23:10 local solar
+    # time. The old midnight-UTC epoch (00:50 in Berlin) therefore put the
+    # first pass ~8.2 h into a 12 h run -- real user report: "there's never
+    # ground station contact". The epoch is now 08:30 UTC (09:23 in
+    # Berlin), so with true_anomaly_deg=0 the first pass starts ~10 min in
+    # (sunlit, ~61 deg peak elevation) and a second, low one (~16 deg)
+    # follows one orbit later, ~107 min in. Found by searching epoch and
+    # starting anomaly with a J2 orbit model and the IAU_EARTH rotation
+    # SPICE uses (pck00010), then checked with an RK4 J2 propagation; not
+    # yet confirmed in a Basilisk run in this sandbox (no SPICE kernels).
+    # tests/test_scenario_templates.py re-checks the geometry offline.
     return Scenario(
         name="19 - Sun-pointing spacecraft with automatic ground-station comms link",
         description=(
-            "An integrated small-satellite mission: 'leo-comms-1' normally points its solar panel "
-            "normal at the real, live Sun (fsw_mode-equivalent 'sunSafePoint' behavior, continuously "
-            "tracking the actual Sun direction, never a fixed inertial attitude) to maximize power "
-            "generation. Whenever this spacecraft comes into REAL, geometry-driven access of the "
-            "'berlin-gs' ground station (Basilisk's own groundLocation.GroundLocation elevation-mask "
-            "access analysis -- never a manually-specified time window), comms_pointing "
-            "(schema.scenario.CommsPointingConfig) automatically takes over and re-points the "
-            "spacecraft's antenna boresight at the ground station instead, switching back to "
-            "Sun-pointing the instant access ends. This is schema_version's newest capability: see "
-            "engine.fsw.build_comms_pointing()'s docstring for how the switch works -- only the "
-            "attitude REFERENCE changes; the spacecraft's own integrated attitude state is never reset, "
-            "so the existing closed-loop mrpFeedback controller physically SLEWS between the two "
-            "targets across every transition (watch sat.attitude_sigma_BN step continuously across an "
-            "access-start/access-end boundary -- never jump) rather than snapping instantly.\n\n"
-            "Power (schema.scenario.PowerConfig) and an RF downlink (schema.scenario.RFLinkConfig, "
-            "with a beamwidth-dependent antenna-pointing-loss term) respond to this real, simulated "
-            "behavior, not independent canned numbers: solar generation depends on the spacecraft's "
-            "actual attitude (panel-to-sun angle) and real eclipse state every tick; the comms "
-            "transmitter's extra comms_power_w draws from the SAME battery only while ground-station "
-            "-pointing is actually active; and the downlink's link margin (engine.link_budget) is "
-            "computed from the REAL simulated slant range AND the spacecraft's own actually-achieved "
-            "antenna pointing error -- not an assumption of perfect boresight. Crucially, the link "
-            "margin series is gated on BOTH real geometric access (gs.access_to_sat.has_access) AND "
-            "the spacecraft having actually switched into ground-station-pointing mode "
-            "(sat.comms_pointing.active_mode) -- so a margin value only appears once there's an "
-            "actual attempted link, and during the slew right after a pass begins, the still-large "
-            "antenna pointing error can legitimately show a DEGRADED or even negative margin even "
-            "though hasAccess is already true: this is the 'geometric visibility vs actual RF link "
-            "availability' distinction made concrete, not just asserted.\n\n"
-            "What to look at: after running, find one access window in "
-            "'berlin-gs.access_to_leo-comms-1.has_access' and, across that SAME window, cross-plot: "
-            "'leo-comms-1.comms_pointing.active_mode' (0 -> 1 at access start, back to 0 at access "
-            "end), 'leo-comms-1.comms_pointing.pointing_error_deg' (large right at the transition, "
-            "decaying toward ~0 as the slew converges), 'leo-comms-1.power.battery_soc' (dips a bit "
-            "faster while comms_power_w is drawing, recovers once Sun-pointing resumes and the panel "
-            "is well-illuminated), and 'berlin-gs.access_to_leo-comms-1.link_margin_db' (should be "
-            "poor/undefined right at the transition, then settle to a healthy positive margin once "
-            "pointing converges, and should also visibly worsen as elevation drops toward the pass's "
-            "edges -- real free-space-path-loss growing with slant range). Compare against a window "
-            "with NO access at all, where active_mode should stay continuously 0 and link_margin_db "
-            "should be entirely NaN (no link attempted).\n\n"
-            "Try changing: berlin-gs's min_elevation_deg (lower = longer, more frequent but lower "
-            "-quality passes), rf_link.antenna_beamwidth_deg (narrower = pointing error matters MORE, "
-            "a bigger dip in margin during each transition's slew), comms_pointing.comms_power_w "
-            "(higher = a more visible battery drain during each pass), or sim_settings.duration_days "
-            "(longer = more passes, at the cost of a bigger recorded dataset -- see the generator "
-            "script's own comment on why this template doesn't go beyond 0.5 days by default).\n\n"
-            "Known, deliberately-not-used upgrade path: Basilisk's own source tree has a more "
-            "physically-complete, compiled antenna + link-budget pair "
-            "(src/simulation/communication/simpleAntenna, .../linkBudget -- a real 2D-Gaussian-beam "
-            "antenna pattern computing pointing loss from true 3D spacecraft/ground antenna geometry, "
-            "plus FSPL and ITU-R P.676 atmospheric attenuation). This template deliberately does NOT "
-            "use it: no example scenario anywhere in this checkout exercises those modules yet, so "
-            "there's no reference usage to confirm the wiring against -- unlike every other module "
-            "this project uses. This template's simplified, already-proven, Basilisk-free "
-            "engine.link_budget.py is used instead (now extended with its own, textbook parabolic "
-            "-pattern pointing-loss approximation, not the real antenna geometry). A real future "
-            "upgrade would swap this template's RFLinkConfig/link_budget wiring for those native "
-            "modules once a reference example exists to validate the integration against."
+            DESCRIPTIONS["19"]
         ),
-        epoch_utc="2030-01-01T00:00:00",
+        epoch_utc=_COMMS_EPOCH_UTC,
         simulation_mode="full_attitude",
         gravity=GravityConfig(central_body="earth", central_body_degree=10, third_body_perturbers=["sun", "moon"]),
-        sim_settings=SimSettings(duration_days=0.5, dynamics_task_rate_s=0.1, integrator="rkf78"),
+        sim_settings=SimSettings(duration_days=135.0 / 1440.0, dynamics_task_rate_s=0.1, integrator="rkf78"),
         ground_stations=[
             _berlin_ground_station(rx_antenna_gain_dbi=35.0, system_noise_temp_k=150.0),
         ],
@@ -1449,10 +1101,10 @@ def build_19_sun_pointing_comms_link() -> Scenario:
                 name="leo-comms-1",
                 orbit=OrbitIC(type="classical_elements", semi_major_axis_km=6928.0, eccentricity=0.0,
                                inclination_deg=sun_synchronous_inclination_deg(6928.0),
-                               raan_deg=raan_for_ltan_deg("2030-01-01T00:00:00"),
+                               raan_deg=raan_for_ltan_deg(_COMMS_EPOCH_UTC),
                                arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
-                dry_mass_kg=60.0,
-                inertia_kg_m2=list(_INERTIA_MEDIUM),
+                dry_mass_kg=_MICROSAT_MASS_KG,
+                inertia_kg_m2=_box_inertia(_MICROSAT_MASS_KG, _MICROSAT_SIZE_M),
                 sigma_bn_init=[0.2, -0.1, 0.15],
                 omega_bn_b_init_rad_s=[0.001, -0.001, 0.0005],
                 power=PowerConfig(
@@ -1479,10 +1131,8 @@ def build_19_sun_pointing_comms_link() -> Scenario:
 def build_20_thermal_simulation() -> Scenario:
     # Verification note (same sandbox limitation as every other template's
     # own comment): no Basilisk build exists here, so this couldn't be run
-    # end-to-end in this environment. sunSafePoint + idealized-ish hardware
-    # control reuses the EXACT control_params/_INERTIA_SMALL combination
-    # '07'/'15' already confirmed stable against a real Basilisk build
-    # (see build_07_attitude_pointing_with_adcs_hardware()'s own comment);
+    # end-to-end in this environment. sunSafePoint control uses the same
+    # bus, wheels and inertia-scaled default gains as '07';
     # the "thermal" sensor/motor-thermal physical parameters themselves
     # (area_m2/absorptivity/emissivity/mass_kg/specific_heat_j_kg_k) were
     # run for real against this project's own Basilisk venv in
@@ -1494,38 +1144,7 @@ def build_20_thermal_simulation() -> Scenario:
     return Scenario(
         name="20 - Thermal simulation: sensor heating/cooling + reaction-wheel motor heat",
         description=(
-            "Adds Basilisk's real thermal modules on top of '07's own ADCS hardware suite: a "
-            "'thermal' sensor (sensorThermal.SensorThermal) models the temperature of an externally "
-            "-mounted component (e.g. a star-tracker baffle or avionics panel) as it heats under "
-            "direct sunlight and cools in Earth's shadow -- real radiative absorption/emission plus "
-            "an internal power-to-heat draw, not an analytical estimate; its own optional "
-            "measurement_* params add noise/bias/fault on top, same device-interface-realism shape "
-            "as every other sensor kind (see schema.scenario's own SUPPORTED_SENSOR_KINDS comment). "
-            "Separately, 'rw-1' also carries an OPTIONAL motor-thermal model "
-            "(motorThermal.MotorThermal, the motor_thermal_* params) -- a reaction wheel generates "
-            "real heat from motor inefficiency and friction, independent of whether any 'thermal' "
-            "sensor is configured at all; 'rw-2'/'rw-3' deliberately have none set, showing this is "
-            "per-wheel opt-in, not an all-or-nothing spacecraft setting.\n\n"
-            "What to look at: 'sat-1.sensor.therm-1.temperature' should visibly rise while the orbit "
-            "is in sunlight and fall across each eclipse pass (compare its timing against this "
-            "spacecraft's own eclipse windows, inferred from where power.battery_soc stops "
-            "recharging) -- a handful of full orbits are simulated specifically so more than one "
-            "heating/cooling cycle is visible. 'sat-1.actuator.rw-1.motor_temperature' separately "
-            "drifts toward motor_thermal_ambient_temp_c as the wheel spins (friction/inefficiency "
-            "heat vs. ambient dissipation), decoupled from the sensor's own sun-driven cycle.\n\n"
-            "Try changing: therm-1's nHat_B (a face pointed away from the Sun-pointing axis sees a "
-            "very different, possibly inverted, heating pattern -- see sunSafePoint's own "
-            "sHatBdyCmd below for which body axis is actually Sun-pointed), area_m2/absorptivity/"
-            "emissivity/mass_kg/specific_heat_j_kg_k (a larger mass_kg*specific_heat_j_kg_k heat "
-            "capacity makes the whole temperature curve respond more slowly/smoothly to each "
-            "sunlight/eclipse transition), or rw-1's motor_thermal_efficiency (closer to 1.0 means "
-            "less waste heat, a flatter motor-temperature curve -- note 1.0 itself is rejected, see "
-            "that field's own validation message).\n\n"
-            "Known, deliberately-not-used real Basilisk capability: engine.fsw.attach_sensors's own "
-            "'thermal' kind does not yet expose sensorThermal's sensorStatusInMsg (a DeviceStatusMsg "
-            "that can turn sensorPowerDraw on/off at run time, e.g. tied to a duty cycle) -- this "
-            "template's power_draw_w is a constant, always-on draw instead. A real future upgrade "
-            "would wire a DeviceStatusMsg source (this app has none today) to that input."
+            DESCRIPTIONS["20"]
         ),
         epoch_utc="2030-01-01T00:00:00",
         simulation_mode="full_attitude",
@@ -1542,28 +1161,31 @@ def build_20_thermal_simulation() -> Scenario:
                                inclination_deg=sun_synchronous_inclination_deg(6928.0),
                                raan_deg=raan_for_ltan_deg("2030-01-01T00:00:00"),
                                arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
-                dry_mass_kg=50.0,
-                inertia_kg_m2=list(_INERTIA_SMALL),
+                dry_mass_kg=_MICROSAT_MASS_KG,
+                inertia_kg_m2=_box_inertia(_MICROSAT_MASS_KG, _MICROSAT_SIZE_M),
                 sigma_bn_init=[0.1, 0.2, -0.15],
                 omega_bn_b_init_rad_s=[0.001, -0.001, 0.0005],
                 sensors=[
                     SensorConfig(kind="star_tracker", name="st-1", params={"noise_arcsec": 5.0}),
                     SensorConfig(kind="imu", name="imu-1", params={"gyro_noise_rad_s": 1e-5}),
-                    SensorConfig(kind="coarse_sun_sensor", name="css-1", params={"nHat_B": [1.0, 0.0, 0.0]}),
+                    # +Z: the face sunSafePoint turns to the Sun (its default
+                    # sHatBdyCmd); a +X sensor would see it edge-on, i.e. never.
+                    SensorConfig(kind="coarse_sun_sensor", name="css-1", params={"nHat_B": [0.0, 0.0, 1.0]}),
                     # A small (0.05 m^2), externally-mounted panel sharing
-                    # the CSS's own sun-facing normal, so it genuinely
-                    # tracks this spacecraft's real sunlight/eclipse cycle
-                    # rather than always reading near-zero projected area.
+                    # the CSS's own sun-facing +Z normal, so it genuinely
+                    # tracks this spacecraft's real sunlight/eclipse cycle.
+                    # It used to face +X, which sunSafePoint holds edge-on
+                    # to the Sun: zero projected area, so no solar heating
+                    # at all once the attitude settled.
                     SensorConfig(kind="thermal", name="therm-1", params={
-                        "nHat_B": [1.0, 0.0, 0.0], "area_m2": 0.05, "absorptivity": 0.25, "emissivity": 0.34,
+                        "nHat_B": [0.0, 0.0, 1.0], "area_m2": 0.05, "absorptivity": 0.25, "emissivity": 0.34,
                         "mass_kg": 0.3, "specific_heat_j_kg_k": 890.0, "initial_temp_c": 0.0,
                         "power_draw_w": 0.5, "measurement_noise_std_c": 0.2,
                     }),
                 ],
                 actuators=[
                     ActuatorConfig(kind="reaction_wheel", name="rw-1",
-                                    params={"gsHat_B": [1.0, 0.0, 0.0], "rw_type": "Honeywell_HR16",
-                                            "maxMomentum": 100.0,
+                                    params={"gsHat_B": [1.0, 0.0, 0.0], **_MICROSAT_WHEEL,
                                             # Optional motor-thermal model
                                             # -- see this template's own
                                             # description above for why
@@ -1574,20 +1196,63 @@ def build_20_thermal_simulation() -> Scenario:
                                             "motor_thermal_ambient_resistance_w_c": 5.0,
                                             "motor_thermal_heat_capacity_j_c": 50.0}),
                     ActuatorConfig(kind="reaction_wheel", name="rw-2",
-                                    params={"gsHat_B": [0.0, 1.0, 0.0], "rw_type": "Honeywell_HR16",
-                                            "maxMomentum": 100.0}),
+                                    params={"gsHat_B": [0.0, 1.0, 0.0], **_MICROSAT_WHEEL}),
                     ActuatorConfig(kind="reaction_wheel", name="rw-3",
-                                    params={"gsHat_B": [0.0, 0.0, 1.0], "rw_type": "Honeywell_HR16",
-                                            "maxMomentum": 100.0}),
+                                    params={"gsHat_B": [0.0, 0.0, 1.0], **_MICROSAT_WHEEL}),
                 ],
                 fsw_mode="sunSafePoint",
-                # Same inertia-scaled gains as '07'/'15' (_INERTIA_SMALL,
-                # 5 kg*m^2) -- see build_07_attitude_pointing_with_adcs_hardware()'s
-                # own comment for the real-Basilisk-confirmed derivation.
-                control_params={"K": 0.0194, "P": 0.167},
                 power=PowerConfig(panel_area_m2=0.3, panel_efficiency=0.28, battery_capacity_wh=80.0),
             ),
         ],
+    )
+
+
+def build_21_disturbance_torques() -> Scenario:
+    # Two copies of one 300 kg Sun-pointing spacecraft, flown side by side:
+    # a facet model with the 2.5 m^2 array on a boom 1.5 m off to +Y, so
+    # solar pressure (and drag) push off-centre. "rods-off" has only its
+    # wheels, which soak up that torque all day; "rods-on" also has torque
+    # rods steering its wheels back to rest. Confirmed in a real Basilisk
+    # run (see tests/test_template_claims.py).
+    epoch = "2030-01-01T00:00:00"
+    semi_major_axis_km = 6378.0 + 450.0  # [km] low enough for drag torque to matter too
+
+    def spacecraft(name: str, with_rods: bool) -> SpacecraftConfig:
+        axes = (("x", [1.0, 0.0, 0.0]), ("y", [0.0, 1.0, 0.0]), ("z", [0.0, 0.0, 1.0]))
+        actuators = [ActuatorConfig(kind="reaction_wheel", name=f"rw-{axis_name}",
+                                    params={"gsHat_B": axis, "rw_type": "Honeywell_HR12", "maxMomentum": 12.0})
+                     for axis_name, axis in axes]
+        if with_rods:
+            actuators += [ActuatorConfig(kind="magnetic_torque_rod", name=f"mtb-{axis_name}",
+                                         params={"gtHat_B": axis, "max_dipole_a_m2": 30.0})  # [A*m^2]
+                          for axis_name, axis in axes]
+        return SpacecraftConfig(
+            name=name,
+            orbit=OrbitIC(type="classical_elements", semi_major_axis_km=semi_major_axis_km, eccentricity=0.0,
+                          inclination_deg=sun_synchronous_inclination_deg(semi_major_axis_km),
+                          raan_deg=raan_for_ltan_deg(epoch), arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
+            dry_mass_kg=_SMALLSAT_MASS_KG,
+            inertia_kg_m2=_box_inertia(_SMALLSAT_MASS_KG, _SMALLSAT_SIZE_M),
+            enable_drag=True, enable_srp=True,
+            facets=box_facets(_SMALLSAT_SIZE_M, 2.5, (0.0, 0.0, 1.0), (0.0, 1.5, 0.75),  # [m], [m^2]
+                              drag_coeff=OPERATIONS_DRAG_COEFF),
+            sensors=[SensorConfig(kind="coarse_sun_sensor", name="css-1", params={"nHat_B": [0.0, 0.0, 1.0]})],
+            actuators=actuators,
+            magnetic_momentum_management=(MagneticMomentumManagementConfig(wheel_speed_biases_rad_s=[0.0] * 3)
+                                          if with_rods else None),
+            fsw_mode="sunSafePoint",
+            fsw_params={"sHatBdyCmd": [0.0, 0.0, 1.0]},
+        )
+
+    return Scenario(
+        name="21 - Disturbance torques from a facet model",
+        description=DESCRIPTIONS["21"],
+        epoch_utc=epoch,
+        simulation_mode="full_attitude",
+        gravity=GravityConfig(central_body="earth", central_body_degree=2, third_body_perturbers=["sun"]),
+        sim_settings=SimSettings(duration_days=1.0, dynamics_task_rate_s=10.0, integrator="rkf78"),
+        space_weather=_real_space_weather(),
+        spacecraft=[spacecraft("rods-off", False), spacecraft("rods-on", True)],
     )
 
 
@@ -1614,6 +1279,7 @@ def main() -> None:
     _save(build_18_leo_station_keeping(), "18_leo_station_keeping.json")
     _save(build_19_sun_pointing_comms_link(), "19_sun_pointing_comms_link.json")
     _save(build_20_thermal_simulation(), "20_thermal_simulation.json")
+    _save(build_21_disturbance_torques(), "21_disturbance_torques.json")
 
 
 if __name__ == "__main__":

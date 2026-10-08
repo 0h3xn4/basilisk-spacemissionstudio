@@ -46,10 +46,11 @@ from PySide6.QtWidgets import (
 
 from ..schema.scenario import GroundStationConfig, ScenarioValidationError
 from .feedback import clear_invalid, mark_invalid, show_toast
+from .widgets import PreciseDoubleSpinBox
 
 
 def _spin(minimum: float, maximum: float, decimals: int = 4, step: float = 1.0, value: float = 0.0) -> QDoubleSpinBox:
-    box = QDoubleSpinBox()
+    box = PreciseDoubleSpinBox()
     box.setRange(minimum, maximum)
     box.setDecimals(decimals)
     box.setSingleStep(step)
@@ -70,13 +71,14 @@ class GroundStationEditorDialog(QDialog):
         self.name_edit.textChanged.connect(self._on_name_changed)
         form.addRow("Name", self.name_edit)
         self.lat_deg = _spin(-90.0, 90.0, decimals=6, step=1.0, value=config.latitude_deg if config else 0.0)
-        self.lat_deg.setToolTip("Ground station's real latitude (0 = equator, +90 = north pole, -90 = south pole).")
-        form.addRow("Latitude [deg]", self.lat_deg)
+        self.lat_deg.setToolTip("Geodetic latitude on the WGS-84 ellipsoid, north positive.\n"
+                                "Other central bodies: planetocentric, on a sphere.")
+        form.addRow("Geodetic latitude [deg]", self.lat_deg)
         self.lon_deg = _spin(-180.0, 180.0, decimals=6, step=1.0, value=config.longitude_deg if config else 0.0)
-        self.lon_deg.setToolTip("Ground station's real longitude (0 = Greenwich meridian, east positive).")
+        self.lon_deg.setToolTip("Longitude, east positive from the prime meridian of the body-fixed frame.")
         form.addRow("Longitude [deg]", self.lon_deg)
         self.alt_m = _spin(-500.0, 9000.0, decimals=1, step=10.0, value=config.altitude_m if config else 0.0)
-        self.alt_m.setToolTip("Height above the reference ellipsoid (sea level) -- a small effect on access geometry.")
+        self.alt_m.setToolTip("Height above the WGS-84 ellipsoid (not above sea level: they differ by up to ~100 m).")
         form.addRow("Altitude [m]", self.alt_m)
         self.min_elev_deg = _spin(0.0, 89.9, decimals=2, step=1.0,
                                    value=config.min_elevation_deg if config else 10.0)

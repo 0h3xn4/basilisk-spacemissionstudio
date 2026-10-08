@@ -65,6 +65,7 @@ adding cancellation machinery for a rare case.
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from typing import Optional
 
 from PySide6.QtCore import QEventLoop, Qt, QThread, Signal
@@ -91,10 +92,12 @@ class StartupFetchWorker(QThread):
 
     finished_all = Signal(dict)  # {"kernels": (ok, message), "space_weather": (ok, message)}
 
-    def __init__(self, fetch_kernels: bool, fetch_space_weather: bool, parent: Optional[QWidget] = None):
+    def __init__(self, fetch_kernels: bool, fetch_space_weather: bool, parent: Optional[QWidget] = None,
+                 fetch_earth_orientation: bool = False):
         super().__init__(parent)
         self.fetch_kernels = fetch_kernels
         self.fetch_space_weather = fetch_space_weather
+        self.fetch_earth_orientation = fetch_earth_orientation
 
     def run(self) -> None:
         # finished_all MUST be emitted no matter what -- maybe_run_startup_fetch()
@@ -113,6 +116,8 @@ class StartupFetchWorker(QThread):
                 result["kernels"] = self._fetch_kernels()
             if self.fetch_space_weather:
                 result["space_weather"] = self._fetch_space_weather()
+            if self.fetch_earth_orientation:
+                result["earth_orientation"] = self._fetch_earth_orientation()
         except Exception as exc:  # noqa: BLE001 -- see the comment above: this signal must always fire
             _logger.exception("Startup fetch failed unexpectedly")
             result["error"] = (False, str(exc))
@@ -136,6 +141,17 @@ class StartupFetchWorker(QThread):
             return True, f"{ok_count}/{len(statuses)} support-data file(s) available."
         failed = "; ".join(f"{s.name} ({s.error})" for s in statuses if not s.available)
         return False, f"{ok_count}/{len(statuses)} support-data file(s) available -- failed: {failed}"
+
+    @staticmethod
+    def _fetch_earth_orientation() -> "tuple[bool, str]":
+        from ..engine import earth_orientation as eo
+        try:
+            kernels = eo.fetch()
+        except eo.EarthOrientationError as exc:
+            return False, str(exc)
+        until = eo.high_accuracy_until(kernels)
+        return True, (f"{len(kernels)} file(s), ITRF93, high accuracy until {until:%Y-%m-%d}" if until
+                      else f"{len(kernels)} file(s), ITRF93")
 
     @staticmethod
     def _fetch_space_weather() -> "tuple[bool, str]":
@@ -186,12 +202,28 @@ class StartupFetchDialog(QDialog):
         )
         layout.addWidget(self.space_weather_checkbox)
 
+        from ..engine import earth_orientation as eo
+
+        installed = eo.installed()
+        until = eo.high_accuracy_until(installed)
+        self.earth_orientation_checkbox = QCheckBox("Earth orientation (NAIF ITRF93 Earth PCKs, ~36 MB)")
+        # Checked when nothing is installed or the high-accuracy span is over.
+        self.earth_orientation_checkbox.setChecked(not installed or until is None or until < datetime.utcnow())
+        self.earth_orientation_checkbox.setToolTip(
+            f"From {eo.NAIF_PCK_URL}: the combined (1962-2126) and the high-precision Earth PCK with their "
+            "comment files. The previous files are kept for rollback.\n"
+            + (f"Installed: high accuracy until {until:%Y-%m-%d}." if until else "Not installed: runs use IAU_EARTH."))
+        layout.addWidget(self.earth_orientation_checkbox)
+
         buttons = QDialogButtonBox()
         self.fetch_button = buttons.addButton("Fetch now", QDialogButtonBox.ButtonRole.AcceptRole)
         self.skip_button = buttons.addButton("Skip", QDialogButtonBox.ButtonRole.RejectRole)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+
+    def selected_earth_orientation(self) -> bool:
+        return self.earth_orientation_checkbox.isChecked()
 
     def selected(self) -> "tuple[bool, bool]":
         """``(fetch_kernels, fetch_space_weather)``."""
@@ -210,7 +242,8 @@ def maybe_run_startup_fetch(parent: QWidget) -> None:
         return
 
     fetch_kernels, fetch_space_weather = dialog.selected()
-    if not fetch_kernels and not fetch_space_weather:
+    fetch_earth_orientation = dialog.selected_earth_orientation()
+    if not fetch_kernels and not fetch_space_weather and not fetch_earth_orientation:
         return
 
     # cancelButtonText=None (not "") -- the real Qt idiom for "no cancel
@@ -222,7 +255,8 @@ def maybe_run_startup_fetch(parent: QWidget) -> None:
     progress.setAutoClose(False)
     progress.setAutoReset(False)
 
-    worker = StartupFetchWorker(fetch_kernels, fetch_space_weather, parent=parent)
+    worker = StartupFetchWorker(fetch_kernels, fetch_space_weather, parent=parent,
+                                fetch_earth_orientation=fetch_earth_orientation)
     loop = QEventLoop()
     outcome: dict = {}
 
@@ -254,6 +288,9 @@ def maybe_run_startup_fetch(parent: QWidget) -> None:
             lines.append(f"Space weather: fetched and cached at {message}")
         else:
             lines.append(f"Space weather: could not fetch ({message})")
+    if "earth_orientation" in outcome:
+        ok, message = outcome["earth_orientation"]
+        lines.append(f"Earth orientation: {message}" if ok else f"Earth orientation: could not fetch ({message})")
     if "error" in outcome:
         # See StartupFetchWorker.run()'s own comment: this key only
         # appears if something unexpected (not one of the specific,

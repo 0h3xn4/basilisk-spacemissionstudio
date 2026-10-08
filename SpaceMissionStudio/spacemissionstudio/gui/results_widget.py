@@ -113,7 +113,6 @@ unambiguous, not follow a plot-only display preference):
 from __future__ import annotations
 
 import base64
-import math
 import os
 import urllib.parse
 
@@ -123,10 +122,12 @@ import urllib.parse
 if hasattr(os, "geteuid") and os.geteuid() == 0:
     os.environ.setdefault("QTWEBENGINE_CHROMIUM_FLAGS", "--no-sandbox")
 
-from dataclasses import dataclass
-from datetime import datetime, timedelta
+import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Optional
+
+import numpy as np
 
 import plotly.graph_objects as go
 from PySide6.QtCore import QElapsedTimer, Qt, QTimer, QUrl
@@ -139,20 +140,19 @@ from PySide6.QtWidgets import (
     QLabel,
     QMessageBox,
     QPushButton,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
 
+from ..engine import time_system
 from ..engine.results import ResultSet, TimeSeries
+from ..plot_categories import categorize as _categorize
+from ..plot_categories import legacy_display as _legacy_display
+from ..plot_categories import parse_access_pair as _parse_access_pair
+from .flow_layout import FlowLayout
 from .theme import PALETTE
-
-_RAD2DEG = 180.0 / math.pi
-
-# "x"/"y"/"z" columns mean the same thing (an inertial-frame or body-frame
-# vector component) everywhere they appear in this app's own series
-# (position/velocity/body-rate/sun-heading/torque -- see engine.service),
-# so every vector-column series below reuses this one label map.
-_XYZ_LABELS = {"x": "X", "y": "Y", "z": "Z"}
+from .widgets import ComboBox
 
 # Categorical series colors -- the first three slots of an 8-hue
 # palette (Claude's dataviz skill, references/palette.md). Three is
@@ -210,6 +210,7 @@ _SAVE_PNG_PENDING_SENTINEL = "__spacemissionstudio_png_pending__"
 _SAVE_PNG_ERROR_PREFIX = "__spacemissionstudio_png_error__:"
 _SAVE_PNG_POLL_INTERVAL_MS = 100
 _SAVE_PNG_MAX_POLL_ATTEMPTS = 100  # 100 * 100ms = 10s -- Plotly.toImage took ~200ms in practice
+_SAVE_PNG_MAX_WAIT_TICKS = 10  # poll ticks without an answer before asking again (1 s at 100 ms)
 
 # [ms] Real user report: during a live-updating run, clicking the Series
 # dropdown to switch plots appeared to do nothing. Root cause:
@@ -230,245 +231,93 @@ _SAVE_PNG_MAX_POLL_ATTEMPTS = 100  # 100 * 100ms = 10s -- Plotly.toImage took ~2
 _LIVE_REDRAW_MIN_INTERVAL_MS = 300
 
 
-@dataclass(frozen=True)
-class _SeriesDisplay:
-    """Everything :meth:`ResultsWidget._build_figure` needs to render one
-    named series descriptively, beyond what the bare :class:`TimeSeries`
-    itself already carries -- see :func:`_categorize`'s own docstring for
-    where these come from. ``factor`` multiplies ``series.data`` for
-    display only -- ``export_csv``/``_on_export`` never see it, matching
-    this module's "display choices are plot-only" policy (module
-    docstring). ``standalone_title`` is set for a category (access-window/
-    link-margin series) whose own title already names every identifying
-    detail -- everything else gets the owning spacecraft's name (the
-    series name's own first dotted segment) prefixed automatically.
-    """
-
-    title: str
-    y_label: str
-    unit: str
-    factor: float = 1.0
-    columns: Optional[Dict[str, str]] = None
-    standalone_title: bool = False
+# Real user report: during a long run, switching to chief-1.position_N or
+# .velocity_N "just doesn't change" -- the plot stayed on the previous
+# series. Each was a 5.8 MB page (86,400 samples x 3 lines) and
+# QWebEngineView.setHtml() silently shows nothing above 2 MB. Pages are
+# now loaded from a file (no size limit), and each line is thinned to at
+# most this many points for display (min and max of every stretch kept, so
+# burns and peaks still show). Exports keep every sample.
+_MAX_PLOT_POINTS_PER_LINE = 10000
 
 
-def _vector_display(name: str) -> Optional[_SeriesDisplay]:
-    """State-vector and attitude/actuator vector series -- every one of
-    these already has ("x","y","z") or equivalent columns in
-    ``engine.service``. Position/velocity display in raw meters/m-s (NOT
-    km/km-s) per explicit user request ("state vector elements shall be
-    displayed in meters for position and m/s for velocity") -- a REVERSAL
-    of this module's own earlier km-conversion decision for exactly these
-    two series, which real user feedback showed went too far (see module
-    docstring). Body rate/torque/etc. are left in Basilisk's own native
-    units -- only position/velocity/delta-V/altitude/semi-major axis were
-    named in that feedback.
-    """
-    if name.endswith(".position_N"):
-        return _SeriesDisplay("Inertial Position (ECI)", "Position", "m", 1.0, dict(_XYZ_LABELS))
-    if name.endswith(".velocity_N"):
-        return _SeriesDisplay("Inertial Velocity (ECI)", "Velocity", "m/s", 1.0, dict(_XYZ_LABELS))
-    if name.endswith(".attitude_sigma_BN"):
-        return _SeriesDisplay("Attitude (MRP, Body to Inertial)", "MRP component", "-")
-    if name.endswith(".body_rate_omega_BN_B"):
-        return _SeriesDisplay("Body Angular Rate", "Angular rate", "rad/s", 1.0, dict(_XYZ_LABELS))
-    if name.endswith(".sun_heading_body"):
-        return _SeriesDisplay("Sun Heading (Body Frame)", "Unit vector component", "-", 1.0, dict(_XYZ_LABELS))
-    if name.endswith(".sun_heading_body_estimated"):
-        return _SeriesDisplay("Sun Heading Estimate (CSS, Body Frame)", "Unit vector component", "-", 1.0,
-                               dict(_XYZ_LABELS))
-    if name.endswith(".control_torque"):
-        return _SeriesDisplay("Commanded Control Torque", "Torque", "N*m", 1.0, dict(_XYZ_LABELS))
-    if name.endswith(".rw_speeds"):
-        return _SeriesDisplay("Reaction Wheel Speeds", "Wheel speed", "rad/s")
-    if name.endswith(".thruster_on_time"):
-        return _SeriesDisplay("Thruster On-Times", "Commanded on-time", "s")
-    if name.endswith(".fuel_mass_remaining"):
-        return _SeriesDisplay("Fuel Tank Remaining Mass", "Propellant mass", "kg", 1.0,
-                               {"fuel_mass_remaining": "Remaining"})
-    if name.endswith(".mtb_dipole_commanded"):
-        return _SeriesDisplay("Magnetic Torque Rod Commanded Dipole", "Dipole moment", "A*m^2")
-    if name.endswith(".battery_charge"):
-        return _SeriesDisplay("Battery State of Charge", "Charge", "W*hr", 1.0, {"charge": "Charge"})
-    if name.endswith(".battery_net_power"):
-        return _SeriesDisplay("Battery Net Power", "Net power", "W", 1.0, {"net_power": "Net power"})
-    return None
-
-
-def _orbit_element_display(name: str) -> Optional[_SeriesDisplay]:
-    """The 6 osculating + 6 mean (first-order-J2) Keplerian element
-    series ``engine.service._extract_results`` produces --
-    ``.orbit_elements.*`` (per-sample ``orbitalMotion.rv2elem``, already
-    existed) and ``.orbit_elements_mean.*`` (new: Basilisk's own
-    ``orbitalMotion.clMeanOscMap``, osc -> mean, the same analytic J2
-    short-period-removal its ``meanOEFeedback`` FSW module uses --
-    conceptually the averaged-element idea the user pointed at via STK's
-    "Brouwer-Lyddane Mean (Short)" data provider, built from a tool
-    Basilisk itself ships rather than a bespoke implementation; see
-    ``engine.service``'s own gating for why this is only computed when
-    the scenario's central body actually has a modeled J2 term).
-
-    Semi-major axis displays in km ("altitudes, semi-major axes shall be
-    displayed in km"); the four angles (inclination/RAAN/argument of
-    periapsis/true anomaly) display in degrees, matching every angle
-    INPUT field this app's own Scenario Editor already uses (e.g.
-    ``inclination_deg``) even though ``engine.service`` records them in
-    Basilisk's native radians.
-    """
-    specs = [
-        ("semi_major_axis", "Semi-Major Axis", "Semi-major axis", "km", 0.001),
-        ("eccentricity", "Eccentricity", "Eccentricity", "-", 1.0),
-        ("inclination", "Inclination", "Inclination", "deg", _RAD2DEG),
-        ("raan", "RAAN", "RAAN", "deg", _RAD2DEG),
-        ("arg_periapsis", "Argument of Periapsis", "Argument of periapsis", "deg", _RAD2DEG),
-        ("true_anomaly", "True Anomaly", "True anomaly", "deg", _RAD2DEG),
-    ]
-    for field, title_suffix, y_label, unit, factor in specs:
-        if name.endswith(f".orbit_elements.{field}"):
-            return _SeriesDisplay(f"Osculating {title_suffix}", y_label, unit, factor)
-        if name.endswith(f".orbit_elements_mean.{field}"):
-            return _SeriesDisplay(f"Mean (first-order J2) {title_suffix}", y_label, unit, factor)
-    return None
-
-
-_CONTROLLER_TITLES = {
-    "station_keeping": "Station-Keeping",
-    "phasing_keeping": "Phasing-Keeping",
-    "constant_thrust": "Constant-Thrust",
-}
-
-
-def _controller_display(name: str) -> Optional[_SeriesDisplay]:
-    """``"{sc}.<controller>.<field>"`` series from
-    ``engine.orbit_maintenance``'s three controllers. ``.delta_v`` is
-    handled identically across all three (one shared branch below) and
-    ALWAYS displays in raw m/s -- "delta-V shall always be displayed in
-    m/s" -- a REVERSAL of this module's own earlier blanket km/s
-    conversion, which real user feedback showed was wrong for delta-V
-    specifically even though it shares the literal "m/s" unit string
-    with velocity (see module docstring).
-    """
-    for key, label in _CONTROLLER_TITLES.items():
-        marker = f".{key}."
-        if marker not in name:
+def _display_indices(values: np.ndarray, max_points: int = _MAX_PLOT_POINTS_PER_LINE) -> np.ndarray:
+    """Indices of ``values`` to draw: all of them when there are few
+    enough, otherwise the first, last, and the minimum and maximum of each
+    of ``max_points // 2`` equal stretches (min-max decimation)."""
+    n = len(values)
+    if n <= max_points:
+        return np.arange(n)
+    buckets = max(1, (max_points - 2) // 2)
+    edges = np.linspace(0, n, buckets + 1).astype(int)
+    keep = [0, n - 1]
+    finite = np.where(np.isfinite(values), values, np.nan)
+    for start, end in zip(edges[:-1], edges[1:]):
+        if end <= start:
             continue
-        field = name.rsplit(".", 1)[-1]
-        if field == "delta_v":
-            return _SeriesDisplay(f"{label} Cumulative Delta-V", "Cumulative delta-V", "m/s", 1.0,
-                                   {"cumulative_delta_v": "Delta-V"})
-        if field == "propellant_remaining":
-            return _SeriesDisplay(f"{label} Propellant Remaining", "Propellant mass", "kg")
-        if field == "altitude":
-            return _SeriesDisplay(f"{label} Altitude Tracking", "Altitude", "km", 0.001,
-                                   {"raw": "Raw", "smoothed": "Smoothed (filtered)"})
-        if field == "burn_on":
-            return _SeriesDisplay(f"{label} Thruster State", "Burn on (1) / off (0)", "-")
-        if field == "separation_error":
-            # Already recorded in degrees (engine.service: units="deg") --
-            # factor 1.0, no conversion needed.
-            return _SeriesDisplay(f"{label} Separation Error", "Angle error", "deg")
-        if field == "state":
-            return _SeriesDisplay(f"{label} Controller State", "State", "-")
-        return None
-    return None
+        chunk = finite[start:end]
+        if np.all(np.isnan(chunk)):
+            keep.append(start)
+            continue
+        keep.append(start + int(np.nanargmin(chunk)))
+        keep.append(start + int(np.nanargmax(chunk)))
+    return np.unique(np.asarray(keep))
 
 
-def _parse_access_pair(name: str) -> Optional[tuple]:
-    """Recovers ``(gs, sc, field)`` from a ``"{gs}.access_to_{sc}.<field>"``
-    series name (``engine.service``'s access-analysis loop, plus
-    ``engine.link_budget.link_margin_series``) -- the literal
-    ``".access_to_"`` separator both producers use -- or ``None`` if
-    ``name`` doesn't match that shape. Shared by :func:`_access_pair_display`
-    and :meth:`ResultsWidget._build_access_timeline_figure` (roadmap item
-    M5) so both agree on exactly which series are "an access pair series"
-    and how to recover the station/spacecraft names from one.
-    """
-    if ".access_to_" not in name:
-        return None
-    prefix, _, field = name.rpartition(".")
-    gs, sep, sc = prefix.partition(".access_to_")
-    if not sep:
-        return None
-    return gs, sc, field
+def _wrapping_display_indices(n: int, max_points: int = _MAX_PLOT_POINTS_PER_LINE) -> np.ndarray:
+    """Evenly spaced indices for a wrapping angle: min-max decimation would
+    pair ~0 and ~360 deg in every stretch and draw a solid band."""
+    if n <= max_points:
+        return np.arange(n)
+    return np.unique(np.linspace(0, n - 1, max_points).astype(int))
 
 
-def _access_pair_display(name: str) -> Optional[_SeriesDisplay]:
-    """``"{gs}.access_to_{sc}.<field>"`` series -- see
-    :func:`_parse_access_pair`. Slant range displays in km,
-    elevation/azimuth in degrees -- same length/angle display policy as
-    everywhere else in this module.
-    """
-    parsed = _parse_access_pair(name)
-    if parsed is None:
-        return None
-    gs, sc, field = parsed
-    pair = f"{gs} -> {sc}"
-    if field == "has_access":
-        return _SeriesDisplay(f"Access Window: {pair}", "Has access", "-", 1.0,
-                               {"has_access": "Has access"}, standalone_title=True)
-    if field == "slant_range":
-        return _SeriesDisplay(f"Slant Range: {pair}", "Slant range", "km", 0.001, standalone_title=True)
-    if field == "elevation":
-        return _SeriesDisplay(f"Elevation: {pair}", "Elevation angle", "deg", _RAD2DEG, standalone_title=True)
-    if field == "azimuth":
-        return _SeriesDisplay(f"Azimuth: {pair}", "Azimuth angle", "deg", _RAD2DEG, standalone_title=True)
-    if field == "link_margin_db":
-        return _SeriesDisplay(f"Link Margin: {pair}", "Link margin", "dB", 1.0, standalone_title=True)
-    return None
+def _break_at_wraps(x: np.ndarray, y: np.ndarray, period: float):
+    """Inserts a gap wherever ``y`` wraps (jumps by more than half a
+    ``period``), so 359 -> 1 deg isn't drawn as a vertical line."""
+    jumps = np.flatnonzero(np.abs(np.diff(y)) > period / 2.0) + 1
+    if not len(jumps):
+        return x, y
+    return np.insert(x, jumps, x[jumps - 1]), np.insert(y.astype(float), jumps, np.nan)
 
 
-def _sensor_display(name: str, series: TimeSeries) -> Optional[_SeriesDisplay]:
-    """``"{sc}.sensor.{sensor_name}[.accel|.gyro]"`` series -- the sensor
-    NAME is user-chosen (``schema.scenario``'s sensor config), so unlike
-    every other category here the series name alone can't say which
-    sensor TYPE produced it; ``series.columns``/``series.units``
-    (already distinct per sensor type in ``engine.service``'s own
-    recording code) disambiguate instead.
-    """
-    if ".sensor." not in name:
-        return None
-    if name.endswith(".accel"):
-        sensor_name = name[: -len(".accel")].rsplit(".sensor.", 1)[-1]
-        return _SeriesDisplay(f"IMU Accelerometer: {sensor_name}", "Acceleration", series.units, 1.0,
-                               dict(_XYZ_LABELS))
-    if name.endswith(".gyro"):
-        sensor_name = name[: -len(".gyro")].rsplit(".sensor.", 1)[-1]
-        return _SeriesDisplay(f"IMU Gyroscope: {sensor_name}", "Angular rate", series.units, 1.0,
-                               dict(_XYZ_LABELS))
-    sensor_name = name.rsplit(".sensor.", 1)[-1]
-    if tuple(series.columns) == ("q0", "q1", "q2", "q3"):
-        return _SeriesDisplay(f"Star Tracker Attitude: {sensor_name}", "Quaternion component", "-")
-    if tuple(series.columns) == ("output",):
-        return _SeriesDisplay(f"Coarse Sun Sensor: {sensor_name}", "Output", "-")
-    if series.units == "T":
-        return _SeriesDisplay(f"Magnetometer: {sensor_name}", "Magnetic field", "T", 1.0, dict(_XYZ_LABELS))
-    return None
+def _series_label(name: str, series: TimeSeries) -> str:
+    """The name shown for a series in the Series list -- the same title
+    its plot gets (e.g. "chief-1: Mean Semi-Major Axis"), not the dotted
+    code name. Uncategorized series keep their code name."""
+    display = _categorize(name, series) or _legacy_display(name, series)
+    subject = name.split(".", 1)[0]
+    return display.title if display.standalone_title else f"{subject}: {display.title}"
 
 
-def _categorize(name: str, series: TimeSeries) -> Optional[_SeriesDisplay]:
-    """Display metadata for every series ``engine.service``/
-    ``engine.link_budget`` are known to produce -- ``None`` for anything
-    else, which :func:`_legacy_display` falls back on: raw series name as
-    title, ``series.units`` unconverted except the ORIGINAL narrow m/m-s
-    -> km/km-s rule this module shipped with before this per-category
-    system replaced it (see module docstring). That fallback means an
-    uncategorized/future series still renders reasonably -- exactly as it
-    would have before this feature existed -- rather than erroring or
-    looking unfinished.
-    """
-    for fn in (_vector_display, _orbit_element_display, _controller_display, _access_pair_display):
-        result = fn(name)
-        if result is not None:
-            return result
-    return _sensor_display(name, series)
+def _has_access_series(result: Optional[ResultSet]) -> bool:
+    return result is not None and any(
+        (parsed := _parse_access_pair(name)) is not None and parsed[2] == "has_access" for name in result.series
+    )
 
 
-_LEGACY_UNIT_CONVERSIONS = {"m": ("km", 0.001), "m/s": ("km/s", 0.001)}
+_DRIFT_WARNING_TOOLTIP = (
+    "These spacecraft use two-body gravity only, so orbital energy and angular momentum should stay "
+    "constant. A drift this large usually means a numerical-integration problem, not real physics: try a "
+    "smaller dynamics step (Propagation Setup) or a higher-order integrator."
+)
 
 
-def _legacy_display(name: str, series: TimeSeries) -> _SeriesDisplay:
-    display_unit, factor = _LEGACY_UNIT_CONVERSIONS.get(series.units, (series.units, 1.0))
-    return _SeriesDisplay(title=name, y_label="", unit=display_unit, factor=factor, standalone_title=True)
+def _short_utc(timestamp: str) -> str:
+    """"2026-10-07T14:33:38.434854+00:00" -> "2026-10-07 14:33 UTC" (the
+    text unchanged if it doesn't parse)."""
+    try:
+        parsed = datetime.fromisoformat(timestamp)
+    except ValueError:
+        return timestamp
+    if parsed.tzinfo is not None:
+        parsed = parsed.astimezone(timezone.utc)
+    return parsed.strftime("%Y-%m-%d %H:%M UTC")
+
+
+# Plotly's full page keeps the browser's default 8 px body margin under a
+# 100%-height plot, which put a scroll bar beside every plot.
+_PAGE_STYLE = "<style>html, body { margin: 0; height: 100%; overflow: hidden; }</style>"
 
 
 def _plotlyjs_path() -> Path:
@@ -520,18 +369,19 @@ class ResultsWidget(QWidget):
         # "Ground station access timeline" disables series_combo (it
         # has no effect in that view) and redraws; switching back
         # restores the single-series view exactly as it was.
-        top_row.addWidget(QLabel("View:"))
-        self.view_combo = QComboBox()
+        # Shown only for a result with ground-station access series --
+        # without them there is nothing to choose.
+        self.view_label = QLabel("View:")
+        self.view_label.setVisible(False)
+        self.view_combo = ComboBox()
         self.view_combo.addItem("Single series", "single")
-        self.view_combo.addItem("Ground station access timeline", "access_timeline")
-        self.view_combo.setToolTip(
-            "\"Ground station access timeline\" shows every {station}.access_to_{spacecraft}.has_access "
-            "series in this result as one combined Gantt-style chart, instead of picking one series below."
-        )
+        self.view_combo.addItem("Access timeline", "access_timeline")
+        self.view_combo.setToolTip("\"Access timeline\" shows every ground station's passes over every "
+                                   "spacecraft in one chart.")
+        self.view_combo.setVisible(False)
         self.view_combo.currentIndexChanged.connect(self._on_view_changed)
-        top_row.addWidget(self.view_combo)
         top_row.addWidget(QLabel("Series:"))
-        self.series_combo = QComboBox()
+        self.series_combo = ComboBox()
         # Editable + a substring-matching QCompleter -- a real scenario
         # (e.g. the built-in 6-satellite Walker constellation template)
         # produces 30-40+ series, all named after the dotted scheme
@@ -548,6 +398,13 @@ class ResultsWidget(QWidget):
         self.series_combo.setEditable(True)
         self.series_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
         self.series_combo.setToolTip("Type to filter, or use the dropdown")
+        # A long real series name (e.g. "leo-02-03.orbit_elements_mean.inclination")
+        # needs real room to be readable -- without a floor, this is the
+        # one widget on the row with stretch=1, so it's also the first
+        # one Qt shrinks below its natural size when the row is tight
+        # (see button_row's own comment for the regression this guards
+        # against going forward).
+        self.series_combo.setMinimumWidth(220)
         completer = QCompleter(self.series_combo.model(), self.series_combo)
         completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
         completer.setFilterMode(Qt.MatchFlag.MatchContains)
@@ -579,7 +436,7 @@ class ResultsWidget(QWidget):
         )
         top_row.addWidget(self.series_combo, stretch=1)
         top_row.addWidget(QLabel("X-axis:"))
-        self.x_axis_combo = QComboBox()
+        self.x_axis_combo = ComboBox()
         self.x_axis_combo.addItem("Elapsed time", "elapsed")
         self.x_axis_combo.addItem("Epoch (UTC)", "epoch")
         self.x_axis_combo.setToolTip(
@@ -588,28 +445,75 @@ class ResultsWidget(QWidget):
         )
         self.x_axis_combo.currentIndexChanged.connect(self._redraw)
         top_row.addWidget(self.x_axis_combo)
-        self.export_button = QPushButton("Export all series to CSV...")
+        layout.addLayout(top_row)
+
+        # One-click shortcuts to the series the scenario's own description
+        # points at ("What to look at"), so nobody has to find
+        # berlin-gs.access_to_leo-comms-1.link_margin_db among 40 entries.
+        # Filled from set_featured_series(); hidden when there are none.
+        self._featured: list = []
+        self._suggestion_chips: list = []
+        self.suggestion_row = QWidget()
+        suggestion_layout = QHBoxLayout(self.suggestion_row)
+        suggestion_layout.setContentsMargins(0, 0, 0, 0)
+        suggestion_label = QLabel("Suggested:")
+        suggestion_label.setStyleSheet(f"color: {PALETTE['text_muted']};")
+        suggestion_layout.addWidget(suggestion_label, 0, Qt.AlignmentFlag.AlignTop)
+        self._suggestion_box = QWidget()
+        self._suggestion_flow = FlowLayout(self._suggestion_box)
+        suggestion_layout.addWidget(self._suggestion_box, 1)
+        self.suggestion_row.setStyleSheet(
+            f"QPushButton#suggestionChip {{ border: 1px solid {PALETTE['border']}; border-radius: 10px; "
+            f"padding: 2px 10px; background-color: {PALETTE['surface']}; color: {PALETTE['text']}; }}"
+            f"QPushButton#suggestionChip:hover {{ border-color: {PALETTE['accent']}; }}"
+            f"QPushButton#suggestionChip:checked {{ background-color: {PALETTE['accent_soft']}; "
+            f"border-color: {PALETTE['accent']}; color: {PALETTE['accent']}; }}"
+        )
+        self.suggestion_row.setVisible(False)
+        layout.addWidget(self.suggestion_row)
+
+        # Real UI regression, caught from a screenshot: this row used to
+        # share ONE QHBoxLayout with the "View"/"Series"/"X-axis" combos
+        # above. Adding the "View" combo (roadmap item M5) and the "Save
+        # plot as SVG..." button (roadmap item M2) on top of what was
+        # already there left too many widgets competing for one row's
+        # width inside the (non-full-window) Results panel -- Qt resolved
+        # that by squeezing series_combo (the one widget with
+        # stretch=1, i.e. the one meant to actually use spare space) down
+        # toward its minimum size instead, which on a real window left it
+        # showing only a few truncated characters of whatever was
+        # selected/typed, looking exactly like garbled text. Splitting
+        # "what am I looking at" (above) from "do something with it"
+        # (below) onto separate rows removes that width pressure
+        # entirely rather than trying to tune individual widths against
+        # an unbounded number of future buttons on the same row.
+        button_row = QHBoxLayout()
+        self.export_button = QPushButton("Export CSV...")
+        self.export_button.setToolTip("Export every series in this result as CSV files (SI units)")
         self.export_button.clicked.connect(self._on_export)
         self.export_button.setEnabled(False)
-        top_row.addWidget(self.export_button)
-        self.save_png_button = QPushButton("Save plot as PNG...")
+        button_row.addWidget(self.export_button)
+        self.save_png_button = QPushButton("Save PNG...")
         self.save_png_button.setToolTip("Save the currently displayed plot (not every series -- see "
-                                         "\"Export all series to CSV...\" for that) as a PNG image")
+                                         "\"Export CSV...\" for that) as a PNG image")
         self.save_png_button.clicked.connect(self._on_save_plot_png)
         self.save_png_button.setEnabled(False)
-        top_row.addWidget(self.save_png_button)
+        button_row.addWidget(self.save_png_button)
         # Design-philosophy roadmap item M2 (docs/ux_roadmap.md): a vector
         # export alongside the existing raster one, for a plot a user wants
         # to drop into a paper/report at arbitrary scale without it going
         # blurry. Shares _on_save_plot_png's whole dialog/kickoff/poll
         # machinery via its ``fmt`` parameter -- see that method's own
         # docstring -- rather than duplicating it.
-        self.save_svg_button = QPushButton("Save plot as SVG...")
+        self.save_svg_button = QPushButton("Save SVG...")
         self.save_svg_button.setToolTip("Save the currently displayed plot as a scalable vector (SVG) image")
         self.save_svg_button.clicked.connect(self._on_save_plot_svg)
         self.save_svg_button.setEnabled(False)
-        top_row.addWidget(self.save_svg_button)
-        layout.addLayout(top_row)
+        button_row.addWidget(self.save_svg_button)
+        button_row.addStretch(1)
+        button_row.addWidget(self.view_label)
+        button_row.addWidget(self.view_combo)
+        layout.addLayout(button_row)
 
         # Design-philosophy audit finding (docs/ux_audit.md, "no run
         # provenance captured with results"): one line, always visible
@@ -619,6 +523,19 @@ class ResultsWidget(QWidget):
         self.provenance_label = QLabel("")
         self.provenance_label.setStyleSheet("color: palette(mid); font-size: 90%;")
         self.provenance_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.provenance_label.setWordWrap(True)  # never forces the pane wider
+        # Real UI bug, caught from a screenshot: this label and web_view
+        # both default to QSizePolicy.Preferred vertically with 0
+        # stretch, which Qt's QVBoxLayout resolved by handing almost ALL
+        # of the layout's surplus height to this one-line label (a large
+        # blank area below its own text, pushing the actual plot down
+        # and off the bottom of the window) instead of to the plot that
+        # should obviously be the one expanding to fill the space.
+        # Fixed=vertical pins it to its own sizeHint no matter how much
+        # extra room the layout has -- paired with web_view's own
+        # stretch=1 below, which is what actually directs the surplus to
+        # it explicitly rather than relying on size-policy tie-breaking.
+        self.provenance_label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         layout.addWidget(self.provenance_label)
 
         # Design-philosophy audit finding (docs/ux_audit.md, "no active
@@ -635,28 +552,121 @@ class ResultsWidget(QWidget):
         # just the color) makes clear this is informational, not fatal.
         self.warnings_label = QLabel("")
         self.warnings_label.setWordWrap(True)
-        self.warnings_label.setStyleSheet(f"color: {PALETTE['danger']}; font-size: 90%;")
+        self.warnings_label.setStyleSheet(f"color: {PALETTE['warning']}; font-size: 90%;")
         self.warnings_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.warnings_label.setVisible(False)
+        # Same fix as provenance_label just above, for the same reason --
+        # this is wrapped text whose natural height already varies with
+        # width and warning count; it must still never grow to consume
+        # leftover layout space beyond that natural height.
+        self.warnings_label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         layout.addWidget(self.warnings_label)
 
         self.web_view = QWebEngineView()
-        layout.addWidget(self.web_view)
+        # Plot pages are written here and loaded from file -- see
+        # _MAX_PLOT_POINTS_PER_LINE for why setHtml() can't be used.
+        self._page_dir = tempfile.TemporaryDirectory(prefix="spacemissionstudio-plot-")
+        self._page_counter = 0
+        # stretch=1: the one widget in this column that should actually
+        # claim all leftover vertical space -- see provenance_label's own
+        # comment above for the real bug this fixes.
+        layout.addWidget(self.web_view, stretch=1)
         self._redraw()  # shows the empty-state message immediately, not just after the first set_result() call
 
     def set_result(self, result: ResultSet | None, epoch_utc: Optional[str] = None) -> None:
         self._result = result
         self._epoch_utc = epoch_utc
-        self.series_combo.blockSignals(True)
-        self.series_combo.clear()
-        if result is not None:
-            for name in result.series:
-                self.series_combo.addItem(name)
-        self.series_combo.blockSignals(False)
+        self._fill_series_combo(result)
         self.export_button.setEnabled(result is not None and bool(result.series))
         self._update_provenance_label()
         self._update_warnings_label()
         self._redraw()
+
+    def _fill_series_combo(self, result: Optional[ResultSet]) -> None:
+        """One entry per series, shown by its plot title; the code name
+        (the CSV file name) is the item's data and tooltip."""
+        self.series_combo.blockSignals(True)
+        self.series_combo.clear()
+        if result is not None:
+            labels = {name: _series_label(name, series) for name, series in result.series.items()}
+            label_counts: dict = {}
+            for label in labels.values():
+                label_counts[label] = label_counts.get(label, 0) + 1
+            for name, label in labels.items():
+                self.series_combo.addItem(label if label_counts[label] == 1 else name, name)
+                self.series_combo.setItemData(self.series_combo.count() - 1, name, Qt.ItemDataRole.ToolTipRole)
+        featured_present = [name for name in self._featured if result is not None and name in result.series]
+        if featured_present:  # open on what the scenario says to look at, not whatever comes first
+            self.series_combo.setCurrentIndex(self.series_combo.findData(featured_present[0]))
+        self.series_combo.blockSignals(False)
+        self._refresh_suggestions()
+        has_access = _has_access_series(result)
+        if not has_access and self.view_combo.currentData() != "single":
+            self.view_combo.setCurrentIndex(self.view_combo.findData("single"))
+        self.view_label.setVisible(has_access)
+        self.view_combo.setVisible(has_access)
+
+    def set_featured_series(self, names) -> None:
+        """The series to offer as one-click suggestions (normally
+        ``engine.series_names.featured_series(scenario)`` for the scenario
+        being run). Only those present in the result are shown, and a new
+        result opens on the first of them."""
+        self._featured = list(names)
+        self._refresh_suggestions()
+
+    def _refresh_suggestions(self) -> None:
+        for chip in self._suggestion_chips:
+            self._suggestion_flow.removeWidget(chip)
+            chip.deleteLater()
+        self._suggestion_chips = []
+        result = self._result
+        names = [name for name in self._featured if result is not None and name in result.series]
+        for name in names:
+            chip = QPushButton(self._chip_label(name))
+            chip.setObjectName("suggestionChip")
+            chip.setCheckable(True)
+            chip.setAutoDefault(False)
+            chip.setToolTip(name)
+            chip.setProperty("series_name", name)
+            chip.clicked.connect(lambda _checked=False, n=name: self.show_series(n))
+            self._suggestion_flow.addWidget(chip)
+            self._suggestion_chips.append(chip)
+        self.suggestion_row.setVisible(bool(names))
+        self._update_suggestion_states()
+
+    def _chip_label(self, name: str) -> str:
+        """The plot title, minus what every chip would repeat: the
+        spacecraft when the result has only one, and the station ->
+        spacecraft pair when there is only one (the tooltip and the plot
+        title still name them)."""
+        result = self._result
+        label = _series_label(name, result.series[name])
+        pairs = {_parse_access_pair(n)[:2] for n in result.series if _parse_access_pair(n) is not None}
+        spacecraft = {n.split(".", 1)[0] for n in result.series if _parse_access_pair(n) is None}
+        if len(spacecraft) == 1 and label.startswith(f"{next(iter(spacecraft))}: "):
+            label = label.split(": ", 1)[1]
+        if len(pairs) == 1:
+            gs, sc = next(iter(pairs))
+            label = label.removesuffix(f": {gs} -> {sc}")
+        return label
+
+    def _update_suggestion_states(self) -> None:
+        showing = self.current_series_name() if self.view_combo.currentData() == "single" else ""
+        for chip in self._suggestion_chips:
+            chip.setChecked(chip.property("series_name") == showing)
+
+    def show_series(self, name: str) -> None:
+        """Show one series (switching out of the access timeline if needed)."""
+        if self.view_combo.currentData() != "single":
+            self.view_combo.setCurrentIndex(self.view_combo.findData("single"))
+        index = self.series_combo.findData(name)
+        if index >= 0 and index != self.series_combo.currentIndex():
+            self.series_combo.setCurrentIndex(index)  # redraws via currentIndexChanged
+        self._update_suggestion_states()
+
+    def current_series_name(self) -> str:
+        """Code name of the selected series ("" when there is none)."""
+        return self.series_combo.currentData() or ""
 
     def _update_warnings_label(self) -> None:
         warnings = self._result.warnings if self._result is not None else []
@@ -665,6 +675,7 @@ class ResultsWidget(QWidget):
             self.warnings_label.setText("")
             return
         self.warnings_label.setText("\n".join(f"⚠ {w}" for w in warnings))
+        self.warnings_label.setToolTip(_DRIFT_WARNING_TOOLTIP)
         self.warnings_label.setVisible(True)
 
     def _update_provenance_label(self) -> None:
@@ -675,8 +686,8 @@ class ResultsWidget(QWidget):
             return
         self.provenance_label.setText(
             f"SpaceMissionStudio {provenance.spacemissionstudio_version} · "
-            f"Basilisk {provenance.basilisk_version} · {provenance.integrator} @ "
-            f"{provenance.dynamics_task_rate_s:g} s · run started {provenance.run_started_utc}"
+            f"Basilisk {provenance.basilisk_version} · {provenance.integrator.upper()}, "
+            f"{provenance.dynamics_task_rate_s:g} s step · {_short_utc(provenance.run_started_utc)}"
         )
         self.provenance_label.setToolTip(provenance.rng_seed_note)
 
@@ -711,11 +722,7 @@ class ResultsWidget(QWidget):
         # page reload).
         self._update_warnings_label()
         if is_first_update:
-            self.series_combo.blockSignals(True)
-            self.series_combo.clear()
-            for name in result.series:
-                self.series_combo.addItem(name)
-            self.series_combo.blockSignals(False)
+            self._fill_series_combo(result)
             self.export_button.setEnabled(bool(result.series))
             self._update_provenance_label()
             self._redraw()
@@ -752,11 +759,10 @@ class ResultsWidget(QWidget):
         """
         if self.x_axis_combo.currentData() == "epoch" and self._epoch_utc:
             try:
-                base = datetime.fromisoformat(self._epoch_utc)
+                # time_s is TDB seconds since the epoch (engine.time_system).
+                return list(time_system.elapsed_to_utc(self._epoch_utc, time_s)), "Epoch (UTC)"
             except ValueError:
                 pass
-            else:
-                return [base + timedelta(seconds=float(t)) for t in time_s], "Epoch (UTC)"
         return time_s / 3600.0, "Elapsed time [hr]"
 
     def _build_figure(self, name: str, series: TimeSeries) -> go.Figure:
@@ -767,9 +773,17 @@ class ResultsWidget(QWidget):
 
         fig = go.Figure()
         column_labels = display.columns or {}
+        x_array = np.asarray(x_values, dtype=object if isinstance(x_values, list) else None)
         for i, column in enumerate(series.columns):
+            if display.wrap_period:
+                keep = _wrapping_display_indices(len(display_data))
+                x_shown, y_shown = _break_at_wraps(x_array[keep], display_data[keep, i], display.wrap_period)
+            else:
+                keep = _display_indices(display_data[:, i])  # see _MAX_PLOT_POINTS_PER_LINE
+                x_shown, y_shown = x_array[keep], display_data[keep, i]
             fig.add_trace(go.Scatter(
-                x=x_values, y=display_data[:, i], mode="lines", name=column_labels.get(column, column),
+                x=list(x_shown) if x_array.dtype == object else x_shown, y=y_shown, mode="lines",
+                name=column_labels.get(column, column),
                 line=dict(color=_SERIES_COLORS[i % len(_SERIES_COLORS)], width=2),
             ))
 
@@ -796,10 +810,8 @@ class ResultsWidget(QWidget):
             x_axis["exponentformat"] = "none"
             x_axis["separatethousands"] = True
 
-        subject = name.split(".", 1)[0]
-        title_text = display.title if display.standalone_title else f"{subject}: {display.title}"
         fig.update_layout(
-            title=dict(text=title_text, font=dict(size=16, color=_INK_PRIMARY, family=_FONT_FAMILY)),
+            title=dict(text=_series_label(name, series), font=dict(size=16, color=_INK_PRIMARY, family=_FONT_FAMILY)),
             xaxis=x_axis,
             yaxis=y_axis,
             font=dict(family=_FONT_FAMILY, color=_INK_PRIMARY),
@@ -843,7 +855,7 @@ class ResultsWidget(QWidget):
             self.figure = self._build_access_timeline_figure()
             return
         if self.series_combo.count() > 0:
-            name = self.series_combo.currentText()
+            name = self.current_series_name()
             series = self._result.series.get(name)
             if series is not None:
                 self.figure = self._build_figure(name, series)
@@ -883,6 +895,8 @@ class ResultsWidget(QWidget):
         pairs.sort(key=lambda item: item[0])
 
         fig = go.Figure()
+        t_end_hr = max((float(series.time_s[-1]) for _label, series in pairs if len(series.time_s)),
+                       default=0.0) / 3600.0
         if not pairs:
             fig.update_layout(
                 annotations=[dict(
@@ -899,28 +913,28 @@ class ResultsWidget(QWidget):
             t_hours = series.time_s / 3600.0
             has_access = series.data[:, series.columns.index("has_access")] != 0
             color = _SERIES_COLORS[row_index % len(_SERIES_COLORS)]
-            # Each contiguous True run in has_access becomes one thick
-            # horizontal line segment -- two-point go.Scatter lines
-            # (rather than go.Bar's orientation="h"/base/width) because
-            # a plain Scatter line needs no base/width unit-matching
-            # with the x-axis, numeric or datetime alike, and renders
-            # identically either way.
-            run_start = None
-            legend_shown = False
-            for i in range(len(has_access) + 1):
-                active = i < len(has_access) and has_access[i]
-                if active and run_start is None:
-                    run_start = i
-                elif not active and run_start is not None:
-                    fig.add_trace(go.Scatter(
-                        x=[t_hours[run_start], t_hours[i - 1]], y=[pair_label, pair_label],
-                        mode="lines", line=dict(color=color, width=16),
-                        name=pair_label, legendgroup=pair_label, showlegend=not legend_shown,
-                        hovertemplate=f"{pair_label}<br>%{{x:.3f}} hr<extra></extra>",
-                    ))
-                    legend_shown = True
-                    run_start = None
-            if not legend_shown:
+            # Each contiguous True run in has_access is one thick line
+            # segment; all of a pair's segments share ONE trace, separated
+            # by None gaps. One trace per pass made thousands of traces on
+            # a long run (2,865 for six pairs over a month), which Plotly
+            # is slow to draw.
+            padded = np.concatenate([[False], has_access, [False]])
+            changes = np.flatnonzero(np.diff(padded.astype(int)))
+            starts, ends = changes[0::2], changes[1::2] - 1
+            if len(starts):
+                xs: list = []
+                ys: list = []
+                for start, end in zip(starts, ends):
+                    xs += [t_hours[start], t_hours[end], None]
+                    ys += [pair_label, pair_label, None]
+                # A tick at each end keeps a short pass visible on a long
+                # run, where its segment is narrower than a pixel.
+                fig.add_trace(go.Scatter(
+                    x=xs, y=ys, mode="lines+markers", line=dict(color=color, width=16), connectgaps=False,
+                    marker=dict(symbol="line-ns", size=16, line=dict(color=color, width=1)),
+                    name=pair_label, hovertemplate=f"{pair_label}<br>%{{x:.3f}} hr<extra></extra>",
+                ))
+            else:
                 # No access window at all for this pair -- still give it
                 # a row (an invisible trace) so it appears in the legend
                 # and on the y-axis, same as every other pair, rather
@@ -938,8 +952,10 @@ class ResultsWidget(QWidget):
         fig.update_layout(
             title=dict(text="Ground Station Access Timeline", font=dict(size=16, color=_INK_PRIMARY,
                                                                           family=_FONT_FAMILY)),
+            # Fixed to the run: the end-of-pass ticks would otherwise pad
+            # the axis to before t = 0.
             xaxis=dict(axis_common, title_text="Elapsed time [hr]", exponentformat="none",
-                       separatethousands=True),
+                       separatethousands=True, range=[0.0, t_end_hr]),
             yaxis=dict(axis_common, title_text=None, categoryorder="category descending"),
             font=dict(family=_FONT_FAMILY, color=_INK_PRIMARY),
             plot_bgcolor=_SURFACE, paper_bgcolor=_SURFACE,
@@ -956,15 +972,24 @@ class ResultsWidget(QWidget):
         throttling comment for why this is split out separately.
         """
         if self.figure is None:
-            html = _empty_state_html()
-            base_url = QUrl()
+            self.web_view.setHtml(_empty_state_html(), QUrl())  # small: setHtml's 2 MB limit is no issue
         else:
             html = self.figure.to_html(
-                include_plotlyjs=str(_plotlyjs_path()), full_html=True, div_id=_PLOT_DIV_ID,
-                config={"displaylogo": False, "responsive": True},
+                include_plotlyjs=QUrl.fromLocalFile(str(_plotlyjs_path())).toString(), full_html=True,
+                div_id=_PLOT_DIV_ID, config={"displaylogo": False, "responsive": True},
             )
-            base_url = QUrl.fromLocalFile(str(_plotlyjs_path().parent) + "/")
-        self.web_view.setHtml(html, base_url)
+            html = html.replace("<head>", "<head>" + _PAGE_STYLE, 1)
+            # Alternating file names, so a new page never overwrites one
+            # that is still loading.
+            self._page_counter += 1
+            page = Path(self._page_dir.name) / f"plot-{self._page_counter % 2}.html"
+            if not page.parent.is_dir():
+                # Shutting down: Python removed the temporary directory
+                # before Qt destroyed this widget, and a late signal (the
+                # series box losing focus) asked for one more redraw.
+                return
+            page.write_text(html, encoding="utf-8")
+            self.web_view.load(QUrl.fromLocalFile(str(page)))
         # Never force-enable while a save-as-PNG poll is in flight (e.g. a
         # live-updating run calling _redraw() repeatedly via
         # set_live_result() while the user's earlier click is still being
@@ -979,6 +1004,7 @@ class ResultsWidget(QWidget):
     def _redraw(self) -> None:
         self._update_figure()
         self._push_figure_to_webview()
+        self._update_suggestion_states()
 
     def _on_series_text_committed(self, text: str) -> None:
         """A series name was committed via the completer popup or by
@@ -988,10 +1014,12 @@ class ResultsWidget(QWidget):
         the combo's real selected index to match the committed text
         (not just its displayed string) before redrawing, so
         ``_redraw()``/``_on_save_plot_png()`` -- both of which read
-        ``series_combo.currentText()`` -- agree with what's actually
+        ``current_series_name()`` -- agree with what's actually
         showing.
         """
         index = self.series_combo.findText(text)
+        if index < 0:
+            index = self.series_combo.findData(text)  # a code name typed in full
         if index >= 0:
             self.series_combo.setCurrentIndex(index)
         self._redraw()
@@ -1086,7 +1114,7 @@ class ResultsWidget(QWidget):
             # long after the user thinks they're done.
             return
         is_access_timeline = self.view_combo.currentData() == "access_timeline"
-        default_name = f"{'access_timeline' if is_access_timeline else self.series_combo.currentText()}.{fmt}"
+        default_name = f"{'access_timeline' if is_access_timeline else self.current_series_name()}.{fmt}"
         file_filter = "SVG images (*.svg)" if fmt == "svg" else "PNG images (*.png)"
         path, _ = QFileDialog.getSaveFileName(self, f"Save plot as {fmt.upper()}", default_name, file_filter)
         if not path:
@@ -1138,10 +1166,29 @@ class ResultsWidget(QWidget):
         poll_timer.start(_SAVE_PNG_POLL_INTERVAL_MS)
 
     def _poll_plot_png(self) -> None:
+        # runJavaScript() answers asynchronously, while the timer keeps
+        # firing (SRelD K-08): a tick can arrive after the poll finished
+        # (state None: the traceback in the CI logs), and on a slow machine
+        # several queries could be in flight, each answer finishing the save
+        # again (a second file write and "saved" dialog). One query at a
+        # time, and answers to a finished poll are ignored.
         state = self._png_poll_state
+        if state is None:
+            return
+        if state.get("in_flight"):
+            # An answer that never comes must not stall the save: after a
+            # second without one, ask again (a late answer is then ignored).
+            state["waited_ticks"] = state.get("waited_ticks", 0) + 1
+            if state["waited_ticks"] < _SAVE_PNG_MAX_WAIT_TICKS:
+                return
+        state["waited_ticks"] = 0
         state["attempts"] += 1
+        state["in_flight"] = True
 
         def on_poll_result(value: object) -> None:
+            state["in_flight"] = False
+            if self._png_poll_state is not state:
+                return  # this poll already finished (or was replaced)
             if value == _SAVE_PNG_PENDING_SENTINEL:
                 if state["attempts"] >= _SAVE_PNG_MAX_POLL_ATTEMPTS:
                     state["timer"].stop()

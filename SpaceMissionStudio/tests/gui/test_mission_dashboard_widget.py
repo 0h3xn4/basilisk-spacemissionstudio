@@ -162,6 +162,7 @@ def test_battery_soc_bar_reflects_capacity_when_scenario_given(widget):
     assert widget.battery_soc_bar.isEnabled()
     assert widget.battery_soc_bar.value() == 50
     assert widget.net_power_label.text() == "+5.00 W"
+    assert widget.battery_soc_label.text() == "50%"  # beside the bar, not drawn across it
 
 
 def test_battery_soc_bar_disabled_without_scenario(widget):
@@ -211,3 +212,38 @@ def test_no_comms_pointing_series_leaves_the_empty_state(widget):
 
     assert not widget._placeholder.isHidden()
     assert widget._state_box.isHidden()
+
+
+def test_cards_fit_their_content_and_stack_when_narrow(qtbot):
+    """Real user feedback on clutter: every card stretched to the full tab
+    height (~85% empty) and badges stretched into full-width bars. Cards
+    now keep their own content height, badges their natural width, and
+    the cards stack in one column in a narrow pane."""
+    from PySide6.QtCore import QPoint
+
+    from spacemissionstudio.gui.mission_dashboard_widget import MissionDashboardWidget
+
+    result = _result_set(
+        active_mode=[0, 1], pointing_error_deg=[30.0, 0.4], has_access=[0, 1],
+        slant_range_m=[2.0e6, 1.2e6], battery_charge_wh=[30.0, 27.0], net_power_w=[-8.0, -14.0],
+    )
+    w = MissionDashboardWidget()
+    qtbot.addWidget(w)
+    w.set_result(result, _scenario())
+    w.setFixedSize(1000, 700)  # [px] a typical right-hand pane
+    w.show()
+    qtbot.waitExposed(w)
+
+    cards = [w._state_box, w._attitude_box, w._power_box, w._rf_box]
+    assert all(card.height() < 420 for card in cards)  # none stretched to the 700 px pane
+    assert w._attitude_box.height() < w._rf_box.height()  # own height, not its row neighbour's
+    def left(card):
+        return card.mapTo(w, QPoint(0, 0)).x()
+
+    assert left(w._state_box) == left(w._attitude_box) != left(w._power_box)  # two columns
+    assert w.mode_badge.width() < w._state_box.width() * 0.6  # a pill, not a full-width bar
+
+    w.setFixedSize(620, 900)  # [px] a narrow pane
+    qtbot.wait(20)
+    assert len({left(card) for card in cards}) == 1  # one column
+    assert w.visibility_badge.text() == "In view of gs-1"

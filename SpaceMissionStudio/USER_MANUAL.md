@@ -61,7 +61,7 @@ If someone already installed SpaceMissionStudio for you, skip to
 [Section 3](#3-starting-the-app).
 
 **Linux:** double-click the `.deb` file you were given (or run
-`sudo apt install ./spacemissionstudio_1.0.0_all.deb` in a terminal), then
+`sudo apt install ./spacemissionstudio_<version>_all.deb` in a terminal, for example `spacemissionstudio_2.0.0_all.deb`), then
 find **SpaceMissionStudio** in your application menu like any other program.
 
 **Windows 11:** double-click the `.exe` installer you were given and
@@ -84,7 +84,7 @@ and is written for someone comfortable typing commands, not a programmer.
 
 The window that opens looks like this:
 
-![The Load Scenario tab, listing all eighteen built-in templates](docs/images/load_scenario_tab.png)
+![The Load Scenario tab, listing all twenty-one built-in templates](docs/images/load_scenario_tab.png)
 
 A few things to notice right away:
 
@@ -96,8 +96,11 @@ A few things to notice right away:
 * Two tabs on the **left**: **Load Scenario** (where you start) and
   **Scenario Editor** (where you build/edit a mission in detail --
   Section 6).
-* Three tabs on the **right**: **Results**, **Mission Output**, and
-  **Kernel Status** -- all empty until you run something.
+* Five tabs on the **right**: **Results**, **Mission Dashboard**,
+  **Mission Output**, **Kernel Status** (all empty until you run
+  something), and **Explain** (a live, always-current summary of
+  what the scenario you're currently editing actually does -- see
+  the end of Section 7).
 
 The app opens on the **Load Scenario** tab deliberately: picking a
 starting point is the natural first move for everyone, whether you end
@@ -105,7 +108,7 @@ up using a template as-is or editing it into something new.
 
 ## 4. Your first simulation, in five minutes
 
-1. **Pick a template.** The list on the left shows all eighteen
+1. **Pick a template.** The list on the left shows all twenty-one
    built-in example missions, numbered roughly from simplest to most
    advanced -- "01 - Two-body circular orbit" is the simplest possible
    case (one satellite, one orbit, nothing else going on) and a good
@@ -122,7 +125,7 @@ up using a template as-is or editing it into something new.
    automatically. Pick a series from the **Series** dropdown (e.g. a
    spacecraft's position) to see it plotted. Hover over the plot to read
    exact values at any point.
-5. Done exploring? **Export all series to CSV...** saves every plotted
+5. Done exploring? **Export CSV...** saves every plotted
    quantity to a folder of `.csv` files you can open in a spreadsheet.
 
 That's the whole loop: **pick -> open -> run -> look at Results.**
@@ -142,9 +145,10 @@ yet; the app will say so clearly rather than failing silently.
 
 Say "02 - Elliptical orbit with perturbations" is close to what you
 want, but you'd like a different inclination or duration, without
-learning the full Scenario Editor. Scroll down the Load Scenario tab,
-below the template list, to a row of **"Customize: ..."** buttons -- one
-per template:
+learning the full Scenario Editor. Every row in the Load Scenario
+tab's template list has its own **Customize...** button on its right
+-- click the one on that template's row (no need to select the row
+first):
 
 ![The "Customize: GEO station-keeping..." wizard, showing the station-keeping controller's own parameters pre-filled](docs/images/customize_wizard.png)
 
@@ -165,7 +169,7 @@ most people start from a template (Section 4) or its customize wizard
 want to build something more specific, or just want to know what you're
 looking at.
 
-![The Scenario Editor tab with template 01 loaded, showing the Scenario, Propagation setup, and Spacecraft sections](docs/images/scenario_editor_tab.png)
+![The Scenario Editor tab with template 01 loaded, showing the Scenario and Propagation setup sections, with the Explain tab's summary on the right](docs/images/scenario_editor_tab.png)
 
 The form is organized top to bottom, roughly in the order you'd fill it
 out for a brand-new scenario:
@@ -192,12 +196,21 @@ out for a brand-new scenario:
   **Generate Walker constellation...** and **Generate phasing
   formation...** buttons here for building multi-satellite setups
   automatically instead of adding spacecraft one at a time.
+  On the orbit & mass tab, **Surface facets** describes the spacecraft as
+  flat plates (**Box + solar array...** fills in a bus and an array).
+  Drag and solar pressure then follow the attitude, and an off-centre
+  plate adds a torque the wheels must absorb (template 21).
 * **Ground stations** -- optional stations on the ground to check
   visibility/communication with (each spacecraft's contact windows,
   signal link margin, etc.).
 * **Mission sequence** -- an optional, ordered list of commands (coast
   for a while, do a burn, take a snapshot, ...) for missions more
-  complex than "just propagate forward for N days".
+  complex than "just propagate forward for N days". A propagate can stop
+  after a duration, at an epoch, or at an event: periapsis, apoapsis, or
+  the start or end of the next pass over a ground station
+  (`pass_start`/`pass_end`). A `pass_start` issued during a pass waits
+  for the next one. The Explain tab lists each station's first pass and
+  how long it lasts.
 * **Monte Carlo** -- see Section 10.
 
 A **validation message** at the very bottom of this tab updates live as
@@ -208,27 +221,74 @@ or invalid) -- you don't have to guess why Run is unavailable.
 
 After a run finishes, the **Results** tab shows one plot at a time:
 
-* **Series** -- pick which quantity to look at (e.g.
-  `sat-1.position_N`, a spacecraft's position). Positions/velocities are
-  plotted in kilometers, not meters, to stay readable.
+* **Series** -- pick which quantity to look at, listed by plot title
+  (e.g. "sat-1: Inertial Position (ECI)"). Type to filter the list.
+  Hover an entry to see its code name (e.g. `sat-1.position_N`), which
+  is also its CSV file name.
+* **Suggested** -- one-click shortcuts to the series the scenario's own
+  description points at under "What to look at" (e.g. template 19's
+  access window, pointing error, battery and link margin). A new run
+  opens on the first of them. For your own scenarios, write series names
+  in that section of the Description and they show up here too.
 * **X-axis** -- toggle between elapsed simulation time and the real
   calendar epoch, whichever you find easier to read.
-* **Export all series to CSV...** -- saves everything plotted (not just
-  the current series) to `.csv` files for use in a spreadsheet or
-  another tool.
+* **Export CSV...** -- saves every series (not just the current one) to
+  `.csv` files in SI units, for a spreadsheet or another tool.
+  **Save PNG...** / **Save SVG...** save just the plot on screen.
+* **View** -- only shown when the scenario has ground stations:
+  "Access timeline" shows every station's passes over every spacecraft
+  in one chart.
+
+A line under the buttons names what produced the result (versions,
+integrator and step, run time). If an orbit-only run's energy or angular
+momentum drifts, an amber note appears there too: try a smaller
+dynamics step or a higher-order integrator.
 
 The plot is interactive: hover to see exact values, and use your
 scroll wheel/drag to zoom and pan.
 
-**Mission Output** (the tab next to Results) is a text log of what
-actually happened during a Mission Sequence run -- useful once you're
-using the Mission Sequence feature from Section 6, otherwise you can
-ignore it.
+**Mission Output** (the tab next to Results) shows what each `report`
+command in a Mission Sequence run (Section 6) recorded: one row per
+quantity and one column per report, in the same units as the plots.
+With exactly two reports (e.g. "Before burn" / "After burn") a
+**Change** column shows the difference. Type in **Filter** to narrow it
+to a report or a quantity; **Export CSV...** always writes every report
+in SI units. Without a Mission Sequence you can ignore this tab.
 
 **Kernel Status** shows whether the SPICE data files Basilisk needs
 (planetary positions, leap seconds, etc.) are downloaded and current --
 see [Section 11](#11-common-questions-and-problems) if Run ever
 complains about missing kernels.
+
+**Explain** is different from the other four tabs: it doesn't need a
+run at all, and it updates live as you edit the Scenario Editor. It's a
+short, at-a-glance recipe of what the CURRENT scenario is actually
+configured to do -- a handful of stat tiles (spacecraft count,
+duration, gravity model, ...), colored badges for what's turned on
+(station-keeping, Sun-synchronous, drag, ...), and, once a scenario has
+two or more spacecraft, a side-by-side comparison table. It never shows
+prose -- where a badge uses a term you don't recognize (Sun
+-synchronous, spherical-harmonics gravity, ...), check the glossary in
+[Section 12](#12-a-short-glossary). Unlike the free-text Description
+box at the top of the Scenario Editor (which is hand-written and only
+really meaningful for the bundled templates), Explain is built fresh
+from the scenario's actual current fields every time, so it's never out
+of date -- useful for checking that a bespoke scenario you built from
+scratch actually ended up configured the way you intended.
+
+Explain also checks the scenario before you run it:
+
+* **Ground stations** lists each station's predicted passes in this run,
+  e.g. "berlin-gs: 2 passes, first at 10 min (peak 61 deg)". The
+  prediction uses each spacecraft's starting orbit (with Earth's J2 drift
+  when the gravity model includes it), so maneuvers and drag aren't
+  included.
+* **Check before running** appears at the top when something can't work
+  as configured, and the tab's title then reads "Explain (1 to check)":
+  a station that is never in view during the run, or whose first pass
+  comes late; a Sun-pointing spacecraft with no sun sensor on its
+  Sun-facing side; or station-keeping with drag off, whose deadband may
+  never trip. These are warnings only; the run still works.
 
 ## 8. Saving your work
 
@@ -297,6 +357,55 @@ you may need a few extra system libraries -- see "Running the tests" in
 instantly) and keeps whatever partial results were already produced --
 it's always safe to use, never a forced/unsafe kill.
 
+**You want to simulate years, not weeks.** Set the duration (up to about
+10 years) in Propagation setup. Past 100 days the run is split into
+segments of up to 90 days, chained automatically, and the result is
+still one run. Also set **Record every** (e.g. 600 s), or the results
+fill memory. For scale: 5 years of LEO station keeping took about 50
+minutes and 450 MB. Mission sequences, phasing keeping, Monte Carlo and Vizard
+are limited to 100 days.
+
+**You want to know when the spacecraft comes down.** Open the **End of
+Life** tab, pick the spacecraft and press **Estimate lifetime**. It
+gives the re-entry date and whether the 5-year rule (ESA's Zero Debris
+approach, the FCC) and the 25-year guideline (IADC) are met. Choose
+**End of last run** to start from where a run finished, with the
+propellant it left. Tick **Lower perigee to** to plan a deorbit burn
+with the orbit thruster; if the propellant is short, it says how low
+the perigee gets. The estimate takes seconds and agrees with full
+simulations to about 2%. It uses the scenario's atmosphere and real
+space weather: the observed record, then NASA MSFC's prediction, whose
+last solar cycle repeats past 2041. **Drag coefficient** defaults to
+2.2, ESA AD10's end-of-life value; the templates fly at 3.0, its
+operations value.
+
+**You need a delta-V and propellant budget.** Fill in the spacecraft
+editor's **Budget (AD10)** tab, run the mission (ideally its whole
+length, with Solar activity at Conservative (95th) and Cd 3.0 for an ESA AD10
+budget), then press **Compute budget** on the **Budget** tab. It lists
+each contributor per mission phase with its margin, the total, and notes
+on anything that departs from the guideline. **Copy as CSV** puts the
+table on the clipboard. Without a run, a LEO station keeper's orbit
+control is estimated from the drag on its orbit (full runs spent ~5%
+more).
+
+**Launch delays** repeats the budget for launches 1 to 5 years late, as
+AD10 asks: a later launch meets a different part of the solar cycle.
+Orbit control is scaled by how much more (or less) drag each window has,
+and the disposal is worked out again from each end of life. The worst
+launch date is in bold; pick any row for its full budget. Allow a
+minute or two.
+
+**Altitude trade** asks which orbit fits the tank: it runs the launch
+delays at several altitudes (type them in **Altitudes [km]**, or leave
+it empty for five around the spacecraft's own, 50 km apart) and shows
+each altitude's worst launch date, its propellant and whether that fits
+the tank. A Sun-synchronous orbit stays Sun-synchronous at every
+altitude. The lowest altitude that fits is in bold; pick a row for its
+launch dates. The altitudes run in parallel; allow about ten minutes.
+From the command line: `spacemissionstudio budget <scenario>
+--altitudes 400,450,500`.
+
 **You're not sure what a field in the Scenario Editor means.** Hover
 over it -- most fields have a tooltip explaining what it does in plain
 language. The validation message at the bottom of the Scenario Editor
@@ -336,9 +445,40 @@ anyone who hasn't worked with spacecraft before:
   (star trackers, sun sensors, ...) measure where it's pointing;
   actuators (reaction wheels, thrusters, magnetic torque rods) change
   where it's pointing or correct its orbit.
+* **Facet model** -- the spacecraft described as flat plates, each with
+  its own area, facing direction and centre of pressure. Drag and solar
+  pressure push on each plate that faces the flow or the Sun, so both
+  depend on the attitude and can twist the spacecraft.
+* **Orbital lifetime** -- how long drag takes to bring an orbit down to
+  re-entry (here: the perigee reaching 120 km). Disposal rules cap it
+  after the mission ends: 5 years under ESA's Zero Debris approach and
+  the FCC, 25 years under the older IADC guideline.
+* **Drag coefficient (Cd)** -- how strongly the thin upper atmosphere
+  drags on a spacecraft for its size. ESA's AD10 guideline uses 3.0 for
+  operations (a conservative, higher drag) and 2.2 for end of life.
 * **Station-keeping** -- firing small thruster burns periodically to
   correct a satellite's orbit as it naturally drifts (from gravity
   irregularities, drag, etc.), so it stays where it's supposed to be.
+* **Phasing (along-track separation)** -- how far ahead of or behind
+  another spacecraft (the "chief") a satellite sits along the SAME
+  orbit, measured as a distance along the direction of travel.
+  "Phasing-keeping" holds that separation steady over time, the same
+  way station-keeping holds altitude steady.
+* **Sun-synchronous orbit** -- an orbit whose plane rotates (from
+  Earth's own gravity being slightly non-spherical) at exactly the same
+  rate the Sun appears to move around the sky over a year -- so the
+  satellite crosses any given latitude at the same local solar time on
+  every pass. The most common choice for Earth-observation satellites,
+  since lighting conditions on the ground stay consistent.
+* **Spherical-harmonics gravity** -- a more detailed model of a
+  planet's gravity than "a single point mass at the center" -- it
+  accounts for the planet's real, slightly lumpy/non-spherical shape
+  (Earth bulges at the equator, for instance). Higher "degree" means
+  more detail, at the cost of more computation.
+* **Third-body perturbation** -- the small extra pull on a spacecraft
+  from a body OTHER than the one it's orbiting -- e.g. the Sun or Moon's
+  gravity acting on a satellite orbiting Earth. Usually a small effect
+  next to the central body's own gravity, but real over long enough runs.
 * **Ground station** -- a fixed point on Earth's surface a spacecraft
   might need to communicate with; SpaceMissionStudio can compute exactly
   when each spacecraft is visible to each ground station.
@@ -356,7 +496,7 @@ anyone who hasn't worked with spacecraft before:
 
 * **More templates to learn from:**
   [`spacemissionstudio/scenarios/templates/README.md`](spacemissionstudio/scenarios/templates/README.md)
-  describes what each of the eighteen built-in templates teaches, in
+  describes what each of the twenty-one built-in templates teaches, in
   more depth than the in-app description box.
 * **The full feature list and technical details:** [`README.md`](README.md)'s
   "Capabilities" section.

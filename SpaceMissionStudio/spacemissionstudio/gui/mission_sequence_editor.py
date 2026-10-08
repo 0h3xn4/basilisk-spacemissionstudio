@@ -49,8 +49,8 @@ leave a parent's stored (and otherwise-unused) ``children`` list stale.
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
-    QComboBox,
     QDialog,
     QDialogButtonBox,
     QDoubleSpinBox,
@@ -58,10 +58,11 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
-    QSpinBox,
     QStackedWidget,
     QTreeWidget,
     QTreeWidgetItem,
@@ -71,12 +72,15 @@ from PySide6.QtWidgets import (
 
 from ..schema.command import (
     SUPPORTED_COMMAND_KINDS,
+    PASS_EVENT_KINDS,
     SUPPORTED_EVENT_KINDS,
     SUPPORTED_MANEUVER_FRAMES,
     SUPPORTED_STOP_CONDITIONS,
     Command,
 )
 from .feedback import show_toast
+from .theme import PALETTE
+from .widgets import ComboBox, PreciseDoubleSpinBox, SpinBox
 
 # Mirrors engine.mission_engine._ASSIGNMENT_CONTROLLERS/_ASSIGNMENT_ATTRIBUTES
 # -- duplicated here (not imported) because engine.mission_engine imports
@@ -95,7 +99,7 @@ _KIND_PAGE_INDEX = {"propagate": 0, "maneuver": 1, "assignment": 2, "report": 3,
 
 
 def _spin_component(value: float = 0.0) -> QDoubleSpinBox:
-    box = QDoubleSpinBox()
+    box = PreciseDoubleSpinBox()
     box.setRange(-1.0e9, 1.0e9)
     box.setDecimals(6)
     box.setSingleStep(0.1)
@@ -105,14 +109,17 @@ def _spin_component(value: float = 0.0) -> QDoubleSpinBox:
 
 class _CommandEditorDialog(QDialog):
     def __init__(self, command: Command | None = None, parent: QWidget | None = None,
-                 spacecraft_names: list[str] | None = None):
+                 spacecraft_names: list[str] | None = None, series_names: list[str] | None = None,
+                 ground_station_names: list[str] | None = None):
         super().__init__(parent)
         self._spacecraft_names = spacecraft_names or []
+        self._ground_station_names = ground_station_names or []
+        self._series_names = series_names or []
         self.setWindowTitle("Edit command" if command is not None else "New command")
 
         layout = QVBoxLayout(self)
         form = QFormLayout()
-        self.kind_combo = QComboBox()
+        self.kind_combo = ComboBox()
         self.kind_combo.setToolTip(
             "What this step in the mission sequence actually does, run in order (top to bottom "
             "in the tree) starting from the scenario's own initial conditions -- each command "
@@ -177,13 +184,13 @@ class _CommandEditorDialog(QDialog):
         page = QWidget()
         form = QFormLayout(page)
 
-        self.stop_condition_combo = QComboBox()
+        self.stop_condition_combo = ComboBox()
         self.stop_condition_combo.setToolTip(
             "When this propagate step stops and moves on to the next command:\n"
             "duration: after a fixed number of days (below).\n"
             "epoch: at a specific calendar date/time (below).\n"
-            "event: as soon as a chosen spacecraft event happens (e.g. apoapsis, periapsis) -- "
-            "below."
+            "event: as soon as a chosen spacecraft event happens (periapsis, apoapsis, or the start or "
+            "end of the next pass over a ground station) -- below."
         )
         self.stop_condition_combo.addItems(list(SUPPORTED_STOP_CONDITIONS))
         index = self.stop_condition_combo.findText(params.get("stop_condition", "duration"))
@@ -197,7 +204,7 @@ class _CommandEditorDialog(QDialog):
         duration_page = QWidget()
         duration_form = QFormLayout(duration_page)
         duration_form.setContentsMargins(0, 0, 0, 0)
-        self.duration_days_spin = QDoubleSpinBox()
+        self.duration_days_spin = PreciseDoubleSpinBox()
         self.duration_days_spin.setRange(1e-6, 1e6)
         self.duration_days_spin.setDecimals(6)
         self.duration_days_spin.setValue(float(params.get("duration_days", 1.0)))
@@ -215,22 +222,39 @@ class _CommandEditorDialog(QDialog):
         event_page = QWidget()
         event_form = QFormLayout(event_page)
         event_form.setContentsMargins(0, 0, 0, 0)
-        self.event_kind_combo = QComboBox()
+        self.event_kind_combo = ComboBox()
         self.event_kind_combo.setToolTip(
             "periapsis: stop at the next closest approach to the central body.\n"
-            "apoapsis: stop at the next farthest point from the central body."
+            "apoapsis: stop at the next farthest point from the central body.\n"
+            "pass_start: stop when the next pass over the ground station below begins.\n"
+            "pass_end: stop when the current (or next) pass over that station ends."
         )
         self.event_kind_combo.addItems(list(SUPPORTED_EVENT_KINDS))
         event_index = self.event_kind_combo.findText(params.get("event_kind", SUPPORTED_EVENT_KINDS[0]))
         if event_index >= 0:
             self.event_kind_combo.setCurrentIndex(event_index)
         event_form.addRow("Event", self.event_kind_combo)
-        self.propagate_event_spacecraft_combo = QComboBox()
+        self.propagate_event_spacecraft_combo = ComboBox()
         self.propagate_event_spacecraft_combo.addItems(self._spacecraft_names)
         sc_index = self.propagate_event_spacecraft_combo.findText(params.get("spacecraft", ""))
         if sc_index >= 0:
             self.propagate_event_spacecraft_combo.setCurrentIndex(sc_index)
         event_form.addRow("Spacecraft", self.propagate_event_spacecraft_combo)
+        self.propagate_event_station_combo = ComboBox()
+        self.propagate_event_station_combo.setToolTip("The ground station whose pass ends this propagate.")
+        station = params.get("ground_station", "")
+        self.propagate_event_station_combo.addItems(self._ground_station_names)
+        if station and station not in self._ground_station_names:
+            # Keep a station this scenario no longer has visible rather than
+            # silently swapping it for another one; validation flags it.
+            self.propagate_event_station_combo.addItem(station)
+        station_index = self.propagate_event_station_combo.findText(station)
+        if station_index >= 0:
+            self.propagate_event_station_combo.setCurrentIndex(station_index)
+        event_form.addRow("Ground station", self.propagate_event_station_combo)
+        self.propagate_event_station_label = event_form.labelForField(self.propagate_event_station_combo)
+        self.event_kind_combo.currentTextChanged.connect(self._update_event_station_visibility)
+        self._update_event_station_visibility(self.event_kind_combo.currentText())
         self.propagate_stop_stack.addWidget(event_page)
 
         self.stop_condition_combo.currentTextChanged.connect(
@@ -242,11 +266,16 @@ class _CommandEditorDialog(QDialog):
 
         self.stack.addWidget(page)
 
+    def _update_event_station_visibility(self, event_kind: str) -> None:
+        visible = event_kind in PASS_EVENT_KINDS
+        self.propagate_event_station_combo.setVisible(visible)
+        self.propagate_event_station_label.setVisible(visible)
+
     def _build_maneuver_page(self, params: dict) -> None:
         page = QWidget()
         form = QFormLayout(page)
 
-        self.maneuver_spacecraft_combo = QComboBox()
+        self.maneuver_spacecraft_combo = ComboBox()
         self.maneuver_spacecraft_combo.addItems(self._spacecraft_names)
         index = self.maneuver_spacecraft_combo.findText(params.get("spacecraft", ""))
         if index >= 0:
@@ -272,7 +301,7 @@ class _CommandEditorDialog(QDialog):
         row_widget.setLayout(row)
         form.addRow("Delta-V [m/s]", row_widget)
 
-        self.maneuver_frame_combo = QComboBox()
+        self.maneuver_frame_combo = ComboBox()
         self.maneuver_frame_combo.addItems(list(SUPPORTED_MANEUVER_FRAMES))
         frame_index = self.maneuver_frame_combo.findText(params.get("frame", "inertial"))
         if frame_index >= 0:
@@ -290,7 +319,7 @@ class _CommandEditorDialog(QDialog):
         page = QWidget()
         form = QFormLayout(page)
 
-        self.lambert_spacecraft_combo = QComboBox()
+        self.lambert_spacecraft_combo = ComboBox()
         self.lambert_spacecraft_combo.addItems(self._spacecraft_names)
         index = self.lambert_spacecraft_combo.findText(params.get("spacecraft", ""))
         if index >= 0:
@@ -309,7 +338,7 @@ class _CommandEditorDialog(QDialog):
         row_widget.setLayout(row)
         form.addRow("Target position [m] (inertial)", row_widget)
 
-        self.lambert_tof_spin = QDoubleSpinBox()
+        self.lambert_tof_spin = PreciseDoubleSpinBox()
         self.lambert_tof_spin.setRange(1.0, 1.0e9)
         self.lambert_tof_spin.setDecimals(1)
         self.lambert_tof_spin.setSingleStep(60.0)
@@ -320,12 +349,12 @@ class _CommandEditorDialog(QDialog):
         )
         form.addRow("Time of flight [s]", self.lambert_tof_spin)
 
-        self.lambert_num_rev_spin = QSpinBox()
+        self.lambert_num_rev_spin = SpinBox()
         self.lambert_num_rev_spin.setRange(0, 20)
         self.lambert_num_rev_spin.setValue(int(params.get("num_revolutions", 0)))
         form.addRow("Number of revolutions", self.lambert_num_rev_spin)
 
-        self.lambert_max_dist_spin = QDoubleSpinBox()
+        self.lambert_max_dist_spin = PreciseDoubleSpinBox()
         self.lambert_max_dist_spin.setRange(0.001, 1.0e9)
         self.lambert_max_dist_spin.setDecimals(3)
         self.lambert_max_dist_spin.setValue(float(params.get("max_distance_target_m", 1000.0)))
@@ -335,7 +364,7 @@ class _CommandEditorDialog(QDialog):
         )
         form.addRow("Max distance from target [m]", self.lambert_max_dist_spin)
 
-        self.lambert_min_radius_spin = QDoubleSpinBox()
+        self.lambert_min_radius_spin = PreciseDoubleSpinBox()
         self.lambert_min_radius_spin.setRange(0.0, 1.0e12)
         self.lambert_min_radius_spin.setDecimals(1)
         self.lambert_min_radius_spin.setValue(float(params.get("min_orbit_radius_m", 0.0)))
@@ -352,11 +381,11 @@ class _CommandEditorDialog(QDialog):
         page = QWidget()
         form = QFormLayout(page)
 
-        self.assignment_spacecraft_combo = QComboBox()
+        self.assignment_spacecraft_combo = ComboBox()
         self.assignment_spacecraft_combo.addItems(self._spacecraft_names)
-        self.assignment_controller_combo = QComboBox()
+        self.assignment_controller_combo = ComboBox()
         self.assignment_controller_combo.addItems(list(_ASSIGNMENT_CONTROLLER_CHOICES))
-        self.assignment_parameter_combo = QComboBox()
+        self.assignment_parameter_combo = ComboBox()
         self.assignment_parameter_combo.addItems(list(_ASSIGNMENT_PARAMETER_CHOICES))
 
         target = params.get("target", "")
@@ -376,7 +405,7 @@ class _CommandEditorDialog(QDialog):
         form.addRow("Controller", self.assignment_controller_combo)
         form.addRow("Parameter", self.assignment_parameter_combo)
 
-        self.assignment_value_spin = QDoubleSpinBox()
+        self.assignment_value_spin = PreciseDoubleSpinBox()
         self.assignment_value_spin.setRange(-1.0e9, 1.0e9)
         self.assignment_value_spin.setDecimals(6)
         value = params.get("value", 0.0)
@@ -384,9 +413,8 @@ class _CommandEditorDialog(QDialog):
         form.addRow("New value", self.assignment_value_spin)
 
         hint = QLabel(
-            "Sets a live controller parameter mid-mission, e.g. reducing station-keeping thrust for a later "
-            "mission phase. thrust_n [N] applies to any controller kind above; isp_s [s] only affects propellant "
-            "bookkeeping, not the applied force."
+            "Changes a controller setting mid-mission, e.g. lower thrust for a later phase. "
+            "Specific impulse only changes the propellant used, not the force."
         )
         hint.setWordWrap(True)
         hint.setStyleSheet("color: palette(mid);")
@@ -395,18 +423,74 @@ class _CommandEditorDialog(QDialog):
         self.stack.addWidget(page)
 
     def _build_report_page(self, params: dict) -> None:
+        """A checkable list of the series this scenario produces (real user
+        feedback: typing series names from memory, where one typo fails
+        the run). Nothing ticked means "snapshot every series"."""
         page = QWidget()
         layout = QVBoxLayout(page)
-        hint = QLabel(
-            "Series names to snapshot (one per line), e.g. 'sat-1.position_N' -- leave empty to snapshot "
-            "every series produced by the run so far."
-        )
-        hint.setWordWrap(True)
-        layout.addWidget(hint)
-        self.report_series_edit = QPlainTextEdit("\n".join(params.get("series", [])))
-        self.report_series_edit.setTabChangesFocus(True)
-        layout.addWidget(self.report_series_edit)
+        layout.setContentsMargins(0, 0, 0, 0)
+        self.report_summary_label = QLabel()
+        layout.addWidget(self.report_summary_label)
+        filter_row = QHBoxLayout()
+        self.report_filter_edit = QLineEdit()
+        self.report_filter_edit.setPlaceholderText("Filter, e.g. sat-1 or battery")
+        self.report_filter_edit.setClearButtonEnabled(True)
+        self.report_filter_edit.textChanged.connect(self._on_report_filter_changed)
+        filter_row.addWidget(self.report_filter_edit, 1)
+        self.report_clear_button = QPushButton("Clear selection")
+        self.report_clear_button.setAutoDefault(False)
+        self.report_clear_button.clicked.connect(self._on_report_clear)
+        filter_row.addWidget(self.report_clear_button)
+        layout.addLayout(filter_row)
+        self.report_series_list = QListWidget()
+        self.report_series_list.setMinimumHeight(220)  # [px]
+        selected = [str(name) for name in params.get("series", [])]
+        known = set(self._series_names)
+        for name in self._series_names:
+            self._add_report_item(name, name in selected)
+        for name in selected:
+            if name not in known:
+                # Kept (so open + OK changes nothing) but flagged: the run
+                # would fail on it.
+                self._add_report_item(name, True, missing=True)
+        if not self._series_names:
+            self.report_series_list.setToolTip("Add spacecraft to the scenario to list their series here.")
+        self.report_series_list.itemChanged.connect(lambda _item: self._update_report_summary())
+        layout.addWidget(self.report_series_list, 1)
+        self._update_report_summary()
         self.stack.addWidget(page)
+
+    def _add_report_item(self, name: str, checked: bool, missing: bool = False) -> None:
+        item = QListWidgetItem(f"{name}  (not produced by this scenario)" if missing else name)
+        item.setData(Qt.ItemDataRole.UserRole, name)
+        item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+        item.setCheckState(Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked)
+        if missing:
+            item.setForeground(QColor(PALETTE["danger"]))
+            item.setToolTip("This scenario does not produce this series, so the run would stop here. "
+                            "Untick it, or rename the spacecraft/device it refers to.")
+        self.report_series_list.addItem(item)
+
+    def report_selected_series(self) -> list[str]:
+        return [self.report_series_list.item(i).data(Qt.ItemDataRole.UserRole)
+                for i in range(self.report_series_list.count())
+                if self.report_series_list.item(i).checkState() == Qt.CheckState.Checked]
+
+    def _update_report_summary(self) -> None:
+        count = len(self.report_selected_series())
+        self.report_summary_label.setText(
+            "Nothing ticked: every series is snapshotted." if count == 0
+            else f"{count} series ticked." if count > 1 else "1 series ticked.")
+
+    def _on_report_filter_changed(self, text: str) -> None:
+        needle = text.strip().lower()
+        for i in range(self.report_series_list.count()):
+            item = self.report_series_list.item(i)
+            item.setHidden(bool(needle) and needle not in item.text().lower())
+
+    def _on_report_clear(self) -> None:
+        for i in range(self.report_series_list.count()):
+            self.report_series_list.item(i).setCheckState(Qt.CheckState.Unchecked)
 
     def _build_conditional_page(self, params: dict) -> None:
         """Shared by ``if``/``while`` -- both take just a ``condition``
@@ -417,9 +501,9 @@ class _CommandEditorDialog(QDialog):
         page = QWidget()
         layout = QVBoxLayout(page)
         hint = QLabel(
-            "Condition expression, evaluated against t_s (elapsed mission time [s]) and "
-            "spacecraft['<name>']['r_BN_N'|'v_BN_N'|'altitude_m'|'mass_kg'] -- "
-            "e.g. \"spacecraft['sat-1']['altitude_m'] < 400000\"."
+            "A condition, e.g.  spacecraft['sat-1']['altitude_m'] < 400000\n"
+            "Available: t_s (mission time, s), duration_days and, per spacecraft, r_BN_N, v_BN_N, altitude_m, "
+            "mass_kg. Allowed: numbers, names, [ ] indexing, arithmetic, comparisons, and/or/not."
         )
         hint.setWordWrap(True)
         layout.addWidget(hint)
@@ -432,8 +516,7 @@ class _CommandEditorDialog(QDialog):
         page = QWidget()
         layout = QVBoxLayout(page)
         hint = QLabel(
-            "Arbitrary Python, run with no sandboxing (a plain exec()) -- see "
-            "engine.mission_engine.MissionEngine._run_script_block's docstring for the exact trust boundary."
+            "Python code, run without a sandbox. Only run scripts you trust: Run asks before it runs them."
         )
         hint.setWordWrap(True)
         layout.addWidget(hint)
@@ -457,6 +540,8 @@ class _CommandEditorDialog(QDialog):
             else:  # "event"
                 params["event_kind"] = self.event_kind_combo.currentText()
                 params["spacecraft"] = self.propagate_event_spacecraft_combo.currentText()
+                if params["event_kind"] in PASS_EVENT_KINDS:
+                    params["ground_station"] = self.propagate_event_station_combo.currentText()
             return params
         if kind == "maneuver":
             return {
@@ -483,8 +568,7 @@ class _CommandEditorDialog(QDialog):
             ))
             return {"target": target, "value": self.assignment_value_spin.value()}
         if kind == "report":
-            series = [line.strip() for line in self.report_series_edit.toPlainText().splitlines() if line.strip()]
-            return {"series": series}
+            return {"series": self.report_selected_series()}
         if kind in ("if", "while"):
             return {"condition": self.condition_edit.text().strip()}
         if kind == "script_block":
@@ -537,6 +621,8 @@ class MissionSequenceEditorWidget(QWidget):
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
         self._spacecraft_names_provider = None
+        self._series_names_provider = None
+        self._ground_station_names_provider = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -545,18 +631,27 @@ class MissionSequenceEditorWidget(QWidget):
         self.tree.setHeaderHidden(True)
         layout.addWidget(self.tree)
 
-        button_row = QHBoxLayout()
+        # Two rows, not one: all six buttons side by side needed ~575 px,
+        # wider than the left pane gets at the default 1400x850 window --
+        # which pushed the whole Scenario Editor into a horizontal
+        # scrollbar and clipped every field's right edge.
+        edit_row = QHBoxLayout()
         self.add_button = QPushButton("Add...")
         self.add_child_button = QPushButton("Add Child...")
         self.add_child_button.setToolTip("Adds a nested command inside the selected 'if'/'while' command.")
         self.edit_button = QPushButton("Edit...")
         self.remove_button = QPushButton("Remove")
+        for button in (self.add_button, self.add_child_button, self.edit_button, self.remove_button):
+            edit_row.addWidget(button)
+        layout.addLayout(edit_row)
+
+        order_row = QHBoxLayout()
         self.move_up_button = QPushButton("Move Up")
         self.move_down_button = QPushButton("Move Down")
-        for button in (self.add_button, self.add_child_button, self.edit_button, self.remove_button,
-                       self.move_up_button, self.move_down_button):
-            button_row.addWidget(button)
-        layout.addLayout(button_row)
+        order_row.addWidget(self.move_up_button)
+        order_row.addWidget(self.move_down_button)
+        order_row.addStretch(1)
+        layout.addLayout(order_row)
 
         self.add_button.clicked.connect(self._on_add)
         self.add_child_button.clicked.connect(self._on_add_child)
@@ -581,6 +676,25 @@ class MissionSequenceEditorWidget(QWidget):
     def _spacecraft_names(self) -> list[str]:
         return sorted(self._spacecraft_names_provider()) if self._spacecraft_names_provider else []
 
+    def set_ground_station_names_provider(self, provider) -> None:
+        """Same zero-argument-callable convention as
+        :meth:`set_spacecraft_names_provider`, for the propagate command's
+        pass-event station picker."""
+        self._ground_station_names_provider = provider
+
+    def _ground_station_names(self) -> list[str]:
+        return sorted(self._ground_station_names_provider()) if self._ground_station_names_provider else []
+
+    def set_series_names_provider(self, provider) -> None:
+        """``provider`` is a zero-argument callable returning the series
+        names the current scenario will produce (see
+        ``engine.series_names.expected_series_names``), for the Report
+        command's pick-list."""
+        self._series_names_provider = provider
+
+    def _series_names(self) -> list[str]:
+        return list(self._series_names_provider()) if self._series_names_provider else []
+
     def _update_button_states(self) -> None:
         item = self.tree.currentItem()
         has_selection = item is not None
@@ -604,7 +718,9 @@ class MissionSequenceEditorWidget(QWidget):
         return item
 
     def _on_add(self) -> None:
-        dialog = _CommandEditorDialog(parent=self, spacecraft_names=self._spacecraft_names())
+        dialog = _CommandEditorDialog(parent=self, spacecraft_names=self._spacecraft_names(),
+                                      series_names=self._series_names(),
+                                      ground_station_names=self._ground_station_names())
         if dialog.exec() == QDialog.DialogCode.Accepted:
             command = dialog.to_dataclass()
             item = self._new_item(command)
@@ -620,7 +736,9 @@ class MissionSequenceEditorWidget(QWidget):
         parent_command = parent_item.data(0, Qt.ItemDataRole.UserRole)
         if parent_command.kind not in ("if", "while"):
             return
-        dialog = _CommandEditorDialog(parent=self, spacecraft_names=self._spacecraft_names())
+        dialog = _CommandEditorDialog(parent=self, spacecraft_names=self._spacecraft_names(),
+                                      series_names=self._series_names(),
+                                      ground_station_names=self._ground_station_names())
         if dialog.exec() == QDialog.DialogCode.Accepted:
             command = dialog.to_dataclass()
             item = self._new_item(command)
@@ -635,7 +753,9 @@ class MissionSequenceEditorWidget(QWidget):
         if item is None:
             return
         command = item.data(0, Qt.ItemDataRole.UserRole)
-        dialog = _CommandEditorDialog(command=command, parent=self, spacecraft_names=self._spacecraft_names())
+        dialog = _CommandEditorDialog(command=command, parent=self, spacecraft_names=self._spacecraft_names(),
+                                      series_names=self._series_names(),
+                                      ground_station_names=self._ground_station_names())
         if dialog.exec() == QDialog.DialogCode.Accepted:
             new_command = dialog.to_dataclass()
             item.setData(0, Qt.ItemDataRole.UserRole, new_command)

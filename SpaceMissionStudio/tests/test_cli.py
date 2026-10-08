@@ -65,7 +65,7 @@ def test_spaceweather_resolve_reports_resolution(tmp_path, capsys):
     assert rc == 0
     out = capsys.readouterr().out
     assert "Resolved to:" in out
-    assert "Synthetic:" in out
+    assert "From real data:" in out and "SW-All" in out
 
 
 def test_spaceweather_resolve_reports_a_clean_error_instead_of_a_traceback(tmp_path, capsys):
@@ -220,6 +220,43 @@ def test_kernels_status_without_basilisk_reports_clear_error(capsys):
     rc = cli.main(["kernels-status"])
     assert rc == 2
     assert "Basilisk is not installed" in capsys.readouterr().err
+
+
+def _script_sequence(marker="unused"):
+    from spacemissionstudio.schema.command import Command
+
+    return [Command(kind="propagate", params={"stop_condition": "duration", "duration_days": 0.001}),
+            Command(kind="script_block", params={"code": f"open({str(marker)!r}, 'w').write('ran')"})]
+
+
+def test_validate_notes_script_blocks(tmp_path, capsys):
+    """validate says a scenario has script blocks and that run needs
+    --allow-scripts for them (SRS-S-03)."""
+    path = tmp_path / "scenario.json"
+    _write_scenario(path, mission_sequence=_script_sequence())
+    assert cli.main(["validate", str(path)]) == 0
+    assert "NOTE: 1 script_block(s) (mission_sequence[1])" in capsys.readouterr().out
+
+
+def test_run_refuses_script_blocks_without_allow_scripts(tmp_path, capsys):
+    """Without --allow-scripts, run stops before building anything, with
+    exit code 1 and the block's path (SRS-S-03)."""
+    path, marker = tmp_path / "scenario.json", tmp_path / "marker.txt"
+    _write_scenario(path, mission_sequence=_script_sequence(marker))
+    assert cli.main(["run", str(path), "--out-dir", str(tmp_path / "out")]) == 1
+    assert not marker.exists()
+    err = capsys.readouterr().err
+    assert "mission_sequence[1]" in err and "--allow-scripts" in err
+    assert not (tmp_path / "out").exists()
+
+
+@pytest.mark.requires_basilisk
+def test_run_with_allow_scripts_runs_them(tmp_path, capsys):
+    """With --allow-scripts the script block runs."""
+    path, marker = tmp_path / "scenario.json", tmp_path / "marker.txt"
+    _write_scenario(path, mission_sequence=_script_sequence(marker))
+    assert cli.main(["run", str(path), "--out-dir", str(tmp_path / "out"), "--allow-scripts"]) == 0
+    assert marker.read_text() == "ran"
 
 
 def test_run_rejects_both_vizard_flags_at_once(tmp_path, capsys):
@@ -452,3 +489,177 @@ def test_generate_phasing_formation_without_basilisk_reports_clear_error(tmp_pat
     ])
     assert rc == 2
     assert "Basilisk is not installed" in capsys.readouterr().err
+
+
+def test_generate_phasing_formation_passes_every_request_field_through(tmp_path, monkeypatch):
+    """Regression test: --eclipse-sunlit-threshold was missing from the CLI
+    even though PhasingFormationRequest (and the GUI's own phasing dialog)
+    support it. Captures the request instead of running the real
+    (Basilisk-backed) generator, so this runs anywhere.
+    """
+    import dataclasses
+
+    from spacemissionstudio.engine import formation
+
+    path = tmp_path / "chief.json"
+    _write_chief_scenario(path)
+    captured = {}
+
+    class _Captured(Exception):
+        pass
+
+    def fake_generate(request, chief, template, central_body):
+        captured["request"] = request
+        raise _Captured
+
+    monkeypatch.setattr(formation, "generate_phasing_follower", fake_generate)
+    with pytest.raises(_Captured):
+        cli.main([
+            "generate-phasing-formation", str(path), "--out", str(tmp_path / "out.json"),
+            "--chief", "chief-1", "--follower-name", "follower-1", "--along-track-km", "50",
+            "--eclipse-sunlit-threshold", "0.5", "--station-keeping-target-altitude-km", "540",
+        ])
+    request = captured["request"]
+    assert request.eclipse_sunlit_threshold == 0.5  # [-]
+    assert request.station_keeping_target_altitude_km == 540.0  # [km]
+
+    # Every request field must be reachable from the command line.
+    subparsers = next(action for action in cli.build_parser()._actions if action.dest == "command")
+    parser_dests = {action.dest for action in subparsers.choices["generate-phasing-formation"]._actions}
+    field_to_dest = {"chief_name": "chief"}
+    for field in dataclasses.fields(formation.PhasingFormationRequest):
+        assert field_to_dest.get(field.name, field.name) in parser_dests, field.name
+
+
+def test_phasing_defaults_agree_between_schema_generator_and_cli():
+    """One default per setting: the schema's PhasingKeepingConfig, the
+    phasing-formation generator's request, and the CLI must not drift
+    apart (the correction window used to be 21 days in all of them, and
+    was shortened to 3 days in response to a real user's "the phasing is
+    very slow")."""
+    import dataclasses
+
+    from spacemissionstudio.engine import formation
+    from spacemissionstudio.schema.scenario import PhasingKeepingConfig
+
+    request_defaults = {f.name: f.default for f in dataclasses.fields(formation.PhasingFormationRequest)
+                        if f.default is not dataclasses.MISSING}
+    schema_defaults = {f.name: f.default for f in dataclasses.fields(PhasingKeepingConfig)
+                       if f.default is not dataclasses.MISSING}
+    for name in request_defaults.keys() & schema_defaults.keys():
+        assert request_defaults[name] == schema_defaults[name], name
+
+    subparsers = next(action for action in cli.build_parser()._actions if action.dest == "command")
+    cli_defaults = {action.dest: action.default for action in subparsers.choices["generate-phasing-formation"]._actions}
+    for name in request_defaults.keys() & schema_defaults.keys():
+        assert cli_defaults[name] == request_defaults[name], name
+    assert schema_defaults["correction_window_days"] == 3.0  # [day]
+
+
+def test_run_parses_vizard_trail_and_ground_track_flags():
+    parser = cli.build_parser()
+    assert parser.parse_args(["run", "s.json"]).vizard_trail is False
+    assert parser.parse_args(["run", "s.json"]).vizard_ground_tracks is False
+    args = parser.parse_args(["run", "s.json", "--vizard-trail", "--vizard-ground-tracks"])
+    assert args.vizard_trail is True and args.vizard_ground_tracks is True
+
+
+@pytest.mark.requires_basilisk
+def test_lifetime_reports_reentry_and_the_disposal_rules(capsys):
+    """Template 18 at 400 km re-enters in March 2031 (about 15 months);
+    with a burn down to a 200 km perigee, within weeks."""
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parent.parent / "spacemissionstudio" / "scenarios" / "templates" \
+        / "18_leo_station_keeping.json"
+    assert cli.main(["lifetime", str(path)]) == 0
+    out = capsys.readouterr().out
+    assert "leo-sat-1: re-entry 2031-" in out and "5-year rule: met" in out
+    assert cli.main(["lifetime", str(path), "--deorbit-perigee-km", "200"]) == 0
+    assert "-> perigee 200 km" in capsys.readouterr().out
+
+
+@pytest.mark.requires_basilisk
+def test_budget_prints_the_ad10_table(capsys):
+    """Template 18 without a run: the table, a total and the notes."""
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parent.parent / "spacemissionstudio" / "scenarios" / "templates" \
+        / "18_leo_station_keeping.json"
+    assert cli.main(["budget", str(path)]) == 0
+    out = capsys.readouterr().out
+    assert "Launcher injection errors, in-plane" in out and "Residual" in out and out.count("Total") == 1
+    assert "NOTE: no collision avoidances entered" in out
+
+
+@pytest.mark.requires_basilisk
+def test_budget_launch_delays_prints_one_row_per_launch_date(capsys, monkeypatch):
+    """``budget --launch-delays``: the planned launch and 1-5 years late,
+    the worst marked (drag and disposal stubbed: the real ones take a
+    minute or two)."""
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    from spacemissionstudio.engine import propellant_budget as pb
+
+    drag = {2030: 100.0, 2031: 300.0, 2032: 200.0, 2033: 150.0, 2034: 120.0, 2035: 110.0}  # [m/s]
+    original = pb.launch_delay_sweep
+
+    def stubbed(scenario, name, result=None):
+        return original(scenario, name, result, reentry_solver=lambda *_a: (0.0, 400.0, 0.5, []),
+                        makeup=lambda _s, _sc, start, *_a: SimpleNamespace(
+                            delta_v_m_s=drag[start.year], altitude_km=400.0, warnings=[]))
+
+    monkeypatch.setattr(pb, "launch_delay_sweep", stubbed)
+    path = Path(__file__).resolve().parent.parent / "spacemissionstudio" / "scenarios" / "templates" \
+        / "18_leo_station_keeping.json"
+    assert cli.main(["budget", str(path), "--launch-delays"]) == 0
+    out = capsys.readouterr().out
+    rows = [line for line in out.splitlines() if line[:4].isdigit()]
+    assert [line[:10] for line in rows] == [f"{year}-01-01" for year in range(2030, 2036)]
+    assert rows[1].endswith("<- worst") and sum("worst" in line for line in rows) == 1
+    assert "NOTE: worst case: launch 2031-01-01" in out
+
+
+def test_lifetime_drag_coefficient_defaults_to_ad10s_end_of_life_value():
+    parser = cli.build_parser()
+    assert parser.parse_args(["lifetime", "s.json"]).drag_coeff == "2.2"
+    assert parser.parse_args(["lifetime", "s.json", "--drag-coeff", "own"]).drag_coeff == "own"
+    with pytest.raises(SystemExit):
+        parser.parse_args(["lifetime", "s.json", "--drag-coeff", "-1"])
+
+
+@pytest.mark.requires_basilisk
+def test_budget_altitudes_prints_one_row_per_altitude(capsys, monkeypatch):
+    """``budget --altitudes 400,500``: the worst launch date per altitude and
+    whether it fits the tank (drag and disposal stubbed)."""
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    from spacemissionstudio.engine import propellant_budget as pb
+
+    original = pb.altitude_trade
+
+    def makeup(_s, spacecraft, start, *_a):
+        altitude_km = spacecraft.orbit.semi_major_axis_km - pb.REQ_EARTH_M / 1e3
+        return SimpleNamespace(delta_v_m_s=(400.0 if altitude_km < 450.0 else 100.0) * (2.0 if start.year == 2032 else 1.0),
+                               altitude_km=altitude_km, warnings=[])
+
+    monkeypatch.setattr(pb, "altitude_trade", lambda scenario, name, altitudes, result=None: original(
+        scenario, name, altitudes, result, reentry_solver=lambda *_a: (0.0, 400.0, 0.5, []), makeup=makeup))
+    path = Path(__file__).resolve().parent.parent / "spacemissionstudio" / "scenarios" / "templates" \
+        / "18_leo_station_keeping.json"
+    assert cli.main(["budget", str(path), "--altitudes", "400,500"]) == 0
+    out = capsys.readouterr().out
+    rows = [line.split() for line in out.splitlines() if line.strip().endswith(("yes", "no"))]
+    assert [(r[0], r[2], r[-1]) for r in rows] == [("400km", "2032-01-01", "no"), ("500km", "2032-01-01", "yes")]
+    assert "NOTE: lowest altitude whose worst launch fits the 2 kg tank: 500 km" in out
+
+
+def test_budget_altitudes_parse():
+    parser = cli.build_parser()
+    assert parser.parse_args(["budget", "s.json"]).altitudes is None
+    assert parser.parse_args(["budget", "s.json", "--altitudes"]).altitudes == []
+    assert parser.parse_args(["budget", "s.json", "--altitudes", "400, 450"]).altitudes == [400.0, 450.0]
+    with pytest.raises(SystemExit):
+        parser.parse_args(["budget", "s.json", "--altitudes", "40"])

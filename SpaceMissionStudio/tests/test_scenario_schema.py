@@ -23,6 +23,7 @@ from spacemissionstudio.schema import (
     Scenario,
     ScenarioValidationError,
     SensorConfig,
+    SimSettings,
     SpacecraftConfig,
     StationKeepingConfig,
     load_scenario,
@@ -100,6 +101,34 @@ def test_saved_file_is_plain_readable_json(tmp_path):
 def test_scenario_level_validation_errors(bad_field, bad_value, match):
     scenario = _minimal_scenario(**{bad_field: bad_value})
     with pytest.raises(ScenarioValidationError, match=match):
+        scenario.validate()
+
+
+def test_duration_days_at_the_100_day_cap_validates():
+    scenario = _minimal_scenario(sim_settings=SimSettings(duration_days=100.0))
+    scenario.validate()
+
+
+def test_duration_days_beyond_ten_years_rejected():
+    scenario = _minimal_scenario(sim_settings=SimSettings(duration_days=4000.0))
+    with pytest.raises(ScenarioValidationError, match="duration_days must be <= 3660"):
+        scenario.validate()
+
+
+def test_a_run_past_one_basilisk_run_validates():
+    """Past ~104 days Basilisk's nanoToSec() returns NaN, so such a run is
+    split into segments (engine/long_run.py); the schema allows it."""
+    scenario = _minimal_scenario(sim_settings=SimSettings(duration_days=1826.25))  # [day] 5 years
+    scenario.validate()
+
+
+def test_a_mission_sequence_past_one_basilisk_run_is_rejected():
+    """A mission sequence cannot be split into segments."""
+    from spacemissionstudio.schema.command import Command
+
+    scenario = _minimal_scenario(sim_settings=SimSettings(duration_days=120.0),  # [day]
+                                 mission_sequence=[Command(kind="propagate", params={"stop_condition": "duration", "duration_days": 1.0})])  # [day]
+    with pytest.raises(ScenarioValidationError, match="which a mission sequence cannot run"):
         scenario.validate()
 
 
@@ -212,8 +241,7 @@ def test_space_weather_local_file_requires_path():
 def test_space_weather_defaults_to_nrlmsise00_nominal():
     sc = _minimal_scenario()
     assert sc.space_weather.atmosphere_model == "nrlmsise00"
-    assert sc.space_weather.activity_level == "nominal"
-    assert sc.space_weather.activity_percentile == 95.0
+    assert sc.space_weather.forecast_percentile == 50.0  # nominal; 95 is the conservative AD10 case
     sc.validate()  # defaults must themselves be valid
 
 
@@ -224,26 +252,19 @@ def test_space_weather_rejects_unknown_atmosphere_model():
         sc.validate()
 
 
-def test_space_weather_rejects_unknown_activity_level():
+@pytest.mark.parametrize("percentile", [50.0, 95.0, 5.0])
+def test_space_weather_takes_msfcs_published_percentiles(percentile):
+    """Nominal (50), conservative (95, ESA AD10 operations) and low (5)."""
     sc = _minimal_scenario()
-    sc.space_weather.activity_level = "extreme"
-    with pytest.raises(ScenarioValidationError, match="activity_level"):
-        sc.validate()
-
-
-def test_space_weather_conservative_accepts_valid_percentile():
-    sc = _minimal_scenario()
-    sc.space_weather.activity_level = "conservative"
-    sc.space_weather.activity_percentile = 97.7  # a mean+2-sigma-style figure, not just 95
+    sc.space_weather.forecast_percentile = percentile
     sc.validate()
 
 
-@pytest.mark.parametrize("percentile", [10.0, 49.9, 100.0, 150.0])
-def test_space_weather_conservative_rejects_out_of_range_percentile(percentile):
+@pytest.mark.parametrize("percentile", [97.7, 75.0, 0.0])
+def test_space_weather_rejects_other_percentiles(percentile):
     sc = _minimal_scenario()
-    sc.space_weather.activity_level = "conservative"
-    sc.space_weather.activity_percentile = percentile
-    with pytest.raises(ScenarioValidationError, match="activity_percentile"):
+    sc.space_weather.forecast_percentile = percentile
+    with pytest.raises(ScenarioValidationError, match="forecast_percentile"):
         sc.validate()
 
 
@@ -271,6 +292,18 @@ def test_load_scenario_missing_schema_version_gives_clear_error(tmp_path):
     path = tmp_path / "bad.json"
     path.write_text(json.dumps({"name": "no version"}))
     with pytest.raises(ScenarioValidationError, match="missing required top-level 'schema_version'"):
+        load_scenario(path)
+
+
+@pytest.mark.parametrize("where", ["top", "spacecraft"])
+def test_load_scenario_rejects_an_unknown_field_naming_it(tmp_path, where):
+    """An unknown field at the top level or in a spacecraft is refused, and
+    the error names the field (ICD-01)."""
+    data = json.loads(json.dumps(_minimal_scenario().to_dict()))
+    (data if where == "top" else data["spacecraft"][0])["bogus_field"] = 1
+    path = tmp_path / "unknown.json"
+    path.write_text(json.dumps(data))
+    with pytest.raises(ScenarioValidationError, match="unexpected keyword argument 'bogus_field'"):
         load_scenario(path)
 
 
@@ -321,7 +354,7 @@ def test_duplicate_sensor_names_rejected():
 def test_duplicate_actuator_names_rejected():
     sc = _minimal_scenario()
     sc.spacecraft[0].actuators = [
-        ActuatorConfig(kind="reaction_wheel", name="dup", params={"gsHat_B": [1, 0, 0], "rw_type": "Honeywell_HR16"}),
+        ActuatorConfig(kind="reaction_wheel", name="dup", params={"gsHat_B": [1, 0, 0], "rw_type": "Honeywell_HR16", "maxMomentum": 100.0}),
         ActuatorConfig(kind="thruster", name="dup"),
     ]
     with pytest.raises(ScenarioValidationError, match="actuator names must be unique"):
@@ -379,10 +412,29 @@ def test_named_hardware_reaction_wheel_type_skips_custom_requirements():
     sc = _minimal_scenario()
     sc.spacecraft[0].actuators = [
         ActuatorConfig(kind="reaction_wheel", name="rw-1",
-                        params={"gsHat_B": [1, 0, 0], "rw_type": "Honeywell_HR16"})
+                        params={"gsHat_B": [1, 0, 0], "rw_type": "Honeywell_HR16", "maxMomentum": 100.0})
     ]
     sc.spacecraft[0].fsw_mode = "sunSafePoint"
     sc.validate()  # must not raise -- named types have their own built-in defaults
+
+
+@pytest.mark.parametrize("rw_type, max_momentum", [
+    ("Honeywell_HR12", 60.0), ("Honeywell_HR16", 12.0), ("Honeywell_HR14", None),
+])
+def test_named_honeywell_wheel_needs_one_of_its_own_momentum_sizes(rw_type, max_momentum):
+    """rwFactory.create() calls exit(1) on any other value, or none --
+    killing the app, which the 07 wizard's free momentum field could do."""
+    sc = _minimal_scenario()
+    params = {"gsHat_B": [1, 0, 0], "rw_type": rw_type}
+    if max_momentum is not None:
+        params["maxMomentum"] = max_momentum
+    sc.spacecraft[0].actuators = [ActuatorConfig(kind="reaction_wheel", name="rw-1", params=params)]
+    sc.spacecraft[0].fsw_mode = "sunSafePoint"
+    with pytest.raises(ScenarioValidationError, match="builds only with params\\['maxMomentum'\\]"):
+        sc.validate()
+    params["maxMomentum"] = 25  # [N*m*s] an int from JSON is fine
+    if rw_type != "Honeywell_HR16":
+        sc.validate()
 
 
 def test_motor_thermal_requires_all_four_fields_together():
@@ -393,7 +445,7 @@ def test_motor_thermal_requires_all_four_fields_together():
     sc = _minimal_scenario()
     sc.spacecraft[0].actuators = [
         ActuatorConfig(kind="reaction_wheel", name="rw-1",
-                        params={"gsHat_B": [1, 0, 0], "rw_type": "Honeywell_HR16",
+                        params={"gsHat_B": [1, 0, 0], "rw_type": "Honeywell_HR16", "maxMomentum": 100.0,
                                 "motor_thermal_initial_temp_c": 20.0})
     ]
     sc.spacecraft[0].fsw_mode = "sunSafePoint"
@@ -408,7 +460,7 @@ def test_motor_thermal_efficiency_must_be_strictly_between_zero_and_one():
     sc = _minimal_scenario()
     sc.spacecraft[0].actuators = [
         ActuatorConfig(kind="reaction_wheel", name="rw-1",
-                        params={"gsHat_B": [1, 0, 0], "rw_type": "Honeywell_HR16",
+                        params={"gsHat_B": [1, 0, 0], "rw_type": "Honeywell_HR16", "maxMomentum": 100.0,
                                 "motor_thermal_initial_temp_c": 20.0, "motor_thermal_efficiency": 1.0,
                                 "motor_thermal_ambient_resistance_w_c": 5.0,
                                 "motor_thermal_heat_capacity_j_c": 50.0})
@@ -422,7 +474,7 @@ def test_motor_thermal_with_all_fields_validates():
     sc = _minimal_scenario()
     sc.spacecraft[0].actuators = [
         ActuatorConfig(kind="reaction_wheel", name="rw-1",
-                        params={"gsHat_B": [1, 0, 0], "rw_type": "Honeywell_HR16",
+                        params={"gsHat_B": [1, 0, 0], "rw_type": "Honeywell_HR16", "maxMomentum": 100.0,
                                 "motor_thermal_initial_temp_c": 20.0, "motor_thermal_efficiency": 0.7,
                                 "motor_thermal_ambient_resistance_w_c": 5.0,
                                 "motor_thermal_heat_capacity_j_c": 50.0})
@@ -539,7 +591,7 @@ def test_thruster_with_all_required_params_validates():
 def test_mixing_reaction_wheel_and_thruster_actuators_rejected():
     sc = _minimal_scenario()
     sc.spacecraft[0].actuators = [
-        ActuatorConfig(kind="reaction_wheel", name="rw-1", params={"gsHat_B": [1, 0, 0], "rw_type": "Honeywell_HR16"}),
+        ActuatorConfig(kind="reaction_wheel", name="rw-1", params={"gsHat_B": [1, 0, 0], "rw_type": "Honeywell_HR16", "maxMomentum": 100.0}),
         ActuatorConfig(kind="thruster", name="thr-1",
                         params={"r_B": [1, 0, 0], "tHat_B": [0, 1, 0], "MaxThrust": 1.0}),
     ]
@@ -550,7 +602,7 @@ def test_mixing_reaction_wheel_and_thruster_actuators_rejected():
 def test_momentum_dumping_allows_mixing_reaction_wheel_and_thruster():
     sc = _minimal_scenario()
     sc.spacecraft[0].actuators = [
-        ActuatorConfig(kind="reaction_wheel", name="rw-1", params={"gsHat_B": [1, 0, 0], "rw_type": "Honeywell_HR16"}),
+        ActuatorConfig(kind="reaction_wheel", name="rw-1", params={"gsHat_B": [1, 0, 0], "rw_type": "Honeywell_HR16", "maxMomentum": 100.0}),
         ActuatorConfig(kind="thruster", name="thr-1",
                         params={"r_B": [1, 0, 0], "tHat_B": [0, 1, 0], "MaxThrust": 1.0}),
     ]
@@ -574,7 +626,7 @@ def test_momentum_dumping_requires_reaction_wheel_actuator():
 def test_momentum_dumping_requires_thruster_actuator():
     sc = _minimal_scenario()
     sc.spacecraft[0].actuators = [
-        ActuatorConfig(kind="reaction_wheel", name="rw-1", params={"gsHat_B": [1, 0, 0], "rw_type": "Honeywell_HR16"}),
+        ActuatorConfig(kind="reaction_wheel", name="rw-1", params={"gsHat_B": [1, 0, 0], "rw_type": "Honeywell_HR16", "maxMomentum": 100.0}),
     ]
     sc.spacecraft[0].fsw_mode = "sunSafePoint"
     sc.spacecraft[0].momentum_dumping = MomentumDumpingConfig(hs_max=50.0)
@@ -585,7 +637,7 @@ def test_momentum_dumping_requires_thruster_actuator():
 def test_momentum_dumping_requires_hs_max_positive():
     sc = _minimal_scenario()
     sc.spacecraft[0].actuators = [
-        ActuatorConfig(kind="reaction_wheel", name="rw-1", params={"gsHat_B": [1, 0, 0], "rw_type": "Honeywell_HR16"}),
+        ActuatorConfig(kind="reaction_wheel", name="rw-1", params={"gsHat_B": [1, 0, 0], "rw_type": "Honeywell_HR16", "maxMomentum": 100.0}),
         ActuatorConfig(kind="thruster", name="thr-1",
                         params={"r_B": [1, 0, 0], "tHat_B": [0, 1, 0], "MaxThrust": 1.0}),
     ]
@@ -598,7 +650,7 @@ def test_momentum_dumping_requires_hs_max_positive():
 def test_momentum_dumping_round_trips():
     sc = _minimal_scenario()
     sc.spacecraft[0].actuators = [
-        ActuatorConfig(kind="reaction_wheel", name="rw-1", params={"gsHat_B": [1, 0, 0], "rw_type": "Honeywell_HR16"}),
+        ActuatorConfig(kind="reaction_wheel", name="rw-1", params={"gsHat_B": [1, 0, 0], "rw_type": "Honeywell_HR16", "maxMomentum": 100.0}),
         ActuatorConfig(kind="thruster", name="thr-1",
                         params={"r_B": [1, 0, 0], "tHat_B": [0, 1, 0], "MaxThrust": 1.0}),
     ]
@@ -658,7 +710,7 @@ def test_magnetic_momentum_management_requires_reaction_wheel_actuator():
 def test_magnetic_momentum_management_requires_magnetic_torque_rod_actuator():
     sc = _minimal_scenario()
     sc.spacecraft[0].actuators = [
-        ActuatorConfig(kind="reaction_wheel", name="rw-1", params={"gsHat_B": [1, 0, 0], "rw_type": "Honeywell_HR16"}),
+        ActuatorConfig(kind="reaction_wheel", name="rw-1", params={"gsHat_B": [1, 0, 0], "rw_type": "Honeywell_HR16", "maxMomentum": 100.0}),
     ]
     sc.spacecraft[0].fsw_mode = "sunSafePoint"
     sc.spacecraft[0].magnetic_momentum_management = MagneticMomentumManagementConfig(wheel_speed_biases_rad_s=[0.0])
@@ -669,8 +721,8 @@ def test_magnetic_momentum_management_requires_magnetic_torque_rod_actuator():
 def test_magnetic_momentum_management_requires_one_bias_per_reaction_wheel():
     sc = _minimal_scenario()
     sc.spacecraft[0].actuators = [
-        ActuatorConfig(kind="reaction_wheel", name="rw-1", params={"gsHat_B": [1, 0, 0], "rw_type": "Honeywell_HR16"}),
-        ActuatorConfig(kind="reaction_wheel", name="rw-2", params={"gsHat_B": [0, 1, 0], "rw_type": "Honeywell_HR16"}),
+        ActuatorConfig(kind="reaction_wheel", name="rw-1", params={"gsHat_B": [1, 0, 0], "rw_type": "Honeywell_HR16", "maxMomentum": 100.0}),
+        ActuatorConfig(kind="reaction_wheel", name="rw-2", params={"gsHat_B": [0, 1, 0], "rw_type": "Honeywell_HR16", "maxMomentum": 100.0}),
         ActuatorConfig(kind="magnetic_torque_rod", name="mtb-1",
                         params={"gtHat_B": [1, 0, 0], "max_dipole_a_m2": 0.1}),
     ]
@@ -685,7 +737,7 @@ def test_magnetic_momentum_management_requires_one_bias_per_reaction_wheel():
 def test_magnetic_momentum_management_with_all_required_params_validates():
     sc = _minimal_scenario()
     sc.spacecraft[0].actuators = [
-        ActuatorConfig(kind="reaction_wheel", name="rw-1", params={"gsHat_B": [1, 0, 0], "rw_type": "Honeywell_HR16"}),
+        ActuatorConfig(kind="reaction_wheel", name="rw-1", params={"gsHat_B": [1, 0, 0], "rw_type": "Honeywell_HR16", "maxMomentum": 100.0}),
         ActuatorConfig(kind="magnetic_torque_rod", name="mtb-1",
                         params={"gtHat_B": [1, 0, 0], "max_dipole_a_m2": 0.1}),
     ]
@@ -763,7 +815,7 @@ def test_mixing_reaction_wheel_and_magnetic_torque_rod_without_config_rejected()
     """
     sc = _minimal_scenario()
     sc.spacecraft[0].actuators = [
-        ActuatorConfig(kind="reaction_wheel", name="rw-1", params={"gsHat_B": [1, 0, 0], "rw_type": "Honeywell_HR16"}),
+        ActuatorConfig(kind="reaction_wheel", name="rw-1", params={"gsHat_B": [1, 0, 0], "rw_type": "Honeywell_HR16", "maxMomentum": 100.0}),
         ActuatorConfig(kind="magnetic_torque_rod", name="mtb-1",
                         params={"gtHat_B": [1, 0, 0], "max_dipole_a_m2": 0.1}),
     ]
@@ -785,7 +837,7 @@ def test_momentum_dumping_and_magnetic_momentum_management_are_mutually_exclusiv
     """
     sc = _minimal_scenario()
     sc.spacecraft[0].actuators = [
-        ActuatorConfig(kind="reaction_wheel", name="rw-1", params={"gsHat_B": [1, 0, 0], "rw_type": "Honeywell_HR16"}),
+        ActuatorConfig(kind="reaction_wheel", name="rw-1", params={"gsHat_B": [1, 0, 0], "rw_type": "Honeywell_HR16", "maxMomentum": 100.0}),
         ActuatorConfig(kind="thruster", name="thr-1",
                         params={"r_B": [1, 0, 0], "tHat_B": [0, 1, 0], "MaxThrust": 1.0}),
         ActuatorConfig(kind="magnetic_torque_rod", name="mtb-1",
@@ -801,7 +853,7 @@ def test_momentum_dumping_and_magnetic_momentum_management_are_mutually_exclusiv
 def test_magnetic_momentum_management_round_trips():
     sc = _minimal_scenario()
     sc.spacecraft[0].actuators = [
-        ActuatorConfig(kind="reaction_wheel", name="rw-1", params={"gsHat_B": [1, 0, 0], "rw_type": "Honeywell_HR16"}),
+        ActuatorConfig(kind="reaction_wheel", name="rw-1", params={"gsHat_B": [1, 0, 0], "rw_type": "Honeywell_HR16", "maxMomentum": 100.0}),
         ActuatorConfig(kind="magnetic_torque_rod", name="mtb-1",
                         params={"gtHat_B": [1, 0, 0], "max_dipole_a_m2": 0.1}),
     ]
@@ -1054,7 +1106,7 @@ def test_old_scenario_file_without_monte_carlo_key_still_loads(tmp_path):
 def test_phase2_fields_round_trip_through_save_load(tmp_path):
     sc = _minimal_scenario()
     sc.spacecraft[0].sensors = [SensorConfig(kind="coarse_sun_sensor", name="css-1", params={"nHat_B": [1, 0, 0]})]
-    sc.spacecraft[0].actuators = [ActuatorConfig(kind="reaction_wheel", name="rw-1", params={"gsHat_B": [0, 1, 0], "rw_type": "Honeywell_HR16"})]
+    sc.spacecraft[0].actuators = [ActuatorConfig(kind="reaction_wheel", name="rw-1", params={"gsHat_B": [0, 1, 0], "rw_type": "Honeywell_HR16", "maxMomentum": 100.0})]
     sc.spacecraft[0].fsw_mode = "hillPoint"
     sc.spacecraft[0].control_params = {"K": 4.0, "P": 25.0}
 
@@ -1146,6 +1198,55 @@ def test_spacecraft_rejects_implausibly_large_dry_mass():
     sc.spacecraft[0].dry_mass_kg = 1.0e12
     with pytest.raises(ScenarioValidationError, match="dry_mass_kg"):
         sc.validate()
+
+
+def test_spacecraft_rejects_diagonal_inertia_violating_the_triangle_inequality():
+    """Real bug found against a real (newer) Basilisk build: a diagonal
+    inertia tensor whose largest principal moment exceeds the sum of
+    the other two is unphysical for any rigid body -- a newer Basilisk
+    now rejects it deep inside InitializeSimulation() with a cryptic
+    message ("IHubPntBc_B is not a valid inertia tensor"); this schema
+    -level check catches the exact same mistake
+    (tests/test_gravity_gradient.py shipped it, undetected against the
+    2.12.0 baseline this project was built against) earlier, with a
+    message that actually names the problem.
+    """
+    sc = _minimal_scenario()
+    sc.spacecraft[0].inertia_kg_m2 = [5.0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 20.0]  # 5 + 10 < 20
+    with pytest.raises(ScenarioValidationError, match="triangle inequality"):
+        sc.validate()
+
+
+def test_spacecraft_rejects_diagonal_inertia_with_a_non_positive_entry():
+    sc = _minimal_scenario()
+    sc.spacecraft[0].inertia_kg_m2 = [10.0, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 10.0]
+    with pytest.raises(ScenarioValidationError, match="positive"):
+        sc.validate()
+
+
+def test_spacecraft_accepts_a_valid_elongated_diagonal_inertia():
+    """Companion to the rejection tests above -- confirms the new check
+    doesn't reject a legitimately asymmetric (non-spherical) inertia
+    tensor that DOES satisfy the triangle inequality, the exact kind of
+    value a gravity-gradient or attitude-dynamics scenario legitimately
+    needs.
+    """
+    sc = _minimal_scenario()
+    sc.spacecraft[0].inertia_kg_m2 = [5.0, 0.0, 0.0, 0.0, 8.0, 0.0, 0.0, 0.0, 10.0]  # 5 + 8 >= 10
+    sc.validate()  # must not raise
+
+
+def test_spacecraft_skips_the_triangle_check_for_a_non_diagonal_inertia_tensor():
+    """Deliberately scoped: a fully general (off-diagonal-populated)
+    inertia tensor isn't checked here at all (see the validator's own
+    comment on why) -- confirms a non-diagonal tensor isn't rejected by
+    this specific check even when its DIAGONAL entries alone would
+    violate the triangle inequality (they aren't its true principal
+    moments once off-diagonal terms are present).
+    """
+    sc = _minimal_scenario()
+    sc.spacecraft[0].inertia_kg_m2 = [5.0, 1.0, 0.0, 1.0, 10.0, 0.0, 0.0, 0.0, 20.0]
+    sc.validate()  # must not raise -- off-diagonal entries present, so skipped
 
 
 def test_spacecraft_rejects_implausibly_large_drag_area():
@@ -1461,7 +1562,7 @@ def test_magnetic_momentum_management_without_earth_central_body_is_rejected():
     sc = _minimal_scenario(gravity=GravityConfig(central_body="mars"))
     sc.spacecraft[0].actuators = [
         ActuatorConfig(kind="reaction_wheel", name="rw-1",
-                        params={"gsHat_B": [1.0, 0.0, 0.0], "rw_type": "Honeywell_HR16"}),
+                        params={"gsHat_B": [1.0, 0.0, 0.0], "rw_type": "Honeywell_HR16", "maxMomentum": 100.0}),
         ActuatorConfig(kind="magnetic_torque_rod", name="mtb-1",
                         params={"gtHat_B": [1.0, 0.0, 0.0], "max_dipole_a_m2": 0.1}),
     ]
@@ -1511,7 +1612,7 @@ def test_constant_thrust_rejects_wrong_length_direction():
 def test_constant_thrust_rejects_zero_direction_vector():
     sc = _minimal_scenario()
     sc.spacecraft[0].constant_thrust = ConstantThrustConfig(direction=[0.0, 0.0, 0.0])
-    with pytest.raises(ScenarioValidationError, match="zero vector"):
+    with pytest.raises(ScenarioValidationError, match="non-zero, finite"):
         sc.validate()
 
 
@@ -1577,7 +1678,7 @@ def test_orbit_only_mode_rejects_sensors():
 
 def test_orbit_only_mode_rejects_actuators():
     sc = _minimal_scenario(simulation_mode="orbit_only")
-    sc.spacecraft[0].actuators = [ActuatorConfig(kind="reaction_wheel", name="rw-1", params={"gsHat_B": [1, 0, 0], "rw_type": "Honeywell_HR16"})]
+    sc.spacecraft[0].actuators = [ActuatorConfig(kind="reaction_wheel", name="rw-1", params={"gsHat_B": [1, 0, 0], "rw_type": "Honeywell_HR16", "maxMomentum": 100.0})]
     with pytest.raises(ScenarioValidationError, match="actuators"):
         sc.validate()
 
@@ -1809,3 +1910,62 @@ def test_mission_sequence_insert_and_reorder():
     scenario.mission_sequence.reverse()  # b, c, a
     assert [cmd.label for cmd in scenario.mission_sequence] == ["b", "c", "a"]
     scenario.validate()  # must not raise -- order never affects validity for this command set
+
+
+@pytest.mark.parametrize("bad_vector", [[0.0, 0.0, 0.0], [float("nan"), 0.0, 1.0], [float("inf"), 0.0, 0.0],
+                                        ["x", 0.0, 1.0]], ids=["zero", "nan", "inf", "non-numeric"])
+@pytest.mark.parametrize("target", ["comms_boresight", "comms_sun_axis", "panel_normal"])
+def test_direction_vectors_reject_zero_and_non_finite_values(target, bad_vector):
+    """Regression test for an audit finding: a zero or NaN body-frame axis
+    passed validation (only its LENGTH was checked) and only failed
+    mid-run, once normalized into a NaN attitude target.
+    """
+    from pathlib import Path
+
+    from spacemissionstudio.schema import load_scenario
+
+    templates = Path(__file__).resolve().parent.parent / "spacemissionstudio" / "scenarios" / "templates"
+    sc = load_scenario(templates / "19_sun_pointing_comms_link.json")
+    craft = sc.spacecraft[0]
+    if target == "comms_boresight":
+        craft.comms_pointing.antenna_boresight_b = bad_vector
+    elif target == "comms_sun_axis":
+        craft.comms_pointing.sun_pointing_axis_b = bad_vector
+    else:
+        craft.power.panel_normal_b = bad_vector
+    with pytest.raises(ScenarioValidationError, match="non-zero, finite"):
+        sc.validate()
+
+
+@pytest.mark.parametrize("min_on_time_s", [-1.0, float("nan"), 1.0e6])
+def test_station_keeping_rejects_an_invalid_min_on_time(min_on_time_s):
+    sc = _minimal_scenario()
+    sc.spacecraft[0].station_keeping = StationKeepingConfig(target_altitude_km=550.0, deadband_km=5.0, thrust_n=0.05,
+                                                             isp_s=1500.0, propellant_kg=5.0,
+                                                             min_on_time_s=min_on_time_s)
+    with pytest.raises(ScenarioValidationError, match="min_on_time_s"):
+        sc.spacecraft[0].station_keeping.validate("sat-1")
+
+
+def test_station_keeping_thruster_realism_fields_default_to_an_ideal_thruster_when_absent_from_json():
+    from spacemissionstudio.schema.scenario import Scenario
+
+    sc = _minimal_scenario()
+    sc.spacecraft[0].station_keeping = StationKeepingConfig(target_altitude_km=550.0, deadband_km=5.0, thrust_n=0.05,
+                                                             isp_s=1500.0, propellant_kg=5.0)
+    data = json.loads(json.dumps(sc.to_dict()))
+    sk = data["spacecraft"][0]["station_keeping"]
+    sk.pop("min_on_time_s")
+    sk.pop("eccentricity_neutral_burns")
+    loaded = Scenario.from_dict(data)
+    assert loaded.spacecraft[0].station_keeping.min_on_time_s == 0.0  # [s]
+    assert loaded.spacecraft[0].station_keeping.eccentricity_neutral_burns is False
+
+
+def test_forecast_percentile_must_be_one_msfc_publishes():
+    """MSFC publishes the 95th, 50th and 5th percentiles only."""
+    from spacemissionstudio.schema.scenario import SpaceWeatherConfig
+
+    _minimal_scenario(space_weather=SpaceWeatherConfig(forecast_percentile=95.0)).validate()
+    with pytest.raises(ScenarioValidationError, match="forecast_percentile 90.0 must be one of"):
+        _minimal_scenario(space_weather=SpaceWeatherConfig(forecast_percentile=90.0)).validate()

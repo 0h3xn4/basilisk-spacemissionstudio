@@ -1,0 +1,632 @@
+{
+  "name": "21 - Disturbance torques from a facet model",
+  "epoch_utc": "2030-01-01T00:00:00",
+  "simulation_mode": "full_attitude",
+  "gravity": {
+    "central_body": "earth",
+    "central_body_degree": 2,
+    "third_body_perturbers": [
+      "sun"
+    ]
+  },
+  "spacecraft": [
+    {
+      "name": "rods-off",
+      "orbit": {
+        "type": "classical_elements",
+        "semi_major_axis_km": 6828.0,
+        "eccentricity": 0.0,
+        "inclination_deg": 97.21,
+        "raan_deg": 259.03,
+        "arg_periapsis_deg": 0.0,
+        "anomaly_type": "true",
+        "true_anomaly_deg": 0.0,
+        "mean_anomaly_deg": null,
+        "position_km": null,
+        "velocity_km_s": null,
+        "tle_line1": null,
+        "tle_line2": null
+      },
+      "dry_mass_kg": 300.0,
+      "inertia_kg_m2": [
+        92.2,
+        0.0,
+        0.0,
+        0.0,
+        92.2,
+        0.0,
+        0.0,
+        0.0,
+        72.0
+      ],
+      "sigma_bn_init": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "omega_bn_b_init_rad_s": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "enable_drag": true,
+      "drag_coeff": 2.2,
+      "drag_area_m2": 1.0,
+      "enable_srp": true,
+      "srp_coeff": 1.3,
+      "srp_area_m2": 1.0,
+      "facets": [
+        {
+          "name": "bus +x",
+          "area_m2": 1.8,
+          "normal_b": [
+            1.0,
+            0.0,
+            0.0
+          ],
+          "location_b": [
+            0.6,
+            0.0,
+            0.0
+          ],
+          "drag_coeff": 3.0,
+          "specular_coeff": 0.336,
+          "diffuse_coeff": 0.139
+        },
+        {
+          "name": "bus -x",
+          "area_m2": 1.8,
+          "normal_b": [
+            -1.0,
+            0.0,
+            0.0
+          ],
+          "location_b": [
+            -0.6,
+            0.0,
+            0.0
+          ],
+          "drag_coeff": 3.0,
+          "specular_coeff": 0.336,
+          "diffuse_coeff": 0.139
+        },
+        {
+          "name": "bus +y",
+          "area_m2": 1.8,
+          "normal_b": [
+            0.0,
+            1.0,
+            0.0
+          ],
+          "location_b": [
+            0.0,
+            0.6,
+            0.0
+          ],
+          "drag_coeff": 3.0,
+          "specular_coeff": 0.336,
+          "diffuse_coeff": 0.139
+        },
+        {
+          "name": "bus -y",
+          "area_m2": 1.8,
+          "normal_b": [
+            0.0,
+            -1.0,
+            0.0
+          ],
+          "location_b": [
+            0.0,
+            -0.6,
+            0.0
+          ],
+          "drag_coeff": 3.0,
+          "specular_coeff": 0.336,
+          "diffuse_coeff": 0.139
+        },
+        {
+          "name": "bus +z",
+          "area_m2": 1.44,
+          "normal_b": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "location_b": [
+            0.0,
+            0.0,
+            0.75
+          ],
+          "drag_coeff": 3.0,
+          "specular_coeff": 0.336,
+          "diffuse_coeff": 0.139
+        },
+        {
+          "name": "bus -z",
+          "area_m2": 1.44,
+          "normal_b": [
+            0.0,
+            0.0,
+            -1.0
+          ],
+          "location_b": [
+            0.0,
+            0.0,
+            -0.75
+          ],
+          "drag_coeff": 3.0,
+          "specular_coeff": 0.336,
+          "diffuse_coeff": 0.139
+        },
+        {
+          "name": "array front",
+          "area_m2": 2.5,
+          "normal_b": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "location_b": [
+            0.0,
+            1.5,
+            0.75
+          ],
+          "drag_coeff": 3.0,
+          "specular_coeff": 0.16,
+          "diffuse_coeff": 0.16
+        },
+        {
+          "name": "array back",
+          "area_m2": 2.5,
+          "normal_b": [
+            -0.0,
+            -0.0,
+            -1.0
+          ],
+          "location_b": [
+            0.0,
+            1.5,
+            0.75
+          ],
+          "drag_coeff": 3.0,
+          "specular_coeff": 0.0,
+          "diffuse_coeff": 0.56
+        }
+      ],
+      "enable_gravity_gradient": false,
+      "sensors": [
+        {
+          "kind": "coarse_sun_sensor",
+          "name": "css-1",
+          "params": {
+            "nHat_B": [
+              0.0,
+              0.0,
+              1.0
+            ]
+          }
+        }
+      ],
+      "actuators": [
+        {
+          "kind": "reaction_wheel",
+          "name": "rw-x",
+          "params": {
+            "gsHat_B": [
+              1.0,
+              0.0,
+              0.0
+            ],
+            "rw_type": "Honeywell_HR12",
+            "maxMomentum": 12.0
+          }
+        },
+        {
+          "kind": "reaction_wheel",
+          "name": "rw-y",
+          "params": {
+            "gsHat_B": [
+              0.0,
+              1.0,
+              0.0
+            ],
+            "rw_type": "Honeywell_HR12",
+            "maxMomentum": 12.0
+          }
+        },
+        {
+          "kind": "reaction_wheel",
+          "name": "rw-z",
+          "params": {
+            "gsHat_B": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "rw_type": "Honeywell_HR12",
+            "maxMomentum": 12.0
+          }
+        }
+      ],
+      "fsw_mode": "sunSafePoint",
+      "fsw_params": {
+        "sHatBdyCmd": [
+          0.0,
+          0.0,
+          1.0
+        ]
+      },
+      "control_params": {},
+      "power": null,
+      "rf_link": null,
+      "comms_pointing": null,
+      "station_keeping": null,
+      "geo_station_keeping": null,
+      "phasing_keeping": null,
+      "constant_thrust": null,
+      "momentum_dumping": null,
+      "magnetic_momentum_management": null,
+      "fuel_tank": null,
+      "propellant_budget": null,
+      "vizard_model_path": null,
+      "vizard_model_offset_m": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "vizard_model_rotation_deg": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "vizard_model_scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "name": "rods-on",
+      "orbit": {
+        "type": "classical_elements",
+        "semi_major_axis_km": 6828.0,
+        "eccentricity": 0.0,
+        "inclination_deg": 97.21,
+        "raan_deg": 259.03,
+        "arg_periapsis_deg": 0.0,
+        "anomaly_type": "true",
+        "true_anomaly_deg": 0.0,
+        "mean_anomaly_deg": null,
+        "position_km": null,
+        "velocity_km_s": null,
+        "tle_line1": null,
+        "tle_line2": null
+      },
+      "dry_mass_kg": 300.0,
+      "inertia_kg_m2": [
+        92.2,
+        0.0,
+        0.0,
+        0.0,
+        92.2,
+        0.0,
+        0.0,
+        0.0,
+        72.0
+      ],
+      "sigma_bn_init": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "omega_bn_b_init_rad_s": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "enable_drag": true,
+      "drag_coeff": 2.2,
+      "drag_area_m2": 1.0,
+      "enable_srp": true,
+      "srp_coeff": 1.3,
+      "srp_area_m2": 1.0,
+      "facets": [
+        {
+          "name": "bus +x",
+          "area_m2": 1.8,
+          "normal_b": [
+            1.0,
+            0.0,
+            0.0
+          ],
+          "location_b": [
+            0.6,
+            0.0,
+            0.0
+          ],
+          "drag_coeff": 3.0,
+          "specular_coeff": 0.336,
+          "diffuse_coeff": 0.139
+        },
+        {
+          "name": "bus -x",
+          "area_m2": 1.8,
+          "normal_b": [
+            -1.0,
+            0.0,
+            0.0
+          ],
+          "location_b": [
+            -0.6,
+            0.0,
+            0.0
+          ],
+          "drag_coeff": 3.0,
+          "specular_coeff": 0.336,
+          "diffuse_coeff": 0.139
+        },
+        {
+          "name": "bus +y",
+          "area_m2": 1.8,
+          "normal_b": [
+            0.0,
+            1.0,
+            0.0
+          ],
+          "location_b": [
+            0.0,
+            0.6,
+            0.0
+          ],
+          "drag_coeff": 3.0,
+          "specular_coeff": 0.336,
+          "diffuse_coeff": 0.139
+        },
+        {
+          "name": "bus -y",
+          "area_m2": 1.8,
+          "normal_b": [
+            0.0,
+            -1.0,
+            0.0
+          ],
+          "location_b": [
+            0.0,
+            -0.6,
+            0.0
+          ],
+          "drag_coeff": 3.0,
+          "specular_coeff": 0.336,
+          "diffuse_coeff": 0.139
+        },
+        {
+          "name": "bus +z",
+          "area_m2": 1.44,
+          "normal_b": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "location_b": [
+            0.0,
+            0.0,
+            0.75
+          ],
+          "drag_coeff": 3.0,
+          "specular_coeff": 0.336,
+          "diffuse_coeff": 0.139
+        },
+        {
+          "name": "bus -z",
+          "area_m2": 1.44,
+          "normal_b": [
+            0.0,
+            0.0,
+            -1.0
+          ],
+          "location_b": [
+            0.0,
+            0.0,
+            -0.75
+          ],
+          "drag_coeff": 3.0,
+          "specular_coeff": 0.336,
+          "diffuse_coeff": 0.139
+        },
+        {
+          "name": "array front",
+          "area_m2": 2.5,
+          "normal_b": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "location_b": [
+            0.0,
+            1.5,
+            0.75
+          ],
+          "drag_coeff": 3.0,
+          "specular_coeff": 0.16,
+          "diffuse_coeff": 0.16
+        },
+        {
+          "name": "array back",
+          "area_m2": 2.5,
+          "normal_b": [
+            -0.0,
+            -0.0,
+            -1.0
+          ],
+          "location_b": [
+            0.0,
+            1.5,
+            0.75
+          ],
+          "drag_coeff": 3.0,
+          "specular_coeff": 0.0,
+          "diffuse_coeff": 0.56
+        }
+      ],
+      "enable_gravity_gradient": false,
+      "sensors": [
+        {
+          "kind": "coarse_sun_sensor",
+          "name": "css-1",
+          "params": {
+            "nHat_B": [
+              0.0,
+              0.0,
+              1.0
+            ]
+          }
+        }
+      ],
+      "actuators": [
+        {
+          "kind": "reaction_wheel",
+          "name": "rw-x",
+          "params": {
+            "gsHat_B": [
+              1.0,
+              0.0,
+              0.0
+            ],
+            "rw_type": "Honeywell_HR12",
+            "maxMomentum": 12.0
+          }
+        },
+        {
+          "kind": "reaction_wheel",
+          "name": "rw-y",
+          "params": {
+            "gsHat_B": [
+              0.0,
+              1.0,
+              0.0
+            ],
+            "rw_type": "Honeywell_HR12",
+            "maxMomentum": 12.0
+          }
+        },
+        {
+          "kind": "reaction_wheel",
+          "name": "rw-z",
+          "params": {
+            "gsHat_B": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "rw_type": "Honeywell_HR12",
+            "maxMomentum": 12.0
+          }
+        },
+        {
+          "kind": "magnetic_torque_rod",
+          "name": "mtb-x",
+          "params": {
+            "gtHat_B": [
+              1.0,
+              0.0,
+              0.0
+            ],
+            "max_dipole_a_m2": 30.0
+          }
+        },
+        {
+          "kind": "magnetic_torque_rod",
+          "name": "mtb-y",
+          "params": {
+            "gtHat_B": [
+              0.0,
+              1.0,
+              0.0
+            ],
+            "max_dipole_a_m2": 30.0
+          }
+        },
+        {
+          "kind": "magnetic_torque_rod",
+          "name": "mtb-z",
+          "params": {
+            "gtHat_B": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "max_dipole_a_m2": 30.0
+          }
+        }
+      ],
+      "fsw_mode": "sunSafePoint",
+      "fsw_params": {
+        "sHatBdyCmd": [
+          0.0,
+          0.0,
+          1.0
+        ]
+      },
+      "control_params": {},
+      "power": null,
+      "rf_link": null,
+      "comms_pointing": null,
+      "station_keeping": null,
+      "geo_station_keeping": null,
+      "phasing_keeping": null,
+      "constant_thrust": null,
+      "momentum_dumping": null,
+      "magnetic_momentum_management": {
+        "wheel_speed_biases_rad_s": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "c_gain": 0.003
+      },
+      "fuel_tank": null,
+      "propellant_budget": null,
+      "vizard_model_path": null,
+      "vizard_model_offset_m": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "vizard_model_rotation_deg": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "vizard_model_scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    }
+  ],
+  "ground_stations": [],
+  "space_weather": {
+    "source": "bundled",
+    "local_file_path": null,
+    "cache_dir": null,
+    "atmosphere_model": "nrlmsise00",
+    "forecast_percentile": 50.0,
+    "msfc_file_path": null
+  },
+  "sim_settings": {
+    "duration_days": 1.0,
+    "dynamics_task_rate_s": 10.0,
+    "integrator": "rkf78",
+    "record_interval_s": 0.0
+  },
+  "monte_carlo": {
+    "enabled": false,
+    "num_runs": 10,
+    "thread_count": 1,
+    "verbose": false,
+    "dispersions": []
+  },
+  "mission_sequence": [],
+  "description": "Two copies of one 300 kg Sun-pointing spacecraft, each built from flat plates (facets): its box and a 2.5 m^2 solar array on a boom 1.5 m off to +Y. Sunlight and drag push on that array off-centre, a small steady torque. rods-off has only reaction wheels; rods-on also has torque rods.\n\nWhat to look at:\n- rods-off.rw_speeds: after the first turn to the Sun, the wheels soak up the torque all day -- about 2.0 N*m*s stored by the end, rw-x near -940 RPM.\n- rods-on.rw_speeds: the torque rods hand that momentum to Earth's magnetic field; the wheels stay under ~30 RPM.\n- rods-on.mtb_dipole_commanded: the rods working against the torque.\n\nTry changing:\n- The array's centre of pressure (rods-off: surface facets): back to y = 0 and the torque disappears.\n- Its area or reflection coefficients: torque scales with both.\n- Altitude: lower adds drag torque on the array.\n\nLimitations:\n- Facets are fixed to the body: the array does not rotate to track the Sun.",
+  "schema_version": 4
+}

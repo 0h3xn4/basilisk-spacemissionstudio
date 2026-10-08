@@ -5,10 +5,20 @@ import pytest
 pytestmark = pytest.mark.requires_gui
 
 
-def _dialog(command=None, spacecraft_names=None):
+def _dialog(command=None, spacecraft_names=None, series_names=None, ground_station_names=None):
     from spacemissionstudio.gui.mission_sequence_editor import _CommandEditorDialog
 
-    return _CommandEditorDialog(command=command, spacecraft_names=spacecraft_names)
+    return _CommandEditorDialog(command=command, spacecraft_names=spacecraft_names, series_names=series_names,
+                                ground_station_names=ground_station_names)
+
+
+def _tick(dialog, *names):
+    from PySide6.QtCore import Qt
+
+    for i in range(dialog.report_series_list.count()):
+        item = dialog.report_series_list.item(i)
+        if item.data(Qt.ItemDataRole.UserRole) in names:
+            item.setCheckState(Qt.CheckState.Checked)
 
 
 def test_propagate_duration_round_trips(qtbot):
@@ -35,6 +45,44 @@ def test_propagate_event_round_trips(qtbot):
 
     command = dialog.to_dataclass()
     assert command.params == {"stop_condition": "event", "event_kind": "apoapsis", "spacecraft": "sat-2"}
+
+
+def test_propagate_pass_event_picks_a_station_only_when_needed(qtbot):
+    dialog = _dialog(spacecraft_names=["sat-1"], ground_station_names=["berlin-gs", "kiruna-gs"])
+    qtbot.addWidget(dialog)
+    dialog.show()
+    dialog.stop_condition_combo.setCurrentIndex(dialog.stop_condition_combo.findText("event"))
+    assert not dialog.propagate_event_station_combo.isVisible()  # periapsis needs no station
+    dialog.event_kind_combo.setCurrentIndex(dialog.event_kind_combo.findText("pass_start"))
+    assert dialog.propagate_event_station_combo.isVisible()
+    dialog.propagate_event_station_combo.setCurrentIndex(dialog.propagate_event_station_combo.findText("kiruna-gs"))
+
+    command = dialog.to_dataclass()
+    assert command.params == {"stop_condition": "event", "event_kind": "pass_start", "spacecraft": "sat-1",
+                              "ground_station": "kiruna-gs"}
+    reopened = _dialog(command=command, spacecraft_names=["sat-1"], ground_station_names=["berlin-gs", "kiruna-gs"])
+    qtbot.addWidget(reopened)
+    assert reopened.to_dataclass().params == command.params
+
+
+def test_editor_offers_the_scenarios_ground_stations(qtbot, monkeypatch):
+    from spacemissionstudio.gui import mission_sequence_editor as module
+
+    captured = {}
+
+    class _Probe:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+        def exec(self):
+            return 0
+
+    editor = module.MissionSequenceEditorWidget()
+    qtbot.addWidget(editor)
+    editor.set_ground_station_names_provider(lambda: ["kiruna-gs", "berlin-gs"])
+    monkeypatch.setattr(module, "_CommandEditorDialog", _Probe)
+    editor._on_add()
+    assert captured["ground_station_names"] == ["berlin-gs", "kiruna-gs"]
 
 
 def test_propagate_epoch_rejects_bad_iso8601(qtbot):
@@ -160,15 +208,38 @@ def test_assignment_rejects_missing_spacecraft(qtbot):
         dialog.to_dataclass()
 
 
-def test_report_series_round_trips_as_line_list(qtbot):
-    dialog = _dialog()
+def test_report_series_are_picked_from_the_scenario_list(qtbot):
+    """Real user feedback: series names had to be typed from memory, and
+    one typo failed the run. They are now ticked in a list of the series
+    this scenario produces."""
+    names = ["sat-1.mass_kg", "sat-1.position_N", "sat-1.velocity_N"]
+    dialog = _dialog(series_names=names)
     qtbot.addWidget(dialog)
-    index = dialog.kind_combo.findText("report")
-    dialog.kind_combo.setCurrentIndex(index)
-    dialog.report_series_edit.setPlainText("sat-1.position_N\nsat-1.mass_kg\n")
+    dialog.kind_combo.setCurrentIndex(dialog.kind_combo.findText("report"))
+    assert dialog.report_series_list.count() == 3
+    assert "every series" in dialog.report_summary_label.text()
+    _tick(dialog, "sat-1.position_N", "sat-1.mass_kg")
+    assert "2 series" in dialog.report_summary_label.text()
 
     command = dialog.to_dataclass()
-    assert command.params == {"series": ["sat-1.position_N", "sat-1.mass_kg"]}
+    assert command.params == {"series": ["sat-1.mass_kg", "sat-1.position_N"]}
+
+    dialog.report_filter_edit.setText("veloc")
+    hidden = [dialog.report_series_list.item(i).isHidden() for i in range(3)]
+    assert hidden == [True, True, False]
+    dialog._on_report_clear()
+    assert dialog.to_dataclass().params == {"series": []}
+
+
+def test_report_keeps_and_flags_a_series_the_scenario_does_not_produce(qtbot):
+    from spacemissionstudio.schema.command import Command
+
+    command = Command(kind="report", params={"series": ["sat-1.position_N", "old-sat.position_N"]})
+    dialog = _dialog(command=command, series_names=["sat-1.position_N", "sat-1.velocity_N"])
+    qtbot.addWidget(dialog)
+    texts = [dialog.report_series_list.item(i).text() for i in range(dialog.report_series_list.count())]
+    assert any("old-sat.position_N" in t and "not produced" in t for t in texts)
+    assert dialog.to_dataclass().params == command.params  # open + OK changes nothing
 
 
 def test_report_empty_series_means_snapshot_everything(qtbot):

@@ -40,16 +40,29 @@ def test_migrate_bumps_schema_version_to_current():
     assert data["schema_version"] == CURRENT_SCHEMA_VERSION
 
 
-def test_migrate_rewrites_celestrak_source_to_synthetic():
+def test_migrate_rewrites_celestrak_source_to_bundled():
+    """v1 "celestrak" became v2 "synthetic", which became v3 "bundled"
+    (real CelesTrak data shipped with the app)."""
     data = migrate(_v1_scenario({"source": "celestrak"}))
-    assert data["space_weather"]["source"] == "synthetic"
+    assert data["space_weather"]["source"] == "bundled"
 
 
-def test_migrate_downgrades_conservative_celestrak_to_nominal_synthetic():
+def test_migrate_rewrites_a_v2_synthetic_source_to_bundled():
+    """The synthetic profile was removed: real space weather only."""
+    data = _v1_scenario({"source": "synthetic", "activity_level": "nominal"})
+    data["schema_version"] = 2
+    data = migrate(data)
+    assert data["space_weather"]["source"] == "bundled" and data["schema_version"] == CURRENT_SCHEMA_VERSION
+
+
+def test_migrate_downgrades_conservative_celestrak_to_nominal_bundled():
+    """v1 -> v2 already made a conservative "celestrak" file nominal; it
+    stays nominal (the 50th percentile default)."""
     data = migrate(_v1_scenario({"source": "celestrak", "activity_level": "conservative",
                                   "activity_percentile": 95.0}))
-    assert data["space_weather"]["source"] == "synthetic"
-    assert data["space_weather"]["activity_level"] == "nominal"
+    assert data["space_weather"]["source"] == "bundled"
+    assert "activity_level" not in data["space_weather"] and "activity_percentile" not in data["space_weather"]
+    assert "forecast_percentile" not in data["space_weather"]
 
 
 def test_migrate_leaves_local_file_source_untouched():
@@ -58,11 +71,21 @@ def test_migrate_leaves_local_file_source_untouched():
     assert data["space_weather"]["local_file_path"] == "/some/file.csv"
 
 
-def test_migrate_leaves_conservative_local_file_untouched():
+def test_migrate_turns_conservative_into_msfcs_95th_percentile():
+    """v3 -> v4: "conservative" (a constant percentile of the historical
+    record) becomes ESA AD10's conservative case, MSFC's 95th percentile;
+    the source is kept."""
     data = migrate(_v1_scenario({"source": "local_file", "local_file_path": "/some/file.csv",
                                   "activity_level": "conservative", "activity_percentile": 97.7}))
-    assert data["space_weather"]["source"] == "local_file"
-    assert data["space_weather"]["activity_level"] == "conservative"
+    assert data["space_weather"] == {"source": "local_file", "local_file_path": "/some/file.csv",
+                                     "forecast_percentile": 95.0}
+
+
+def test_migrate_drops_a_nominal_activity_level():
+    data = _v1_scenario({"source": "bundled", "activity_level": "nominal", "activity_percentile": 95.0,
+                         "forecast_percentile": 5.0})
+    data["schema_version"] = 3
+    assert migrate(data)["space_weather"] == {"source": "bundled", "forecast_percentile": 5.0}
 
 
 def test_migrate_handles_a_file_with_no_space_weather_block_at_all():
@@ -85,7 +108,7 @@ def test_load_scenario_migrates_an_old_celestrak_file_end_to_end(tmp_path):
 
     scenario = load_scenario(path)
 
-    assert scenario.space_weather.source == "synthetic"
+    assert scenario.space_weather.source == "bundled"
     assert scenario.schema_version == CURRENT_SCHEMA_VERSION
 
 
@@ -97,8 +120,8 @@ def test_load_scenario_migrates_an_old_conservative_celestrak_file_end_to_end(tm
 
     scenario = load_scenario(path)
 
-    assert scenario.space_weather.source == "synthetic"
-    assert scenario.space_weather.activity_level == "nominal"
+    assert scenario.space_weather.source == "bundled"
+    assert scenario.space_weather.forecast_percentile == 50.0
 
 
 def test_migrate_rejects_a_version_with_no_registered_step(monkeypatch):

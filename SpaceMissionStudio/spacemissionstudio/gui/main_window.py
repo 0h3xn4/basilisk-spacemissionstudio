@@ -46,16 +46,19 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QProgressDialog,
+    QScrollArea,
     QSplitter,
-    QStyle,
-    QTabWidget,
     QToolBar,
 )
 
+from .. import dependencies
+from ..engine.series_names import featured_series
 from ..logging_setup import get_log_file_path
+from ..schema.command import script_blocks
 from ..schema.scenario import Scenario, ScenarioValidationError, load_scenario
 from . import autosave
 from .feedback import show_toast
+from .icons import toolbar_icon
 from .kernel_status_widget import KernelStatusWidget
 from .load_scenario_widget import LoadScenarioWidget
 from .mission_dashboard_widget import MissionDashboardWidget
@@ -63,6 +66,9 @@ from .mission_output_widget import MissionOutputWidget
 from .results_widget import ResultsWidget
 from .run_worker import MonteCarloWorker, RunWorker
 from .scenario_editor import ScenarioEditorWidget
+from .budget_widget import BudgetWidget
+from .lifetime_widget import LifetimeWidget
+from .scenario_explainer_widget import ScenarioExplainerWidget
 from .startup_fetch_dialog import maybe_run_startup_fetch
 from .vizard_dialog import VizardDialog
 from .vizard_launcher import (
@@ -72,6 +78,7 @@ from .vizard_launcher import (
     launch_vizard,
     remember_vizard_executable,
 )
+from .widgets import TabWidget
 
 _FILE_FILTER = "SpaceMissionStudio scenario (*.json)"
 
@@ -100,6 +107,22 @@ def _with_log_file_hint(message: str) -> str:
     if log_file is None:
         return message
     return f"{message}\n\nFull details logged to:\n{log_file}"
+
+
+def _join_finished_worker(worker) -> None:
+    """Waits out a previous run's QThread before its last reference is replaced.
+
+    A worker emits its terminal signal (finished_ok/failed/cancelled) from
+    INSIDE its own ``run()``, so the slot that re-enables Run can execute
+    while that thread is still returning. Dropping the last Python
+    reference to a still-running QThread makes Qt abort the whole process
+    ("QThread: Destroyed while thread is still running") -- found by
+    looping the test suite, where exactly that race aborted ~1 run in 3.
+    Here the thread is at most microseconds from done, so this never
+    blocks noticeably.
+    """
+    if worker is not None and worker.isRunning():
+        worker.wait()
 
 
 class MainWindow(QMainWindow):
@@ -145,6 +168,7 @@ class MainWindow(QMainWindow):
         self.scenario_editor = ScenarioEditorWidget()
         self.scenario_editor.reset_to_default()
         self.scenario_editor.changed.connect(self._mark_dirty)
+        self.scenario_editor.changed.connect(self._refresh_scenario_explainer)
 
         self.load_scenario_widget = LoadScenarioWidget()
         self.load_scenario_widget.path_chosen.connect(self._on_load_scenario_path_chosen)
@@ -154,12 +178,22 @@ class MainWindow(QMainWindow):
         self.mission_dashboard_widget = MissionDashboardWidget()
         self.mission_output_widget = MissionOutputWidget()
         self.kernel_status_widget = KernelStatusWidget()
+        self.scenario_explainer_widget = ScenarioExplainerWidget()
+        self.lifetime_widget = LifetimeWidget()
+        self.budget_widget = BudgetWidget()
 
-        self.right_tabs = QTabWidget()
+        self.right_tabs = TabWidget()
         self.right_tabs.addTab(self.results_widget, "Results")
         self.right_tabs.addTab(self.mission_dashboard_widget, "Mission Dashboard")
         self.right_tabs.addTab(self.mission_output_widget, "Mission Output")
         self.right_tabs.addTab(self.kernel_status_widget, "Kernel Status")
+        self.right_tabs.addTab(self.scenario_explainer_widget, "Explain")
+        self.right_tabs.addTab(self.lifetime_widget, "End of Life")
+        budget_scroll = QScrollArea()  # the budget, launch-delay and altitude tables together outgrow short windows
+        budget_scroll.setWidgetResizable(True)
+        budget_scroll.setWidget(self.budget_widget)
+        self.right_tabs.addTab(budget_scroll, "Budget")
+        self._refresh_scenario_explainer()  # initial paint for the default scenario reset_to_default() just set up
 
         # "Load Scenario" first (index 0, so it's what a freshly launched
         # window shows) -- a new user's first move is picking a built-in
@@ -168,7 +202,7 @@ class MainWindow(QMainWindow):
         # switches to "Scenario Editor" the moment anything actually
         # loads, whichever of the two ways (this tab, or File > Open) got
         # it there.
-        self.left_tabs = QTabWidget()
+        self.left_tabs = TabWidget()
         self.left_tabs.addTab(self.load_scenario_widget, "Load Scenario")
         self.left_tabs.addTab(self.scenario_editor, "Scenario Editor")
 
@@ -209,6 +243,15 @@ class MainWindow(QMainWindow):
         self._busy_progress.setVisible(False)
         self.statusBar().addPermanentWidget(self._busy_label)
         self.statusBar().addPermanentWidget(self._busy_progress)
+        # Basilisk version check at start-up (ECSS-Q-ST-80C 6.2.7, decision D5).
+        self.basilisk_version_label = QLabel()
+        version_note = dependencies.basilisk_check()
+        self.basilisk_version_label.setVisible(version_note is not None)
+        if version_note is not None:
+            self.basilisk_version_label.setText("Basilisk version not qualified")
+            self.basilisk_version_label.setToolTip(version_note)
+            self.basilisk_version_label.setStyleSheet("color: #b8860b;")
+        self.statusBar().addPermanentWidget(self.basilisk_version_label)
 
         # Design-philosophy roadmap item M4 (docs/ux_roadmap.md):
         # autosave/crash-recovery for scenario edits -- see
@@ -256,10 +299,9 @@ class MainWindow(QMainWindow):
 
     # -- menu ---------------------------------------------------------------
     def _build_menu(self) -> None:
-        style = self.style()
         file_menu = self.menuBar().addMenu("&File")
 
-        new_action = QAction(style.standardIcon(QStyle.StandardPixmap.SP_FileIcon), "&New Scenario", self)
+        new_action = QAction(toolbar_icon("new"), "&New Scenario", self)
         new_action.setShortcut(QKeySequence.StandardKey.New)
         new_action.setToolTip(
             "New Scenario (Ctrl+N) -- discards the scenario currently open (you'll be prompted "
@@ -269,7 +311,7 @@ class MainWindow(QMainWindow):
         file_menu.addAction(new_action)
         self.new_action = new_action
 
-        open_action = QAction(style.standardIcon(QStyle.StandardPixmap.SP_DialogOpenButton), "&Open...", self)
+        open_action = QAction(toolbar_icon("open"), "&Open...", self)
         open_action.setShortcut(QKeySequence.StandardKey.Open)
         open_action.setToolTip(
             "Open a scenario file (Ctrl+O) -- loads a previously saved .json scenario, "
@@ -280,7 +322,7 @@ class MainWindow(QMainWindow):
         file_menu.addAction(open_action)
         self.open_action = open_action
 
-        save_action = QAction(style.standardIcon(QStyle.StandardPixmap.SP_DialogSaveButton), "&Save", self)
+        save_action = QAction(toolbar_icon("save"), "&Save", self)
         save_action.setShortcut(QKeySequence.StandardKey.Save)
         save_action.setToolTip(
             "Save (Ctrl+S) -- writes the current scenario to its file. If it has never been "
@@ -311,7 +353,7 @@ class MainWindow(QMainWindow):
         file_menu.addAction(quit_action)
 
         run_menu = self.menuBar().addMenu("&Run")
-        run_action = QAction(style.standardIcon(QStyle.StandardPixmap.SP_MediaPlay), "&Run Simulation", self)
+        run_action = QAction(toolbar_icon("run"), "&Run Simulation", self)
         run_action.setShortcut("Ctrl+R")
         run_action.setToolTip(
             "Run Simulation (Ctrl+R) -- builds the current scenario in Basilisk and propagates "
@@ -331,14 +373,14 @@ class MainWindow(QMainWindow):
         # only worker with a request_cancel() to call (see its module
         # docstring for the cooperative-cancellation design; Monte Carlo
         # batches have no equivalent hook and are out of scope here).
-        abort_action = QAction(style.standardIcon(QStyle.StandardPixmap.SP_MediaStop), "&Abort Run", self)
+        abort_action = QAction(toolbar_icon("abort"), "&Abort Run", self)
         abort_action.setToolTip("Abort the running simulation (takes effect at the next checkpoint, not instantly)")
         abort_action.setEnabled(False)
         abort_action.triggered.connect(self.on_abort_run)
         run_menu.addAction(abort_action)
         self.abort_action = abort_action
 
-        live_plot_action = QAction("&Live Plot", self)
+        live_plot_action = QAction(toolbar_icon("live-plot"), "&Live Plot", self)
         live_plot_action.setCheckable(True)
         live_plot_action.setChecked(True)
         live_plot_action.setToolTip(
@@ -347,7 +389,7 @@ class MainWindow(QMainWindow):
         run_menu.addAction(live_plot_action)
         self.live_plot_action = live_plot_action
 
-        check_kernels_action = QAction(style.standardIcon(QStyle.StandardPixmap.SP_BrowserReload),
+        check_kernels_action = QAction(toolbar_icon("check-kernels"),
                                         "&Check Kernels", self)
         check_kernels_action.setToolTip(
             "Checks whether the SPICE ephemeris kernels every run needs (for real Sun/Moon/"
@@ -358,7 +400,7 @@ class MainWindow(QMainWindow):
         run_menu.addAction(check_kernels_action)
         self.check_kernels_action = check_kernels_action
 
-        vizard_action = QAction(style.standardIcon(QStyle.StandardPixmap.SP_DesktopIcon),
+        vizard_action = QAction(toolbar_icon("vizard-config"),
                                  "Vizard &Configuration...", self)
         vizard_action.setToolTip("Configure Vizard visualization for the next run")
         vizard_action.triggered.connect(self.on_configure_vizard)
@@ -369,14 +411,14 @@ class MainWindow(QMainWindow):
         # decides how the NEXT run feeds Vizard, e.g. a live stream or a
         # playback file) -- this one actually starts the separate Vizard
         # application, so live-stream mode has something to connect to.
-        vizard_launch_action = QAction(style.standardIcon(QStyle.StandardPixmap.SP_ComputerIcon),
+        vizard_launch_action = QAction(toolbar_icon("vizard-launch"),
                                         "&Launch Vizard", self)
         vizard_launch_action.setToolTip("Start the external Vizard application")
         vizard_launch_action.triggered.connect(self.on_launch_vizard)
         run_menu.addAction(vizard_launch_action)
         self.vizard_launch_action = vizard_launch_action
 
-        monte_carlo_action = QAction(style.standardIcon(QStyle.StandardPixmap.SP_MediaSeekForward),
+        monte_carlo_action = QAction(toolbar_icon("monte-carlo"),
                                       "Run &Monte Carlo...", self)
         monte_carlo_action.setToolTip("Run a Monte Carlo batch")
         monte_carlo_action.triggered.connect(self.on_run_monte_carlo)
@@ -483,6 +525,27 @@ class MainWindow(QMainWindow):
             self._dirty = True
             self._update_window_title()
 
+    def _refresh_scenario_explainer(self) -> None:
+        # Same "silently skip a tick where the in-memory scenario doesn't
+        # currently validate" tolerance as _on_autosave_tick -- this runs
+        # on every keystroke (via ScenarioEditorWidget.changed), so a
+        # momentarily-invalid mid-edit state (e.g. a required field
+        # briefly blank) must never raise an error dialog the user didn't
+        # directly trigger. ScenarioExplainerWidget.set_scenario(None)
+        # shows its own short placeholder instead of crashing.
+        try:
+            scenario = self.scenario_editor.to_scenario()
+        except ScenarioValidationError:
+            scenario = None
+        self.scenario_explainer_widget.set_scenario(scenario)
+        self.lifetime_widget.set_scenario(scenario)
+        self.budget_widget.set_scenario(scenario)
+        # The tab says when there's something to check, so it's seen even
+        # by someone who never opens it before pressing Run.
+        count = self.scenario_explainer_widget.warning_count
+        self.right_tabs.setTabText(self.right_tabs.indexOf(self.scenario_explainer_widget),
+                                   f"Explain ({count} to check)" if count else "Explain")
+
     def _mark_clean(self) -> None:
         self._dirty = False
         self._update_window_title()
@@ -539,6 +602,7 @@ class MainWindow(QMainWindow):
             autosave.clear_recovery_file()
             return
         self.scenario_editor.from_scenario(info.scenario)
+        self._refresh_scenario_explainer()
         self._current_path = info.original_path
         self.results_widget.set_result(None)
         self.mission_dashboard_widget.set_result(None)
@@ -567,6 +631,7 @@ class MainWindow(QMainWindow):
         if not self._confirm_discard_unsaved():
             return
         self.scenario_editor.reset_to_default()
+        self._refresh_scenario_explainer()
         self._current_path = None
         self.results_widget.set_result(None)
         self.mission_dashboard_widget.set_result(None)
@@ -635,6 +700,7 @@ class MainWindow(QMainWindow):
         picking a path to write to.
         """
         self.scenario_editor.from_scenario(scenario)
+        self._refresh_scenario_explainer()
         self._current_path = current_path
         self.results_widget.set_result(None)
         self.mission_dashboard_widget.set_result(None)
@@ -722,7 +788,11 @@ class MainWindow(QMainWindow):
         current_show_orbit_lines = getattr(self._vizard_request, "show_orbit_lines", True)
         dialog = VizardDialog(current_save_file=current_save_file, current_live_stream=current_live_stream,
                                current_camera_target=current_camera_target,
-                               current_show_orbit_lines=current_show_orbit_lines, parent=self)
+                               current_show_orbit_lines=current_show_orbit_lines,
+                               current_show_trajectory_trail=getattr(self._vizard_request,
+                                                                     "show_trajectory_trail", False),
+                               current_show_ground_tracks=getattr(self._vizard_request, "show_ground_tracks", False),
+                               parent=self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self._vizard_request = dialog.to_request()
             if self._vizard_request is None:
@@ -976,11 +1046,29 @@ class MainWindow(QMainWindow):
         self._vizard_process = None
         self._vizard_direct_comm_address = None
 
+    def _confirm_script_blocks(self, blocks) -> bool:
+        """Ask before running ``script_block`` code (SRS-S-03): it is
+        unrestricted Python from the scenario file. Shows the code; the
+        default answer is No."""
+        listing = "\n\n".join(f"{path}" + (f" ({command.label})" if command.label else "") + ":\n"
+                               + str(command.params.get("code", ""))[:600] for path, command in blocks)
+        box = QMessageBox(QMessageBox.Icon.Warning, "Run script blocks?",
+                          f"This scenario has {len(blocks)} script block(s). They run as unrestricted Python, "
+                          "with your user's access to files and the network. Run them only if you trust the "
+                          "scenario and have read the code.",
+                          QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, self)
+        box.setDetailedText(listing)
+        box.setDefaultButton(QMessageBox.StandardButton.No)
+        return box.exec() == QMessageBox.StandardButton.Yes
+
     def on_run(self) -> None:
         try:
             scenario = self.scenario_editor.to_scenario()
         except ScenarioValidationError as exc:
             QMessageBox.critical(self, "Cannot run invalid scenario", str(exc))
+            return
+        blocks = script_blocks(scenario.mission_sequence)
+        if blocks and not self._confirm_script_blocks(blocks):
             return
 
         if self._vizard_request is not None and self._vizard_request.live_stream:
@@ -1062,7 +1150,10 @@ class MainWindow(QMainWindow):
         # needs to recompute a live link-budget breakdown.
         self._last_run_epoch_utc = scenario.epoch_utc
         self._last_run_scenario = scenario
-        self._run_worker = RunWorker(scenario, vizard_request=self._vizard_request, live=live)
+        self.results_widget.set_featured_series(featured_series(scenario))
+        _join_finished_worker(self._run_worker)
+        self._run_worker = RunWorker(scenario, vizard_request=self._vizard_request, live=live,
+                                     allow_scripts=bool(blocks))
         self._run_worker.progress.connect(self._on_run_progress)
         self._run_worker.finished_ok.connect(self._on_run_finished)
         self._run_worker.failed.connect(self._on_run_failed)
@@ -1135,8 +1226,10 @@ class MainWindow(QMainWindow):
             # whatever was shown before.
             self.results_widget.set_live_result(result, self._last_run_epoch_utc)
             self.mission_dashboard_widget.set_live_result(result, self._last_run_scenario)
+            self.lifetime_widget.set_last_run(self._last_run_scenario, result)
+            self.budget_widget.set_last_run(self._last_run_scenario, result)
             if command_summary is not None:
-                self.mission_output_widget.set_command_summary(command_summary)
+                self.mission_output_widget.set_command_summary(command_summary, result)
                 self.right_tabs.setCurrentWidget(self.mission_output_widget)
             else:
                 self.right_tabs.setCurrentWidget(self.results_widget)
@@ -1168,7 +1261,7 @@ class MainWindow(QMainWindow):
             self.results_widget.set_live_result(partial_result, self._last_run_epoch_utc)
             self.mission_dashboard_widget.set_live_result(partial_result, self._last_run_scenario)
             if command_summary is not None:
-                self.mission_output_widget.set_command_summary(command_summary)
+                self.mission_output_widget.set_command_summary(command_summary, partial_result)
                 self.right_tabs.setCurrentWidget(self.mission_output_widget)
             else:
                 self.right_tabs.setCurrentWidget(self.results_widget)
@@ -1197,6 +1290,7 @@ class MainWindow(QMainWindow):
         archive_dir = Path(archive_dir_str)
 
         self._start_busy(f"Running {scenario.monte_carlo.num_runs} Monte Carlo case(s)...")
+        _join_finished_worker(self._mc_worker)
         self._mc_worker = MonteCarloWorker(scenario, scenario.monte_carlo, archive_dir)
         self._mc_worker.finished_ok.connect(self._on_monte_carlo_finished)
         self._mc_worker.failed.connect(self._on_monte_carlo_failed)
@@ -1250,6 +1344,8 @@ class MainWindow(QMainWindow):
                 event.ignore()
                 return
         if self._confirm_discard_unsaved():
+            self.lifetime_widget.wait_for_worker()  # a few seconds at most; its thread must not be destroyed mid-run
+            self.budget_widget.wait_for_worker()
             event.accept()
         else:
             event.ignore()

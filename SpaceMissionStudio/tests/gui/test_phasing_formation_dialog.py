@@ -35,7 +35,9 @@ def test_description_label_wraps_instead_of_blowing_up_dialog_width(qtbot):
     ]
     assert description_labels, "expected to find the long top description QLabel"
     assert all(w.wordWrap() for w in description_labels)
-    assert dialog.sizeHint().width() < 900
+    # 900 px at the Linux CI's font; as a count of average characters, so a
+    # platform with wider fonts (Windows) gets the same bound (SRelD K-10).
+    assert dialog.sizeHint().width() < 150 * dialog.fontMetrics().averageCharWidth()
 
 
 def test_defaults_produce_a_valid_request(qtbot):
@@ -48,6 +50,41 @@ def test_defaults_produce_a_valid_request(qtbot):
     assert dialog.selected_chief_name() == "chief-1"
     assert dialog.selected_template_name() == "chief-1"
     assert request.along_track_km != 0.0
+    assert request.station_keeping_target_altitude_km is None  # "derive" checkbox defaults checked
+    assert request.eclipse_sunlit_threshold == 0.99
+
+
+def test_station_keeping_target_altitude_defaults_to_disabled_spin_box(qtbot):
+    from spacemissionstudio.gui.phasing_formation_dialog import PhasingFormationDialog
+
+    dialog = PhasingFormationDialog(["chief-1"])
+    qtbot.addWidget(dialog)
+    assert dialog.derive_altitude_check.isChecked()
+    assert not dialog.station_keeping_target_altitude_km.isEnabled()
+
+
+def test_unchecking_derive_altitude_enables_spin_box_and_is_used(qtbot):
+    from spacemissionstudio.gui.phasing_formation_dialog import PhasingFormationDialog
+
+    dialog = PhasingFormationDialog(["chief-1"])
+    qtbot.addWidget(dialog)
+    dialog.derive_altitude_check.setChecked(False)
+    assert dialog.station_keeping_target_altitude_km.isEnabled()
+    dialog.station_keeping_target_altitude_km.setValue(650.0)
+
+    request = dialog.to_request()
+    assert request.station_keeping_target_altitude_km == 650.0
+
+
+def test_editing_eclipse_sunlit_threshold_updates_request(qtbot):
+    from spacemissionstudio.gui.phasing_formation_dialog import PhasingFormationDialog
+
+    dialog = PhasingFormationDialog(["chief-1"])
+    qtbot.addWidget(dialog)
+    dialog.eclipse_sunlit_threshold.setValue(0.9)
+
+    request = dialog.to_request()
+    assert request.eclipse_sunlit_threshold == 0.9
 
 
 def test_central_body_is_not_independently_selectable(qtbot):
@@ -128,3 +165,58 @@ def test_dialog_resizes_to_its_own_sizehint_on_construction(qtbot):
     qtbot.addWidget(dialog)
 
     assert dialog.size() == dialog.sizeHint()
+
+
+def test_thruster_realism_settings_reach_the_request(qtbot):
+    from spacemissionstudio.gui.phasing_formation_dialog import PhasingFormationDialog
+
+    dialog = PhasingFormationDialog(["chief-1"])
+    qtbot.addWidget(dialog)
+    dialog.min_on_time_s.setValue(120.0)  # [s]
+    dialog.eccentricity_neutral_check.setChecked(True)
+
+    request = dialog.to_request()
+    assert request.min_on_time_s == 120.0  # [s]
+    assert request.eccentricity_neutral_burns is True
+
+
+def test_dialog_defaults_match_the_generator_request_defaults(qtbot):
+    import dataclasses
+
+    from spacemissionstudio.engine.formation import PhasingFormationRequest
+    from spacemissionstudio.gui.phasing_formation_dialog import PhasingFormationDialog
+
+    dialog = PhasingFormationDialog(["chief-1"], central_body="earth")
+    qtbot.addWidget(dialog)
+    defaults = {f.name: f.default for f in dataclasses.fields(PhasingFormationRequest)}
+    assert dialog.correction_window_days.value() == defaults["correction_window_days"]
+
+
+def test_chief_station_keeping_is_shown_and_set_from_the_dialog(qtbot):
+    """Real user feedback: the generator couldn't set anything on the
+    chief. Its station-keeping is prefilled from the selected chief, and
+    whatever the user sets (or unchecks) is returned for the chief."""
+    from spacemissionstudio.gui.phasing_formation_dialog import PhasingFormationDialog
+    from spacemissionstudio.schema.scenario import OrbitIC, SpacecraftConfig, StationKeepingConfig
+
+    orbit = OrbitIC(type="classical_elements", semi_major_axis_km=6928.0, eccentricity=0.001,
+                    inclination_deg=97.6, raan_deg=0.0, arg_periapsis_deg=0.0, true_anomaly_deg=0.0)
+    chief = SpacecraftConfig(name="chief-1", orbit=orbit,
+                             station_keeping=StationKeepingConfig(target_altitude_km=545.0, deadband_km=7.0, thrust_n=0.05,
+                                                                  isp_s=1500.0, propellant_kg=5.0))
+    bare = SpacecraftConfig(name="bare-1", orbit=orbit)
+    dialog = PhasingFormationDialog(["chief-1", "bare-1"], parent=None, spacecraft=[chief, bare])
+    qtbot.addWidget(dialog)
+
+    assert dialog.chief_group.isChecked()
+    assert dialog.chief_deadband_km.value() == 7.0  # [km]
+    dialog.chief_deadband_km.setValue(3.0)  # [km]
+    dialog.chief_eccentricity_neutral_check.setChecked(True)
+    result = dialog.chief_station_keeping()
+    assert result.deadband_km == 3.0 and result.target_altitude_km == 545.0
+    assert result.eccentricity_neutral_burns is True
+
+    dialog.chief_combo.setCurrentIndex(1)  # a chief with no station-keeping yet
+    assert not dialog.chief_group.isChecked()
+    assert dialog.chief_target_altitude_km.value() == pytest.approx(6928.0 - 6378.1366)  # [km] from its orbit
+    assert dialog.chief_station_keeping() is None

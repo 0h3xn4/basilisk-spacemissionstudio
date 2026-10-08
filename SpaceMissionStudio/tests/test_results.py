@@ -115,6 +115,17 @@ def test_result_set_export_csv_with_provenance_writes_sidecar_json(tmp_path):
         "integrator": "rkf78",
         "dynamics_task_rate_s": 10.0,
         "rng_seed_note": RunProvenance.__dataclass_fields__["rng_seed_note"].default,
+        # configuration record (R01), empty when not filled by engine.service
+        "qualified_basilisk_version": "",
+        "basilisk_qualified": False,
+        "dependency_versions": {},
+        "scenario_sha256": "",
+        "data_files": {},
+        # frames and time scales (R02), empty when not filled by engine.service
+        "time_system": {},
+        "frames": {},
+        "transformations": {},
+        "series_frames": {},
     }
 
 
@@ -219,3 +230,12 @@ def test_command_summary_export_csv_with_no_reports_writes_header_only(tmp_path)
     with open(path, newline="") as f:
         rows = list(csv.reader(f))
     assert rows == [["report_index", "t_s", "label", "series", "component", "value"]]
+
+
+def test_conservation_drift_warnings_stay_short():
+    """Each warning is one scannable line in the Results tab (they used to
+    be ~330-character paragraphs); the explanation lives in a tooltip."""
+    r, v = _circular_orbit_rv(n=200, num_orbits=1.0)
+    drifting_v = v * np.linspace(1.0, 1.10, r.shape[0])[:, None]
+    for warning in conservation_drift_warnings("sat-1", _EARTH_MU, r, drifting_v):
+        assert len(warning) <= 120, warning
