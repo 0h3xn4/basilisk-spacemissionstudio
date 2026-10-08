@@ -170,7 +170,8 @@ from Basilisk.utilities.supportDataTools.dataFetcher import DataFile, get_path
 from .. import __version__ as _SPACEMISSIONSTUDIO_VERSION
 from .. import dependencies
 from ..schema.scenario import OrbitIC, Scenario
-from . import earth_orientation, environment_models, frames, fsw, geodesy, kernels, link_budget, long_run, orbit_maintenance, time_system, tle, vizard
+from . import (earth_orientation, environment_models, frames, fsw, geodesy, kernels, link_budget, long_run,
+               orbit_maintenance, planet_rotation, time_system, tle, vizard)
 from .results import ResultSet, RunProvenance, TimeSeries, conservation_drift_warnings
 from .vizard import VizardRequest
 
@@ -688,26 +689,18 @@ class SimulationService:
                 f"(known: {sorted(_INTEGRATORS)})"
             )
 
-        # sim_settings.dynamics_task_rate_s is not just a logging/output
-        # cadence -- it also bounds how often the SPICE-derived central-body
-        # state (position AND rotation, used directly in the gravity force
-        # computation) gets refreshed, since self.spice_object below runs on
-        # this SAME task. Basilisk only linearly (Euler-step) extrapolates
-        # that state BETWEEN refreshes (see GravBodyData::computeGravityInertial()
-        # and getEulerSteppedGravBodyPosition() in gravityEffector.cpp), so a
-        # coarse rate here introduces a real force-accuracy error even though
-        # the integrator itself (see _INTEGRATORS below) may be far more
-        # accurate than that. Confirmed empirically, not guessed: holding
-        # everything else fixed and only varying this rate on
-        # scenarios/two_body_validation.json made its analytical-comparison
-        # position error scale roughly with the SQUARE of this value (~202 m
-        # at 30 s, ~22 m at 10 s, ~2 m at 3 s, ~0.22 m at 1 s) -- exactly the
-        # signature of a first-order truncation error, and completely
-        # insensitive to the RKF78 integrator's own relative tolerance
-        # (tested directly at both 1e-4 and 1e-14 with no change whatsoever).
-        # That two-body validation scenario uses 1.0 s for exactly this
-        # reason; scenarios that need tighter absolute accuracy than a 30 s
-        # rate provides should do the same.
+        # sim_settings.dynamics_task_rate_s is also how often the SPICE
+        # planet states the gravity model uses are refreshed (the SPICE
+        # interface runs on this task). Inside a step Basilisk extrapolates
+        # the planet orientation linearly (GravBodyData::computeGravityInertial),
+        # which is not a rotation and stretched every gravity evaluation by
+        # about (omega dt)^2 / 2: in two-body runs the error grew with the
+        # square of this rate (Phase 3: 148 m after one day at 10 s, 1.2 km
+        # at 30 s, in a 400 km orbit) whatever the integrator tolerance.
+        # engine.planet_rotation now gives the gravity model the mid-step
+        # orientation instead (two-body at 10 s: < 1 mm per day against
+        # Kepler); the planet positions need no correction because zeroBase
+        # puts the central body at the origin.
         self.scSim = SimulationBaseClass.SimBaseClass()
         dyn_process = self.scSim.CreateNewProcess("dynProcess", priority=100)
         dyn_task_name = "dynTask"
@@ -807,6 +800,11 @@ class SimulationService:
         # gravity.central_body value used here resolves the same way).
         self.spice_object.zeroBase = gravity.central_body
         self.scSim.AddModelToTask(dyn_task_name, self.spice_object, 500)
+        # The gravity model reads the planet orientation at mid-step, not
+        # Basilisk's linear extrapolation of it (engine.planet_rotation).
+        self._planet_orientation_modules = planet_rotation.attach(
+            self.scSim, dyn_task_name, self.spice_object, grav_factory.gravBodies, body_names,
+            sim_settings.dynamics_task_rate_s)
 
         # -- Phase 2 shared (scenario-level) infrastructure, built once before
         # the per-spacecraft loop below: the "sun" SPICE ephemeris message

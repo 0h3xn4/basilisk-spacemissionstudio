@@ -101,8 +101,8 @@ def test_07_battery_charges_in_sunlight_and_drains_in_eclipse():
 
 
 def test_03_geo_slot_is_held_in_longitude_and_inclination():
-    """A real 45-day run: east-west burns at days 13, 20, 32, 41, north-
-    south burns at days 16 and 30. 32 days covers three and two of them."""
+    """A real 45-day run: east-west burns at days 12.5, 21.4, 31.1, 36.9, north-
+    south burns at days 16.4 and 30.4. 32 days covers three and two of them."""
     result = _run(_template("03"), duration_days=32.0)  # [day]
     prefix = "geo-sat-1.geo_station_keeping."
     longitude = np.degrees(result.series[prefix + "longitude"].data[:, 1])  # [deg] one-day fit
