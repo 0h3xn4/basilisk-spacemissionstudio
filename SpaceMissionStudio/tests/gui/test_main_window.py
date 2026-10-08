@@ -240,16 +240,16 @@ def test_choosing_a_customized_scenario_opens_it_with_no_current_path(window):
 
     template_path = TEMPLATES_DIR / "03_geo_station_keeping.json"
     scenario = load_scenario(template_path)
-    scenario.spacecraft[0].station_keeping.deadband_km = 2.5
+    scenario.spacecraft[0].geo_station_keeping.longitude_deadband_deg = 0.1
 
     window.load_scenario_widget.scenario_customized.emit(scenario)
 
     assert window._current_path is None
     assert window.left_tabs.currentWidget() is window.scenario_editor
     loaded = window.scenario_editor.to_scenario()
-    assert loaded.spacecraft[0].station_keeping.deadband_km == 2.5
+    assert loaded.spacecraft[0].geo_station_keeping.longitude_deadband_deg == 0.1
     # The original template file itself must be untouched.
-    assert load_scenario(template_path).spacecraft[0].station_keeping.deadband_km != 2.5
+    assert load_scenario(template_path).spacecraft[0].geo_station_keeping.longitude_deadband_deg != 0.1
 
 
 def test_choosing_a_customized_scenario_with_unsaved_changes_prompts_first(window, monkeypatch):
@@ -278,7 +278,7 @@ def test_customized_scenario_that_fails_validation_shows_error_not_crash(window,
     monkeypatch.setattr(QMessageBox, "critical", staticmethod(lambda *a, **k: critical_calls.append(a)))
 
     scenario = load_scenario(TEMPLATES_DIR / "03_geo_station_keeping.json")
-    scenario.spacecraft[0].station_keeping.deadband_km = -1.0  # invalid: must be > 0
+    scenario.spacecraft[0].geo_station_keeping.longitude_deadband_deg = -1.0  # invalid: must be > 0
 
     window.load_scenario_widget.scenario_customized.emit(scenario)
 
@@ -1836,10 +1836,15 @@ def test_explain_tab_title_counts_pre_run_warnings(window, qapp):
 
     templates = Path(__file__).resolve().parents[2] / "spacemissionstudio" / "scenarios" / "templates"
     tab_index = window.right_tabs.indexOf(window.scenario_explainer_widget)
-    assert window.open_path(next(templates.glob("03_*.json")))
-    assert window.right_tabs.tabText(tab_index) == "Explain (1 to check)"
+    from spacemissionstudio.schema import load_scenario
+
     assert window.open_path(next(templates.glob("19_*.json")))
     assert window.right_tabs.tabText(tab_index) == "Explain"
+    late = load_scenario(next(templates.glob("19_*.json")))
+    late.epoch_utc = "2030-01-01T00:00:00"  # the old epoch: no Berlin pass in the run
+    window.scenario_editor.from_scenario(late)
+    window.scenario_editor.changed.emit()
+    assert window.right_tabs.tabText(tab_index) == "Explain (1 to check)"
 
 
 def test_a_run_hands_the_scenarios_featured_series_to_the_results_tab(window, monkeypatch):

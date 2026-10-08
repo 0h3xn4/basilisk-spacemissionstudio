@@ -73,6 +73,7 @@ from ..schema.scenario import (
     CommsPointingConfig,
     ConstantThrustConfig,
     FuelTankConfig,
+    GeoStationKeepingConfig,
     MagneticMomentumManagementConfig,
     MomentumDumpingConfig,
     OrbitIC,
@@ -780,6 +781,37 @@ class SpacecraftEditorDialog(QDialog):
         sk_form.addRow("Minimum thruster on-time [s]", self.sk_min_on_time_s)
         sk_form.addRow(self.sk_eccentricity_neutral_check)
         power_layout.addWidget(self.station_keeping_group)
+
+        geo0 = config.geo_station_keeping if config else None
+        self.geo_station_keeping_group = QGroupBox("GEO station keeping (east-west and north-south boxes)")
+        self.geo_station_keeping_group.setCheckable(True)
+        self.geo_station_keeping_group.setToolTip(
+            "Keeps a geostationary satellite in its slot: along-track burns hold the longitude in its box, "
+            "burns at the nodes keep the inclination under the limit. Earth only; replaces station keeping."
+        )
+        self.geo_station_keeping_group.setChecked(geo0 is not None)
+        geo_form = QFormLayout(self.geo_station_keeping_group)
+        self.geo_longitude_deg = _spin(-180.0, 360.0, decimals=3, step=1.0,
+                                       value=geo0.target_longitude_deg if geo0 else 10.0)
+        self.geo_longitude_deg.setToolTip("East longitude of the slot.")
+        self.geo_deadband_deg = _spin(0.001, 5.0, decimals=3, step=0.01,
+                                      value=geo0.longitude_deadband_deg if geo0 else 0.05)
+        self.geo_deadband_deg.setToolTip("Half-width of the longitude box. Smaller = more east-west burns.")
+        self.geo_inclination_max_deg = _spin(0.001, 10.0, decimals=3, step=0.01,
+                                             value=geo0.inclination_max_deg if geo0 else 0.05)
+        self.geo_inclination_max_deg.setToolTip("A north-south burn fires at the next node once this is passed.")
+        self.geo_thrust_n = _spin(1.0e-4, 1.0e3, decimals=4, step=0.5, value=geo0.thrust_n if geo0 else 1.0)
+        self.geo_isp_s = _spin(1.0, 1.0e5, decimals=1, step=10.0, value=geo0.isp_s if geo0 else 220.0)
+        self.geo_isp_s.setToolTip("~220 s for hydrazine; electric thrusters are 1500 s and more.")
+        self.geo_propellant_kg = _spin(0.0, 1.0e5, decimals=3, step=1.0,
+                                       value=geo0.propellant_kg if geo0 else 50.0)
+        geo_form.addRow("Slot longitude (east) [deg]", self.geo_longitude_deg)
+        geo_form.addRow("Longitude box half-width [deg]", self.geo_deadband_deg)
+        geo_form.addRow("Inclination limit [deg]", self.geo_inclination_max_deg)
+        geo_form.addRow("Thrust [N]", self.geo_thrust_n)
+        geo_form.addRow("Thruster Isp [s]", self.geo_isp_s)
+        geo_form.addRow("Propellant available [kg]", self.geo_propellant_kg)
+        power_layout.addWidget(self.geo_station_keeping_group)
 
         # Independent of station keeping above -- its own propellant
         # budget/tank (see ConstantThrustConfig's docstring). Available in
@@ -1490,6 +1522,7 @@ class SpacecraftEditorDialog(QDialog):
             comms_pointing=comms_pointing,
             rf_link=self._rf_link_to_dataclass(),
             station_keeping=self._station_keeping_to_dataclass(),
+            geo_station_keeping=self._geo_station_keeping_to_dataclass(),
             phasing_keeping=self._phasing_keeping_to_dataclass(),
             constant_thrust=self._constant_thrust_to_dataclass(),
             momentum_dumping=self._momentum_dumping_to_dataclass(),
@@ -1554,6 +1587,18 @@ class SpacecraftEditorDialog(QDialog):
             eclipse_sunlit_threshold=self.sk_eclipse_sunlit_threshold.value(),
             min_on_time_s=self.sk_min_on_time_s.value(),
             eccentricity_neutral_burns=self.sk_eccentricity_neutral_check.isChecked(),
+        )
+
+    def _geo_station_keeping_to_dataclass(self) -> GeoStationKeepingConfig | None:
+        if not self.geo_station_keeping_group.isChecked():
+            return None
+        return GeoStationKeepingConfig(
+            target_longitude_deg=self.geo_longitude_deg.value(),
+            longitude_deadband_deg=self.geo_deadband_deg.value(),
+            inclination_max_deg=self.geo_inclination_max_deg.value(),
+            thrust_n=self.geo_thrust_n.value(),
+            isp_s=self.geo_isp_s.value(),
+            propellant_kg=self.geo_propellant_kg.value(),
         )
 
     def _constant_thrust_to_dataclass(self) -> ConstantThrustConfig | None:

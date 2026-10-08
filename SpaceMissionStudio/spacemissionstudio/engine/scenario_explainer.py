@@ -197,6 +197,8 @@ def _spacecraft_control_summary(sc) -> str:
         parts.append(_mode_name(sc.fsw_mode))
     if sc.station_keeping is not None:
         parts.append("station-keeping")
+    if sc.geo_station_keeping is not None:
+        parts.append("GEO station-keeping")
     if sc.phasing_keeping is not None:
         parts.append("phasing-keeping")
     if sc.constant_thrust is not None:
@@ -214,6 +216,8 @@ def _spacecraft_propellant_kg(sc) -> float:
     total = 0.0
     if sc.station_keeping is not None:
         total += sc.station_keeping.propellant_kg
+    if sc.geo_station_keeping is not None:
+        total += sc.geo_station_keeping.propellant_kg
     if sc.constant_thrust is not None:
         total += sc.constant_thrust.propellant_kg
     if sc.fuel_tank is not None:
@@ -225,6 +229,8 @@ def _formation_section(scenario) -> ExplanationSection | None:
     badges: List[Badge] = []
     if any(sc.station_keeping is not None for sc in scenario.spacecraft):
         badges.append(Badge("Station-keeping", "accent"))
+    if any(sc.geo_station_keeping is not None for sc in scenario.spacecraft):
+        badges.append(Badge("GEO station-keeping (E-W, N-S)", "accent"))
     if any(sc.phasing_keeping is not None for sc in scenario.spacecraft):
         badges.append(Badge("Phasing-keeping", "accent"))
     if any(sc.constant_thrust is not None for sc in scenario.spacecraft):

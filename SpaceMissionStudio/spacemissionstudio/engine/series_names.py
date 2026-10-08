@@ -87,6 +87,9 @@ def _spacecraft_series(scenario: Scenario, sc) -> List[str]:
     if sc.station_keeping is not None:
         names += [f"{name}.station_keeping.{part}"
                   for part in ("altitude", "burn_on", "propellant_remaining", "delta_v")]
+    if sc.geo_station_keeping is not None:
+        names += [f"{name}.geo_station_keeping.{part}"
+                  for part in ("longitude", "inclination", "burn_on", "propellant_remaining", "delta_v")]
     if sc.phasing_keeping is not None:
         names += [f"{name}.phasing_keeping.{part}"
                   for part in ("separation_error", "state", "delta_v", "relative_semi_major_axis")]

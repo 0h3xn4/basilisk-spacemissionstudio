@@ -100,12 +100,19 @@ def test_07_battery_charges_in_sunlight_and_drains_in_eclipse():
     assert sun.data[-1, 2] > 0.99  # +Z settled on the Sun
 
 
-def test_03_geo_altitude_never_trips_the_deadband():
-    """The recast lesson: at GEO the averaged altitude barely moves."""
-    result = _run(_template("03"), duration_days=3.0)  # [day]
-    assert result.series["geo-sat-1.station_keeping.burn_on"].data.max() == 0.0
-    smoothed = result.series["geo-sat-1.station_keeping.altitude"].data[:, 1]
-    assert np.abs(smoothed - 35786e3).max() < 1.5e3  # [m]
+def test_03_geo_slot_is_held_in_longitude_and_inclination():
+    """A real 45-day run: east-west burns at days 13, 20, 32, 41, north-
+    south burns at days 16 and 30. 32 days covers three and two of them."""
+    result = _run(_template("03"), duration_days=32.0)  # [day]
+    prefix = "geo-sat-1.geo_station_keeping."
+    longitude = np.degrees(result.series[prefix + "longitude"].data[:, 1])  # [deg] one-day fit
+    assert 9.945 < np.nanmin(longitude) and np.nanmax(longitude) < 10.055  # [deg] box 10 +/- 0.05
+    inclination = np.degrees(result.series[prefix + "inclination"].data[:, 0])  # [deg]
+    assert inclination[0] < 1e-3  # starts in Earth's true equator
+    assert inclination.max() < 0.053  # [deg] limit 0.05
+    burns = result.series[prefix + "burn_on"].data > 0.5
+    starts = [np.count_nonzero(np.diff(burns[:, col].astype(int)) == 1) for col in (0, 1)]
+    assert starts == [3, 2]  # [east-west, north-south]
 
 
 def test_10_uncontrolled_spacecraft_drifts_under_gravity_gradient():

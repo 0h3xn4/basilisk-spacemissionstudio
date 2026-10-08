@@ -112,21 +112,28 @@ def test_a_sun_pointing_spacecraft_whose_sun_sensor_faces_away_is_flagged():
 
 
 def test_station_keeping_without_drag_is_flagged():
-    """Template 03: at GEO the averaged altitude barely moves, so the
-    deadband never trips."""
-    assert scenario_warnings(_template("03")) == [
-        "geo-sat-1: with drag off its average altitude barely drifts, so the 5 km deadband may never trip"]
-    assert scenario_warnings(_template("18")) == []  # drag on
+    """An altitude-hold deadband with nothing to decay the orbit never trips
+    (the lesson template 03 used to teach, before it got real GEO control)."""
+    from spacemissionstudio.schema.scenario import StationKeepingConfig
+
+    scenario = _template("18")
+    sc = scenario.spacecraft[0]
+    assert scenario_warnings(scenario) == []  # drag on
+    sc.enable_drag = False
+    assert scenario_warnings(scenario) == [
+        f"{sc.name}: with drag off its average altitude barely drifts, so the "
+        f"{sc.station_keeping.deadband_km:g} km deadband may never trip"]
+    assert isinstance(sc.station_keeping, StationKeepingConfig)
 
 
-def test_every_template_is_checked_quickly_and_only_03_is_flagged():
+def test_every_template_is_checked_quickly_and_none_is_flagged():
     for path in sorted(_TEMPLATES_DIR.glob("*.json")):
         scenario = load_scenario(path)
         start = time.perf_counter()
         warnings = scenario_warnings(scenario)
         pass_summary(scenario)
         assert time.perf_counter() - start < 0.5, path.name  # [s] runs on every edit in the Explain tab
-        assert bool(warnings) == path.name.startswith("03_"), (path.name, warnings)
+        assert not warnings, (path.name, warnings)
 
 
 def test_a_half_edited_scenario_never_raises():

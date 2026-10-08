@@ -37,7 +37,7 @@ the bundled templates and whatever the GUI computes.
 from __future__ import annotations
 
 import math
-from datetime import datetime
+from datetime import datetime, timezone
 
 # J2/Req/mu below are Basilisk's own real Earth constants, confirmed
 # directly against a real build (not guessed):
@@ -122,3 +122,28 @@ def raan_for_ltan_deg(epoch_utc: str, ltan_hour: float = DEFAULT_LTAN_HOUR) -> f
     """
     raan = (_sun_right_ascension_deg(epoch_utc) + 15.0 * (ltan_hour - 12.0)) % 360.0
     return round(raan, 2)
+
+
+_TT_MINUS_UTC_S = 69.184  # [s] 32.184 s + 37 leap seconds (constant since 2017)
+
+
+def geostationary_elements_deg(epoch_utc: str, east_longitude_deg: float):
+    """(inclination, RAAN, true anomaly) [deg] of a circular orbit lying in
+    Earth's TRUE equator, over ``east_longitude_deg`` at ``epoch_utc``,
+    expressed in the J2000 frame the simulation integrates in.
+
+    Earth's pole has precessed away from J2000's z axis (IAU_EARTH, as in
+    SPICE's pck00010: alpha0 = -0.641 T, delta0 = 90 - 0.557 T deg, T in
+    Julian centuries from J2000), so "equatorial" is ~0.17 deg inclined in
+    J2000 by 2030. The node of the true equator sits at alpha0 + 90 deg, and
+    the prime meridian is W = 190.147 + 360.9856235 d deg past it.
+    """
+    epoch = datetime.fromisoformat(epoch_utc)
+    if epoch.tzinfo is not None:
+        epoch = epoch.astimezone(timezone.utc).replace(tzinfo=None)
+    days = ((epoch - datetime(2000, 1, 1, 12)).total_seconds() + _TT_MINUS_UTC_S) / 86400.0  # [day] TDB
+    centuries = days / 36525.0
+    alpha0 = -0.641 * centuries  # [deg]
+    delta0 = 90.0 - 0.557 * centuries  # [deg]
+    prime_meridian = 190.147 + 360.9856235 * days  # [deg]
+    return 90.0 - delta0, (alpha0 + 90.0) % 360.0, (prime_meridian + east_longitude_deg) % 360.0

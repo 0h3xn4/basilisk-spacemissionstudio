@@ -336,6 +336,15 @@ def _rod_dipole(scenario: Scenario) -> float:
                       if a.kind == "magnetic_torque_rod"))
 
 
+def _set_geo_slot_longitude(scenario: Scenario, value: float) -> None:
+    """Moves '03's slot AND its starting point: a slot change with the
+    satellite left behind would read as a huge drift to correct."""
+    sc = _sc(scenario)
+    shift = value - sc.geo_station_keeping.target_longitude_deg  # [deg]
+    sc.geo_station_keeping.target_longitude_deg = value
+    sc.orbit.true_anomaly_deg = (sc.orbit.true_anomaly_deg + shift) % 360.0
+
+
 def _wheel_omega_rpm(index: int):
     """One of '12's 4 reaction wheels' own initial Omega (RPM, matching
     simIncludeRW.py's own units for this parameter directly, unlike '13's
@@ -401,34 +410,51 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
         template_filename="03_geo_station_keeping.json",
         pages=[
             WizardPageSpec(
-                title="Station-keeping controller",
-                intro="The altitude-hold thruster. At GEO it only fires with a deadband below about 1 km.",
+                title="Slot and boxes",
+                intro="Where the satellite is kept, and how tightly.",
                 fields=[
                     WizardField(
-                        "Deadband", "How far the satellite may drift from target altitude before a "
-                        "correction burn starts -- tighter means more frequent, smaller burns.",
-                        lambda s: _sc(s).station_keeping.deadband_km,
-                        lambda s, v: setattr(_sc(s).station_keeping, "deadband_km", v),
-                        0.1, 500.0, decimals=2, step=0.5, suffix=" km",
-                        hint="Drift allowed before a burn; smaller = more, smaller burns",
+                        "Target longitude", "The slot's east longitude. The satellite starts there too.",
+                        lambda s: _sc(s).geo_station_keeping.target_longitude_deg, _set_geo_slot_longitude,
+                        -180.0, 360.0, decimals=2, step=5.0, suffix=" deg",
+                        hint="Near 75 E or 255 E (stable points) burns are rare",
                     ),
                     WizardField(
-                        "Thrust", "The station-keeping thruster's thrust magnitude.",
-                        lambda s: _sc(s).station_keeping.thrust_n,
-                        lambda s, v: setattr(_sc(s).station_keeping, "thrust_n", v),
-                        0.001, 10.0, decimals=3, step=0.05, suffix=" N",
+                        "Longitude box", "Half-width of the east-west box around the slot.",
+                        lambda s: _sc(s).geo_station_keeping.longitude_deadband_deg,
+                        lambda s, v: setattr(_sc(s).geo_station_keeping, "longitude_deadband_deg", v),
+                        0.01, 5.0, decimals=3, step=0.01, suffix=" deg",
+                        hint="Smaller = more frequent east-west burns",
                     ),
                     WizardField(
-                        "Specific impulse", "Thruster efficiency -- higher uses less propellant per "
-                        "unit of delta-V.",
-                        lambda s: _sc(s).station_keeping.isp_s,
-                        lambda s, v: setattr(_sc(s).station_keeping, "isp_s", v),
-                        50.0, 5000.0, decimals=0, step=50.0, suffix=" s", hint='Higher uses less propellant',
+                        "Inclination limit", "A north-south burn fires when the inclination passes this.",
+                        lambda s: _sc(s).geo_station_keeping.inclination_max_deg,
+                        lambda s, v: setattr(_sc(s).geo_station_keeping, "inclination_max_deg", v),
+                        0.01, 10.0, decimals=3, step=0.01, suffix=" deg",
+                        hint="Smaller = more frequent north-south burns",
+                    ),
+                ],
+            ),
+            WizardPageSpec(
+                title="Thruster and propellant",
+                intro="One chemical thruster set for both kinds of burn.",
+                fields=[
+                    WizardField(
+                        "Thrust", "Each burn's thrust.",
+                        lambda s: _sc(s).geo_station_keeping.thrust_n,
+                        lambda s, v: setattr(_sc(s).geo_station_keeping, "thrust_n", v),
+                        0.01, 100.0, decimals=3, step=0.5, suffix=" N",
                     ),
                     WizardField(
-                        "Propellant budget", "Total propellant available for station-keeping over the run.",
-                        lambda s: _sc(s).station_keeping.propellant_kg,
-                        lambda s, v: setattr(_sc(s).station_keeping, "propellant_kg", v),
+                        "Specific impulse", "Higher uses less propellant for the same delta-V.",
+                        lambda s: _sc(s).geo_station_keeping.isp_s,
+                        lambda s, v: setattr(_sc(s).geo_station_keeping, "isp_s", v),
+                        50.0, 5000.0, decimals=0, step=10.0, suffix=" s", hint="Higher uses less propellant",
+                    ),
+                    WizardField(
+                        "Propellant", "Propellant on board at the start.",
+                        lambda s: _sc(s).geo_station_keeping.propellant_kg,
+                        lambda s, v: setattr(_sc(s).geo_station_keeping, "propellant_kg", v),
                         0.1, 1000.0, decimals=2, step=5.0, suffix=" kg",
                     ),
                 ],

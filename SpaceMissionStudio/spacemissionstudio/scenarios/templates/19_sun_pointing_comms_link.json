@@ -95,6 +95,7 @@
         "comms_power_w": 15.0
       },
       "station_keeping": null,
+      "geo_station_keeping": null,
       "phasing_keeping": null,
       "constant_thrust": null,
       "momentum_dumping": null,

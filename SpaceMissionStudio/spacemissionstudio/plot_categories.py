@@ -165,6 +165,7 @@ def _orbit_element_display(name: str) -> Optional[SeriesDisplay]:
 
 
 _CONTROLLER_TITLES = {
+    "geo_station_keeping": "GEO Station-Keeping",
     "station_keeping": "Station-Keeping",
     "phasing_keeping": "Phasing-Keeping",
     "constant_thrust": "Constant-Thrust",
@@ -195,7 +196,13 @@ def _controller_display(name: str) -> Optional[SeriesDisplay]:
             return SeriesDisplay(f"{label} Altitude Tracking", "Altitude", "km", 0.001,
                                   {"raw": "Raw", "smoothed": "Smoothed (filtered)"})
         if field == "burn_on":
-            return SeriesDisplay(f"{label} Thruster State", "Burn on (1) / off (0)", "-")
+            return SeriesDisplay(f"{label} Thruster State", "Burn on (1) / off (0)", "-", 1.0,
+                                  {"east_west": "East-west", "north_south": "North-south"})
+        if field == "longitude":
+            return SeriesDisplay(f"{label} Longitude", "East longitude", "deg", _RAD2DEG,
+                                  {"raw": "Raw", "smoothed": "One-day fit"})
+        if field == "inclination":
+            return SeriesDisplay(f"{label} Inclination", "Inclination", "deg", _RAD2DEG)
         if field == "separation_error":
             # Already recorded in degrees (engine.service: units="deg") --
             # factor 1.0, no conversion needed.

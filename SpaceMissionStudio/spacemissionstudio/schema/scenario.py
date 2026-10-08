@@ -486,6 +486,33 @@ class StationKeepingConfig:
                   f"{spacecraft_name}: station_keeping.eclipse_sunlit_threshold must be in (0, 1]")
 
 
+@dataclass
+class GeoStationKeepingConfig:
+    """GEO station-keeping (``engine.geo_station_keeping``): east-west
+    control holds the longitude within ``longitude_deadband_deg`` of
+    ``target_longitude_deg``, north-south control keeps the inclination
+    below ``inclination_max_deg``. Both measured in Earth's own rotating
+    frame. Earth only (it uses Earth's J22 term to plan east-west burns).
+    """
+
+    target_longitude_deg: float  # [deg] east longitude of the slot
+    thrust_n: float  # [N]
+    isp_s: float  # [s]
+    propellant_kg: float  # [kg] initial propellant, on top of dry_mass_kg
+    longitude_deadband_deg: float = 0.05  # [deg] half-width of the longitude box
+    inclination_max_deg: float = 0.05  # [deg]
+
+    def validate(self, spacecraft_name: str) -> None:
+        where = f"{spacecraft_name}: geo_station_keeping"
+        _require(-180.0 <= self.target_longitude_deg <= 360.0,
+                  f"{where}.target_longitude_deg must be in [-180, 360] deg")
+        _require(0.0 < self.longitude_deadband_deg <= 5.0, f"{where}.longitude_deadband_deg must be in (0, 5] deg")
+        _require(0.0 < self.inclination_max_deg <= 10.0, f"{where}.inclination_max_deg must be in (0, 10] deg")
+        _require(self.thrust_n > 0, f"{where}.thrust_n must be > 0")
+        _require(self.isp_s > 0, f"{where}.isp_s must be > 0")
+        _require(self.propellant_kg >= 0, f"{where}.propellant_kg must be >= 0")
+
+
 SUPPORTED_THRUST_FRAMES = ("VNB", "RTN")
 
 
@@ -877,6 +904,7 @@ class SpacecraftConfig:
     rf_link: Optional[RFLinkConfig] = None
     comms_pointing: Optional[CommsPointingConfig] = None
     station_keeping: Optional[StationKeepingConfig] = None
+    geo_station_keeping: Optional[GeoStationKeepingConfig] = None
     phasing_keeping: Optional[PhasingKeepingConfig] = None
     constant_thrust: Optional[ConstantThrustConfig] = None
     momentum_dumping: Optional[MomentumDumpingConfig] = None
@@ -1043,6 +1071,11 @@ class SpacecraftConfig:
                           f"params['measurement_fault_mode'] {measurement_fault_mode!r} -- must be one of "
                           f"{_THERMAL_FAULT_MODES}")
 
+        if self.geo_station_keeping is not None:
+            self.geo_station_keeping.validate(self.name)
+            _require(self.station_keeping is None and self.phasing_keeping is None,
+                      f"{self.name}: geo_station_keeping replaces station_keeping and phasing_keeping -- "
+                      "set only one of them")
         facet_names = [f.name for f in self.facets]
         _require(len(facet_names) == len(set(facet_names)),
                   f"{self.name}: facet names must be unique, got {facet_names}")
@@ -1655,6 +1688,9 @@ class Scenario:
                           f"{sc.name}: has magnetic_momentum_management configured, but gravity.central_body "
                           f"is {self.gravity.central_body!r}, not 'earth' -- magneticFieldWMM is Earth-only. "
                           "Remove magnetic_momentum_management, or set gravity.central_body to 'earth'")
+                _require(sc.geo_station_keeping is None,
+                          f"{sc.name}: geo_station_keeping is Earth-only (it plans east-west burns from "
+                          f"Earth's J22 term), but gravity.central_body is {self.gravity.central_body!r}")
         self.space_weather.validate()
         self.sim_settings.validate()
         self.monte_carlo.validate()
@@ -1722,6 +1758,8 @@ class Scenario:
             comms_pointing = CommsPointingConfig(**comms_pointing_data) if comms_pointing_data is not None else None
             station_keeping_data = sc.pop("station_keeping", None)
             station_keeping = StationKeepingConfig(**station_keeping_data) if station_keeping_data is not None else None
+            geo_data = sc.pop("geo_station_keeping", None)
+            geo_station_keeping = GeoStationKeepingConfig(**geo_data) if geo_data is not None else None
             phasing_keeping_data = sc.pop("phasing_keeping", None)
             phasing_keeping = PhasingKeepingConfig(**phasing_keeping_data) if phasing_keeping_data is not None else None
             constant_thrust_data = sc.pop("constant_thrust", None)
@@ -1740,6 +1778,7 @@ class Scenario:
             spacecraft.append(SpacecraftConfig(orbit=orbit, sensors=sensors, actuators=actuators,
                                                 power=power, rf_link=rf_link, comms_pointing=comms_pointing,
                                                 station_keeping=station_keeping,
+                                                geo_station_keeping=geo_station_keeping,
                                                 phasing_keeping=phasing_keeping, constant_thrust=constant_thrust,
                                                 momentum_dumping=momentum_dumping,
                                                 magnetic_momentum_management=magnetic_momentum_management,

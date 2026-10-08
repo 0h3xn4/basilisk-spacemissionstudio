@@ -93,10 +93,10 @@ def test_finishing_applies_edited_values_and_leaves_the_original_scenario_untouc
     wizard = TemplateCustomizeWizard(scenario, get_wizard_spec(path.name))
     qtbot.addWidget(wizard)
 
-    controller_page = wizard.page(0)
-    controller_page._boxes[0].setValue(2.5)  # deadband_km
-    controller_page._boxes[1].setValue(0.75)  # thrust_n
-    duration_page = wizard.page(1)
+    slot_page = wizard.page(0)
+    slot_page._boxes[0].setValue(20.0)  # target longitude [deg], 10 deg further east
+    slot_page._boxes[1].setValue(0.1)  # longitude box [deg]
+    duration_page = wizard.page(2)
     duration_page._boxes[0].setValue(30.0)  # duration_days
 
     wizard.accept()
@@ -104,16 +104,19 @@ def test_finishing_applies_edited_values_and_leaves_the_original_scenario_untouc
     result = wizard.result_scenario()
     result.validate()
     sat = result.spacecraft[0]
-    assert sat.station_keeping.deadband_km == 2.5
-    assert sat.station_keeping.thrust_n == 0.75
+    original = scenario.spacecraft[0]
+    assert sat.geo_station_keeping.target_longitude_deg == 20.0
+    assert sat.geo_station_keeping.longitude_deadband_deg == 0.1
+    # The satellite moves with its slot, or the controller would see a 10 deg drift to undo.
+    assert (sat.orbit.true_anomaly_deg - original.orbit.true_anomaly_deg) % 360.0 == pytest.approx(10.0)
     assert result.sim_settings.duration_days == 30.0
     # The Scenario the wizard was constructed from must be untouched --
     # it operates on its own internal copy (see TemplateCustomizeWizard's
     # own docstring).
-    assert scenario.spacecraft[0].station_keeping.deadband_km == 5.0
-    assert scenario.sim_settings.duration_days == 14.0
+    assert original.geo_station_keeping.target_longitude_deg == 10.0
+    assert scenario.sim_settings.duration_days == 45.0
     # And the bundled template FILE itself must be untouched too.
-    assert load_scenario(path).spacecraft[0].station_keeping.deadband_km == 5.0
+    assert load_scenario(path).spacecraft[0].geo_station_keeping.longitude_deadband_deg == 0.05
 
 
 def test_leo_altitude_field_moves_both_target_altitude_and_orbit_semi_major_axis(qtbot):

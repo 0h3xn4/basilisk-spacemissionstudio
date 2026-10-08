@@ -76,6 +76,7 @@
         "min_on_time_s": 0.0,
         "eccentricity_neutral_burns": false
       },
+      "geo_station_keeping": null,
       "phasing_keeping": null,
       "constant_thrust": null,
       "momentum_dumping": null,
@@ -163,6 +164,7 @@
         "min_on_time_s": 0.0,
         "eccentricity_neutral_burns": false
       },
+      "geo_station_keeping": null,
       "phasing_keeping": {
         "chief_spacecraft": "chief-1",
         "target_separation_km": [

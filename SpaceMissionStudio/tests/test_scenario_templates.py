@@ -7,6 +7,7 @@ subcommands go through, never an actual Basilisk propagation.
 
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from spacemissionstudio.schema import load_scenario
@@ -185,19 +186,29 @@ def test_phasing_template_pairs_phasing_keeping_with_station_keeping():
 
 
 def test_leo_station_keeping_template_is_drag_driven_not_srp_driven():
-    """The direct LEO counterpart to '03' (GEO, SRP/third-body-driven,
-    drag off): this one isolates drag as the one dominant perturbation
-    instead, with a materially tighter deadband than '03's GEO case --
-    see the file's own description for why (continuous drag needs more
-    frequent, smaller corrections than GEO's occasional ones).
-    """
+    """The LEO counterpart to '03': altitude hold against drag, where 03
+    holds a GEO slot's longitude and inclination."""
     leo = load_scenario(_TEMPLATES_DIR / "18_leo_station_keeping.json").spacecraft[0]
     geo = load_scenario(_TEMPLATES_DIR / "03_geo_station_keeping.json").spacecraft[0]
     assert leo.station_keeping is not None
     assert leo.enable_drag is True
     assert leo.enable_srp is False
     assert leo.station_keeping.target_altitude_km < 1000.0  # genuinely LEO, not GEO-scale
-    assert leo.station_keeping.deadband_km < geo.station_keeping.deadband_km
+    assert geo.station_keeping is None and geo.geo_station_keeping is not None
+
+
+def test_geo_template_starts_in_earths_true_equator_over_its_slot():
+    """i = 0 in J2000 is ~0.17 deg inclined to Earth's 2030 equator: the
+    first real run showed it as an immediate north-south burn."""
+    from spacemissionstudio.engine.scenario_checks import _earth_rotation_angle
+
+    geo = load_scenario(_TEMPLATES_DIR / "03_geo_station_keeping.json").spacecraft[0]
+    assert geo.orbit.inclination_deg == pytest.approx(0.167, abs=0.002)  # [deg]
+    assert geo.orbit.raan_deg == pytest.approx(89.81, abs=0.01)  # [deg] node of the true equator
+    # [deg] the rough IAU rotation (pole precession ignored) puts it within ~0.2 deg of 10 E
+    rough_lon = (geo.orbit.raan_deg + geo.orbit.true_anomaly_deg
+                 - np.degrees(_earth_rotation_angle("2030-01-01T00:00:00", np.array([0.0]))[0])) % 360.0
+    assert rough_lon == pytest.approx(10.0, abs=0.3)
 
 
 @pytest.mark.parametrize("path", _TEMPLATE_PATHS, ids=lambda p: p.name)

@@ -329,7 +329,9 @@ access AND the spacecraft having actually switched modes, can show a
 real "geometrically visible but not yet actually linked" period right at
 each transition. See template '19' (below).
 
-**Orbit maintenance** -- altitude/semi-major-axis station-keeping and
+**Orbit maintenance** -- altitude/semi-major-axis station-keeping, GEO
+east-west (longitude box) and north-south (inclination limit)
+station-keeping measured in Earth's own rotating frame, and
 constellation-wide phasing maintenance, both with real delta-V/
 propellant bookkeeping (rocket-equation mass depletion fed back into
 simulated spacecraft mass every tick) and eclipse-gated burns; a
@@ -440,6 +442,7 @@ SpaceMissionStudio/
       link_budget.py                 -- Phase 4: downlink RF link-margin estimate (no Basilisk needed)
       device_catalog.py              -- real, sourced, European-manufactured sensor/actuator device presets for gui/sensor_actuator_editor.py (no Basilisk needed)
       orbit_maintenance.py           -- Phase 4/5: station-keeping + phasing-keeping + constant-frame-thrust controllers, delta-V/propellant bookkeeping (needs Basilisk)
+      geo_station_keeping.py         -- GEO east-west (longitude box) and north-south (inclination) station-keeping (needs Basilisk)
       propellant_bookkeeping.py      -- Phase 5: shared per-tick mass/propellant delta math (no Basilisk needed)
       constellation.py               -- Phase 4: Walker-pattern constellation generator + SeparationSchedule (no Basilisk needed)
       formation.py                   -- phasing-formation generator: chief + Hill-frame (R/T/N) offset -> follower spacecraft (needs Basilisk)
@@ -562,6 +565,7 @@ SpaceMissionStudio/
     test_orbit_maintenance_true_mass.py -- delta-V estimate accounts for fuel-tank mass too
     test_spacecraft_templates.py     -- reusable spacecraft "bus" templates
     test_facets.py                   -- facet models: schema, box generator, facet drag/SRP physics in Basilisk
+    test_geo_station_keeping.py      -- GEO station-keeping: true-equator placement, schema, J22 drift, drift fit
     test_formation.py                -- phasing-formation generator (chief + R/T/N offset), requires_basilisk
     test_monte_carlo.py              -- Basilisk.utilities.MonteCarlo bridge, requires_basilisk
     test_service_execution_errors.py -- clear error message for a real ExecuteSimulation() crash class
@@ -613,15 +617,15 @@ python3 -m pip install -e ".[dev,gui]"
 python3 -m pytest tests/ -v
 ```
 
-The suite has 1988 tests. Without Basilisk on `PYTHONPATH`, 1730 of
+The suite has 1997 tests. Without Basilisk on `PYTHONPATH`, 1737 of
 them run and pass (schema, space weather, results, link budget,
 constellation generation, CLI, and the full PySide6 GUI, run headless),
-and the 258 that need a real Basilisk build (marked `requires_basilisk`,
+and the 260 that need a real Basilisk build (marked `requires_basilisk`,
 or skipped on a Basilisk-availability check, per `tests/conftest.py`)
 are skipped.
 
 With Basilisk installed (`pip install "bsk[all]"` -- see "Getting
-started" above), those tests run for real: 1977 pass and 11 skip (the
+started" above), those tests run for real: 1986 pass and 11 skip (the
 ones whose premise is specifically "Basilisk is unavailable"). The
 first run needs internet access once, so Basilisk can download its
 SPICE ephemeris kernels; without them, the ~45 kernel-dependent tests
@@ -766,7 +770,7 @@ button (always enabled, no selection needed; its accessible name is
 tunable parameters (pre-filled with its current values), ending in the
 same Scenario Editor tab with those changes already applied -- a faster
 path than the full editor form for someone who wants "GEO
-station-keeping, but with a tighter deadband and twice the propellant"
+station-keeping, but with a tighter longitude box and twice the propellant"
 rather than every field on every spacecraft. The
 original template file is never modified either way (both still need
 File > Save As to write anywhere). File > New/Open/Save/Save As work against the same

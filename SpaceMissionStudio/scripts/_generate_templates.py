@@ -38,11 +38,16 @@ from spacemissionstudio.engine.constellation import WalkerConstellationRequest, 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _template_descriptions import DESCRIPTIONS  # noqa: E402 -- short, user-facing; see that module
 from spacemissionstudio.engine.facets import box_facets
-from spacemissionstudio.engine.orbit_design import raan_for_ltan_deg, sun_synchronous_inclination_deg
+from spacemissionstudio.engine.orbit_design import (
+    geostationary_elements_deg,
+    raan_for_ltan_deg,
+    sun_synchronous_inclination_deg,
+)
 from spacemissionstudio.schema.scenario import (
     CommsPointingConfig,
     DispersionConfig,
     FuelTankConfig,
+    GeoStationKeepingConfig,
     GravityConfig,
     GroundStationConfig,
     MagneticMomentumManagementConfig,
@@ -228,26 +233,36 @@ def build_02_elliptical_orbit_with_perturbations() -> Scenario:
 
 
 def build_03_geo_station_keeping() -> Scenario:
+    # A 500 kg spacecraft in the 10 deg E slot (a European one), held in a
+    # +/-0.05 deg longitude box and below 0.05 deg inclination. It starts in
+    # Earth's TRUE equator (engine.orbit_design.geostationary_elements_deg):
+    # i = 0 in J2000 is already ~0.17 deg inclined to it by 2030, which the
+    # first real run showed as an immediate north-south burn. a = 42166.2 km
+    # is the geosynchronous radius once J2 is included. Confirmed in a real
+    # Basilisk run, see tests/test_template_claims.py.
+    epoch = "2030-01-01T00:00:00"
+    inclination_deg, raan_deg, true_anomaly_deg = geostationary_elements_deg(epoch, 10.0)
     return Scenario(
         name="03 - GEO station-keeping",
         description=(
             DESCRIPTIONS["03"]
         ),
-        epoch_utc="2030-01-01T00:00:00",
+        epoch_utc=epoch,
         simulation_mode="orbit_only",
         gravity=GravityConfig(central_body="earth", central_body_degree=10, third_body_perturbers=["sun", "moon"]),
-        sim_settings=SimSettings(duration_days=14.0, dynamics_task_rate_s=30.0, integrator="rkf78"),
+        sim_settings=SimSettings(duration_days=45.0, dynamics_task_rate_s=30.0, integrator="rkf78"),
         spacecraft=[
             SpacecraftConfig(
                 name="geo-sat-1",
-                orbit=OrbitIC(type="classical_elements", semi_major_axis_km=42164.0, eccentricity=0.0,
-                               inclination_deg=0.0, raan_deg=0.0, arg_periapsis_deg=0.0, true_anomaly_deg=0.0),
+                orbit=OrbitIC(type="classical_elements", semi_major_axis_km=42166.2, eccentricity=0.0,
+                               inclination_deg=inclination_deg, raan_deg=raan_deg, arg_periapsis_deg=0.0,
+                               true_anomaly_deg=true_anomaly_deg),
                 dry_mass_kg=_LARGE_SMALLSAT_MASS_KG,
                 inertia_kg_m2=_box_inertia(_LARGE_SMALLSAT_MASS_KG, _LARGE_SMALLSAT_SIZE_M),
                 enable_srp=True, srp_coeff=1.3, srp_area_m2=8.0,
-                station_keeping=StationKeepingConfig(
-                    target_altitude_km=35786.0, deadband_km=5.0, thrust_n=0.5, isp_s=1600.0,
-                    propellant_kg=50.0,
+                geo_station_keeping=GeoStationKeepingConfig(
+                    target_longitude_deg=10.0, longitude_deadband_deg=0.05, inclination_max_deg=0.05,
+                    thrust_n=1.0, isp_s=220.0, propellant_kg=50.0,  # [N], [s] (hydrazine), [kg]
                 ),
             ),
         ],

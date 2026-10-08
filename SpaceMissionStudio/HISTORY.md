@@ -7507,3 +7507,41 @@ The wizard field "Array offset" moves the arrays of both spacecraft, so the comp
 All twenty existing template files gained an empty `"facets": []`, nothing else.
 
 Full suite with Basilisk: 1977 pass, 11 skip; without it, 1730 pass and 258 skip.
+
+## GEO station-keeping: longitude box and inclination limit
+
+Template 03's altitude-hold lesson showed what the app could not do: real GEO station-keeping holds a longitude box (east-west) and an inclination limit (north-south).
+
+**New: `SpacecraftConfig.geo_station_keeping`** (`GeoStationKeepingConfig`), with these settings:
+* slot longitude;
+* box half-width;
+* inclination limit;
+* thrust, Isp and propellant.
+
+It is controlled by `engine.geo_station_keeping.GeoStationKeepingController`. It is Earth-only and replaces altitude station-keeping and phasing-keeping. It is validated, round-trips, has its own group in the spacecraft editor, its own Explain badge, plot titles, and wizard fields.
+
+**Measured in Earth's frame.** Longitude and inclination come every tick from the central body's SPICE `J20002Pfix`, the same frame Basilisk's gravity rotates with.
+
+**East-west control.** It fits a day of longitude samples and burns along-track when the spacecraft leaves the box heading outward. The burn reverses the drift onto a parabola that reaches the far edge, using Earth's J22 drift acceleration, or just stops the drift if that acceleration already points back in.
+
+**North-south control.** One burn per crossing of the limit, centred on the node and sized to take the inclination to a quarter of the limit. Thrust is held along Earth's pole axis.
+
+**Found and fixed while building it** (each in a real Basilisk run):
+* **i = 0 is not equatorial.** In J2000, i = 0 is 0.167 deg inclined to Earth's 2030 equator (IAU_EARTH pole precession), and the starting longitude was 0.2 deg off. The first run fired a north-south burn at once. New `engine.orbit_design.geostationary_elements_deg(epoch, longitude)` places a satellite in the true equator over its slot. Template 03 now starts at exactly 10.0000 E, 0.0000 deg.
+* **The drift estimate was biased.** A straight-line drift fit over exactly one day does not cancel the eccentricity libration. It biased the slope by up to ~1.9 x the libration amplitude per day, twice the drift being controlled, and gave nearly daily burns with the longitude leaving the box. The fit now includes a once-per-day sine and cosine.
+* **North-south burns chased the node.** Burning whenever "near a node" doesn't work at these tiny inclinations: every off-node bit of thrust moves the node, and the first version rode the window's edge, firing one step in five. Now one burn is centred on a node fixed at its start.
+* **Touch-up burns.** A full burn left the inclination just above the stop level, so touch-ups fired at every node. A burn that delivered its planned delta-V now ends the maneuver.
+
+**Template 03 rebuilt:** 500 kg at 10 E, 1 N hydrazine thruster (Isp 220 s), 45 days. Real run:
+* east-west burns at days 13, 20, 32 and 41;
+* north-south burns at days 16 and 30, each 0.051 -> ~0.013 deg in ~1150 s;
+* the day-averaged longitude stays within 9.948-10.050 deg;
+* 4.4 m/s and 1.1 kg in all, about 36 m/s per year, typical for GEO. 90 days gave the same pattern (8.7 m/s).
+
+The free-drift J22 acceleration at 10 E, measured with the boxes opened wide, is +0.00113 deg/day^2, against +0.0013 from the formula. The daily eccentricity wobble (+/-0.01 deg in 45 days, +/-0.03 deg after 3 months) is not controlled; that is noted as a limitation.
+
+**Tests:**
+* New `tests/test_geo_station_keeping.py`: IAU placement, validation, the J22 sign at stable and unstable points, and the libration-proof drift fit.
+* Template 03's claim test: 32 days, three east-west and two north-south burns, in the box.
+
+Full suite with Basilisk: 1986 pass, 11 skip; without it, 1737 pass and 260 skip.

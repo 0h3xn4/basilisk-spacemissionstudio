@@ -523,6 +523,7 @@ class _SpacecraftHandle:
     battery_recorder: Optional[object] = None  # Phase 4: only set if sc_config.power was configured
     battery_module: Optional[object] = None  # Phase 4: the simpleBattery.SimpleBattery itself, for engine.vizard
     station_keeping_controller: Optional[object] = None  # Phase 4: only set if sc_config.station_keeping was configured
+    geo_station_keeping_controller: Optional[object] = None  # only set if sc_config.geo_station_keeping is
     eclipse_out_msg: Optional[object] = None  # Phase 4: only set if power or station_keeping was configured
     phasing_keeping_controller: Optional[object] = None  # Phase 4: only set if sc_config.phasing_keeping was configured
     constant_thrust_controller: Optional[object] = None  # Phase 5: only set if sc_config.constant_thrust was configured
@@ -939,6 +940,8 @@ class SimulationService:
             initial_mass_kg = sc_config.dry_mass_kg
             if sc_config.station_keeping is not None:
                 initial_mass_kg += sc_config.station_keeping.propellant_kg
+            if sc_config.geo_station_keeping is not None:
+                initial_mass_kg += sc_config.geo_station_keeping.propellant_kg
             if sc_config.constant_thrust is not None:
                 initial_mass_kg += sc_config.constant_thrust.propellant_kg
             sc_object.hub.mHub = initial_mass_kg
@@ -1053,6 +1056,17 @@ class SimulationService:
                 handle.station_keeping_controller = orbit_maintenance.build_station_keeping(
                     self.scSim, dyn_task_name, sc_config.name, sc_object, mu, central_body.radEquator,
                     sc_config.dry_mass_kg, sc_config.station_keeping, eclipse_out_msg=sc_eclipse_out_msg,
+                )
+
+            # GEO east-west/north-south station-keeping
+            # (schema.scenario.GeoStationKeepingConfig): measured in the
+            # central body's own rotating frame, from its SPICE state.
+            if sc_config.geo_station_keeping is not None:
+                from .geo_station_keeping import build_geo_station_keeping
+
+                handle.geo_station_keeping_controller = build_geo_station_keeping(
+                    self.scSim, dyn_task_name, sc_config.name, sc_object, mu, central_body.radEquator,
+                    sc_config.dry_mass_kg, sc_config.geo_station_keeping, central_body_state_out_msg,
                 )
 
             # -- Phase 5: continuous constant-frame thrust
@@ -1916,6 +1930,21 @@ class SimulationService:
                                        ("propellant_remaining",), np.asarray(controller.propellantLog), units="kg"))
                 result.add(TimeSeries(f"{name}.station_keeping.delta_v", sk_t_s, ("cumulative_delta_v",),
                                        np.asarray(controller.deltaVLog), units="m/s"))
+
+            if handle.geo_station_keeping_controller is not None:
+                geo = handle.geo_station_keeping_controller
+                geo_t_s = np.asarray(geo.tLog)
+                result.add(TimeSeries(f"{name}.geo_station_keeping.longitude", geo_t_s, ("raw", "smoothed"),
+                                       np.column_stack([geo.lonLog, geo.smoothLonLog]), units="rad"))
+                result.add(TimeSeries(f"{name}.geo_station_keeping.inclination", geo_t_s, ("inclination",),
+                                       np.asarray(geo.inclinationLog).reshape(-1, 1), units="rad"))
+                result.add(TimeSeries(f"{name}.geo_station_keeping.burn_on", geo_t_s,
+                                       ("east_west", "north_south"),
+                                       np.column_stack([geo.ewBurnLog, geo.nsBurnLog]), units="-"))
+                result.add(TimeSeries(f"{name}.geo_station_keeping.propellant_remaining", geo_t_s,
+                                       ("propellant_remaining",), np.asarray(geo.propellantLog), units="kg"))
+                result.add(TimeSeries(f"{name}.geo_station_keeping.delta_v", geo_t_s, ("cumulative_delta_v",),
+                                       np.asarray(geo.deltaVLog), units="m/s"))
 
             if handle.phasing_keeping_controller is not None:
                 phase_controller = handle.phasing_keeping_controller

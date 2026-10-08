@@ -15,13 +15,13 @@
       "name": "geo-sat-1",
       "orbit": {
         "type": "classical_elements",
-        "semi_major_axis_km": 42164.0,
+        "semi_major_axis_km": 42166.2,
         "eccentricity": 0.0,
-        "inclination_deg": 0.0,
-        "raan_deg": 0.0,
+        "inclination_deg": 0.167100012211165,
+        "raan_deg": 89.8076999859473,
         "arg_periapsis_deg": 0.0,
         "anomaly_type": "true",
-        "true_anomaly_deg": 0.0,
+        "true_anomaly_deg": 20.405557145364583,
         "mean_anomaly_deg": null,
         "position_km": null,
         "velocity_km_s": null,
@@ -66,15 +66,14 @@
       "power": null,
       "rf_link": null,
       "comms_pointing": null,
-      "station_keeping": {
-        "target_altitude_km": 35786.0,
-        "deadband_km": 5.0,
-        "thrust_n": 0.5,
-        "isp_s": 1600.0,
+      "station_keeping": null,
+      "geo_station_keeping": {
+        "target_longitude_deg": 10.0,
+        "thrust_n": 1.0,
+        "isp_s": 220.0,
         "propellant_kg": 50.0,
-        "eclipse_sunlit_threshold": 0.99,
-        "min_on_time_s": 0.0,
-        "eccentricity_neutral_burns": false
+        "longitude_deadband_deg": 0.05,
+        "inclination_max_deg": 0.05
       },
       "phasing_keeping": null,
       "constant_thrust": null,
@@ -109,7 +108,7 @@
     "activity_percentile": 95.0
   },
   "sim_settings": {
-    "duration_days": 14.0,
+    "duration_days": 45.0,
     "dynamics_task_rate_s": 30.0,
     "integrator": "rkf78"
   },
@@ -121,6 +120,6 @@
     "dispersions": []
   },
   "mission_sequence": [],
-  "description": "A geostationary satellite with the same altitude-hold thruster as 18, under Sun and Moon gravity, solar radiation pressure and Earth's gravity anomalies. The lesson: at GEO this controller has almost nothing to do.\n\nWhat to look at:\n- geo-sat-1.station_keeping.altitude (smoothed): it stays within about 1 km of target for all 14 days.\n- So the 5 km deadband never trips: no burns, no propellant used. Compare 18, where drag forces repeated burns.\n\nWhy:\n- Sun and Moon gravity mainly tilt a GEO orbit and radiation pressure mainly stretches it; neither moves its average altitude.\n- Real GEO station-keeping corrects east-west (longitude) and north-south (inclination) drift, which this altitude-only controller does not model.\n\nTry changing:\n- Deadband: only below about 1 km does the thruster start firing at all.\n- Duration: even over months the average altitude moves only a few km, still inside the 5 km deadband.\n\nNote:\n- Drag is off: there is no atmosphere at GEO.",
+  "description": "A 500 kg geostationary satellite in the 10 deg E slot, kept there the way real GEO satellites are: east-west burns hold its longitude within +/-0.05 deg, north-south burns keep its inclination under 0.05 deg. Sun and Moon gravity, solar radiation pressure and Earth's gravity field all push it out.\n\nWhat to look at:\n- geo-sat-1.geo_station_keeping.longitude: the one-day fit drifts across the box on a parabola, and a small along-track burn (0.05-0.1 m/s) turns it back at each edge -- 4 in 45 days.\n- geo-sat-1.geo_station_keeping.inclination: Sun and Moon tilt the orbit ~0.0025 deg/day; at 0.05 deg a ~2 m/s burn at a node takes it back to ~0.013 deg -- 2 in 45 days.\n- geo-sat-1.geo_station_keeping.delta_v: north-south dominates, ~35 m/s per year in all.\n\nTry changing:\n- Target longitude: near 75 E or 255 E (the stable points) east-west burns become rare; near 165 E or 345 E they come often.\n- The box sizes: halving the longitude box roughly halves the time between east-west burns.\n\nLimitations:\n- The box holds the day-averaged longitude. The daily wobble from eccentricity (radiation pressure grows it, to ~+/-0.01 deg here and ~+/-0.03 deg after 3 months) is not controlled.",
   "schema_version": 2
 }
