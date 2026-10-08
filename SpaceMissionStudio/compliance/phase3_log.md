@@ -26,8 +26,9 @@ ECSS-Q-ST-80C 7.1.7a; ECSS-E-ST-10-09C 5.4.4b). Case definitions:
 | F-05 | The tool integrates geocentric motion in TDB seconds (Basilisk's simulation time is the SPICE ET offset); GMAT integrates in TAI seconds. | 13 us per day apart for this epoch: about 0.1 m along-track per day at 7.7 km/s. The tool and GMAT agree to 0.004 m at the same elapsed integration time. | Recorded, not corrected (Basilisk has one time variable; the effect is far below the other model errors). V-04 checks both the implementation (same elapsed time) and the user-visible result (same UTC, with this allowance). |
 | F-06 | Without the IERS-based Earth orientation files the tool uses IAU_EARTH (1.5 mrad from ITRF in 2026). | A degree-20 field in a 400 km orbit is 160 m from GMAT after one day (0.2 m with the files). | The run warning now says so when a gravity field is used without the files. |
 | F-07 | Basilisk 2.12's atmosphere models compute altitude and latitude on a sphere (`PCI2LLA` with the equatorial radius only); NRLMSISE-00 takes geodetic altitude and latitude. | At latitude phi the altitude is about 21 km sin^2(phi) too low. 400 km, 52.5 deg orbit: one-day decay 478 m against GMAT's 436 m (+10 %); GMAT on a sphere gives 486 m. | Fixed in the tool without modifying Basilisk: `engine/geodetic_atmosphere.py` gives the atmosphere model a proxy position with the WGS-84 geodetic altitude and latitude (same longitude); the drag force and wind use the real state; the lifetime evaluator applies the same conversion. After: 429 m against GMAT's 436 m (-1.6 %); position difference 0.78 km of a 32 km drag displacement. The remaining 1.6 % is not explained: GMAT already uses observed (not 1 AU-adjusted) F10.7 (tested with a copy of its file); differences in the Ap handling are possible but unconfirmed. Reporting F-07 to the Basilisk developers is part of H10. |
+| F-08 | GMAT R2026a's CCSDS-OEM reader accepts only version 1.0 messages (3.0 refused, 2.0 only in its testing mode) and only LAGRANGE interpolation; its OEM writer produces version 1.0 with CENTER_NAME = Earth, which 502.0-B-3 7.5.3 forbids (mixed case). | The tool's OEMs (3.0, HERMITE by default) cannot be loaded by GMAT as they are. | `oem_from_result(..., interpolation=)` and `spacemissionstudio run --oem-interpolation lagrange`; the validator warns when a message declares a version other than 3.0 (it checks against B-3 only). V-06 gives GMAT a copy whose only change is the version line. Recorded for users in the SUM (Phase 4). |
 
-## V-01 and V-02 results
+## V-01, V-02, V-05 to V-08 results
 
 | Case | Reference | Result | Tolerance |
 |---|---|---|---|
@@ -37,6 +38,11 @@ ECSS-Q-ST-80C 7.1.7a; ECSS-E-ST-10-09C 5.4.4b). Case definitions:
 | V-01 TDB-TT series | SOFA's regression value for iauDtdb (t_sofa_c.c), quoted from memory and confirmed by ERFA reproducing it to 3.5e-18 s | 1e-15 s | 1e-15 s |
 | V-02 Earth frame, 882 epochs 1990-2026-03 | ERFA IAU 2006/2000A + IERS 20 C04 (excerpt `tests/data/validation/eopc04_excerpt.txt`) | max 0.43 m, median 0.13 m at the surface | 1 m |
 | V-02 Vallado ITRF/GCRF example, 2004-04-06 | published vectors (ERFA reproduces them to 1 cm) | 0.37 m | 1 m |
+| V-06 GMAT -> tool: GMAT's OEM read and checked | GMAT EphemerisFile (CCSDS-OEM 1.0) | one error, 7.5.3 CENTER_NAME = 'Earth' (F-08), and the version warning; states equal GMAT's report to 1 mm | - |
+| V-06 tool -> GMAT: GMAT interpolates the tool's OEM between 60 s nodes | GMAT CCSDS-OEM propagator (Lagrange 7) | 8.4 mm from the tool's run | 1 cm |
+| V-07 reused models: Basilisk's own NRLMSISE-00 and WMM2025 tests from this repository (`src/simulation/environment/MsisAtmosphere/_UnitTest`, `magneticFieldWMM/_UnitTest`), run unchanged against the pinned pip Basilisk 2.12.0 | `truthOutputs.txt` (NRLMSISE-00 reference outputs); WMM2025 values at NOAA's test-point layout (not checked against NOAA's report, which was not supplied) | 294 passed | as in those tests (1e-8 density, 0.1 nT) |
+| V-08 reused SGP4 (sgp4 2.25): the package's tests, including Vallado's verification set (`SGP4-VER.TLE`, `tcppver.out`) | Vallado et al. 2006 verification output | 49 passed | as in those tests |
+| V-05 Berlin passes (WGS-84 site, 10 deg geodetic mask), 400 km orbit, 1 day | GMAT ContactLocator, ellipsoid horizon, no light time | 5 passes in both; starts and ends within 0.081 s | 1 s |
 
 ## V-04 results (tool at its 10 s default step against GMAT R2026a)
 
@@ -73,5 +79,7 @@ Two set-up errors of the validation itself were found and corrected before these
 ## Open
 
 * The drag case's remaining 1.6 % difference from GMAT (see F-07).
-* V-01 time scales, V-05 ground-station passes and V-06 CCSDS OEM
-  interchange with GMAT are planned.
+* Rerunning V-07: `pytest src/simulation/environment/MsisAtmosphere/_UnitTest
+  src/simulation/environment/magneticFieldWMM/_UnitTest` with the pinned
+  Basilisk installed; V-08: `python -m unittest sgp4.tests`. Both are
+  evidence for the reused-software file (SRF, Phase 4).

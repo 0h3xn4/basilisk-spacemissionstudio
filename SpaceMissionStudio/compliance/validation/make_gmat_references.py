@@ -145,6 +145,48 @@ def contact_script(grv_path: Path) -> str:
     return head.replace("validation case twobody_leo", "validation V-05 (ContactLocator)") + "\n".join(lines) + "\n"
 
 
+def oem_cases() -> dict:
+    """V-06: GMAT writes an OEM of CONTACT_CASE; the tool writes its own
+    (``tests/data/validation/tool_written.oem``, from a tool run) and GMAT
+    reads it back through its CCSDS-OEM ephemeris propagator."""
+    from dataclasses import replace
+
+    from spacemissionstudio.engine import ccsds_odm
+    from spacemissionstudio.engine.service import SimulationService
+
+    case = replace(cases.case(cases.CONTACT_CASE), days=cases.OEM_HOURS / 24.0)
+    result = SimulationService(cases.tool_scenario(case)).run()
+    tool_oem = cases.DATA / "tool_written.oem"
+    text = ccsds_odm.oem_from_result(result, case.epoch_utc, "earth", ["sat-1"], stride=cases.OEM_STRIDE,
+                                     interpolation="LAGRANGE")["sat-1"]
+    tool_oem.write_text(text, encoding="utf-8")
+    # GMAT R2026a reads only version 1.0 (3.0 refused, 2.0 only in its testing mode; finding F-08): it gets a
+    # copy whose only change is the version line (the header has no MESSAGE_ID, which 3.0 added).
+    gmat_copy = SCRIPTS / "tool_written_as_v1.oem"
+    gmat_copy.write_text(text.replace(f"CCSDS_OEM_VERS       = {ccsds_odm.VERSION}", "CCSDS_OEM_VERS       = 1.0", 1),
+                         encoding="utf-8")
+    base = script(case, SCRIPTS / "GGM03S_20.grv")
+    head = base[:base.index("Create ReportFile rep;")]
+    write = head + "\n".join(["Create EphemerisFile eph;", "eph.Spacecraft = sat;", "eph.Filename = 'gmat_written.oem';",
+                               "eph.FileFormat = CCSDS-OEM;", "eph.EpochFormat = UTCGregorian;",
+                               "eph.CoordinateSystem = EarthMJ2000Eq;", "eph.Interpolator = Lagrange;",
+                               "eph.InterpolationOrder = 7;", "eph.StepSize = 60;", "BeginMissionSequence;",
+                               f"Propagate prop(sat) {{sat.ElapsedSecs = {cases.OEM_HOURS * 3600.0!r}}};"]) + "\n"
+    epoch = datetime.fromisoformat(case.epoch_utc)
+    read = ["% SpaceMissionStudio validation V-06: GMAT reads the tool's OEM", "Create Spacecraft sat;",
+            "sat.DateFormat = UTCGregorian;", f"sat.Epoch = '{epoch.strftime('%d %b %Y %H:%M:%S.000')}';",
+            f"sat.EphemerisName = '{gmat_copy}';", "Create Propagator ep;", "ep.Type = CCSDS-OEM;",
+            "ep.StepSize = 60;", "ep.CentralBody = Earth;", "ep.EpochFormat = UTCGregorian;",
+            "ep.StartEpoch = 'FromSpacecraft';", "Create ReportFile rep;", "rep.Filename = 'gmat_reads_tool_oem.txt';",
+            "rep.Precision = 16;", "rep.WriteHeaders = false;", "BeginMissionSequence;"]
+    previous = 0.0
+    for t_s in cases.OEM_QUERY_S:
+        read += [f"Propagate ep(sat) {{sat.ElapsedSecs = {t_s - previous!r}}};",
+                 "Report rep sat.UTCModJulian sat.X sat.Y sat.Z sat.VX sat.VY sat.VZ;"]
+        previous = t_s
+    return {"gmat_written_oem": write, "gmat_reads_tool_oem": "\n".join(read) + "\n"}
+
+
 def extract_eop(gmat_bin: Path, step_days: int = 15) -> Path:
     """V-02 reference: every ``step_days``-th observed row of the IERS 20 C04
     series GMAT ships (rows with error flags 0.999 are predictions, left out),
@@ -188,13 +230,18 @@ def main(argv=None) -> int:
     jobs = [(c.name, c.note, script(c, grv)) for c in cases.PROPAGATION_CASES]
     jobs.append(("time_scales", "V-01 time scales at TIME_EPOCHS", time_script()))
     jobs.append(("contacts_berlin", "V-05 passes over cases.STATION (GMAT ContactLocator)", contact_script(grv)))
+    if not args.only or {"gmat_written_oem", "gmat_reads_tool_oem"} & set(args.only):
+        oem = oem_cases()
+        jobs.append(("gmat_written_oem", "V-06 OEM written by GMAT", oem["gmat_written_oem"]))
+        jobs.append(("gmat_reads_tool_oem", "V-06 GMAT's interpolation of tests/data/validation/tool_written.oem",
+                     oem["gmat_reads_tool_oem"]))
     for name, note, text in jobs:
         if args.only and name not in args.only:
             continue
         path = SCRIPTS / f"{name}.script"
         path.write_text(text, encoding="utf-8")
         run = subprocess.run(["./GmatConsole", "--run", str(path)], cwd=gmat_bin, capture_output=True, text=True)
-        report = gmat_bin.parent / "output" / f"{name}.txt"
+        report = gmat_bin.parent / "output" / ("gmat_written.oem" if name == "gmat_written_oem" else f"{name}.txt")
         if run.returncode or not report.exists():
             print(run.stdout[-4000:], file=sys.stderr)
             return 1
@@ -206,6 +253,11 @@ def main(argv=None) -> int:
                      if name == "contacts_berlin" else
                      "# columns: UTC modified Julian date (GMAT, JD - 2430000.0), X Y Z [km], VX VY VZ [km/s], "
                      "EarthMJ2000Eq\n"))
+        if name == "gmat_written_oem":  # kept as GMAT wrote it: it is the file under test
+            (cases.GMAT_DATA / "gmat_written.oem").write_text(report.read_text(), encoding="utf-8")
+            report.unlink()
+            print(f"{name}: written")
+            continue
         (cases.GMAT_DATA / f"{name}.txt").write_text(header + report.read_text(), encoding="utf-8")
         report.unlink()
         print(f"{name}: {sum(1 for _ in open(cases.GMAT_DATA / f'{name}.txt')) - 3} rows")

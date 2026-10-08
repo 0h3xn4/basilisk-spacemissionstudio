@@ -108,6 +108,14 @@ CONTACT_CASE = "twobody_leo"
 CONTACT_TOLERANCE_S = 1.0  # [s] on each pass start and end
 
 
+#: V-06: CCSDS OEM exchange over the first OEM_HOURS of CONTACT_CASE. GMAT reads the tool's OEM and
+#: reports the interpolated state at these elapsed times (between the 60 s ephemeris nodes).
+OEM_HOURS = 2.0  # [h]
+OEM_STRIDE = 6  # [-] tool samples per OEM line: 60 s at the 10 s step
+OEM_QUERY_S = [1234.5, 3000.0, 5555.5, 7000.0]  # [s]
+OEM_TOLERANCE_M = 0.01  # [m] OEM lines carry 1 mm; Lagrange order 7 on 60 s nodes
+
+
 def case(name: str) -> PropagationCase:
     return next(c for c in PROPAGATION_CASES if c.name == name)
 

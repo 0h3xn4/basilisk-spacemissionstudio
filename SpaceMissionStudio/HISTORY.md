@@ -7778,3 +7778,16 @@ None fits the template's 2 kg tank (550 km misses by 0.02 kg). 9 min on 3 proces
 | Difference | -3.0% | -4.1% | -5.8% | -7.1% | -6.3% | -5.2% |
 
 The bias is steady enough for ratios between launch windows to carry over; the absolute figure needs the ~5% the notes already flag.
+
+## Validation against GMAT, IERS and SOFA; two Basilisk accuracy defects corrected
+
+The ECSS/CCSDS audit's validation phase (`compliance/phase3_log.md`, tests in `tests/validation/`) compared the tool with GMAT R2026a, IERS 20 C04 Earth orientation and SOFA. Two results were wrong because of Basilisk 2.12, and both are corrected in the tool without changing Basilisk:
+
+* **Gravity** (F-01, `engine/planet_rotation.py`): Basilisk extrapolates the Earth's orientation linearly inside each step, which stretches every gravity evaluation. At the 10 s default a 400 km orbit drifted 148 m/day from Kepler's solution (1.2 km at 30 s). Now under 1 mm/day.
+* **Drag** (F-07, `engine/geodetic_atmosphere.py`): Basilisk feeds NRLMSISE-00 a spherical altitude and latitude instead of geodetic ones, so densities away from the equator were too high (decay 10 % faster than GMAT at 52.5 deg, about 25 % for polar orbits at 300 km). Now 1.6 % from GMAT.
+
+**Results that change:** every drag result. From 300 km template 18's spacecraft now re-enters after 34 days (was 25), from 400 km in March 2031 (was 2030). The drag-dependent figures in the entries above (5-year delta-V, altitude trade, lifetime) were measured before this correction and are not re-measured here; expect lower drag make-up and longer lifetimes.
+
+**Also:** the Earth GM the simulation uses is 398600.436 km^3/s^2 (Basilisk's, deviation D-07); OPM export now states that value. A run with a gravity field and no IERS Earth orientation files warns of the ~160 m/day it costs at 400 km. `spacemissionstudio run --oem-interpolation lagrange` writes OEMs GMAT can read (GMAT reads only Lagrange, and only version 1.0 messages).
+
+**Validated (all within stated tolerances):** time scales (TAI/TT to 0.2 us, TDB to GMAT's two-term series), Earth frame vs IERS C04 (0.43 m at the surface, 1990-2026), propagation vs GMAT (two-body 4 mm/day, 20x20 field 0.12 m/day, Sun/Moon 9 mm and SRP 1.1 m over 7 days at GEO, drag 2.4 %), ground-station passes (0.08 s), OEM exchange both ways (8 mm).

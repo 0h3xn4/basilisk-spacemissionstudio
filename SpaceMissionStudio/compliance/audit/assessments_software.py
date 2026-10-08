@@ -127,10 +127,13 @@ SOFTWARE_RULES = [
     ("E-ST-40C", "5.6.2.1*", "N", "HISTORY.md validation notes (e.g. lifetime vs Basilisk decay +/-1%, drag "
      "estimate -5% vs 5-year runs)", "Validation is done case by case but no validation process/plan exists.",
      "SValP (Phase 4), Phase 3 validation campaign.", "M", "no", "R13,R14"),
-    ("E-ST-40C", "5.6.3.*", "N", "-", "No validation specification/report against the technical specification.",
+    ("E-ST-40C", "5.6.3.*", "P", "R13 (Phase 3): validation tests tests/validation (V-01 to V-08) with stated "
+     "tolerances and results (compliance/phase3_log.md)", "Validation is done and repeatable, but not yet "
+     "specified against an SRS in an SVS/SVR.",
      "SVS/SVR (Phase 3-4).", "M", "no", "R13,R14"),
     ("E-ST-40C", "5.6.3.4a", _H, "-", "No CDR.", _REVIEW_FIX, "S", "no", "H01"),
-    ("E-ST-40C", "5.6.4.*", "N", "-", "No validation against the requirements baseline.", "SVS/SVR (Phase 3-4).",
+    ("E-ST-40C", "5.6.4.*", "P", "R13 (Phase 3): tests/validation, compliance/phase3_log.md", "No requirements "
+     "baseline (SRS) to validate against yet.", "SVS/SVR (Phase 4).",
      "M", "no", "R13,R14"),
     ("E-ST-40C", "5.6.4.4a", _H, "-", "No QR.", _REVIEW_FIX, "S", "no", "H01"),
     ("E-ST-40C", "5.6.5a", "N", "-", "No validation control information.", "Validation status in the SVR.", "S",
@@ -318,10 +321,11 @@ SOFTWARE_RULES = [
      "Problem reporting (H05) feeds metrics.py.", "S", "no", "R11,H05"),
     ("Q-ST-80C", "7.1.6a", "N", "compliance/metrics.md", "No software product assurance report yet.",
      "PA report (Phase 4).", "S", "no", "R14"),
-    ("Q-ST-80C", "7.1.7*", "P", "HISTORY.md accuracy checks (lifetime +/-1-2% vs Basilisk; drag estimate "
-     "-5% vs 5-year runs; budget formulas vs hand calculations)", "Numerical accuracy checked case by case; "
-     "no accuracy requirements or systematic verification.", "Accuracy requirements in the SRS; Phase 3 "
-     "validation against independent references (R13).", "M", "no", "R13"),
+    ("Q-ST-80C", "7.1.7*", "C", "R13 (Phase 3): accuracy estimated and verified against independent references "
+     "(compliance/phase3_log.md; tests/validation): orbit propagation vs GMAT R2026a (two-body 4 mm/day, 20x20 "
+     "0.12 m/day, Sun+Moon 9 mm and SRP 1.1 m in 7 days at GEO, NRLMSISE-00 drag 2.4 %), time scales vs GMAT and "
+     "SOFA, Earth frame vs IERS 20 C04 (0.43 m), passes vs GMAT (0.08 s), OEM exchange (8 mm); two accuracy defects "
+     "found and corrected (F-01, F-07)", "-", "-", "M", "no", "R13"),
     ("Q-ST-80C", "7.2.*", "N", "-", "Requirements, design and test documentation missing.", "Phase 4 documents.",
      "L", "no", "R14"),
     ("Q-ST-80C", "7.3.*", "NA", "-", "The tool is not developed as software intended for reuse.", "-", "S", "no",

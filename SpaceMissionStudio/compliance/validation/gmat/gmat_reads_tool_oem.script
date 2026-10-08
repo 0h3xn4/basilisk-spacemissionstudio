@@ -1,0 +1,24 @@
+% SpaceMissionStudio validation V-06: GMAT reads the tool's OEM
+Create Spacecraft sat;
+sat.DateFormat = UTCGregorian;
+sat.Epoch = '01 Jun 2024 00:00:00.000';
+sat.EphemerisName = '/home/user/basilisk/SpaceMissionStudio/compliance/validation/gmat/tool_written_as_v1.oem';
+Create Propagator ep;
+ep.Type = CCSDS-OEM;
+ep.StepSize = 60;
+ep.CentralBody = Earth;
+ep.EpochFormat = UTCGregorian;
+ep.StartEpoch = 'FromSpacecraft';
+Create ReportFile rep;
+rep.Filename = 'gmat_reads_tool_oem.txt';
+rep.Precision = 16;
+rep.WriteHeaders = false;
+BeginMissionSequence;
+Propagate ep(sat) {sat.ElapsedSecs = 1234.5};
+Report rep sat.UTCModJulian sat.X sat.Y sat.Z sat.VX sat.VY sat.VZ;
+Propagate ep(sat) {sat.ElapsedSecs = 1765.5};
+Report rep sat.UTCModJulian sat.X sat.Y sat.Z sat.VX sat.VY sat.VZ;
+Propagate ep(sat) {sat.ElapsedSecs = 2555.5};
+Report rep sat.UTCModJulian sat.X sat.Y sat.Z sat.VX sat.VY sat.VZ;
+Propagate ep(sat) {sat.ElapsedSecs = 1444.5};
+Report rep sat.UTCModJulian sat.X sat.Y sat.Z sat.VX sat.VY sat.VZ;
