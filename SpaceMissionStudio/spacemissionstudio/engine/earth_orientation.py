@@ -36,7 +36,7 @@ precedence where both cover a time:
   last datum, accuracy "several microradians" (NAIF).
 
 **Offline policy:** :func:`fetch` is the only network access, and only the
-user starts it (startup prompt or ``spacemissionstudio eop-fetch``); files
+user starts it (startup prompt or ``spacemissionstudio earth-orientation --fetch``); files
 can also be imported from disk (:func:`import_files`). Each install keeps
 the previous files for :func:`rollback` and writes a manifest with the
 source, size, SHA-256 and the EOP's last datum.

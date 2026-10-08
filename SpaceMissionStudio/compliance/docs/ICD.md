@@ -23,6 +23,7 @@ interface requirements SRS-I-01 to SRS-I-08 of the SRS.
 | RD2 | `CSD.md`, coordinate systems and time scales |
 | RD3 | `compliance/ics_ccsds_502.csv`, CCSDS Annex A conformance statement |
 | RD4 | CelesTrak space-weather format, `https://celestrak.org/SpaceData/SpaceWx-format.php` |
+| RD5 | `ICD_cli.md`, generated command and argument list of the CLI |
 
 ## 3 Terms, definitions and abbreviated terms (E.2.1<3>)
 
@@ -49,7 +50,7 @@ See SRS section 4 for the software overview.
 | ID | Requirement | SRS |
 |---|---|---|
 | ICD-01 | Scenario files are UTF-8 JSON with the fields of RD1. Files of an older `schema_version` are migrated on load. An unknown field is refused with an error naming it. | SRS-I-01 |
-| ICD-02 | The command-line interface is `spacemissionstudio <command> [options]`. Commands are listed in 5.3.2. The exit code is 0 on success, 1 on an input or validation error, and 2 or 3 on a run failure. | SRS-I-02 |
+| ICD-02 | The command-line interface is `spacemissionstudio <command> [arguments]`. Commands and arguments are those of RD5. The exit code is 0 on success; 1 on an input or validation error; 2 when a required component is missing (Basilisk, or PySide6 and plotly for `gui`) or on a usage error (argparse); 3 when a run or analysis fails. | SRS-I-02 |
 | ICD-03 | Each result series is one CSV file. The first column is `time_s`. Columns are named `<column>_<unit>`. A run writes a `provenance.json` alongside its results. | SRS-I-03 |
 | ICD-04 | CCSDS OPM, OMM and OEM are read and written in KVN per AD2. The items supported are those in RD3. | SRS-I-04 |
 | ICD-05 | Space weather is read from CelesTrak SW-All files (CSV or legacy text, RD4) and from NASA MSFC prediction tables. Files are validated for coverage before use. | SRS-I-05 |
@@ -83,20 +84,19 @@ RD1, generated from the code so that it cannot drift from it.
 
 #### 5.3.2 Command-line interface (ICD-02)
 
-| Command | Service | Main options |
-|---|---|---|
-| `validate <scenario>` | Schema validation and plausibility checks; no Basilisk needed | — |
-| `run <scenario>` | Headless run; writes CSV, provenance and optional OEMs | `--out-dir`, `--oem`, `--oem-stride N`, `--oem-interpolation {hermite,lagrange}`, `--vizard-save-file`, `--vizard-live-stream` |
-| `monte-carlo <scenario>` | Monte Carlo batch | archive directory, runs |
-| `lifetime <scenario>` | Re-entry estimate and disposal rules | `--deorbit-perigee-km` |
-| `budget <scenario>` | AD10-style delta-V and propellant budget | — |
-| `kernels-status` | SPICE kernel cache state | — |
-| `earth-orientation` | Fetch, import, list or roll back the IERS-based Earth PCKs | sub-actions |
-| `ccsds-validate <files>` | 502.0-B-3 conformance check of OPM, OMM and OEM files | — |
-| `ccsds-export <scenario>` | One OPM per spacecraft (initial state) | `--out` |
-| `ccsds-import <odm> <scenario>` | Set a spacecraft's orbit from an OPM or a TLE-based OMM | `--spacecraft`, `--out` |
-| `spaceweather-resolve` | Show which space-weather data a date range uses | dates |
-| `gui` | Start the GUI | — |
+Every command, argument and help text is in RD5, generated from the CLI's
+parser. The commands are:
+
+- **Scenario:** `validate`, `run`, `monte-carlo`.
+- **Analyses:** `lifetime`, `budget`, `spaceweather-resolve`.
+- **Design:** `generate-constellation`, `generate-phasing-formation`.
+- **Data:** `kernels-status`, `earth-orientation` (status, `--fetch`,
+  `--import`, `--rollback`).
+- **Exchange:** `ccsds-validate`, `ccsds-export`, `ccsds-import`.
+- **GUI:** `gui`.
+
+Results and errors go to standard output and standard error; the exit
+codes are those of ICD-02.
 
 #### 5.3.3 Results (ICD-03)
 
