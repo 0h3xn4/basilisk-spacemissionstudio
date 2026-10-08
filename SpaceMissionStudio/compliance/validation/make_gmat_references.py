@@ -90,11 +90,10 @@ def script(case: cases.PropagationCase, grv_path: Path) -> str:
               f"Earth.Flattening = {1.0 / cases.WGS84_INV_F!r};",
               "SolarSystem.EphemerisSource = 'SPICE';", f"SolarSystem.SPKFilename = '{_support_file('de430')}';",
               "Create ForceModel fm;", "fm.CentralBody = Earth;", "fm.PrimaryBodies = {Earth};"]
-    if case.degree:
-        lines += [f"fm.GravityField.Earth.PotentialFile = '{grv_path}';",
-                  f"fm.GravityField.Earth.Degree = {case.degree};", f"fm.GravityField.Earth.Order = {case.degree};"]
-    else:
-        lines += ["fm.GravityField.Earth.Degree = 0;", "fm.GravityField.Earth.Order = 0;"]
+    # GMAT takes the central body's GM from the potential file even at degree 0 (its default JGM-2 file
+    # has 398600.4415), so every case uses the converted file with the tool's GM.
+    lines += [f"fm.GravityField.Earth.PotentialFile = '{grv_path}';",
+              f"fm.GravityField.Earth.Degree = {case.degree};", f"fm.GravityField.Earth.Order = {case.degree};"]
     if case.third_bodies:
         lines.append("fm.PointMasses = {" + ", ".join(_BODY[b] for b in case.third_bodies) + "};")
     if case.srp:
@@ -111,6 +110,60 @@ def script(case: cases.PropagationCase, grv_path: Path) -> str:
               "  Report rep sat.UTCModJulian sat.X sat.Y sat.Z sat.VX sat.VY sat.VZ;",
               f"  Propagate prop(sat) {{sat.ElapsedSecs = {cases.OUTPUT_STEP_S!r}}};", "EndFor;"]
     return "\n".join(lines) + "\n"
+
+
+def time_script() -> str:
+    """One spacecraft per V-01 epoch; reports its epoch in UTC, TAI, TT and TDB."""
+    lines = ["% SpaceMissionStudio validation V-01: time scales"]
+    for k, epoch_utc in enumerate(cases.TIME_EPOCHS):
+        epoch = datetime.fromisoformat(epoch_utc)
+        lines += [f"Create Spacecraft t{k};", f"t{k}.DateFormat = UTCGregorian;",
+                  f"t{k}.Epoch = '{epoch.strftime('%d %b %Y %H:%M:%S.')}{epoch.microsecond // 1000:03d}';"]
+    lines += ["Create ReportFile rep;", "rep.Filename = 'time_scales.txt';", "rep.Precision = 17;",
+              "rep.WriteHeaders = false;", "BeginMissionSequence;"]
+    lines += [f"Report rep t{k}.UTCModJulian t{k}.TAIModJulian t{k}.TTModJulian t{k}.TDBModJulian;"
+              for k in range(len(cases.TIME_EPOCHS))]
+    return "\n".join(lines) + "\n"
+
+
+def contact_script(grv_path: Path) -> str:
+    """V-05: GMAT ContactLocator for cases.STATION over the CONTACT_CASE orbit
+    (WGS-84 ellipsoid horizon, no light time or aberration)."""
+    base = script(cases.case(cases.CONTACT_CASE), grv_path)
+    head = base[:base.index("Create ReportFile rep;")]
+    st = cases.STATION
+    lines = [f"Create GroundStation {st['name']};", f"{st['name']}.CentralBody = Earth;",
+             f"{st['name']}.StateType = Spherical;", f"{st['name']}.HorizonReference = Ellipsoid;",
+             f"{st['name']}.Location1 = {st['latitude_deg']!r};", f"{st['name']}.Location2 = {st['longitude_deg']!r};",
+             f"{st['name']}.Location3 = {st['altitude_m'] / 1000.0!r};",
+             f"{st['name']}.MinimumElevationAngle = {st['min_elevation_deg']!r};",
+             "Create ContactLocator cl;", "cl.Target = sat;", f"cl.Observers = {{{st['name']}}};",
+             "cl.Filename = 'contacts_berlin.txt';", "cl.UseLightTimeDelay = false;",
+             "cl.UseStellarAberration = false;", "cl.StepSize = 10;", "cl.RunMode = 'Automatic';",
+             "cl.UseEntireInterval = true;", "BeginMissionSequence;",
+             f"Propagate prop(sat) {{sat.ElapsedDays = {cases.case(cases.CONTACT_CASE).days!r}}};"]
+    return head.replace("validation case twobody_leo", "validation V-05 (ContactLocator)") + "\n".join(lines) + "\n"
+
+
+def extract_eop(gmat_bin: Path, step_days: int = 15) -> Path:
+    """V-02 reference: every ``step_days``-th observed row of the IERS 20 C04
+    series GMAT ships (rows with error flags 0.999 are predictions, left out),
+    from 1990, with the file's own header lines for attribution."""
+    source = gmat_bin.parent / "data" / "planetary_coeff" / "eopc04_08.62-now"
+    header, rows = [], []
+    for line in source.read_text(encoding="utf-8").splitlines():
+        fields = line.split()
+        if len(fields) >= 14 and fields[0].isdigit() and len(fields[0]) == 4:
+            if int(fields[0]) >= 1990 and float(fields[10]) < 0.5:
+                rows.append(line)
+        elif not rows:
+            header.append(line)
+    out = cases.DATA / "eopc04_excerpt.txt"
+    sha = hashlib.sha256(source.read_bytes()).hexdigest()
+    out.write_text("\n".join([f"# Excerpt (every {step_days}th observed day from 1990) of {source.name} as shipped "
+                               f"with GMAT, SHA-256 {sha}", *("# " + h for h in header if h.strip()), *rows[::step_days]])
+                   + "\n", encoding="utf-8")
+    return out
 
 
 def gmat_build(gmat_bin: Path) -> str:
@@ -130,25 +183,32 @@ def main(argv=None) -> int:
     grv = SCRIPTS / "GGM03S_20.grv"
     write_grv(grv, 20)
     build = gmat_build(gmat_bin)
-    for case in cases.PROPAGATION_CASES:
-        if args.only and case.name not in args.only:
+    if not args.only or "eop" in args.only:
+        print(f"eop: {extract_eop(gmat_bin)}")
+    jobs = [(c.name, c.note, script(c, grv)) for c in cases.PROPAGATION_CASES]
+    jobs.append(("time_scales", "V-01 time scales at TIME_EPOCHS", time_script()))
+    jobs.append(("contacts_berlin", "V-05 passes over cases.STATION (GMAT ContactLocator)", contact_script(grv)))
+    for name, note, text in jobs:
+        if args.only and name not in args.only:
             continue
-        text = script(case, grv)
-        path = SCRIPTS / f"{case.name}.script"
+        path = SCRIPTS / f"{name}.script"
         path.write_text(text, encoding="utf-8")
         run = subprocess.run(["./GmatConsole", "--run", str(path)], cwd=gmat_bin, capture_output=True, text=True)
-        report = gmat_bin.parent / "output" / f"{case.name}.txt"
+        report = gmat_bin.parent / "output" / f"{name}.txt"
         if run.returncode or not report.exists():
             print(run.stdout[-4000:], file=sys.stderr)
             return 1
         sha = hashlib.sha256(text.encode()).hexdigest()
-        header = (f"# {case.name}: {case.note}\n# Generated by {build} from compliance/validation/gmat/{path.name} "
+        header = (f"# {name}: {note}\n# Generated by {build} from compliance/validation/gmat/{path.name} "
                   f"(SHA-256 {sha}) on {datetime.now().date().isoformat()}\n"
-                  "# columns: UTC modified Julian date (GMAT, JD - 2430000.0), X Y Z [km], VX VY VZ [km/s], "
-                  "EarthMJ2000Eq\n")
-        (cases.GMAT_DATA / f"{case.name}.txt").write_text(header + report.read_text(), encoding="utf-8")
+                  + ("# columns: UTC, TAI, TT, TDB modified Julian dates (GMAT, JD - 2430000.0)\n"
+                     if name == "time_scales" else "# GMAT ContactLocator report, times UTC\n"
+                     if name == "contacts_berlin" else
+                     "# columns: UTC modified Julian date (GMAT, JD - 2430000.0), X Y Z [km], VX VY VZ [km/s], "
+                     "EarthMJ2000Eq\n"))
+        (cases.GMAT_DATA / f"{name}.txt").write_text(header + report.read_text(), encoding="utf-8")
         report.unlink()
-        print(f"{case.name}: {sum(1 for _ in open(cases.GMAT_DATA / f'{case.name}.txt')) - 3} rows")
+        print(f"{name}: {sum(1 for _ in open(cases.GMAT_DATA / f'{name}.txt')) - 3} rows")
     return 0
 
 

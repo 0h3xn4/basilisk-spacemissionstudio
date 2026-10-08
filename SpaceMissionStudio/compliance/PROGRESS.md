@@ -29,7 +29,7 @@ Result: **2055 passed, 11 skipped, 0 failed** (245 s, 3 workers). Every later ph
 | 0 Requirements extraction and tailoring | done; **criticality category C approved by the user (2026-10-08)**; OCM confirmed out of scope |
 | 1 Audit and gap analysis | done: `gap_analysis.md`, `compliance_matrix.csv` (2084 rows); plan and D1-D8 **approved by the user (2026-10-08)** |
 | 2 Implementation | done: R01-R12 (`phase2_log.md`); deviations D-01 to D-07 (`deviations.md`) |
-| 3 Verification and validation | not started |
+| 3 Verification and validation | in progress (`phase3_log.md`) |
 | 4 Documentation | not started |
 
 ## Decisions recorded
@@ -49,6 +49,9 @@ Result: **2055 passed, 11 skipped, 0 failed** (245 s, 3 workers). Every later ph
 5. 2026-10-08, user: after the audit, and a review and update of the whole
    tool, the UX/UI guidelines (`UX_UI_Guidelines_for_SpaceMissionStudio.md`,
    2026-10-08) are applied. Not part of this audit.
+6. 2026-10-08, user: Earth GM stays 398600.436 km^3/s^2 (Basilisk's) under
+   deviation D-07 (Phase 3 finding F-02); templates 04, 05, 07, 08 and 21
+   keep their gravity degree (the 4.2.1b Explain-tab note stays).
 
 ## Phase 1 test run
 

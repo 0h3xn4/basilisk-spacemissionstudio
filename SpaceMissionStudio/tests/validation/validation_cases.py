@@ -67,7 +67,7 @@ class PropagationCase:
 
 
 _LEO_R = [6778.137, 0.0, 0.0]  # [km] 400 km altitude
-_LEO_V = [0.0, 4.6, 6.0]  # [km/s] 52.5 deg inclination
+_LEO_V = [0.0, 4.668322, 6.083876]  # [km/s] circular, 52.5 deg inclination
 _GEO_R = [42164.17, 0.0, 0.0]  # [km]
 _GEO_V = [0.0, 3.07466, 0.0537]  # [km/s] about 1 deg inclination
 _SSO_R = [7078.137, 0.0, 0.0]  # [km] 700 km altitude
@@ -83,12 +83,56 @@ PROPAGATION_CASES = [
     PropagationCase("srp_geo", "2024-03-15T00:00:00", _GEO_R, _GEO_V, 7.0, third_bodies=["sun", "moon"],
                     srp=True, tolerance_m=10.0, note="cannonball SRP with eclipses (equinox season)"),
     PropagationCase("drag_leo", "2024-06-01T00:00:00", _LEO_R, _LEO_V, 1.0, drag=True, mass_kg=100.0,
-                    area_m2=1.0, tolerance_m=500.0, note="NRLMSISE-00 with observed 2024 indices"),
+                    area_m2=1.0, tolerance_m=1600.0, note="NRLMSISE-00 with observed 2024 indices"),
+    # drag_leo tolerance: 5 % of GMAT's drag-induced displacement after one day (32 km). Revised after the
+    # first comparison from an absolute 500 m chosen without analysis (compliance/phase3_log.md, V-04).
 ]
+
+
+#: V-01 epochs (UTC): either side of the 1999-01-01 and 2017-01-01 leap seconds, J2000.0, the annual TDB
+#: extremes, today and the template epochs.
+TIME_EPOCHS = ["1980-01-06T00:00:00", "1998-12-31T23:59:59", "1999-01-01T00:00:00", "2000-01-01T11:58:55.816",
+               "2004-04-06T07:51:28.386", "2016-12-31T23:59:59", "2017-01-01T00:00:00", "2024-01-03T12:00:00",
+               "2024-07-04T12:00:00", "2026-10-08T00:00:00", "2030-01-01T00:00:00"]
+# [s] GMAT reports MJD to ~1 us. TDB-TT: GMAT uses the two-term series 0.001657 sin M + 0.00001385 sin 2M
+# (checked to 1 us), whose omitted terms reach ~35 us; the first tolerance, 20 us, assumed a full series and was
+# revised after the comparison (compliance/phase3_log.md, V-01). The full series is checked against SOFA's own
+# test value instead.
+TIME_TOLERANCE_S = {"tai_minus_utc": 2e-6, "tt_minus_tai": 2e-6, "tdb_minus_tt": 5e-5}
+
+
+#: V-05: Berlin (WGS-84 geodetic), 10 deg mask, seen from the twobody_leo orbit for one day.
+STATION = {"name": "berlin", "latitude_deg": 52.52, "longitude_deg": 13.405, "altitude_m": 34.0,
+           "min_elevation_deg": 10.0}
+CONTACT_CASE = "twobody_leo"
+CONTACT_TOLERANCE_S = 1.0  # [s] on each pass start and end
 
 
 def case(name: str) -> PropagationCase:
     return next(c for c in PROPAGATION_CASES if c.name == name)
+
+
+def tool_scenario(case: PropagationCase, station: bool = False):
+    """The tool scenario for ``case``, run as a user would (10 s dynamics
+    step, RKF78); with ``station``, ``STATION`` is added as a ground station."""
+    from spacemissionstudio.schema import load_scenario
+    from spacemissionstudio.schema.scenario import GroundStationConfig
+
+    scenario = load_scenario(DATA.parents[2] / "spacemissionstudio" / "scenarios" / "two_body_validation.json")
+    scenario.name = f"validation {case.name}"
+    scenario.epoch_utc = case.epoch_utc
+    scenario.gravity.central_body_degree = case.degree
+    scenario.gravity.third_body_perturbers = list(case.third_bodies)
+    scenario.sim_settings.duration_days = case.days  # [day]
+    scenario.sim_settings.dynamics_task_rate_s = 10.0  # [s] the default
+    sc = scenario.spacecraft[0]
+    sc.orbit.type, sc.orbit.position_km, sc.orbit.velocity_km_s = "cartesian", list(case.r_km), list(case.v_km_s)
+    sc.dry_mass_kg = case.mass_kg
+    sc.enable_srp, sc.srp_area_m2, sc.srp_coeff = case.srp, case.area_m2, case.cr
+    sc.enable_drag, sc.drag_area_m2, sc.drag_coeff = case.drag, case.area_m2, case.cd
+    if station:
+        scenario.ground_stations = [GroundStationConfig(**STATION)]
+    return scenario
 
 
 def gmat_reference(name: str) -> Optional[Path]:

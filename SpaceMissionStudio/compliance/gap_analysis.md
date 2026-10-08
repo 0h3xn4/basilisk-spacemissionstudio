@@ -272,7 +272,7 @@ the requirement IDs they address.
 | H07 | Reused/procured components: list, licences, export status, acceptance (Basilisk, PySide6, numpy, sgp4, pyerfa (added by R03), ...) | Q-ST-80C 5.4, 5.5; E-ST-40C 5.3.2.3 |
 | H08 | Sign the deviations D-01 to D-07 (`deviations.md`); supply IERS TN36 so the GM values can be checked (D-07) | E-ST-10-04C 4.2.2d and the clauses in `deviations.md` |
 | H09 | Review the coding standard with the customer and agree its thresholds: coverage (category C is "TBA" in Table 5-1), complexity, metrics (added in Phase 2, R10/R11) | Q-ST-80C 6.3.4.4a, 7.1.2a; E-ST-40C 5.8.3.5b |
-| H10 | Report Phase 3 finding F-01 (linear extrapolation of the planet orientation in GravBodyData::computeGravityInertial) to the Basilisk developers; drop engine/planet_rotation.py once a qualified Basilisk release fixes it | Q-ST-80C 6.2.7 (reused software), 7.1.7a |
+| H10 | Report Phase 3 findings F-01 (linear extrapolation of the planet orientation in GravBodyData::computeGravityInertial) and F-07 (spherical altitude and latitude in the atmosphere models) to the Basilisk developers; drop engine/planet_rotation.py and engine/geodetic_atmosphere.py once a qualified Basilisk release fixes them | Q-ST-80C 6.2.7 (reused software), 7.1.7a |
 
 ## 12. Next step
 

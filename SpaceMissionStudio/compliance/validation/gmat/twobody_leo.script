@@ -8,8 +8,8 @@ sat.X = 6778.137;
 sat.Y = 0.0;
 sat.Z = 0.0;
 sat.VX = 0.0;
-sat.VY = 4.6;
-sat.VZ = 6.0;
+sat.VY = 4.668322;
+sat.VZ = 6.083876;
 sat.DryMass = 500.0;
 sat.Cr = 1.3;
 sat.Cd = 2.2;
@@ -25,6 +25,7 @@ SolarSystem.SPKFilename = '/root/.cache/bsk_support_data/supportData/EphemerisDa
 Create ForceModel fm;
 fm.CentralBody = Earth;
 fm.PrimaryBodies = {Earth};
+fm.GravityField.Earth.PotentialFile = '/home/user/basilisk/SpaceMissionStudio/compliance/validation/gmat/GGM03S_20.grv';
 fm.GravityField.Earth.Degree = 0;
 fm.GravityField.Earth.Order = 0;
 Create Propagator prop;
