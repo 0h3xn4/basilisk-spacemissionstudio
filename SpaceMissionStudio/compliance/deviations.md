@@ -24,11 +24,14 @@ supplied document and must be confirmed by the signatory.
 | D-09 | ECSS-Q-ST-80C 5.1.5 (training plan, training records, security training) and 5.7 (process assessment and improvement) | No training plan or records are kept, and no process assessment is made. | The user's decision for this single-person tool (2026-10-08, decision 8). | User, 2026-10-08 |
 | D-10 | ECSS-E-ST-40C 5.11.2a, 5.11.2b (software security management plan) | No security management plan is written. The security analysis (`docs/security_analysis.md`) and its treatments stand without one. | The user's decision at security assurance level low (D8; 2026-10-08, decision 8). The security manager (5.11.2c) is not waived: the role is open (H02). | User, 2026-10-08 |
 | D-11 | ECSS-E-ST-40C 5.2 (customer requirements: SSS, IRD, installation, acceptance and validation requirements), 5.6.4 (validation against the requirements baseline), 5.8.3.1a, Annexes B and C; ECSS-Q-ST-80C 6.3.1 | No customer requirements baseline exists. The SRS, derived from the tool as built, is the only specification; validation is against it (5.6.3) only. | The user's decision (2026-10-08, decision 9): the user is customer and supplier of this tool. | User, 2026-10-08 |
+| D-12 | ECSS-E-ST-40C 5.9 (operation support), ECSS-Q-ST-80C 5.3 (risk management, critical-item control), the change board of configuration control | No formal operation support, risk process or change board. The user approves changes and CI gates them; technical risks are logged as findings; support is best effort. | The user's decision for this single-person tool (2026-10-08, decision 11). | User, 2026-10-08 |
+| D-13 | ECSS-E-ST-40C 5.7.2.1b (secure delivery), signing part | Releases are tagged and checksummed but not signed. | The user's decision (2026-10-08, decision 11): checksums cover accidental corruption; no signing key is kept. | User, 2026-10-08 |
 
 The other process items not executed (deviation candidate D-08 of
 `gap_analysis.md`) are human actions in `human_actions.md`; the reviews,
-training, process assessment, the security management plan and the customer
-baseline have been waived so far. Waiving any other item is the customer's
+training, process assessment, the security management plan, the customer
+baseline, the formal change board, risk process and operation support, and
+release signing have been waived so far. Waiving any other item is the customer's
 decision.
 
 ## Signature

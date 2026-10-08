@@ -228,4 +228,4 @@ The findings F-01 to F-08 and their analyses are in RD2.
   - The other packages are pinned by lower bound only. A lock file with
     exact versions and hashes for releases is proposed in the SCMP
     description (`SDP.md`).
-  - Its adoption is a human decision (H05).
+  - Its adoption is open (security analysis S-08).

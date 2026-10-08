@@ -65,6 +65,11 @@ Result: **2055 passed, 11 skipped, 0 failed** (245 s, 3 workers). Every later ph
     dependability and safety analysis for approval
     (`docs/dependability_safety_analysis.md`). Category C is critical
     software (Q-ST-80C 3.2.8), so 6.2.3 applies to the whole tool.
+11. 2026-10-08, user (H05): problem reports and nonconformances as GitHub
+    issues with labels (not created until the user agrees); formal change
+    board, risk process and operation support waived (D-12); the release
+    of this candidate is 2.1.0, tagged, not signed (D-13), when the user
+    says release.
 
 ## Phase 1 test run
 

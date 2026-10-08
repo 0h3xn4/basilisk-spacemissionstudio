@@ -57,9 +57,7 @@ SOFTWARE_RULES = [
      "reused open-source software).", "Describe reuse/procurement of OSS in the SDP and SRF.", "S",
      "yes (Basilisk reuse)", "R14,H07"),
     ("E-ST-40C", "5.3.2.4*", "NA", "-", "No automatic code generation from models.", "-", "S", "no", ""),
-    ("E-ST-40C", "5.3.2.5a", "P", "git branches/commits; HISTORY.md", "Baselines are git commits but no "
-     "configuration management process or release tags are defined for the tool.",
-     "SCMP description (Phase 4) and tagged releases.", "S", "no", "R01,R14"),
+    ("E-ST-40C", "5.3.2.5a", "P", "compliance/docs/SDP.md section 6 (configuration management description); git", "Changes go through git and CI; no change board (waived, D-12) and no release tags yet (version 2.1.0 to be tagged, decision 11).", "-", "S", "no", "R14,D-12"),
     ("E-ST-40C", "5.3.3*", "N", "-", "No joint or technical reviews held.", _REVIEW_FIX, "M", "no", "H01,D-08"),
     ("E-ST-40C", "5.3.4*", "N", "-", "No project reviews (SRR, PDR, CDR, QR, AR) held.", _REVIEW_FIX, "M", "no", "H01,D-08"),
     ("E-ST-40C", "5.3.5*", "N", "-", "No TRR/TRB/DRB/SVSR held.", _REVIEW_FIX, "S", "no", "H01,D-08"),
@@ -67,15 +65,11 @@ SOFTWARE_RULES = [
      "no", ""),
     ("E-ST-40C", "5.3.6.2a", "N", "-", "The ground-software life cycle has not been chosen and documented.",
      _PLAN_FIX, "S", "no", "R14"),
-    ("E-ST-40C", "5.3.7.1a", "P", "schema/scenario.py (versioned JSON scenario schema with migrations); "
-     "engine/results.py (CSV/JSON outputs)", "Interfaces exist and are versioned, but no interface "
-     "management procedure or ICD.", "ICD (Phase 4) incl. scenario, results and CCSDS interfaces.", "M", "no",
-     "R14"),
+    ("E-ST-40C", "5.3.7.1a", "P", "compliance/docs/ICD.md (interfaces, versioned scenario schema with migrations)", "Interfaces defined in the ICD, drafted by the supplier; reviews waived (D-08). ECSS-M-ST-40 not supplied (H12).", "-", "S", "no", "R14,H12"),
     ("E-ST-40C", "5.3.8*", "P", "HISTORY.md: measured run time and memory (e.g. 5-year run 50 min, 450 MB)",
      "Measured, but no budget targets or margin philosophy.", "Define CPU/memory budgets for reference runs "
      "in the SRS; measure them in the SVR.", "S", "no", "R14"),
-    ("E-ST-40C", "5.3.9*", "P", "compliance/ (this audit: requirements, compliance matrix)",
-     "Compliance matrix in progress (Phase 1).", "Complete it through Phase 4.", "S", "no", ""),
+    ("E-ST-40C", "5.3.9*", "C", "compliance/compliance_matrix.csv (every requirement with status, evidence, gap; rebuilt by CI from compliance/audit/)", "-", "-", "S", "no", "R14"),
     # 5.4 requirements and architecture
     ("E-ST-40C", "5.4.2.1a", "P", "compliance/docs/SRS.md (SRS-F/P/I/O/R/D/S/PO/Q/RE/M/DEL/DF/H/A, 63 requirements with identifiers, sources and verification methods)", "SRS drafted from the implementation, not from a requirements baseline (H03); not reviewed.", "Review at SRR/PDR (H01).", "L", "no", "R14,H01,H03"),
     ("E-ST-40C", "5.4.2.2a", "NA", "-", "In-flight modification: flight software only.", "-", "S", "no", ""),
@@ -86,21 +80,17 @@ SOFTWARE_RULES = [
     ("E-ST-40C", "5.4.3.6b", "NA", "-", "As 5.4.3.6a.", "-", "S", "no", ""),
     ("E-ST-40C", "5.4.3.6c", "C", "Mission data (scenarios JSON, space-weather data files) separate from code",
      "-", "-", "S", "no", ""),
-    ("E-ST-40C", "5.4.3.7a", "N", "-", "The reuse of Basilisk (and other OSS) has not been analysed and "
-     "documented.", "Software reuse file for Basilisk (Phase 4).", "M", "yes", "R14"),
-    ("E-ST-40C", "5.4.3.8a", "N", "-", "No integration strategy documented.", "In the SUITP (Phase 4).", "S",
-     "no", "R14"),
+    ("E-ST-40C", "5.4.3.7a", "P", "compliance/docs/SRF.md (reuse analysis of Basilisk 2.12.0 and the packages)", "Analysis done; acceptance of the reuse pending (H07).", "-", "S", "no", "R14,H07"),
+    ("E-ST-40C", "5.4.3.8a", "P", "compliance/docs/SUITP.md 7.1 (integration strategy)", "Strategy documented; drafted by the supplier; reviews waived (D-08).", "-", "S", "no", "R14"),
     ("E-ST-40C", "5.4.4a", "N", "-", "No PDR.", _REVIEW_FIX, "S", "no", "H01,D-08"),
     # 5.5 design and implementation
-    ("E-ST-40C", "5.5.2.*", "P", "Module and class docstrings (engine/, gui/, schema/)",
-     "Detailed design is documented inline only; no SDD.", "SDD detailed-design part (Phase 4).", "M", "no",
-     "R14"),
+    ("E-ST-40C", "5.5.2.*", "P", "compliance/docs/SDD.md, SDD_components.md (generated component descriptions)", "Detailed design described from the code; drafted by the supplier; reviews waived (D-08).", "-", "M", "no", "R14"),
     ("E-ST-40C", "5.5.2.5*", "N", "gui/*_widget.py QThread workers; engine/propellant_budget.py process pool",
      "Concurrency (Qt worker threads, a spawned process pool, Basilisk single-thread runs) is not documented "
      "or justified; no real-time constraints apply.", "Describe threads, processes and shared data in the SDD.",
      "S", "no", "R14"),
     ("E-ST-40C", "5.5.2.8a", "P", "compliance/docs/SUM.md (maps the DRD to USER_MANUAL.md and adds data files, security, messages, recovery)", "SUM drafted; not reviewed with users; the message list is not exhaustive.", "Review with users (H01).", "M", "no", "R14,H01"),
-    ("E-ST-40C", "5.5.2.9a", "N", "-", "No unit/integration test plan.", "SUITP (Phase 4).", "M", "no", "R14"),
+    ("E-ST-40C", "5.5.2.9a", "P", "compliance/docs/SUITP.md, SUITP_test_cases.md", "Unit and integration test plan drafted by the supplier; reviews waived (D-08).", "-", "S", "no", "R14"),
     ("E-ST-40C", "5.5.2.10a", "N", "-", "No DDR.", _REVIEW_FIX, "S", "no", "H01,D-08"),
     ("E-ST-40C", "5.5.3.1a", "P", "spacemissionstudio/ source; R10 (Phase 2): compliance/docs/coding_standard.md (rules C-1 to C-15); "
      "build and install steps in pyproject.toml and the CI workflow .github/workflows/spacemissionstudio.yml", "Coding standard and an automated "
@@ -116,9 +106,7 @@ SOFTWARE_RULES = [
      "test_template_claims.py)", "Integration testing happens but is not planned or reported.",
      "SUITP integration part; reports.", "S", "no", "R12,R14"),
     # 5.6 validation
-    ("E-ST-40C", "5.6.2.1*", "N", "HISTORY.md validation notes (e.g. lifetime vs Basilisk decay +/-1%, drag "
-     "estimate -5% vs 5-year runs)", "Validation is done case by case but no validation process/plan exists.",
-     "SValP (Phase 4), Phase 3 validation campaign.", "M", "no", "R13,R14"),
+    ("E-ST-40C", "5.6.2.1*", "P", "compliance/docs/SValP.md", "Validation plan drafted by the supplier; reviews waived (D-08).", "-", "M", "no", "R14"),
     ("E-ST-40C", "5.6.3.*", "P", "compliance/docs/SValP.md, SVS.md, SVR.md; tests/validation (V-01, V-02, V-04 to V-08 within tolerance)", "Validation against the TS is specified, done and reported; not reviewed (CDR, H01); SRS-P-09/R-02 not measured (H13).", "Review (H01); measure (H13).", "M", "no", "R13,R14,H01,H13"),
     ("E-ST-40C", "5.6.3.4a", "N", "-", "No CDR.", _REVIEW_FIX, "S", "no", "H01,D-08"),
     ("E-ST-40C", "5.6.4.*", "N", "compliance/docs/SValP.md 4.1", "Validation against a requirements baseline is not possible: the baseline is waived (decision 9). Validation against the technical specification (5.6.3) is done.", "-", "M", "no", "H03,D-11"),
@@ -126,18 +114,16 @@ SOFTWARE_RULES = [
     ("E-ST-40C", "5.6.5a", "P", "compliance/docs/SVR.md 4.6 (validation status per case)", "Status reported by the supplier; not reviewed.", "Review (H01).", "S", "no", "R14,H01"),
     # 5.7 delivery and acceptance
     ("E-ST-40C", "5.7.2.1a", "P", "packaging/; compliance/docs/SRelD.md", "Release document drafted for an unreleased candidate (version still 2.0.0).", "Release with a new version (H05).", "S", "no", "R14,H05"),
-    ("E-ST-40C", "5.7.2.1b", "P", "packaging/build_wheel.sh, build_wheel.ps1, build_deb.sh write SHA-256 checksums (security analysis S-07)", "Releases are checksummed but not signed; dependencies not pinned by hash (S-08).", "Sign releases; lock file with hashes (H05).", "S", "no", "R15,H05"),
+    ("E-ST-40C", "5.7.2.1b", "P", "packaging/build_wheel.sh, build_wheel.ps1, build_deb.sh write SHA-256 checksums (security analysis S-07)", "Releases are checksummed; signing waived by the user (decision 11); dependencies not pinned by hash (S-08).", "Lock file with hashes (S-08).", "S", "no", "R15,D-13"),
     ("E-ST-40C", "5.7.2.2a", "NA", "-", "No training specified in a business agreement.", "-", "S", "no", ""),
     ("E-ST-40C", "5.7.2.3*", "P", "packaging/README.md, install scripts; compliance/docs/security_analysis.md section 6; SUM 9.2, 9.9", "Installation security assessed; installs from PyPI without hash checking (S-08); Windows installer not tested (H13).", "S-08 lock file; test (H13).", "S", "no", "R15,H13"),
-    ("E-ST-40C", "5.7.2.4*", "P", "packaging/ (kernel pre-fetch at install)", "No installation report.",
-     "Installation report template (Phase 4).", "S", "no", "R14"),
+    ("E-ST-40C", "5.7.2.4*", "P", "packaging/ (kernel pre-fetch at install); SUM 9.2", "No installation report or template.", "Write one when installing for another user.", "S", "no", "R14"),
     ("E-ST-40C", "5.7.3.*", _H, "-", "No acceptance test plan, testing or AR.", "User defines and runs "
      "acceptance tests (a draft can be derived from the SVS).", "M", "no", "H01,H03"),
     # 5.8 verification
-    ("E-ST-40C", "5.8.2.1*", "N", "-", "No verification process/plan.", "SVerP (Phase 4).", "M", "no", "R14"),
+    ("E-ST-40C", "5.8.2.1*", "P", "compliance/docs/SVerP.md", "Verification plan drafted by the supplier; reviews waived (D-08).", "-", "M", "no", "R14"),
     ("E-ST-40C", "5.8.3.1a", "N", "-", "No customer requirements baseline: waived by the user (decision 9, 2026-10-08); the SRS is derived from the tool, not from a baseline.", "-", "S", "no", "H03,D-11"),
-    ("E-ST-40C", "5.8.3.*", "N", "-", "No verification of TS/architecture/design/documentation recorded.",
-     "SVR (Phase 3-4).", "M", "no", "R14"),
+    ("E-ST-40C", "5.8.3.*", "P", "compliance/docs/SVR.md (verification by the supplier)", "Verification done and reported by the supplier; no independent verification (H06); drafted by the supplier; reviews waived (D-08).", "-", "M", "no", "R14,H06"),
     ("E-ST-40C", "5.8.3.5a", "P", "R10 (Phase 2): ruff rule set configured in pyproject.toml, zero findings, run "
      "by .github/workflows/spacemissionstudio.yml; tests", "Code verified by tests and static analysis; no recorded code verification against "
      "the design and no independent human review.", "Code verification in the SVR; human review (H06).", "M",
@@ -161,12 +147,8 @@ SOFTWARE_RULES = [
     ("E-ST-40C", "5.8.3.12*", "N", "-", "Technical budgets (CPU/memory) not estimated or tracked.", "As 5.3.8.",
      "S", "no", "R14"),
     # 5.9 operation, 5.10 maintenance, 5.11 security
-    ("E-ST-40C", "5.9.*", _H, "USER_MANUAL.md", "No software operation support entity or procedures; the user "
-     "operates the tool.", "User defines operation support (who answers, how problems are logged).", "S",
-     "no", "H05"),
-    ("E-ST-40C", "5.10.*", _H, "git history; HISTORY.md", "No maintenance plan or problem/modification "
-     "procedures.", "SMP (Phase 4) and a problem-report procedure (e.g. GitHub issues).", "M", "no",
-     "H05,R14"),
+    ("E-ST-40C", "5.9.*", "N", "compliance/docs/SMP.md 7.2 (best effort)", "No operation support entity or procedure: formal operation support waived by the user (decision 11); support is best effort.", "-", "S", "no", "H05,D-12"),
+    ("E-ST-40C", "5.10.*", "P", "compliance/docs/SMP.md (process; problem reports as GitHub issues, decision 11)", "Maintenance process defined; the issue procedure is not yet in use; no change board (D-12).", "-", "M", "no", "R14,H05"),
     ("E-ST-40C", "5.11.2*", "N", "-", "No software security management plan: waived by the user (decision 8); no security manager named (roles open, H02).", "-", "S", "no", "H02,D-10"),
     ("E-ST-40C", "5.11.*", "P", "compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI", "Analysis by the supplier at security level low (D8); not reviewed at the milestones (H01); open items S-05, S-06 (H11), S-08.", "Review (H01); close H11, S-08.", "M", "no", "R15,H01,H11"),
     # Annexes: DRDs
@@ -237,13 +219,10 @@ SOFTWARE_RULES = [
      "H02"),
     ("Q-ST-80C", "5.2.4*", _H, "-", "No alert process.", "Subscribe to Basilisk/dependency advisories; record.",
      "S", "no", "H05"),
-    ("Q-ST-80C", "5.2.5*", _H, "git history (fixes described in commits/HISTORY.md)", "No problem-reporting "
-     "procedure.", "Problem reports in an issue tracker with a defined workflow.", "S", "no", "H05"),
-    ("Q-ST-80C", "5.2.6*", _H, "-", "No nonconformance process.", "Define in the SPAP.", "S", "no", "H05"),
-    ("Q-ST-80C", "5.2.7*", "N", "-", "No quality requirements or quality model.", "Quality model and "
-     "requirements in the SPAP/SRS.", "S", "no", "R14"),
-    ("Q-ST-80C", "5.3.*", _H, "-", "No risk management or critical-item control.", "Risk register (SPAP).", "S",
-     "no", "H05"),
+    ("Q-ST-80C", "5.2.5*", "P", "compliance/docs/SMP.md 10.1 (GitHub issues with labels, decision 11)", "Procedure defined, not yet in use (no labels created).", "Create the labels when the user agrees.", "S", "no", "H05"),
+    ("Q-ST-80C", "5.2.6*", "P", "compliance/docs/SMP.md 12, 13 (nonconformances handled as issues)", "Procedure defined, not yet in use.", "-", "S", "no", "H05"),
+    ("Q-ST-80C", "5.2.7*", "P", "compliance/docs/SRS.md 5.10 (SRS-Q-01 to Q-03), SPAP.md 5.5", "Quality requirements stated; no formal quality model; thresholds not agreed (H09).", "-", "S", "no", "R14,H09"),
+    ("Q-ST-80C", "5.3.*", "N", "Technical risks logged as findings F-nn, S-nn, K-nn", "No risk management or critical-item control process: waived by the user (decision 11).", "-", "S", "no", "H05,D-12"),
     ("Q-ST-80C", "5.4.*", _H, "-", "Supplier selection/control not applicable as such (no subcontractor); "
      "reused OSS suppliers (Basilisk) not assessed.", "Record OSS dependencies and their status in the SRF.",
      "S", "yes", "H07"),
@@ -254,8 +233,9 @@ SOFTWARE_RULES = [
     ("Q-ST-80C", "5.6.*", "P", "pyproject.toml (Python, pytest, pytest-qt); ruff", "Tools exist but are not "
      "selected/justified or documented.", "Tools and environment section in the SDP.", "S", "no", "R14"),
     ("Q-ST-80C", "5.7.*", "N", "-", "No process assessment or improvement process: waived by the user (decision 8).", "-", "S", "no", "H02,D-09"),
-    ("Q-ST-80C", "6.1.*", "N", "-", "No documented life cycle.", "SDP (Phase 4).", "S", "no", "R14"),
-    ("Q-ST-80C", "6.2.1*", "N", "-", "Processes not documented.", "SDP/SPAP (Phase 4).", "M", "no", "R14"),
+    ("Q-ST-80C", "6.1.*", "P", "compliance/docs/SDP.md 5.2, SPAP.md 6.1", "Life cycle defined (incremental); drafted by the supplier; reviews waived (D-08).", "-", "S", "no", "R14"),
+    ("Q-ST-80C", "6.1.5a", "N", "-", "No TRR: reviews waived (decision 7).", "-", "S", "no", "H01,D-08"),
+    ("Q-ST-80C", "6.2.1*", "P", "compliance/docs/SDP.md, SPAP.md 6.2 (plans and their status)", "Plans written after the activities they cover; drafted by the supplier; reviews waived (D-08).", "-", "M", "no", "R14"),
     ("Q-ST-80C", "6.2.2.1a", "P", "compliance/docs/dependability_safety_analysis.md section 1", "Classification by the user's judgement; the ECSS-Q-ST-40 6.5.6.3 analysis is not available (H12).", "-", "S", "no", "H04,H12"),
     ("Q-ST-80C", "6.2.2.*", "P", "compliance/docs/dependability_safety_analysis.md (functional FMEA, FM-01 to FM-12, safeguards with evidence)", "Drafted by the supplier, waiting for the user's approval; methods not agreed with a separate customer; no system-level analysis to start from.", "User approves the analysis (H04).", "S", "no", "H04"),
     ("Q-ST-80C", "6.2.3.*", "P", "compliance/docs/dependability_safety_analysis.md section 4 (measures for critical software: the whole tool, category C)", "Measures applied and verified by the supplier; unreachable-code analysis (6.2.3.6a) open; no independent verification (H06).", "Analyse the uncovered branches; H06.", "S", "no", "H04,H06"),
@@ -272,8 +252,7 @@ SOFTWARE_RULES = [
     ("Q-ST-80C", "6.2.5.3a", "H", "-", "Duration and effort against a planned schedule need a schedule and "
      "effort records, which only the project can keep.", "Keep a schedule and effort log (H02).", "S", "no",
      "H02"),
-    ("Q-ST-80C", "6.2.5.5a", "N", "compliance/metrics.md", "No software product assurance report yet.",
-     "PA report (Phase 4).", "S", "no", "R14"),
+    ("Q-ST-80C", "6.2.5.5a", "P", "compliance/docs/SPAMR.md section 7 (metrics)", "Metrics in the audit's PA report; further reports on request (decision 8).", "-", "S", "no", "R14"),
     ("Q-ST-80C", "6.2.6.*", "P", "tests/; ruff", "Verification by tests; no verification plan or reports, no "
      "human review record of AI-written code.", "SVerP/SVR; documented human code review.", "M", "no",
      "R14,H06"),
@@ -283,15 +262,14 @@ SOFTWARE_RULES = [
     ("Q-ST-80C", "6.2.9.*", "P", "compliance/docs/security_analysis.md; security level low (decision D8)", "Analysis done and reported by the supplier; methods not agreed with the customer; no security manager (H02).", "Agree methods; name the security manager (H02).", "S", "no", "R15,H02"),
     ("Q-ST-80C", "6.2.10.*", _H, "-", "As 6.2.9.", "As 6.2.9.", "S", "no", "R15"),
     ("Q-ST-80C", "6.3.1*", "N", "-", "No customer requirements baseline: waived by the user (decision 9, 2026-10-08); the SRS is derived from the tool, not from a baseline.", "-", "S", "no", "H03,D-11"),
-    ("Q-ST-80C", "6.3.2*", "N", "-", "No SRS.", "SRS (Phase 4).", "M", "no", "R14"),
-    ("Q-ST-80C", "6.3.3*", "P", "README.md, docstrings", "No SDD.", "SDD (Phase 4).", "M", "no", "R14"),
+    ("Q-ST-80C", "6.3.2*", "P", "compliance/docs/SRS.md", "Requirements derived from the implementation; drafted by the supplier; reviews waived (D-08). no baseline (D-11).", "-", "M", "no", "R14,D-11"),
+    ("Q-ST-80C", "6.3.3*", "P", "compliance/docs/SDD.md", "Design described after the fact; drafted by the supplier; reviews waived (D-08).", "-", "M", "no", "R14"),
     ("Q-ST-80C", "6.3.4*", "P", "R10 (Phase 2): compliance/docs/coding_standard.md (naming, comment, security rules C-1 to C-15; tools; "
      "code evaluation); ruff configured in pyproject.toml; .github/workflows/spacemissionstudio.yml", "The standard is written and checked "
      "automatically where a tool can; rules C-4 and C-5 have not been re-checked on the existing code, and "
      "no product quality requirements (SRS) exist to check it against.", "Review in H06; SRS (Phase 4).",
      "S", "no", "R10,R14,H06"),
-    ("Q-ST-80C", "6.3.4.3a", "P", "R10 (Phase 2): tools identified in compliance/docs/coding_standard.md section 3", "The tools are "
-     "identified in the coding standard, not yet in a SPAP.", "SPAP (Phase 4).", "S", "no", "R10,R14"),
+    ("Q-ST-80C", "6.3.4.3a", "P", "compliance/docs/coding_standard.md section 3; SPAP.md 5.8 (refers to SDP 5.3, 5.4)", "Tools identified; drafted by the supplier; reviews waived (D-08).", "-", "S", "no", "R14"),
     ("Q-ST-80C", "6.3.4.4a", "H", "compliance/docs/coding_standard.md", "The coding standard has not been reviewed with the customer.",
      "Customer review of the coding standard (H09).", "S", "no", "H09"),
     ("Q-ST-80C", "6.3.4.5a", "C", "compliance/docs/coding_standard.md rule C-1: no low-level language is used (Python only; C/C++ only "
@@ -301,8 +279,7 @@ SOFTWARE_RULES = [
      "no", "R10,R11"),
     ("Q-ST-80C", "6.3.4.6b", "C", ".github/workflows/spacemissionstudio.yml evaluates the code (ruff, tests, coverage, metrics) on every push "
      "and pull request touching the tool", "-", "-", "S", "no", "R10"),
-    ("Q-ST-80C", "6.3.4.7a", "N", "compliance/metrics.md", "No software product assurance report yet.",
-     "PA report (Phase 4).", "S", "no", "R14"),
+    ("Q-ST-80C", "6.3.4.7a", "P", "compliance/docs/SPAMR.md section 6 (code analysis: lint, complexity, coverage)", "Synthesis in the audit's PA report; corrective actions recorded in the commits.", "-", "S", "no", "R14"),
     ("Q-ST-80C", "6.3.4.8a", "C", "git; compliance/docs/coding_standard.md rule C-15 (branch work, CI green before merge); .github/workflows/spacemissionstudio.yml", "-", "-",
      "S", "no", "R10"),
     ("Q-ST-80C", "6.3.5.*", "P", "tests/ (1403 functions)", "Testing exists; not planned, not traced, no "
@@ -324,15 +301,14 @@ SOFTWARE_RULES = [
      "test coverage, number of failed tests; fault density by a corrective-commit proxy", "Fault density and "
      "failure intensity need problem reports from verification and use, which do not exist (H05).",
      "Problem reporting (H05) feeds metrics.py.", "S", "no", "R11,H05"),
-    ("Q-ST-80C", "7.1.6a", "N", "compliance/metrics.md", "No software product assurance report yet.",
-     "PA report (Phase 4).", "S", "no", "R14"),
+    ("Q-ST-80C", "7.1.6a", "P", "compliance/docs/SPAMR.md section 7", "Metrics reported in the audit's PA report; further reports on request (decision 8).", "-", "S", "no", "R14"),
     ("Q-ST-80C", "7.1.7*", "C", "R13 (Phase 3): accuracy estimated and verified against independent references "
      "(compliance/phase3_log.md; tests/validation): orbit propagation vs GMAT R2026a (two-body 4 mm/day, 20x20 "
      "0.12 m/day, Sun+Moon 9 mm and SRP 1.1 m in 7 days at GEO, NRLMSISE-00 drag 2.4 %), time scales vs GMAT and "
      "SOFA, Earth frame vs IERS 20 C04 (0.43 m), passes vs GMAT (0.08 s), OEM exchange (8 mm); two accuracy defects "
      "found and corrected (F-01, F-07)", "-", "-", "M", "no", "R13"),
-    ("Q-ST-80C", "7.2.*", "N", "-", "Requirements, design and test documentation missing.", "Phase 4 documents.",
-     "L", "no", "R14"),
+    ("Q-ST-80C", "7.2.*", "P", "compliance/docs/SRS.md, SDD.md, SUITP.md, SVS.md, SVR.md", "Documented; drafted by the supplier; reviews waived (D-08). no requirements baseline (D-11).", "-", "M", "no", "R14,D-11"),
+    ("Q-ST-80C", "7.2.1.3a", "C", "compliance/docs/SRS.md section 6 (verification method for every requirement)", "-", "-", "S", "no", "R14"),
     ("Q-ST-80C", "7.3.*", "NA", "-", "The tool is not developed as software intended for reuse.", "-", "S", "no",
      ""),
     ("Q-ST-80C", "7.4.*", "NA", "-", "No standard ground hardware or services for an operational system.", "-",

@@ -7,8 +7,8 @@ Document: SMS-SRelD, issue 1 (draft), 2026-10-08. Remediation R14.
 - This branch has not been released. Its version string is still 2.0.0,
   although it contains about 150 commits made after the 2.0.0 release
   commit.
-- Choosing the new version number, tagging and publishing are human
-  actions (H05).
+- The release will be **2.1.0** (decision 11): the version is set and the
+  release tagged, without signing (D-13), when the user says release.
 
 ## 1 Introduction (G.2.1<1>)
 

@@ -6,8 +6,11 @@ Document: SMS-SMP, issue 1 (draft), 2026-10-08. Remediation R14.
 **Status:** draft.
 - The tool is maintained by the same people and process that develop it
   (SDP).
-- A problem-report system, a change board and maintenance reporting do not
-  exist yet (H05). This plan proposes them and marks them as such.
+- Problem reports are GitHub issues (decision 11). The procedure is
+  defined in 10.1 but not yet in use: no labels have been created.
+- A formal change board, risk management and operation support are waived
+  (decision 11, deviation D-12): the user approves changes, CI gates them,
+  and support is best effort.
 
 ## 1 Introduction (T.2.1<1>)
 
@@ -70,7 +73,7 @@ delivery of the changed version.
 - CI measures every change: tests, coverage of at least 90 %, lint and
   complexity;
 - the expected performance of the process (response times) is not
-  defined (H05).
+  defined: support is best effort (D-12).
 
 ## 6 Maintenance system
 
@@ -116,7 +119,7 @@ maintainer.
 
 ### 7.2 Level of support (T.2.1<7.2>)
 
-Best effort. No response times are committed (H05).
+Best effort. No response times are committed (decision 11, D-12).
 
 ### 7.3 Support period (T.2.1<7.3>)
 
@@ -157,16 +160,17 @@ As in development:
 
 ### 10.1 Problem and modification analysis (T.2.1<10.1>)
 
-**Proposed (H05):**
-- SPRs and SMRs as GitHub issues, labelled `bug`, `accuracy`,
-  `security` or `feature`.
+**Decided (decision 11):**
+- SPRs and SMRs as GitHub issues on `0h3xn4/basilisk`, labelled `bug`,
+  `accuracy`, `security` or `feature`. The labels are created when the user
+  agrees.
 - **Priority:**
   - accuracy and security first;
   - then crashes and data loss;
   - then the rest.
-- **Configuration control board:**
-  - the user decides alone today;
-  - for a customer project, the customer and the supplier.
+- **Configuration control board:** none; the user decides alone (formal
+  board waived, D-12). For a customer project, the customer and the
+  supplier would form one.
 
 **Phases:** analysis, design, implementation, acceptance test, delivery
 (10.2 to 10.6).
@@ -227,7 +231,7 @@ No training material exists beyond these documents.
 ## 12 Maintenance software product assurance (T.2.1<12>)
 
 - **SPAP:** applies to maintenance.
-- **Nonconformances:** handled as SPRs (H05).
+- **Nonconformances:** handled as SPRs, as GitHub issues (decision 11).
 - **Qualification status:**
   - kept by re-running the suite and the validation on each change;
   - recorded in the SVR of each release;
@@ -251,7 +255,7 @@ issues it closes. Content:
 - the versions affected;
 - the tests added.
 
-Maintenance reports go to the user with each release (H05).
+Maintenance reports go to the user on request (decision 8); the SRelD of each release lists its changes.
 
 ## 15 Maintenance report templates (T.2.1<15>)
 

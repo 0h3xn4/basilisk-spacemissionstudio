@@ -70,7 +70,7 @@ What cannot be computed is a human action:
 | Topic | Status |
 |---|---|
 | Roles | The supplier (developer and verifier); the user (requirements, decisions, acceptance). An SPA manager and reviewers are to be named (H02). |
-| Reporting channels | CI results on GitHub; findings in the audit logs (`phase2_log.md`, `phase3_log.md`); problem reports as GitHub issues (H05) |
+| Reporting channels | CI results on GitHub; findings in the audit logs (`phase2_log.md`, `phase3_log.md`); problem reports as GitHub issues (decision 11) |
 | Authority for resolving problems | The user |
 | Organisational relationships | One person and the supplier; no separate PA or CM function (H02) |
 | Independence | None (4.1) |
@@ -130,8 +130,8 @@ What cannot be computed is a human action:
   - A failing CI check blocks the change until it is fixed.
   - Findings from verification are recorded with an identifier, for
     example F-01 in `phase3_log.md`.
-  - A formal problem-report and nonconformance procedure does not yet
-    exist (H05).
+  - Problem reports and nonconformances are GitHub issues (decision 11;
+    SMP 10.1); the procedure is not yet in use.
 - **Deviation and waiver policy:**
   - Deviations from the standards are listed in `deviations.md`, with
     their justification, and take effect only when signed (H08).

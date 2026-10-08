@@ -1,120 +1,120 @@
 standard,ID,status,remediation,code_evidence,verification,tests,test_count
-E-ST-40C,5.2.2.1a,Requires human or process action,"H03,R14",-,-,,0
-E-ST-40C,5.2.2.1b,Requires human or process action,"H03,R14",-,-,,0
-E-ST-40C,5.2.2.1c,Requires human or process action,"H03,R14",-,-,,0
-E-ST-40C,5.2.2.1d,Requires human or process action,"H03,R14",-,-,,0
-E-ST-40C,5.2.2.2a,Requires human or process action,"H03,R14",-,-,,0
-E-ST-40C,5.2.2.3a,Requires human or process action,"H03,R14",-,-,,0
-E-ST-40C,5.2.3.1a,Requires human or process action,"H03,R14",-,-,,0
-E-ST-40C,5.2.3.1b,Requires human or process action,"H03,R14",-,-,,0
-E-ST-40C,5.2.3.2a,Requires human or process action,"H03,R14",-,-,,0
-E-ST-40C,5.2.3.3a,Requires human or process action,"H03,R14",-,-,,0
-E-ST-40C,5.2.3.3b,Requires human or process action,"H03,R14",-,-,,0
-E-ST-40C,5.2.4.1a,Requires human or process action,"H03,R14",-,-,,0
-E-ST-40C,5.2.4.1b,Requires human or process action,"H03,R14",-,-,,0
-E-ST-40C,5.2.4.2a,Requires human or process action,"H03,R14",-,-,,0
-E-ST-40C,5.2.4.3a,Requires human or process action,"H03,R14",-,-,,0
-E-ST-40C,5.2.4.3b,Requires human or process action,"H03,R14",-,-,,0
-E-ST-40C,5.2.4.5a,Requires human or process action,"H03,R14",-,-,,0
-E-ST-40C,5.2.4.7a,Requires human or process action,"H03,R14",-,-,,0
-E-ST-40C,5.2.4.8a,Requires human or process action,"H03,R14",-,-,,0
-E-ST-40C,5.2.4.9a,Requires human or process action,"H03,R14",-,-,,0
-E-ST-40C,5.2.4.9b,Requires human or process action,"H03,R14",-,-,,0
-E-ST-40C,5.2.4.9c,Requires human or process action,"H03,R14",-,-,,0
-E-ST-40C,5.2.4.10a,Requires human or process action,"H03,R14",-,-,,0
-E-ST-40C,5.2.4.11a,Requires human or process action,"H03,R14",-,-,,0
-E-ST-40C,5.2.5a,Requires human or process action,H01,-,-,,0
+E-ST-40C,5.2.2.1a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,5.2.2.1b,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,5.2.2.1c,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,5.2.2.1d,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,5.2.2.2a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,5.2.2.3a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,5.2.3.1a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,5.2.3.1b,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,5.2.3.2a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,5.2.3.3a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,5.2.3.3b,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,5.2.4.1a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,5.2.4.1b,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,5.2.4.2a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,5.2.4.3a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,5.2.4.3b,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,5.2.4.5a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,5.2.4.7a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,5.2.4.8a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,5.2.4.9a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,5.2.4.9b,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,5.2.4.9c,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,5.2.4.10a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,5.2.4.11a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,5.2.5a,Non-compliant,"H01,D-08",-,-,,0
 E-ST-40C,5.3.2.1a,Partially compliant,"R14,H02,H05",compliance/docs/SDP.md,-,,0
 E-ST-40C,5.3.2.1b,Partially compliant,"R14,H02,H05",compliance/docs/SDP.md,-,,0
 E-ST-40C,5.3.2.1c,Partially compliant,"R14,H02,H05",compliance/docs/SDP.md,-,,0
 E-ST-40C,5.3.2.1d,Partially compliant,"R14,H02,H05",compliance/docs/SDP.md,-,,0
 E-ST-40C,5.3.2.2a,Partially compliant,"R14,H01",compliance/docs/SDP.md,-,,0
 E-ST-40C,5.3.2.3a,Non-compliant,"R14,H07",-,-,,0
-E-ST-40C,5.3.2.5a,Partially compliant,"R01,R14",git branches/commits; HISTORY.md,-,,0
-E-ST-40C,5.3.3.1a,Requires human or process action,H01,-,-,,0
-E-ST-40C,5.3.3.1b,Requires human or process action,H01,-,-,,0
-E-ST-40C,5.3.3.2a,Requires human or process action,H01,-,-,,0
-E-ST-40C,5.3.3.2b,Requires human or process action,H01,-,-,,0
-E-ST-40C,5.3.3.3a,Requires human or process action,H01,-,-,,0
-E-ST-40C,5.3.3.3b,Requires human or process action,H01,-,-,,0
-E-ST-40C,5.3.3.3c,Requires human or process action,H01,-,-,,0
-E-ST-40C,5.3.4.1a,Requires human or process action,H01,-,-,,0
-E-ST-40C,5.3.4.2a,Requires human or process action,H01,-,-,,0
-E-ST-40C,5.3.4.2b,Requires human or process action,H01,-,-,,0
-E-ST-40C,5.3.4.3a,Requires human or process action,H01,-,-,,0
-E-ST-40C,5.3.4.3b,Requires human or process action,H01,-,-,,0
-E-ST-40C,5.3.4.4a,Requires human or process action,H01,-,-,,0
-E-ST-40C,5.3.4.5a,Requires human or process action,H01,-,-,,0
-E-ST-40C,5.3.5.1a,Requires human or process action,H01,-,-,,0
-E-ST-40C,5.3.5.2a,Requires human or process action,H01,-,-,,0
-E-ST-40C,5.3.5.3a,Requires human or process action,H01,-,-,,0
-E-ST-40C,5.3.5.4a,Requires human or process action,H01,-,-,,0
+E-ST-40C,5.3.2.5a,Partially compliant,"R14,D-12",compliance/docs/SDP.md section 6 (configuration management description); git,-,,0
+E-ST-40C,5.3.3.1a,Non-compliant,"H01,D-08",-,-,,0
+E-ST-40C,5.3.3.1b,Non-compliant,"H01,D-08",-,-,,0
+E-ST-40C,5.3.3.2a,Non-compliant,"H01,D-08",-,-,,0
+E-ST-40C,5.3.3.2b,Non-compliant,"H01,D-08",-,-,,0
+E-ST-40C,5.3.3.3a,Non-compliant,"H01,D-08",-,-,,0
+E-ST-40C,5.3.3.3b,Non-compliant,"H01,D-08",-,-,,0
+E-ST-40C,5.3.3.3c,Non-compliant,"H01,D-08",-,-,,0
+E-ST-40C,5.3.4.1a,Non-compliant,"H01,D-08",-,-,,0
+E-ST-40C,5.3.4.2a,Non-compliant,"H01,D-08",-,-,,0
+E-ST-40C,5.3.4.2b,Non-compliant,"H01,D-08",-,-,,0
+E-ST-40C,5.3.4.3a,Non-compliant,"H01,D-08",-,-,,0
+E-ST-40C,5.3.4.3b,Non-compliant,"H01,D-08",-,-,,0
+E-ST-40C,5.3.4.4a,Non-compliant,"H01,D-08",-,-,,0
+E-ST-40C,5.3.4.5a,Non-compliant,"H01,D-08",-,-,,0
+E-ST-40C,5.3.5.1a,Non-compliant,"H01,D-08",-,-,,0
+E-ST-40C,5.3.5.2a,Non-compliant,"H01,D-08",-,-,,0
+E-ST-40C,5.3.5.3a,Non-compliant,"H01,D-08",-,-,,0
+E-ST-40C,5.3.5.4a,Non-compliant,"H01,D-08",-,-,,0
 E-ST-40C,5.3.6.2a,Non-compliant,R14,-,-,,0
-E-ST-40C,5.3.7.1a,Partially compliant,R14,schema/scenario.py (versioned JSON scenario schema with migrations); engine/results.py (CSV/JSON outputs),-,,0
+E-ST-40C,5.3.7.1a,Partially compliant,"R14,H12","compliance/docs/ICD.md (interfaces, versioned scenario schema with migrations)",-,,0
 E-ST-40C,5.3.8.1a,Partially compliant,R14,"HISTORY.md: measured run time and memory (e.g. 5-year run 50 min, 450 MB)",-,,0
 E-ST-40C,5.3.8.2a,Partially compliant,R14,"HISTORY.md: measured run time and memory (e.g. 5-year run 50 min, 450 MB)",-,,0
 E-ST-40C,5.3.8.2b,Partially compliant,R14,"HISTORY.md: measured run time and memory (e.g. 5-year run 50 min, 450 MB)",-,,0
-E-ST-40C,5.3.9.1a,Partially compliant,,"compliance/ (this audit: requirements, compliance matrix)",-,,0
-E-ST-40C,5.3.9.2a,Partially compliant,,"compliance/ (this audit: requirements, compliance matrix)",-,,0
+E-ST-40C,5.3.9.1a,Compliant,R14,"compliance/compliance_matrix.csv (every requirement with status, evidence, gap; rebuilt by CI from compliance/audit/)",inspection of the evidence,,0
+E-ST-40C,5.3.9.2a,Compliant,R14,"compliance/compliance_matrix.csv (every requirement with status, evidence, gap; rebuilt by CI from compliance/audit/)",inspection of the evidence,,0
 E-ST-40C,5.4.2.1a,Partially compliant,"R14,H01,H03","compliance/docs/SRS.md (SRS-F/P/I/O/R/D/S/PO/Q/RE/M/DEL/DF/H/A, 63 requirements with identifiers, sources and verification methods)",-,,0
-E-ST-40C,5.4.2.4a,Requires human or process action,H01,-,-,,0
+E-ST-40C,5.4.2.4a,Non-compliant,"H01,D-08",-,-,,0
 E-ST-40C,5.4.3.1a,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md (generated component descriptions and traceability)",-,,0
 E-ST-40C,5.4.3.2a,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md (generated component descriptions and traceability)",-,,0
 E-ST-40C,5.4.3.2b,Partially compliant,"R15,H01",compliance/docs/security_analysis.md section 5 (residual vulnerabilities after treatment),-,,0
 E-ST-40C,5.4.3.3a,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md (generated component descriptions and traceability)",-,,0
 E-ST-40C,5.4.3.5a,Partially compliant,"R14,H01","compliance/docs/SDD.md, SDD_components.md (generated component descriptions and traceability)",-,,0
 E-ST-40C,5.4.3.6c,Compliant,,"Mission data (scenarios JSON, space-weather data files) separate from code",inspection of the evidence,,0
-E-ST-40C,5.4.3.7a,Non-compliant,R14,-,-,,0
-E-ST-40C,5.4.3.8a,Non-compliant,R14,-,-,,0
-E-ST-40C,5.4.4a,Requires human or process action,H01,-,-,,0
-E-ST-40C,5.5.2.1a,Partially compliant,R14,"Module and class docstrings (engine/, gui/, schema/)",-,,0
-E-ST-40C,5.5.2.1b,Partially compliant,R14,"Module and class docstrings (engine/, gui/, schema/)",-,,0
-E-ST-40C,5.5.2.1c,Partially compliant,R14,"Module and class docstrings (engine/, gui/, schema/)",-,,0
-E-ST-40C,5.5.2.2a,Partially compliant,R14,"Module and class docstrings (engine/, gui/, schema/)",-,,0
-E-ST-40C,5.5.2.3a,Partially compliant,R14,"Module and class docstrings (engine/, gui/, schema/)",-,,0
-E-ST-40C,5.5.2.4a,Partially compliant,R14,"Module and class docstrings (engine/, gui/, schema/)",-,,0
+E-ST-40C,5.4.3.7a,Partially compliant,"R14,H07",compliance/docs/SRF.md (reuse analysis of Basilisk 2.12.0 and the packages),-,,0
+E-ST-40C,5.4.3.8a,Partially compliant,R14,compliance/docs/SUITP.md 7.1 (integration strategy),-,,0
+E-ST-40C,5.4.4a,Non-compliant,"H01,D-08",-,-,,0
+E-ST-40C,5.5.2.1a,Partially compliant,R14,"compliance/docs/SDD.md, SDD_components.md (generated component descriptions)",-,,0
+E-ST-40C,5.5.2.1b,Partially compliant,R14,"compliance/docs/SDD.md, SDD_components.md (generated component descriptions)",-,,0
+E-ST-40C,5.5.2.1c,Partially compliant,R14,"compliance/docs/SDD.md, SDD_components.md (generated component descriptions)",-,,0
+E-ST-40C,5.5.2.2a,Partially compliant,R14,"compliance/docs/SDD.md, SDD_components.md (generated component descriptions)",-,,0
+E-ST-40C,5.5.2.3a,Partially compliant,R14,"compliance/docs/SDD.md, SDD_components.md (generated component descriptions)",-,,0
+E-ST-40C,5.5.2.4a,Partially compliant,R14,"compliance/docs/SDD.md, SDD_components.md (generated component descriptions)",-,,0
 E-ST-40C,5.5.2.5a,Non-compliant,R14,gui/*_widget.py QThread workers; engine/propellant_budget.py process pool,-,,0
 E-ST-40C,5.5.2.5b,Non-compliant,R14,gui/*_widget.py QThread workers; engine/propellant_budget.py process pool,-,,0
 E-ST-40C,5.5.2.5c,Non-compliant,R14,gui/*_widget.py QThread workers; engine/propellant_budget.py process pool,-,,0
 E-ST-40C,5.5.2.5d,Non-compliant,R14,gui/*_widget.py QThread workers; engine/propellant_budget.py process pool,-,,0
 E-ST-40C,5.5.2.5e,Non-compliant,R14,gui/*_widget.py QThread workers; engine/propellant_budget.py process pool,-,,0
-E-ST-40C,5.5.2.6a,Partially compliant,R14,"Module and class docstrings (engine/, gui/, schema/)",-,,0
-E-ST-40C,5.5.2.7a,Partially compliant,R14,"Module and class docstrings (engine/, gui/, schema/)",-,,0
+E-ST-40C,5.5.2.6a,Partially compliant,R14,"compliance/docs/SDD.md, SDD_components.md (generated component descriptions)",-,,0
+E-ST-40C,5.5.2.7a,Partially compliant,R14,"compliance/docs/SDD.md, SDD_components.md (generated component descriptions)",-,,0
 E-ST-40C,5.5.2.8a,Partially compliant,"R14,H01","compliance/docs/SUM.md (maps the DRD to USER_MANUAL.md and adds data files, security, messages, recovery)",-,,0
-E-ST-40C,5.5.2.9a,Non-compliant,R14,-,-,,0
-E-ST-40C,5.5.2.10a,Requires human or process action,H01,-,-,,0
+E-ST-40C,5.5.2.9a,Partially compliant,R14,"compliance/docs/SUITP.md, SUITP_test_cases.md",-,,0
+E-ST-40C,5.5.2.10a,Non-compliant,"H01,D-08",-,-,,0
 E-ST-40C,5.5.3.1a,Partially compliant,"R10,R14",spacemissionstudio/ source; R10 (Phase 2): compliance/docs/coding_standard.md (rules C-1 to C-15); build and install steps in pyproject.toml and the CI workflow .github/workflows/spacemissionstudio.yml,-,,0
 E-ST-40C,5.5.3.2a,Partially compliant,"R11,R12,R14","tests/ (1479 test functions; Basilisk-backed tests marked requires_basilisk); R11/R12 (Phase 2): requirement markers traced by compliance/tools/build_traceability.py (compliance/traceability_matrix.csv), JUnit test report and coverage produced by .github/workflows/spacemissionstudio.yml",-,,0
 E-ST-40C,5.5.3.2b,Partially compliant,"R11,R12,R14","tests/ (1479 test functions; Basilisk-backed tests marked requires_basilisk); R11/R12 (Phase 2): requirement markers traced by compliance/tools/build_traceability.py (compliance/traceability_matrix.csv), JUnit test report and coverage produced by .github/workflows/spacemissionstudio.yml",-,,0
 E-ST-40C,5.5.3.2c,Partially compliant,"R11,R12,R14","tests/ (1479 test functions; Basilisk-backed tests marked requires_basilisk); R11/R12 (Phase 2): requirement markers traced by compliance/tools/build_traceability.py (compliance/traceability_matrix.csv), JUnit test report and coverage produced by .github/workflows/spacemissionstudio.yml",-,,0
 E-ST-40C,5.5.4.1a,Partially compliant,"R12,R14","tests/ integration tests against Basilisk 2.12 (test_service_*, test_template_claims.py)",-,,0
 E-ST-40C,5.5.4.2a,Partially compliant,"R12,R14","tests/ integration tests against Basilisk 2.12 (test_service_*, test_template_claims.py)",-,,0
-E-ST-40C,5.6.2.1a,Non-compliant,"R13,R14","HISTORY.md validation notes (e.g. lifetime vs Basilisk decay +/-1%, drag estimate -5% vs 5-year runs)",-,,0
-E-ST-40C,5.6.2.1b,Non-compliant,"R13,R14","HISTORY.md validation notes (e.g. lifetime vs Basilisk decay +/-1%, drag estimate -5% vs 5-year runs)",-,,0
-E-ST-40C,5.6.2.1c,Non-compliant,"R13,R14","HISTORY.md validation notes (e.g. lifetime vs Basilisk decay +/-1%, drag estimate -5% vs 5-year runs)",-,,0
-E-ST-40C,5.6.2.1d,Non-compliant,"R13,R14","HISTORY.md validation notes (e.g. lifetime vs Basilisk decay +/-1%, drag estimate -5% vs 5-year runs)",-,,0
+E-ST-40C,5.6.2.1a,Partially compliant,R14,compliance/docs/SValP.md,-,,0
+E-ST-40C,5.6.2.1b,Partially compliant,R14,compliance/docs/SValP.md,-,,0
+E-ST-40C,5.6.2.1c,Partially compliant,R14,compliance/docs/SValP.md,-,,0
+E-ST-40C,5.6.2.1d,Partially compliant,R14,compliance/docs/SValP.md,-,,0
 E-ST-40C,5.6.3.1a,Partially compliant,"R13,R14,H01,H13","compliance/docs/SValP.md, SVS.md, SVR.md; tests/validation (V-01, V-02, V-04 to V-08 within tolerance)",test,tests/validation/test_v01_time_scales.py::test_tdb_series_reproduces_sofas_own_test_value; tests/validation/test_v01_time_scales.py::test_time_scale_offsets_agree_with_gmat; tests/validation/test_v02_earth_orientation.py::test_erfa_reproduces_the_published_vallado_example; tests/validation/test_v02_earth_orientation.py::test_tool_earth_frame_agrees_with_iers_c04; tests/validation/test_v02_earth_orientation.py::test_tool_earth_frame_reproduces_the_vallado_example; tests/validation/test_v04_propagation.py::test_propagation_agrees_with_gmat; tests/validation/test_v05_passes.py::test_pass_times_agree_with_gmat_contact_locator; tests/validation/test_v06_ccsds_oem.py::test_gmat_reading_the_tool_oem_returns_the_tool_trajectory; tests/validation/test_v06_ccsds_oem.py::test_the_oem_the_tool_writes_conforms; tests/validation/test_v06_ccsds_oem.py::test_tool_reads_and_checks_the_oem_gmat_writes,10
 E-ST-40C,5.6.3.1b,Partially compliant,"R13,R14,H01,H13","compliance/docs/SValP.md, SVS.md, SVR.md; tests/validation (V-01, V-02, V-04 to V-08 within tolerance)",test,tests/validation/test_v01_time_scales.py::test_tdb_series_reproduces_sofas_own_test_value; tests/validation/test_v01_time_scales.py::test_time_scale_offsets_agree_with_gmat; tests/validation/test_v02_earth_orientation.py::test_erfa_reproduces_the_published_vallado_example; tests/validation/test_v02_earth_orientation.py::test_tool_earth_frame_agrees_with_iers_c04; tests/validation/test_v02_earth_orientation.py::test_tool_earth_frame_reproduces_the_vallado_example; tests/validation/test_v04_propagation.py::test_propagation_agrees_with_gmat; tests/validation/test_v05_passes.py::test_pass_times_agree_with_gmat_contact_locator; tests/validation/test_v06_ccsds_oem.py::test_gmat_reading_the_tool_oem_returns_the_tool_trajectory; tests/validation/test_v06_ccsds_oem.py::test_the_oem_the_tool_writes_conforms; tests/validation/test_v06_ccsds_oem.py::test_tool_reads_and_checks_the_oem_gmat_writes,10
 E-ST-40C,5.6.3.1c,Partially compliant,"R13,R14,H01,H13","compliance/docs/SValP.md, SVS.md, SVR.md; tests/validation (V-01, V-02, V-04 to V-08 within tolerance)",test,tests/validation/test_v01_time_scales.py::test_tdb_series_reproduces_sofas_own_test_value; tests/validation/test_v01_time_scales.py::test_time_scale_offsets_agree_with_gmat; tests/validation/test_v02_earth_orientation.py::test_erfa_reproduces_the_published_vallado_example; tests/validation/test_v02_earth_orientation.py::test_tool_earth_frame_agrees_with_iers_c04; tests/validation/test_v02_earth_orientation.py::test_tool_earth_frame_reproduces_the_vallado_example; tests/validation/test_v04_propagation.py::test_propagation_agrees_with_gmat; tests/validation/test_v05_passes.py::test_pass_times_agree_with_gmat_contact_locator; tests/validation/test_v06_ccsds_oem.py::test_gmat_reading_the_tool_oem_returns_the_tool_trajectory; tests/validation/test_v06_ccsds_oem.py::test_the_oem_the_tool_writes_conforms; tests/validation/test_v06_ccsds_oem.py::test_tool_reads_and_checks_the_oem_gmat_writes,10
 E-ST-40C,5.6.3.2a,Partially compliant,"R13,R14,H01,H13","compliance/docs/SValP.md, SVS.md, SVR.md; tests/validation (V-01, V-02, V-04 to V-08 within tolerance)",-,,0
 E-ST-40C,5.6.3.3a,Partially compliant,"R13,R14,H01,H13","compliance/docs/SValP.md, SVS.md, SVR.md; tests/validation (V-01, V-02, V-04 to V-08 within tolerance)",-,,0
-E-ST-40C,5.6.3.4a,Requires human or process action,H01,-,-,,0
-E-ST-40C,5.6.4.1a,Requires human or process action,"H03,H01",compliance/docs/SValP.md 4.1,test,tests/validation/test_v04_propagation.py::test_propagation_agrees_with_gmat,1
-E-ST-40C,5.6.4.1b,Requires human or process action,"H03,H01",compliance/docs/SValP.md 4.1,test,tests/validation/test_v04_propagation.py::test_propagation_agrees_with_gmat,1
-E-ST-40C,5.6.4.1c,Requires human or process action,"H03,H01",compliance/docs/SValP.md 4.1,test,tests/validation/test_v04_propagation.py::test_propagation_agrees_with_gmat,1
-E-ST-40C,5.6.4.2a,Requires human or process action,"H03,H01",compliance/docs/SValP.md 4.1,-,,0
-E-ST-40C,5.6.4.2b,Requires human or process action,"H03,H01",compliance/docs/SValP.md 4.1,-,,0
-E-ST-40C,5.6.4.3a,Requires human or process action,"H03,H01",compliance/docs/SValP.md 4.1,-,,0
-E-ST-40C,5.6.4.4a,Requires human or process action,H01,-,-,,0
+E-ST-40C,5.6.3.4a,Non-compliant,"H01,D-08",-,-,,0
+E-ST-40C,5.6.4.1a,Non-compliant,"H03,D-11",compliance/docs/SValP.md 4.1,test,tests/validation/test_v04_propagation.py::test_propagation_agrees_with_gmat,1
+E-ST-40C,5.6.4.1b,Non-compliant,"H03,D-11",compliance/docs/SValP.md 4.1,test,tests/validation/test_v04_propagation.py::test_propagation_agrees_with_gmat,1
+E-ST-40C,5.6.4.1c,Non-compliant,"H03,D-11",compliance/docs/SValP.md 4.1,test,tests/validation/test_v04_propagation.py::test_propagation_agrees_with_gmat,1
+E-ST-40C,5.6.4.2a,Non-compliant,"H03,D-11",compliance/docs/SValP.md 4.1,-,,0
+E-ST-40C,5.6.4.2b,Non-compliant,"H03,D-11",compliance/docs/SValP.md 4.1,-,,0
+E-ST-40C,5.6.4.3a,Non-compliant,"H03,D-11",compliance/docs/SValP.md 4.1,-,,0
+E-ST-40C,5.6.4.4a,Non-compliant,"H01,D-08",-,-,,0
 E-ST-40C,5.6.5a,Partially compliant,"R14,H01",compliance/docs/SVR.md 4.6 (validation status per case),-,,0
 E-ST-40C,5.7.2.1a,Partially compliant,"R14,H05",packaging/; compliance/docs/SRelD.md,-,,0
-E-ST-40C,5.7.2.1b,Partially compliant,"R15,H05","packaging/build_wheel.sh, build_wheel.ps1, build_deb.sh write SHA-256 checksums (security analysis S-07)",-,,0
+E-ST-40C,5.7.2.1b,Partially compliant,"R15,D-13","packaging/build_wheel.sh, build_wheel.ps1, build_deb.sh write SHA-256 checksums (security analysis S-07)",-,,0
 E-ST-40C,5.7.2.3a,Partially compliant,"R15,H13","packaging/README.md, install scripts; compliance/docs/security_analysis.md section 6; SUM 9.2, 9.9",-,,0
 E-ST-40C,5.7.2.3b,Partially compliant,"R15,H13","packaging/README.md, install scripts; compliance/docs/security_analysis.md section 6; SUM 9.2, 9.9",-,,0
-E-ST-40C,5.7.2.4a,Partially compliant,R14,packaging/ (kernel pre-fetch at install),-,,0
-E-ST-40C,5.7.2.4b,Partially compliant,R14,packaging/ (kernel pre-fetch at install),-,,0
-E-ST-40C,5.7.2.4c,Partially compliant,R14,packaging/ (kernel pre-fetch at install),-,,0
-E-ST-40C,5.7.2.4d,Partially compliant,R14,packaging/ (kernel pre-fetch at install),-,,0
+E-ST-40C,5.7.2.4a,Partially compliant,R14,packaging/ (kernel pre-fetch at install); SUM 9.2,-,,0
+E-ST-40C,5.7.2.4b,Partially compliant,R14,packaging/ (kernel pre-fetch at install); SUM 9.2,-,,0
+E-ST-40C,5.7.2.4c,Partially compliant,R14,packaging/ (kernel pre-fetch at install); SUM 9.2,-,,0
+E-ST-40C,5.7.2.4d,Partially compliant,R14,packaging/ (kernel pre-fetch at install); SUM 9.2,-,,0
 E-ST-40C,5.7.3.1a,Requires human or process action,"H01,H03",-,-,,0
 E-ST-40C,5.7.3.2a,Requires human or process action,"H01,H03",-,-,,0
 E-ST-40C,5.7.3.3a,Requires human or process action,"H01,H03",-,-,,0
@@ -122,82 +122,82 @@ E-ST-40C,5.7.3.4a,Requires human or process action,"H01,H03",-,-,,0
 E-ST-40C,5.7.3.4b,Requires human or process action,"H01,H03",-,-,,0
 E-ST-40C,5.7.3.5a,Requires human or process action,"H01,H03",-,-,,0
 E-ST-40C,5.7.3.6a,Requires human or process action,"H01,H03",-,-,,0
-E-ST-40C,5.8.2.1a,Non-compliant,R14,-,-,,0
-E-ST-40C,5.8.2.1b,Non-compliant,R14,-,-,,0
-E-ST-40C,5.8.2.1c,Non-compliant,R14,-,-,,0
-E-ST-40C,5.8.2.1d,Non-compliant,R14,-,-,,0
-E-ST-40C,5.8.2.1e,Non-compliant,R14,-,-,,0
-E-ST-40C,5.8.3.1a,Requires human or process action,H03,-,-,,0
-E-ST-40C,5.8.3.2a,Non-compliant,R14,-,-,,0
-E-ST-40C,5.8.3.3a,Non-compliant,R14,-,-,,0
-E-ST-40C,5.8.3.4a,Non-compliant,R14,-,-,,0
+E-ST-40C,5.8.2.1a,Partially compliant,R14,compliance/docs/SVerP.md,-,,0
+E-ST-40C,5.8.2.1b,Partially compliant,R14,compliance/docs/SVerP.md,-,,0
+E-ST-40C,5.8.2.1c,Partially compliant,R14,compliance/docs/SVerP.md,-,,0
+E-ST-40C,5.8.2.1d,Partially compliant,R14,compliance/docs/SVerP.md,-,,0
+E-ST-40C,5.8.2.1e,Partially compliant,R14,compliance/docs/SVerP.md,-,,0
+E-ST-40C,5.8.3.1a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,5.8.3.2a,Partially compliant,"R14,H06",compliance/docs/SVR.md (verification by the supplier),-,,0
+E-ST-40C,5.8.3.3a,Partially compliant,"R14,H06",compliance/docs/SVR.md (verification by the supplier),-,,0
+E-ST-40C,5.8.3.4a,Partially compliant,"R14,H06",compliance/docs/SVR.md (verification by the supplier),-,,0
 E-ST-40C,5.8.3.5a,Partially compliant,"R10,R14,H06","R10 (Phase 2): ruff rule set configured in pyproject.toml, zero findings, run by .github/workflows/spacemissionstudio.yml; tests",-,,0
 E-ST-40C,5.8.3.5b,Partially compliant,"R11,H09",R11 (Phase 2): statement and branch coverage measured by pytest-cov in .github/workflows/spacemissionstudio.yml (statement coverage >= 90 % enforced by metrics.py --fail-under 90) and reported in compliance/metrics.md,-,,0
 E-ST-40C,5.8.3.5c,Compliant,R11,"R11 (Phase 2): coverage measured from the execution of the test suite (pytest-cov, .github/workflows/spacemissionstudio.yml; compliance/metrics.md)",inspection of the evidence,,0
 E-ST-40C,5.8.3.5d,Partially compliant,"R11,R14",R11 (Phase 2): coding standard rule C-10 requires inspection of code not reached by tests,-,,0
 E-ST-40C,5.8.3.5f,Partially compliant,"R10,R14","R10 (Phase 2): ruff (pyflakes, pycodestyle, bugbear; complexity C901) configured in pyproject.toml, zero findings, run in .github/workflows/spacemissionstudio.yml; security rules (ruff S) reviewed in R15",-,,0
-E-ST-40C,5.8.3.8a,Non-compliant,R14,-,-,,0
-E-ST-40C,5.8.3.8b,Non-compliant,R14,-,-,,0
-E-ST-40C,5.8.3.9a,Non-compliant,R14,-,-,,0
-E-ST-40C,5.8.3.10a,Non-compliant,R14,-,-,,0
+E-ST-40C,5.8.3.8a,Partially compliant,"R14,H06",compliance/docs/SVR.md (verification by the supplier),-,,0
+E-ST-40C,5.8.3.8b,Partially compliant,"R14,H06",compliance/docs/SVR.md (verification by the supplier),-,,0
+E-ST-40C,5.8.3.9a,Partially compliant,"R14,H06",compliance/docs/SVR.md (verification by the supplier),-,,0
+E-ST-40C,5.8.3.10a,Partially compliant,"R14,H06",compliance/docs/SVR.md (verification by the supplier),-,,0
 E-ST-40C,5.8.3.12a,Non-compliant,R14,-,-,,0
 E-ST-40C,5.8.3.12b,Non-compliant,R14,-,-,,0
 E-ST-40C,5.8.3.12c,Non-compliant,R14,-,-,,0
-E-ST-40C,5.9.2.1a,Requires human or process action,H05,USER_MANUAL.md,-,,0
-E-ST-40C,5.9.2.2a,Requires human or process action,H05,USER_MANUAL.md,-,,0
-E-ST-40C,5.9.2.3a,Requires human or process action,H05,USER_MANUAL.md,-,,0
-E-ST-40C,5.9.2.3b,Requires human or process action,H05,USER_MANUAL.md,-,,0
-E-ST-40C,5.9.3.1a,Requires human or process action,H05,USER_MANUAL.md,-,,0
-E-ST-40C,5.9.3.2a,Requires human or process action,H05,USER_MANUAL.md,-,,0
-E-ST-40C,5.9.3.3a,Requires human or process action,H05,USER_MANUAL.md,-,,0
-E-ST-40C,5.9.4.1a,Requires human or process action,H05,USER_MANUAL.md,-,,0
-E-ST-40C,5.9.4.2a,Requires human or process action,H05,USER_MANUAL.md,-,,0
-E-ST-40C,5.9.4.3a,Requires human or process action,H05,USER_MANUAL.md,-,,0
-E-ST-40C,5.9.5.1a,Requires human or process action,H05,USER_MANUAL.md,-,,0
-E-ST-40C,5.9.5.1b,Requires human or process action,H05,USER_MANUAL.md,-,,0
-E-ST-40C,5.9.5.2a,Requires human or process action,H05,USER_MANUAL.md,-,,0
-E-ST-40C,5.9.5.2b,Requires human or process action,H05,USER_MANUAL.md,-,,0
-E-ST-40C,5.9.5.2c,Requires human or process action,H05,USER_MANUAL.md,-,,0
-E-ST-40C,5.9.5.3a,Requires human or process action,H05,USER_MANUAL.md,-,,0
-E-ST-40C,5.9.5.3b,Requires human or process action,H05,USER_MANUAL.md,-,,0
-E-ST-40C,5.10.2.1a,Requires human or process action,"H05,R14",git history; HISTORY.md,-,,0
-E-ST-40C,5.10.2.1b,Requires human or process action,"H05,R14",git history; HISTORY.md,-,,0
-E-ST-40C,5.10.2.1c,Requires human or process action,"H05,R14",git history; HISTORY.md,-,,0
-E-ST-40C,5.10.2.1d,Requires human or process action,"H05,R14",git history; HISTORY.md,-,,0
-E-ST-40C,5.10.2.1e,Requires human or process action,"H05,R14",git history; HISTORY.md,-,,0
-E-ST-40C,5.10.2.1f,Requires human or process action,"H05,R14",git history; HISTORY.md,-,,0
-E-ST-40C,5.10.2.2a,Requires human or process action,"H05,R14",git history; HISTORY.md,-,,0
-E-ST-40C,5.10.3.1a,Requires human or process action,"H05,R14",git history; HISTORY.md,-,,0
-E-ST-40C,5.10.3.1b,Requires human or process action,"H05,R14",git history; HISTORY.md,-,,0
-E-ST-40C,5.10.3.1c,Requires human or process action,"H05,R14",git history; HISTORY.md,-,,0
-E-ST-40C,5.10.3.1d,Requires human or process action,"H05,R14",git history; HISTORY.md,-,,0
-E-ST-40C,5.10.3.1e,Requires human or process action,"H05,R14",git history; HISTORY.md,-,,0
-E-ST-40C,5.10.4.1a,Requires human or process action,"H05,R14",git history; HISTORY.md,-,,0
-E-ST-40C,5.10.4.2a,Requires human or process action,"H05,R14",git history; HISTORY.md,-,,0
-E-ST-40C,5.10.4.3a,Requires human or process action,"H05,R14",git history; HISTORY.md,-,,0
-E-ST-40C,5.10.4.3b,Requires human or process action,"H05,R14",git history; HISTORY.md,-,,0
-E-ST-40C,5.10.4.3c,Requires human or process action,"H05,R14",git history; HISTORY.md,-,,0
-E-ST-40C,5.10.4.3d,Requires human or process action,"H05,R14",git history; HISTORY.md,-,,0
-E-ST-40C,5.10.4.3e,Requires human or process action,"H05,R14",git history; HISTORY.md,-,,0
-E-ST-40C,5.10.5.1a,Requires human or process action,"H05,R14",git history; HISTORY.md,-,,0
-E-ST-40C,5.10.5.2a,Requires human or process action,"H05,R14",git history; HISTORY.md,-,,0
-E-ST-40C,5.10.6.1a,Requires human or process action,"H05,R14",git history; HISTORY.md,-,,0
-E-ST-40C,5.10.6.2a,Requires human or process action,"H05,R14",git history; HISTORY.md,-,,0
-E-ST-40C,5.10.6.3a,Requires human or process action,"H05,R14",git history; HISTORY.md,-,,0
-E-ST-40C,5.10.6.4a,Requires human or process action,"H05,R14",git history; HISTORY.md,-,,0
-E-ST-40C,5.10.6.5a,Requires human or process action,"H05,R14",git history; HISTORY.md,-,,0
-E-ST-40C,5.10.6.5b,Requires human or process action,"H05,R14",git history; HISTORY.md,-,,0
-E-ST-40C,5.10.6.6a,Requires human or process action,"H05,R14",git history; HISTORY.md,-,,0
-E-ST-40C,5.10.6.6b,Requires human or process action,"H05,R14",git history; HISTORY.md,-,,0
-E-ST-40C,5.10.6.7a,Requires human or process action,"H05,R14",git history; HISTORY.md,-,,0
-E-ST-40C,5.10.7.1a,Requires human or process action,"H05,R14",git history; HISTORY.md,-,,0
-E-ST-40C,5.10.7.2a,Requires human or process action,"H05,R14",git history; HISTORY.md,-,,0
-E-ST-40C,5.10.7.3a,Requires human or process action,"H05,R14",git history; HISTORY.md,-,,0
-E-ST-40C,5.10.7.4a,Requires human or process action,"H05,R14",git history; HISTORY.md,-,,0
-E-ST-40C,5.11.2a,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
-E-ST-40C,5.11.2b,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
-E-ST-40C,5.11.2c,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
-E-ST-40C,5.11.2d,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
+E-ST-40C,5.9.2.1a,Non-compliant,"H05,D-12",compliance/docs/SMP.md 7.2 (best effort),-,,0
+E-ST-40C,5.9.2.2a,Non-compliant,"H05,D-12",compliance/docs/SMP.md 7.2 (best effort),-,,0
+E-ST-40C,5.9.2.3a,Non-compliant,"H05,D-12",compliance/docs/SMP.md 7.2 (best effort),-,,0
+E-ST-40C,5.9.2.3b,Non-compliant,"H05,D-12",compliance/docs/SMP.md 7.2 (best effort),-,,0
+E-ST-40C,5.9.3.1a,Non-compliant,"H05,D-12",compliance/docs/SMP.md 7.2 (best effort),-,,0
+E-ST-40C,5.9.3.2a,Non-compliant,"H05,D-12",compliance/docs/SMP.md 7.2 (best effort),-,,0
+E-ST-40C,5.9.3.3a,Non-compliant,"H05,D-12",compliance/docs/SMP.md 7.2 (best effort),-,,0
+E-ST-40C,5.9.4.1a,Non-compliant,"H05,D-12",compliance/docs/SMP.md 7.2 (best effort),-,,0
+E-ST-40C,5.9.4.2a,Non-compliant,"H05,D-12",compliance/docs/SMP.md 7.2 (best effort),-,,0
+E-ST-40C,5.9.4.3a,Non-compliant,"H05,D-12",compliance/docs/SMP.md 7.2 (best effort),-,,0
+E-ST-40C,5.9.5.1a,Non-compliant,"H05,D-12",compliance/docs/SMP.md 7.2 (best effort),-,,0
+E-ST-40C,5.9.5.1b,Non-compliant,"H05,D-12",compliance/docs/SMP.md 7.2 (best effort),-,,0
+E-ST-40C,5.9.5.2a,Non-compliant,"H05,D-12",compliance/docs/SMP.md 7.2 (best effort),-,,0
+E-ST-40C,5.9.5.2b,Non-compliant,"H05,D-12",compliance/docs/SMP.md 7.2 (best effort),-,,0
+E-ST-40C,5.9.5.2c,Non-compliant,"H05,D-12",compliance/docs/SMP.md 7.2 (best effort),-,,0
+E-ST-40C,5.9.5.3a,Non-compliant,"H05,D-12",compliance/docs/SMP.md 7.2 (best effort),-,,0
+E-ST-40C,5.9.5.3b,Non-compliant,"H05,D-12",compliance/docs/SMP.md 7.2 (best effort),-,,0
+E-ST-40C,5.10.2.1a,Partially compliant,"R14,H05","compliance/docs/SMP.md (process; problem reports as GitHub issues, decision 11)",-,,0
+E-ST-40C,5.10.2.1b,Partially compliant,"R14,H05","compliance/docs/SMP.md (process; problem reports as GitHub issues, decision 11)",-,,0
+E-ST-40C,5.10.2.1c,Partially compliant,"R14,H05","compliance/docs/SMP.md (process; problem reports as GitHub issues, decision 11)",-,,0
+E-ST-40C,5.10.2.1d,Partially compliant,"R14,H05","compliance/docs/SMP.md (process; problem reports as GitHub issues, decision 11)",-,,0
+E-ST-40C,5.10.2.1e,Partially compliant,"R14,H05","compliance/docs/SMP.md (process; problem reports as GitHub issues, decision 11)",-,,0
+E-ST-40C,5.10.2.1f,Partially compliant,"R14,H05","compliance/docs/SMP.md (process; problem reports as GitHub issues, decision 11)",-,,0
+E-ST-40C,5.10.2.2a,Partially compliant,"R14,H05","compliance/docs/SMP.md (process; problem reports as GitHub issues, decision 11)",-,,0
+E-ST-40C,5.10.3.1a,Partially compliant,"R14,H05","compliance/docs/SMP.md (process; problem reports as GitHub issues, decision 11)",-,,0
+E-ST-40C,5.10.3.1b,Partially compliant,"R14,H05","compliance/docs/SMP.md (process; problem reports as GitHub issues, decision 11)",-,,0
+E-ST-40C,5.10.3.1c,Partially compliant,"R14,H05","compliance/docs/SMP.md (process; problem reports as GitHub issues, decision 11)",-,,0
+E-ST-40C,5.10.3.1d,Partially compliant,"R14,H05","compliance/docs/SMP.md (process; problem reports as GitHub issues, decision 11)",-,,0
+E-ST-40C,5.10.3.1e,Partially compliant,"R14,H05","compliance/docs/SMP.md (process; problem reports as GitHub issues, decision 11)",-,,0
+E-ST-40C,5.10.4.1a,Partially compliant,"R14,H05","compliance/docs/SMP.md (process; problem reports as GitHub issues, decision 11)",-,,0
+E-ST-40C,5.10.4.2a,Partially compliant,"R14,H05","compliance/docs/SMP.md (process; problem reports as GitHub issues, decision 11)",-,,0
+E-ST-40C,5.10.4.3a,Partially compliant,"R14,H05","compliance/docs/SMP.md (process; problem reports as GitHub issues, decision 11)",-,,0
+E-ST-40C,5.10.4.3b,Partially compliant,"R14,H05","compliance/docs/SMP.md (process; problem reports as GitHub issues, decision 11)",-,,0
+E-ST-40C,5.10.4.3c,Partially compliant,"R14,H05","compliance/docs/SMP.md (process; problem reports as GitHub issues, decision 11)",-,,0
+E-ST-40C,5.10.4.3d,Partially compliant,"R14,H05","compliance/docs/SMP.md (process; problem reports as GitHub issues, decision 11)",-,,0
+E-ST-40C,5.10.4.3e,Partially compliant,"R14,H05","compliance/docs/SMP.md (process; problem reports as GitHub issues, decision 11)",-,,0
+E-ST-40C,5.10.5.1a,Partially compliant,"R14,H05","compliance/docs/SMP.md (process; problem reports as GitHub issues, decision 11)",-,,0
+E-ST-40C,5.10.5.2a,Partially compliant,"R14,H05","compliance/docs/SMP.md (process; problem reports as GitHub issues, decision 11)",-,,0
+E-ST-40C,5.10.6.1a,Partially compliant,"R14,H05","compliance/docs/SMP.md (process; problem reports as GitHub issues, decision 11)",-,,0
+E-ST-40C,5.10.6.2a,Partially compliant,"R14,H05","compliance/docs/SMP.md (process; problem reports as GitHub issues, decision 11)",-,,0
+E-ST-40C,5.10.6.3a,Partially compliant,"R14,H05","compliance/docs/SMP.md (process; problem reports as GitHub issues, decision 11)",-,,0
+E-ST-40C,5.10.6.4a,Partially compliant,"R14,H05","compliance/docs/SMP.md (process; problem reports as GitHub issues, decision 11)",-,,0
+E-ST-40C,5.10.6.5a,Partially compliant,"R14,H05","compliance/docs/SMP.md (process; problem reports as GitHub issues, decision 11)",-,,0
+E-ST-40C,5.10.6.5b,Partially compliant,"R14,H05","compliance/docs/SMP.md (process; problem reports as GitHub issues, decision 11)",-,,0
+E-ST-40C,5.10.6.6a,Partially compliant,"R14,H05","compliance/docs/SMP.md (process; problem reports as GitHub issues, decision 11)",-,,0
+E-ST-40C,5.10.6.6b,Partially compliant,"R14,H05","compliance/docs/SMP.md (process; problem reports as GitHub issues, decision 11)",-,,0
+E-ST-40C,5.10.6.7a,Partially compliant,"R14,H05","compliance/docs/SMP.md (process; problem reports as GitHub issues, decision 11)",-,,0
+E-ST-40C,5.10.7.1a,Partially compliant,"R14,H05","compliance/docs/SMP.md (process; problem reports as GitHub issues, decision 11)",-,,0
+E-ST-40C,5.10.7.2a,Partially compliant,"R14,H05","compliance/docs/SMP.md (process; problem reports as GitHub issues, decision 11)",-,,0
+E-ST-40C,5.10.7.3a,Partially compliant,"R14,H05","compliance/docs/SMP.md (process; problem reports as GitHub issues, decision 11)",-,,0
+E-ST-40C,5.10.7.4a,Partially compliant,"R14,H05","compliance/docs/SMP.md (process; problem reports as GitHub issues, decision 11)",-,,0
+E-ST-40C,5.11.2a,Non-compliant,"H02,D-10",-,-,,0
+E-ST-40C,5.11.2b,Non-compliant,"H02,D-10",-,-,,0
+E-ST-40C,5.11.2c,Non-compliant,"H02,D-10",-,-,,0
+E-ST-40C,5.11.2d,Non-compliant,"H02,D-10",-,-,,0
 E-ST-40C,5.11.3a,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
 E-ST-40C,5.11.3b,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
 E-ST-40C,5.11.3c,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
@@ -244,70 +244,70 @@ E-ST-40C,5.11.5.6f,Partially compliant,"R15,H01,H11","compliance/docs/security_a
 E-ST-40C,5.11.5.6g,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
 E-ST-40C,5.11.5.6h,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
 E-ST-40C,5.11.5.6i,Partially compliant,"R15,H01,H11","compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI",-,,0
-E-ST-40C,B.2.1<1>a,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,B.2.1<2>a,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,B.2.1<3>a,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,B.2.1<4.1>a,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,B.2.1<4.1>b,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,B.2.1<4.2>a,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,B.2.1<4.3>a,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,B.2.1<4.4>a,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,B.2.1<4.4>b,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,B.2.1<4.4>c,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,B.2.1<4.4>d,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,B.2.1<4.4>e,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,B.2.1<4.4>f,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,B.2.1<4.5>a,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,B.2.1<5.1>a,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,B.2.1<5.1>b,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,B.2.1<5.1>c,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,B.2.1<5.2>a,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,B.2.1<5.2>b,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,B.2.1<5.2>c,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,B.2.1<5.2>d,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,B.2.1<5.2>e,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,B.2.1<5.3>a,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,B.2.1<5.3>b,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,B.2.1<5.4>a,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,B.2.1<5.5.1>a,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,B.2.1<5.5.2>a,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,B.2.1<5.5.3>a,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,B.2.1<5.6>a,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,B.2.1<5.7>a,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,B.2.1<5.8>a,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,B.2.1<5.9>a,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,B.2.1<5.10>a,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,B.2.1<5.10>b,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,B.2.1<5.11>a,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,B.2.1<5.12>a,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,B.2.1<5.13>a,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,B.2.1<5.14>a,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,B.2.1<5.15>a,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,B.2.1<6.1>a,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,B.2.1<6.1>b,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,B.2.1<6.2>a,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,B.2.1<6.3>a,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,B.2.1<6.3>b,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,B.2.1<6.3>c,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,B.2.1<6.4>a,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,B.2.1<7>a,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,C.2.1<1>a,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,C.2.1<2>a,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,C.2.1<3>a,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,C.2.1<4.1>a,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,C.2.1<4.2>a,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,C.2.1<4.3>a,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,C.2.1<4.3>b,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,C.2.1<4.3>c,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,C.2.1<4.3>d,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,C.2.1<4.4>a,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,C.2.1<5.1>a,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,C.2.1<5.2>a,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,C.2.1<5.3>a,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,C.2.1<5.4>a,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,C.2.1<6>a,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,C.2.1<6>b,Non-compliant,"H03,R14",-,-,,0
-E-ST-40C,C.2.1<6>c,Non-compliant,"H03,R14",-,-,,0
+E-ST-40C,B.2.1<1>a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,B.2.1<2>a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,B.2.1<3>a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,B.2.1<4.1>a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,B.2.1<4.1>b,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,B.2.1<4.2>a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,B.2.1<4.3>a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,B.2.1<4.4>a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,B.2.1<4.4>b,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,B.2.1<4.4>c,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,B.2.1<4.4>d,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,B.2.1<4.4>e,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,B.2.1<4.4>f,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,B.2.1<4.5>a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,B.2.1<5.1>a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,B.2.1<5.1>b,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,B.2.1<5.1>c,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,B.2.1<5.2>a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,B.2.1<5.2>b,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,B.2.1<5.2>c,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,B.2.1<5.2>d,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,B.2.1<5.2>e,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,B.2.1<5.3>a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,B.2.1<5.3>b,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,B.2.1<5.4>a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,B.2.1<5.5.1>a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,B.2.1<5.5.2>a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,B.2.1<5.5.3>a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,B.2.1<5.6>a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,B.2.1<5.7>a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,B.2.1<5.8>a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,B.2.1<5.9>a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,B.2.1<5.10>a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,B.2.1<5.10>b,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,B.2.1<5.11>a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,B.2.1<5.12>a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,B.2.1<5.13>a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,B.2.1<5.14>a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,B.2.1<5.15>a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,B.2.1<6.1>a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,B.2.1<6.1>b,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,B.2.1<6.2>a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,B.2.1<6.3>a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,B.2.1<6.3>b,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,B.2.1<6.3>c,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,B.2.1<6.4>a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,B.2.1<7>a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,C.2.1<1>a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,C.2.1<2>a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,C.2.1<3>a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,C.2.1<4.1>a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,C.2.1<4.2>a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,C.2.1<4.3>a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,C.2.1<4.3>b,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,C.2.1<4.3>c,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,C.2.1<4.3>d,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,C.2.1<4.4>a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,C.2.1<5.1>a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,C.2.1<5.2>a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,C.2.1<5.3>a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,C.2.1<5.4>a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,C.2.1<6>a,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,C.2.1<6>b,Non-compliant,"H03,D-11",-,-,,0
+E-ST-40C,C.2.1<6>c,Non-compliant,"H03,D-11",-,-,,0
 E-ST-40C,D.2.1<1>a,Compliant,R14,compliance/docs/SRS.md section 1 (introduction),inspection of the evidence,,0
 E-ST-40C,D.2.1<2>a,Compliant,R14,compliance/docs/SRS.md section 2 (applicable and reference documents),inspection of the evidence,,0
 E-ST-40C,D.2.1<3>a,Compliant,R14,compliance/docs/SRS.md section 3 (terms),inspection of the evidence,,0
@@ -757,37 +757,37 @@ Q-ST-80C,5.1.3.1a,Requires human or process action,H02,-,-,,0
 Q-ST-80C,5.1.3.2a,Requires human or process action,H02,-,-,,0
 Q-ST-80C,5.1.4.1a,Requires human or process action,H02,-,-,,0
 Q-ST-80C,5.1.4.2a,Requires human or process action,H02,-,-,,0
-Q-ST-80C,5.1.5.1a,Requires human or process action,H02,-,-,,0
-Q-ST-80C,5.1.5.2a,Requires human or process action,H02,-,-,,0
-Q-ST-80C,5.1.5.3a,Requires human or process action,H02,-,-,,0
-Q-ST-80C,5.1.5.4a,Requires human or process action,H02,-,-,,0
-Q-ST-80C,5.1.5.4b,Requires human or process action,H02,-,-,,0
-Q-ST-80C,5.2.1.1a,Non-compliant,"R14,H02",-,-,,0
-Q-ST-80C,5.2.1.1b,Non-compliant,"R14,H02",-,-,,0
-Q-ST-80C,5.2.1.2a,Non-compliant,"R14,H02",-,-,,0
-Q-ST-80C,5.2.1.3a,Non-compliant,"R14,H02",-,-,,0
-Q-ST-80C,5.2.1.4a,Non-compliant,"R14,H02",-,-,,0
-Q-ST-80C,5.2.1.5a,Non-compliant,"R14,H02",-,-,,0
-Q-ST-80C,5.2.1.5b,Non-compliant,"R14,H02",-,-,,0
-Q-ST-80C,5.2.2.1a,Requires human or process action,H02,-,-,,0
-Q-ST-80C,5.2.2.2a,Requires human or process action,H02,-,-,,0
-Q-ST-80C,5.2.2.3a,Requires human or process action,H02,-,-,,0
+Q-ST-80C,5.1.5.1a,Non-compliant,"H02,D-09",-,-,,0
+Q-ST-80C,5.1.5.2a,Non-compliant,"H02,D-09",-,-,,0
+Q-ST-80C,5.1.5.3a,Non-compliant,"H02,D-09",-,-,,0
+Q-ST-80C,5.1.5.4a,Non-compliant,"H02,D-09",-,-,,0
+Q-ST-80C,5.1.5.4b,Non-compliant,"H02,D-09",-,-,,0
+Q-ST-80C,5.2.1.1a,Partially compliant,"R14,H02",compliance/docs/SPAP.md (outline),-,,0
+Q-ST-80C,5.2.1.1b,Partially compliant,"R14,H02",compliance/docs/SPAP.md (outline),-,,0
+Q-ST-80C,5.2.1.2a,Partially compliant,"R14,H02",compliance/docs/SPAP.md (outline),-,,0
+Q-ST-80C,5.2.1.3a,Partially compliant,"R14,H02",compliance/docs/SPAP.md (outline),-,,0
+Q-ST-80C,5.2.1.4a,Partially compliant,"R14,H02",compliance/docs/SPAP.md (outline),-,,0
+Q-ST-80C,5.2.1.5a,Partially compliant,"R14,H02",compliance/docs/SPAP.md (outline),-,,0
+Q-ST-80C,5.2.1.5b,Partially compliant,"R14,H02",compliance/docs/SPAP.md (outline),-,,0
+Q-ST-80C,5.2.2.1a,Requires human or process action,H02,compliance/docs/SPAMR.md (the audit's report),-,,0
+Q-ST-80C,5.2.2.2a,Requires human or process action,H02,compliance/docs/SPAMR.md (the audit's report),-,,0
+Q-ST-80C,5.2.2.3a,Requires human or process action,H02,compliance/docs/SPAMR.md (the audit's report),-,,0
 Q-ST-80C,5.2.3a,Requires human or process action,H02,-,-,,0
 Q-ST-80C,5.2.4a,Requires human or process action,H05,-,-,,0
-Q-ST-80C,5.2.5.1a,Requires human or process action,H05,git history (fixes described in commits/HISTORY.md),-,,0
-Q-ST-80C,5.2.5.2a,Requires human or process action,H05,git history (fixes described in commits/HISTORY.md),-,,0
-Q-ST-80C,5.2.5.3a,Requires human or process action,H05,git history (fixes described in commits/HISTORY.md),-,,0
-Q-ST-80C,5.2.5.4a,Requires human or process action,H05,git history (fixes described in commits/HISTORY.md),-,,0
-Q-ST-80C,5.2.6.1a,Requires human or process action,H05,-,-,,0
-Q-ST-80C,5.2.6.1b,Requires human or process action,H05,-,-,,0
-Q-ST-80C,5.2.6.1c,Requires human or process action,H05,-,-,,0
-Q-ST-80C,5.2.6.1d,Requires human or process action,H05,-,-,,0
-Q-ST-80C,5.2.6.2a,Requires human or process action,H05,-,-,,0
-Q-ST-80C,5.2.7.1a,Non-compliant,R14,-,-,,0
-Q-ST-80C,5.2.7.2a,Non-compliant,R14,-,-,,0
-Q-ST-80C,5.3.1a,Requires human or process action,H05,-,-,,0
-Q-ST-80C,5.3.2.1a,Requires human or process action,H05,-,-,,0
-Q-ST-80C,5.3.2.2a,Requires human or process action,H05,-,-,,0
+Q-ST-80C,5.2.5.1a,Partially compliant,H05,"compliance/docs/SMP.md 10.1 (GitHub issues with labels, decision 11)",-,,0
+Q-ST-80C,5.2.5.2a,Partially compliant,H05,"compliance/docs/SMP.md 10.1 (GitHub issues with labels, decision 11)",-,,0
+Q-ST-80C,5.2.5.3a,Partially compliant,H05,"compliance/docs/SMP.md 10.1 (GitHub issues with labels, decision 11)",-,,0
+Q-ST-80C,5.2.5.4a,Partially compliant,H05,"compliance/docs/SMP.md 10.1 (GitHub issues with labels, decision 11)",-,,0
+Q-ST-80C,5.2.6.1a,Partially compliant,H05,"compliance/docs/SMP.md 12, 13 (nonconformances handled as issues)",-,,0
+Q-ST-80C,5.2.6.1b,Partially compliant,H05,"compliance/docs/SMP.md 12, 13 (nonconformances handled as issues)",-,,0
+Q-ST-80C,5.2.6.1c,Partially compliant,H05,"compliance/docs/SMP.md 12, 13 (nonconformances handled as issues)",-,,0
+Q-ST-80C,5.2.6.1d,Partially compliant,H05,"compliance/docs/SMP.md 12, 13 (nonconformances handled as issues)",-,,0
+Q-ST-80C,5.2.6.2a,Partially compliant,H05,"compliance/docs/SMP.md 12, 13 (nonconformances handled as issues)",-,,0
+Q-ST-80C,5.2.7.1a,Partially compliant,"R14,H09","compliance/docs/SRS.md 5.10 (SRS-Q-01 to Q-03), SPAP.md 5.5",-,,0
+Q-ST-80C,5.2.7.2a,Partially compliant,"R14,H09","compliance/docs/SRS.md 5.10 (SRS-Q-01 to Q-03), SPAP.md 5.5",-,,0
+Q-ST-80C,5.3.1a,Non-compliant,"H05,D-12","Technical risks logged as findings F-nn, S-nn, K-nn",-,,0
+Q-ST-80C,5.3.2.1a,Non-compliant,"H05,D-12","Technical risks logged as findings F-nn, S-nn, K-nn",-,,0
+Q-ST-80C,5.3.2.2a,Non-compliant,"H05,D-12","Technical risks logged as findings F-nn, S-nn, K-nn",-,,0
 Q-ST-80C,5.4.1.1a,Requires human or process action,H07,-,-,,0
 Q-ST-80C,5.4.1.2a,Requires human or process action,H07,-,-,,0
 Q-ST-80C,5.4.2.1a,Requires human or process action,H07,-,-,,0
@@ -796,7 +796,7 @@ Q-ST-80C,5.4.3.1a,Requires human or process action,H07,-,-,,0
 Q-ST-80C,5.4.3.2a,Requires human or process action,H07,-,-,,0
 Q-ST-80C,5.4.3.3a,Requires human or process action,H07,-,-,,0
 Q-ST-80C,5.4.3.4a,Requires human or process action,H07,-,-,,0
-Q-ST-80C,5.4.4a,Partially compliant,H04,"compliance/phase0_tailoring.md (category C, user-approved 2026-10-08)",-,,0
+Q-ST-80C,5.4.4a,Partially compliant,"H04,H12","compliance/docs/dependability_safety_analysis.md section 1 (category C signed off by the user, decision 10)",-,,0
 Q-ST-80C,5.4.5a,Requires human or process action,H07,-,-,,0
 Q-ST-80C,5.5.1a,Requires human or process action,"H07,R01",pyproject.toml dependencies,-,,0
 Q-ST-80C,5.5.2a,Requires human or process action,"H07,R01",pyproject.toml dependencies,-,,0
@@ -810,48 +810,48 @@ Q-ST-80C,5.6.1.3a,Partially compliant,R14,"pyproject.toml (Python, pytest, pytes
 Q-ST-80C,5.6.2.1a,Partially compliant,R14,"pyproject.toml (Python, pytest, pytest-qt); ruff",-,,0
 Q-ST-80C,5.6.2.2a,Partially compliant,R14,"pyproject.toml (Python, pytest, pytest-qt); ruff",-,,0
 Q-ST-80C,5.6.2.3a,Partially compliant,R14,"pyproject.toml (Python, pytest, pytest-qt); ruff",-,,0
-Q-ST-80C,5.7.1a,Requires human or process action,H02,-,-,,0
-Q-ST-80C,5.7.2.1a,Requires human or process action,H02,-,-,,0
-Q-ST-80C,5.7.2.2a,Requires human or process action,H02,-,-,,0
-Q-ST-80C,5.7.2.3a,Requires human or process action,H02,-,-,,0
-Q-ST-80C,5.7.2.4a,Requires human or process action,H02,-,-,,0
-Q-ST-80C,5.7.3.1a,Requires human or process action,H02,-,-,,0
-Q-ST-80C,5.7.3.1b,Requires human or process action,H02,-,-,,0
-Q-ST-80C,5.7.3.2a,Requires human or process action,H02,-,-,,0
-Q-ST-80C,5.7.3.3a,Requires human or process action,H02,-,-,,0
-Q-ST-80C,6.1.1a,Non-compliant,R14,-,-,,0
-Q-ST-80C,6.1.1b,Non-compliant,R14,-,-,,0
-Q-ST-80C,6.1.2a,Non-compliant,R14,-,-,,0
-Q-ST-80C,6.1.3a,Non-compliant,R14,-,-,,0
-Q-ST-80C,6.1.4a,Non-compliant,R14,-,-,,0
-Q-ST-80C,6.1.4b,Non-compliant,R14,-,-,,0
-Q-ST-80C,6.1.5a,Non-compliant,R14,-,-,,0
-Q-ST-80C,6.2.1.1a,Non-compliant,R14,-,-,,0
-Q-ST-80C,6.2.1.2a,Non-compliant,R14,-,-,,0
-Q-ST-80C,6.2.1.3a,Non-compliant,R14,-,-,,0
-Q-ST-80C,6.2.1.4a,Non-compliant,R14,-,-,,0
-Q-ST-80C,6.2.1.5a,Non-compliant,R14,-,-,,0
-Q-ST-80C,6.2.1.6a,Non-compliant,R14,-,-,,0
-Q-ST-80C,6.2.1.7a,Non-compliant,R14,-,-,,0
-Q-ST-80C,6.2.1.8a,Non-compliant,R14,-,-,,0
-Q-ST-80C,6.2.1.9a,Non-compliant,R14,-,-,,0
-Q-ST-80C,6.2.2.1a,Partially compliant,H04,compliance/phase0_tailoring.md,-,,0
-Q-ST-80C,6.2.2.2a,Requires human or process action,H04,-,-,,0
-Q-ST-80C,6.2.2.3a,Requires human or process action,H04,-,-,,0
-Q-ST-80C,6.2.2.3b,Requires human or process action,H04,-,-,,0
-Q-ST-80C,6.2.2.4a,Requires human or process action,H04,-,-,,0
-Q-ST-80C,6.2.2.5a,Requires human or process action,H04,-,-,,0
-Q-ST-80C,6.2.2.6a,Requires human or process action,H04,-,-,,0
-Q-ST-80C,6.2.2.7a,Requires human or process action,H04,-,-,,0
-Q-ST-80C,6.2.2.8a,Requires human or process action,H04,-,-,,0
-Q-ST-80C,6.2.2.9a,Requires human or process action,H04,-,-,,0
-Q-ST-80C,6.2.2.10a,Requires human or process action,H04,-,-,,0
-Q-ST-80C,6.2.3.2a,Requires human or process action,H04,-,-,,0
-Q-ST-80C,6.2.3.3a,Requires human or process action,H04,-,-,,0
-Q-ST-80C,6.2.3.4a,Requires human or process action,H04,-,-,,0
-Q-ST-80C,6.2.3.5a,Requires human or process action,H04,-,-,,0
-Q-ST-80C,6.2.3.6a,Requires human or process action,H04,-,-,,0
-Q-ST-80C,6.2.3.8a,Requires human or process action,H04,-,-,,0
+Q-ST-80C,5.7.1a,Non-compliant,"H02,D-09",-,-,,0
+Q-ST-80C,5.7.2.1a,Non-compliant,"H02,D-09",-,-,,0
+Q-ST-80C,5.7.2.2a,Non-compliant,"H02,D-09",-,-,,0
+Q-ST-80C,5.7.2.3a,Non-compliant,"H02,D-09",-,-,,0
+Q-ST-80C,5.7.2.4a,Non-compliant,"H02,D-09",-,-,,0
+Q-ST-80C,5.7.3.1a,Non-compliant,"H02,D-09",-,-,,0
+Q-ST-80C,5.7.3.1b,Non-compliant,"H02,D-09",-,-,,0
+Q-ST-80C,5.7.3.2a,Non-compliant,"H02,D-09",-,-,,0
+Q-ST-80C,5.7.3.3a,Non-compliant,"H02,D-09",-,-,,0
+Q-ST-80C,6.1.1a,Partially compliant,R14,"compliance/docs/SDP.md 5.2, SPAP.md 6.1",-,,0
+Q-ST-80C,6.1.1b,Partially compliant,R14,"compliance/docs/SDP.md 5.2, SPAP.md 6.1",-,,0
+Q-ST-80C,6.1.2a,Partially compliant,R14,"compliance/docs/SDP.md 5.2, SPAP.md 6.1",-,,0
+Q-ST-80C,6.1.3a,Partially compliant,R14,"compliance/docs/SDP.md 5.2, SPAP.md 6.1",-,,0
+Q-ST-80C,6.1.4a,Partially compliant,R14,"compliance/docs/SDP.md 5.2, SPAP.md 6.1",-,,0
+Q-ST-80C,6.1.4b,Partially compliant,R14,"compliance/docs/SDP.md 5.2, SPAP.md 6.1",-,,0
+Q-ST-80C,6.1.5a,Non-compliant,"H01,D-08",-,-,,0
+Q-ST-80C,6.2.1.1a,Partially compliant,R14,"compliance/docs/SDP.md, SPAP.md 6.2 (plans and their status)",-,,0
+Q-ST-80C,6.2.1.2a,Partially compliant,R14,"compliance/docs/SDP.md, SPAP.md 6.2 (plans and their status)",-,,0
+Q-ST-80C,6.2.1.3a,Partially compliant,R14,"compliance/docs/SDP.md, SPAP.md 6.2 (plans and their status)",-,,0
+Q-ST-80C,6.2.1.4a,Partially compliant,R14,"compliance/docs/SDP.md, SPAP.md 6.2 (plans and their status)",-,,0
+Q-ST-80C,6.2.1.5a,Partially compliant,R14,"compliance/docs/SDP.md, SPAP.md 6.2 (plans and their status)",-,,0
+Q-ST-80C,6.2.1.6a,Partially compliant,R14,"compliance/docs/SDP.md, SPAP.md 6.2 (plans and their status)",-,,0
+Q-ST-80C,6.2.1.7a,Partially compliant,R14,"compliance/docs/SDP.md, SPAP.md 6.2 (plans and their status)",-,,0
+Q-ST-80C,6.2.1.8a,Partially compliant,R14,"compliance/docs/SDP.md, SPAP.md 6.2 (plans and their status)",-,,0
+Q-ST-80C,6.2.1.9a,Partially compliant,R14,"compliance/docs/SDP.md, SPAP.md 6.2 (plans and their status)",-,,0
+Q-ST-80C,6.2.2.1a,Partially compliant,"H04,H12",compliance/docs/dependability_safety_analysis.md section 1,-,,0
+Q-ST-80C,6.2.2.2a,Partially compliant,H04,"compliance/docs/dependability_safety_analysis.md (functional FMEA, FM-01 to FM-12, safeguards with evidence)",-,,0
+Q-ST-80C,6.2.2.3a,Partially compliant,H04,"compliance/docs/dependability_safety_analysis.md (functional FMEA, FM-01 to FM-12, safeguards with evidence)",-,,0
+Q-ST-80C,6.2.2.3b,Partially compliant,H04,"compliance/docs/dependability_safety_analysis.md (functional FMEA, FM-01 to FM-12, safeguards with evidence)",-,,0
+Q-ST-80C,6.2.2.4a,Partially compliant,H04,"compliance/docs/dependability_safety_analysis.md (functional FMEA, FM-01 to FM-12, safeguards with evidence)",-,,0
+Q-ST-80C,6.2.2.5a,Partially compliant,H04,"compliance/docs/dependability_safety_analysis.md (functional FMEA, FM-01 to FM-12, safeguards with evidence)",-,,0
+Q-ST-80C,6.2.2.6a,Partially compliant,H04,"compliance/docs/dependability_safety_analysis.md (functional FMEA, FM-01 to FM-12, safeguards with evidence)",-,,0
+Q-ST-80C,6.2.2.7a,Partially compliant,H04,"compliance/docs/dependability_safety_analysis.md (functional FMEA, FM-01 to FM-12, safeguards with evidence)",-,,0
+Q-ST-80C,6.2.2.8a,Partially compliant,H04,"compliance/docs/dependability_safety_analysis.md (functional FMEA, FM-01 to FM-12, safeguards with evidence)",-,,0
+Q-ST-80C,6.2.2.9a,Partially compliant,H04,"compliance/docs/dependability_safety_analysis.md (functional FMEA, FM-01 to FM-12, safeguards with evidence)",-,,0
+Q-ST-80C,6.2.2.10a,Partially compliant,H04,"compliance/docs/dependability_safety_analysis.md (functional FMEA, FM-01 to FM-12, safeguards with evidence)",-,,0
+Q-ST-80C,6.2.3.2a,Partially compliant,"H04,H06","compliance/docs/dependability_safety_analysis.md section 4 (measures for critical software: the whole tool, category C)",-,,0
+Q-ST-80C,6.2.3.3a,Partially compliant,"H04,H06","compliance/docs/dependability_safety_analysis.md section 4 (measures for critical software: the whole tool, category C)",-,,0
+Q-ST-80C,6.2.3.4a,Partially compliant,"H04,H06","compliance/docs/dependability_safety_analysis.md section 4 (measures for critical software: the whole tool, category C)",-,,0
+Q-ST-80C,6.2.3.5a,Partially compliant,"H04,H06","compliance/docs/dependability_safety_analysis.md section 4 (measures for critical software: the whole tool, category C)",-,,0
+Q-ST-80C,6.2.3.6a,Partially compliant,"H04,H06","compliance/docs/dependability_safety_analysis.md section 4 (measures for critical software: the whole tool, category C)",-,,0
+Q-ST-80C,6.2.3.8a,Partially compliant,"H04,H06","compliance/docs/dependability_safety_analysis.md section 4 (measures for critical software: the whole tool, category C)",-,,0
 Q-ST-80C,6.2.4.1a,Partially compliant,"R01,R14","git; version 2.0.0 (pyproject.toml); schema_version + migrations; R01 (Phase 2): spacemissionstudio/dependencies.py QUALIFIED_BASILISK_VERSION = 2.12.0, installers pin bsk[all]==2.12.0, start-up check (GUI status bar, CLI run), RunProvenance/provenance.json records Basilisk version and qualification",test,tests/test_dependencies.py::test_basilisk_check_accepts_only_the_qualified_version; tests/test_dependencies.py::test_basilisk_check_reports_a_missing_basilisk; tests/test_dependencies.py::test_dependency_versions_lists_python_and_installed_packages; tests/test_dependencies.py::test_file_record_hashes_small_files_and_flags_missing_ones; tests/test_dependencies.py::test_installers_pin_the_qualified_basilisk_version; tests/test_dependencies.py::test_run_provenance_records_the_configuration,6
 Q-ST-80C,6.2.4.2a,Partially compliant,"R01,R14","git; version 2.0.0 (pyproject.toml); schema_version + migrations; R01 (Phase 2): spacemissionstudio/dependencies.py QUALIFIED_BASILISK_VERSION = 2.12.0, installers pin bsk[all]==2.12.0, start-up check (GUI status bar, CLI run), RunProvenance/provenance.json records Basilisk version and qualification",test,tests/test_dependencies.py::test_basilisk_check_accepts_only_the_qualified_version; tests/test_dependencies.py::test_basilisk_check_reports_a_missing_basilisk; tests/test_dependencies.py::test_dependency_versions_lists_python_and_installed_packages; tests/test_dependencies.py::test_file_record_hashes_small_files_and_flags_missing_ones; tests/test_dependencies.py::test_installers_pin_the_qualified_basilisk_version; tests/test_dependencies.py::test_run_provenance_records_the_configuration,6
 Q-ST-80C,6.2.4.3a,Partially compliant,"R01,R14","git; version 2.0.0 (pyproject.toml); schema_version + migrations; R01 (Phase 2): spacemissionstudio/dependencies.py QUALIFIED_BASILISK_VERSION = 2.12.0, installers pin bsk[all]==2.12.0, start-up check (GUI status bar, CLI run), RunProvenance/provenance.json records Basilisk version and qualification",test,tests/test_dependencies.py::test_basilisk_check_accepts_only_the_qualified_version; tests/test_dependencies.py::test_basilisk_check_reports_a_missing_basilisk; tests/test_dependencies.py::test_dependency_versions_lists_python_and_installed_packages; tests/test_dependencies.py::test_file_record_hashes_small_files_and_flags_missing_ones; tests/test_dependencies.py::test_installers_pin_the_qualified_basilisk_version; tests/test_dependencies.py::test_run_provenance_records_the_configuration,6
@@ -871,7 +871,7 @@ Q-ST-80C,6.2.5.1a,Partially compliant,"R11,R14","R11 (Phase 2): compliance/tools
 Q-ST-80C,6.2.5.2a,Partially compliant,"R11,R14","R11 (Phase 2): compliance/tools/metrics.py run in .github/workflows/spacemissionstudio.yml (size, complexity, coverage, failures, corrective-commit count as a problem proxy) -> compliance/metrics.md",-,,0
 Q-ST-80C,6.2.5.3a,Requires human or process action,H02,-,-,,0
 Q-ST-80C,6.2.5.4a,Partially compliant,"R11,R14","R11 (Phase 2): compliance/tools/metrics.py run in .github/workflows/spacemissionstudio.yml (size, complexity, coverage, failures, corrective-commit count as a problem proxy) -> compliance/metrics.md",-,,0
-Q-ST-80C,6.2.5.5a,Non-compliant,R14,compliance/metrics.md,-,,0
+Q-ST-80C,6.2.5.5a,Partially compliant,R14,compliance/docs/SPAMR.md section 7 (metrics),-,,0
 Q-ST-80C,6.2.6.1a,Partially compliant,"R14,H06",tests/; ruff,-,,0
 Q-ST-80C,6.2.6.2a,Partially compliant,"R14,H06",tests/; ruff,-,,0
 Q-ST-80C,6.2.6.2b,Partially compliant,"R14,H06",tests/; ruff,-,,0
@@ -910,32 +910,32 @@ Q-ST-80C,6.2.10.1b,Requires human or process action,R15,-,-,,0
 Q-ST-80C,6.2.10.2a,Requires human or process action,R15,-,-,,0
 Q-ST-80C,6.2.10.3a,Requires human or process action,R15,-,-,,0
 Q-ST-80C,6.2.10.4a,Requires human or process action,R15,-,-,,0
-Q-ST-80C,6.3.1.1a,Requires human or process action,H03,-,-,,0
-Q-ST-80C,6.3.1.2a,Requires human or process action,H03,-,-,,0
-Q-ST-80C,6.3.1.3a,Requires human or process action,H03,-,-,,0
-Q-ST-80C,6.3.1.3b,Requires human or process action,H03,-,-,,0
-Q-ST-80C,6.3.2.1a,Non-compliant,R14,-,-,,0
-Q-ST-80C,6.3.2.2a,Non-compliant,R14,-,-,,0
-Q-ST-80C,6.3.2.3a,Non-compliant,R14,-,-,,0
-Q-ST-80C,6.3.2.3b,Non-compliant,R14,-,-,,0
-Q-ST-80C,6.3.2.4a,Non-compliant,R14,-,-,,0
-Q-ST-80C,6.3.2.5a,Non-compliant,R14,-,-,,0
-Q-ST-80C,6.3.3.1a,Partially compliant,R14,"README.md, docstrings",-,,0
-Q-ST-80C,6.3.3.2a,Partially compliant,R14,"README.md, docstrings",-,,0
-Q-ST-80C,6.3.3.3a,Partially compliant,R14,"README.md, docstrings",-,,0
-Q-ST-80C,6.3.3.4a,Partially compliant,R14,"README.md, docstrings",-,,0
-Q-ST-80C,6.3.3.5a,Partially compliant,R14,"README.md, docstrings",-,,0
-Q-ST-80C,6.3.3.5b,Partially compliant,R14,"README.md, docstrings",-,,0
-Q-ST-80C,6.3.3.6a,Partially compliant,R14,"README.md, docstrings",-,,0
-Q-ST-80C,6.3.3.7a,Partially compliant,R14,"README.md, docstrings",-,,0
+Q-ST-80C,6.3.1.1a,Non-compliant,"H03,D-11",-,-,,0
+Q-ST-80C,6.3.1.2a,Non-compliant,"H03,D-11",-,-,,0
+Q-ST-80C,6.3.1.3a,Non-compliant,"H03,D-11",-,-,,0
+Q-ST-80C,6.3.1.3b,Non-compliant,"H03,D-11",-,-,,0
+Q-ST-80C,6.3.2.1a,Partially compliant,"R14,D-11",compliance/docs/SRS.md,-,,0
+Q-ST-80C,6.3.2.2a,Partially compliant,"R14,D-11",compliance/docs/SRS.md,-,,0
+Q-ST-80C,6.3.2.3a,Partially compliant,"R14,D-11",compliance/docs/SRS.md,-,,0
+Q-ST-80C,6.3.2.3b,Partially compliant,"R14,D-11",compliance/docs/SRS.md,-,,0
+Q-ST-80C,6.3.2.4a,Partially compliant,"R14,D-11",compliance/docs/SRS.md,-,,0
+Q-ST-80C,6.3.2.5a,Partially compliant,"R14,D-11",compliance/docs/SRS.md,-,,0
+Q-ST-80C,6.3.3.1a,Partially compliant,R14,compliance/docs/SDD.md,-,,0
+Q-ST-80C,6.3.3.2a,Partially compliant,R14,compliance/docs/SDD.md,-,,0
+Q-ST-80C,6.3.3.3a,Partially compliant,R14,compliance/docs/SDD.md,-,,0
+Q-ST-80C,6.3.3.4a,Partially compliant,R14,compliance/docs/SDD.md,-,,0
+Q-ST-80C,6.3.3.5a,Partially compliant,R14,compliance/docs/SDD.md,-,,0
+Q-ST-80C,6.3.3.5b,Partially compliant,R14,compliance/docs/SDD.md,-,,0
+Q-ST-80C,6.3.3.6a,Partially compliant,R14,compliance/docs/SDD.md,-,,0
+Q-ST-80C,6.3.3.7a,Partially compliant,R14,compliance/docs/SDD.md,-,,0
 Q-ST-80C,6.3.4.1a,Partially compliant,"R10,R14,H06","R10 (Phase 2): compliance/docs/coding_standard.md (naming, comment, security rules C-1 to C-15; tools; code evaluation); ruff configured in pyproject.toml; .github/workflows/spacemissionstudio.yml",-,,0
 Q-ST-80C,6.3.4.2a,Partially compliant,"R10,R14,H06","R10 (Phase 2): compliance/docs/coding_standard.md (naming, comment, security rules C-1 to C-15; tools; code evaluation); ruff configured in pyproject.toml; .github/workflows/spacemissionstudio.yml",-,,0
-Q-ST-80C,6.3.4.3a,Partially compliant,"R10,R14",R10 (Phase 2): tools identified in compliance/docs/coding_standard.md section 3,-,,0
+Q-ST-80C,6.3.4.3a,Partially compliant,R14,"compliance/docs/coding_standard.md section 3; SPAP.md 5.8 (refers to SDP 5.3, 5.4)",-,,0
 Q-ST-80C,6.3.4.4a,Requires human or process action,H09,compliance/docs/coding_standard.md,-,,0
 Q-ST-80C,6.3.4.5a,Compliant,R10,compliance/docs/coding_standard.md rule C-1: no low-level language is used (Python only; C/C++ only inside reused Basilisk),inspection of the evidence,,0
 Q-ST-80C,6.3.4.6a,Compliant,"R10,R11","compliance/docs/coding_standard.md: measurements and criteria (C-7 complexity <= 15, C-8 zero ruff findings, C-10 coverage >= 90 %) and tools (section 3); compliance/tools/metrics.py",inspection of the evidence,,0
 Q-ST-80C,6.3.4.6b,Compliant,R10,".github/workflows/spacemissionstudio.yml evaluates the code (ruff, tests, coverage, metrics) on every push and pull request touching the tool",inspection of the evidence,,0
-Q-ST-80C,6.3.4.7a,Non-compliant,R14,compliance/metrics.md,-,,0
+Q-ST-80C,6.3.4.7a,Partially compliant,R14,"compliance/docs/SPAMR.md section 6 (code analysis: lint, complexity, coverage)",-,,0
 Q-ST-80C,6.3.4.8a,Compliant,R10,"git; compliance/docs/coding_standard.md rule C-15 (branch work, CI green before merge); .github/workflows/spacemissionstudio.yml",inspection of the evidence,,0
 Q-ST-80C,6.3.5.1a,Partially compliant,"R11,R12,R14",tests/ (1403 functions),-,,0
 Q-ST-80C,6.3.5.2a,Partially compliant,"R11,R12,R14",tests/ (1403 functions),-,,0
@@ -997,21 +997,21 @@ Q-ST-80C,7.1.2a,Partially compliant,"R11,R14","R11 (Phase 2): quantitative code 
 Q-ST-80C,7.1.3a,Partially compliant,"R11,R14","R11 (Phase 2): quantitative code criteria in compliance/docs/coding_standard.md (C-7, C-10); compliance/tools/metrics.py in .github/workflows/spacemissionstudio.yml",-,,0
 Q-ST-80C,7.1.4a,Partially compliant,"R11,R14","R11 (Phase 2): quantitative code criteria in compliance/docs/coding_standard.md (C-7, C-10); compliance/tools/metrics.py in .github/workflows/spacemissionstudio.yml",-,,0
 Q-ST-80C,7.1.5a,Partially compliant,"R11,H05","R11 (Phase 2): compliance/metrics.md: size (SLOC), complexity (ruff C901), test coverage, number of failed tests; fault density by a corrective-commit proxy",-,,0
-Q-ST-80C,7.1.6a,Non-compliant,R14,compliance/metrics.md,-,,0
+Q-ST-80C,7.1.6a,Partially compliant,R14,compliance/docs/SPAMR.md section 7,-,,0
 Q-ST-80C,7.1.7a,Compliant,R13,"R13 (Phase 3): accuracy estimated and verified against independent references (compliance/phase3_log.md; tests/validation): orbit propagation vs GMAT R2026a (two-body 4 mm/day, 20x20 0.12 m/day, Sun+Moon 9 mm and SRP 1.1 m in 7 days at GEO, NRLMSISE-00 drag 2.4 %), time scales vs GMAT and SOFA, Eart",test,tests/test_planet_rotation.py::test_nearest_rotation_removes_the_linear_extrapolation_stretch; tests/test_planet_rotation.py::test_spherical_harmonics_converge_with_the_step; tests/test_planet_rotation.py::test_the_spice_message_other_models_read_is_left_unchanged; tests/test_planet_rotation.py::test_two_body_at_the_default_step_matches_kepler; tests/validation/test_v01_time_scales.py::test_tdb_series_reproduces_sofas_own_test_value; tests/validation/test_v01_time_scales.py::test_time_scale_offsets_agree_with_gmat; tests/validation/test_v04_propagation.py::test_propagation_agrees_with_gmat,7
 Q-ST-80C,7.1.8a,Partially compliant,"R11,R14","R11 (Phase 2): quantitative code criteria in compliance/docs/coding_standard.md (C-7, C-10); compliance/tools/metrics.py in .github/workflows/spacemissionstudio.yml",-,,0
-Q-ST-80C,7.2.1.1a,Non-compliant,R14,-,-,,0
-Q-ST-80C,7.2.1.2a,Non-compliant,R14,-,-,,0
-Q-ST-80C,7.2.1.3a,Non-compliant,R14,-,-,,0
-Q-ST-80C,7.2.2.1a,Non-compliant,R14,-,-,,0
-Q-ST-80C,7.2.2.2a,Non-compliant,R14,-,-,,0
-Q-ST-80C,7.2.2.3a,Non-compliant,R14,-,-,,0
-Q-ST-80C,7.2.3.1a,Non-compliant,R14,-,-,,0
-Q-ST-80C,7.2.3.2a,Non-compliant,R14,-,-,,0
-Q-ST-80C,7.2.3.3a,Non-compliant,R14,-,-,,0
-Q-ST-80C,7.2.3.4a,Non-compliant,R14,-,-,,0
-Q-ST-80C,7.2.3.5a,Non-compliant,R14,-,-,,0
-Q-ST-80C,7.2.3.6a,Non-compliant,R14,-,-,,0
+Q-ST-80C,7.2.1.1a,Partially compliant,"R14,D-11","compliance/docs/SRS.md, SDD.md, SUITP.md, SVS.md, SVR.md",-,,0
+Q-ST-80C,7.2.1.2a,Partially compliant,"R14,D-11","compliance/docs/SRS.md, SDD.md, SUITP.md, SVS.md, SVR.md",-,,0
+Q-ST-80C,7.2.1.3a,Compliant,R14,compliance/docs/SRS.md section 6 (verification method for every requirement),inspection of the evidence,,0
+Q-ST-80C,7.2.2.1a,Partially compliant,"R14,D-11","compliance/docs/SRS.md, SDD.md, SUITP.md, SVS.md, SVR.md",-,,0
+Q-ST-80C,7.2.2.2a,Partially compliant,"R14,D-11","compliance/docs/SRS.md, SDD.md, SUITP.md, SVS.md, SVR.md",-,,0
+Q-ST-80C,7.2.2.3a,Partially compliant,"R14,D-11","compliance/docs/SRS.md, SDD.md, SUITP.md, SVS.md, SVR.md",-,,0
+Q-ST-80C,7.2.3.1a,Partially compliant,"R14,D-11","compliance/docs/SRS.md, SDD.md, SUITP.md, SVS.md, SVR.md",-,,0
+Q-ST-80C,7.2.3.2a,Partially compliant,"R14,D-11","compliance/docs/SRS.md, SDD.md, SUITP.md, SVS.md, SVR.md",-,,0
+Q-ST-80C,7.2.3.3a,Partially compliant,"R14,D-11","compliance/docs/SRS.md, SDD.md, SUITP.md, SVS.md, SVR.md",-,,0
+Q-ST-80C,7.2.3.4a,Partially compliant,"R14,D-11","compliance/docs/SRS.md, SDD.md, SUITP.md, SVS.md, SVR.md",-,,0
+Q-ST-80C,7.2.3.5a,Partially compliant,"R14,D-11","compliance/docs/SRS.md, SDD.md, SUITP.md, SVS.md, SVR.md",-,,0
+Q-ST-80C,7.2.3.6a,Partially compliant,"R14,D-11","compliance/docs/SRS.md, SDD.md, SUITP.md, SVS.md, SVR.md",-,,0
 Q-ST-80C,B.2.1<1>a,Compliant,R14,compliance/docs/SPAP.md (outline) section 1 (introduction),inspection of the evidence,,0
 Q-ST-80C,B.2.1<2>a,Compliant,R14,compliance/docs/SPAP.md (outline) section 2 (applicable and reference documents),inspection of the evidence,,0
 Q-ST-80C,B.2.1<3>b,Compliant,R14,compliance/docs/SPAP.md (outline) section 3 (terms),inspection of the evidence,,0
@@ -1184,8 +1184,8 @@ CCSDS-502.0-B-3,CCSDS-502.0-B-3 3.1.2,Compliant,R09,"R09 (Phase 2): engine/ccsds
 CCSDS-502.0-B-3,CCSDS-502.0-B-3 3.1.3,Compliant,R09,"R09 (Phase 2): engine/ccsds_odm.py reads, validates and writes KVN OPM/OMM/OEM per the keyword tables and section 7; tests/test_ccsds_odm.py (all Annex G KVN examples conform; a failing case per rule; round trips)",test,tests/test_ccsds_odm.py::test_opm_round_trip_and_elements_match_figure_g2; tests/test_ccsds_odm.py::test_tle_to_omm_to_tle_reproduces_figure_g6,2
 CCSDS-502.0-B-3,CCSDS-502.0-B-3 3.1.4,Requires human or process action,H03,-,-,,0
 CCSDS-502.0-B-3,CCSDS-502.0-B-3 3.1.5,Compliant,R09,"R09 (Phase 2): engine/ccsds_odm.py reads, validates and writes KVN OPM/OMM/OEM per the keyword tables and section 7; tests/test_ccsds_odm.py (all Annex G KVN examples conform; a failing case per rule; round trips)",test,tests/test_ccsds_odm.py::test_every_annex_g_example_reads_and_conforms,1
-CCSDS-502.0-B-3,CCSDS-502.0-B-3 3.1.6,Requires human or process action,H03,-,-,,0
-CCSDS-502.0-B-3,CCSDS-502.0-B-3 3.1.7,Requires human or process action,H03,-,-,,0
+CCSDS-502.0-B-3,CCSDS-502.0-B-3 3.1.6,Partially compliant,R14,"compliance/docs/ICD.md 5.3.4 (default convention: one file per spacecraft named <spacecraft>.opm/.omm/.oem, as the CLI writes them; plain files)",-,,0
+CCSDS-502.0-B-3,CCSDS-502.0-B-3 3.1.7,Partially compliant,R14,"compliance/docs/ICD.md 5.3.4 (default convention: one file per spacecraft named <spacecraft>.opm/.omm/.oem, as the CLI writes them; plain files)",-,,0
 CCSDS-502.0-B-3,CCSDS-502.0-B-3 3.2.2.2,Compliant,R09,"R09 (Phase 2): engine/ccsds_odm.py reads, validates and writes KVN OPM/OMM/OEM per the keyword tables and section 7; tests/test_ccsds_odm.py (all Annex G KVN examples conform; a failing case per rule; round trips)",test,tests/test_ccsds_odm.py::test_a_frame_outside_the_recommended_set_is_a_warning; tests/test_ccsds_odm.py::test_cli_export_writes_conforming_opms; tests/test_ccsds_odm.py::test_cli_import_sets_the_orbit_from_an_omm; tests/test_ccsds_odm.py::test_cli_validate_reports_conformance; tests/test_ccsds_odm.py::test_each_kvn_syntax_and_segment_rule_is_enforced; tests/test_ccsds_odm.py::test_each_oem_rule_is_enforced; tests/test_ccsds_odm.py::test_each_opm_rule_is_enforced; tests/test_ccsds_odm.py::test_every_annex_g_example_reads_and_conforms; tests/test_ccsds_odm.py::test_every_ics_keyword_is_read_and_validated; tests/test_ccsds_odm.py::test_line_endings_blank_lines_and_white_space_carry_no_meaning; tests/test_ccsds_odm.py::test_more_oem_rules_and_text_equivalence; tests/test_ccsds_odm.py::test_oem_covariance_shape_is_checked; tests/test_ccsds_odm.py::test_oem_example_content_is_read; tests/test_ccsds_odm.py::test_oem_from_a_run_conforms_and_carries_the_ephemeris; tests/test_ccsds_odm.py::test_oem_interpolation_can_be_lagrange_for_gmat; tests/test_ccsds_odm.py::test_opm_block_rules; tests/test_ccsds_odm.py::test_opm_epochs_in_other_time_systems_are_converted_to_utc; tests/test_ccsds_odm.py::test_opm_round_trip_and_elements_match_figure_g2; tests/test_ccsds_odm.py::test_orbit_ic_from_omm_is_a_tle_orbit; tests/test_ccsds_odm.py::test_the_first_line_must_be_the_version; tests/test_ccsds_odm.py::test_the_written_gm_is_the_gm_the_propagation_uses; tests/test_ccsds_odm.py::test_tle_based_omm_conventions; tests/test_ccsds_odm.py::test_tle_to_omm_to_tle_reproduces_figure_g6; tests/test_ccsds_odm.py::test_written_values_read_back_exactly,24
 CCSDS-502.0-B-3,CCSDS-502.0-B-3 3.2.3.1,Compliant,R09,"R09 (Phase 2): engine/ccsds_odm.py reads, validates and writes KVN OPM/OMM/OEM per the keyword tables and section 7; tests/test_ccsds_odm.py (all Annex G KVN examples conform; a failing case per rule; round trips)",test,tests/test_ccsds_odm.py::test_each_opm_rule_is_enforced,1
 CCSDS-502.0-B-3,CCSDS-502.0-B-3 3.2.3.2,Compliant,R09,"R09 (Phase 2): engine/ccsds_odm.py reads, validates and writes KVN OPM/OMM/OEM per the keyword tables and section 7; tests/test_ccsds_odm.py (all Annex G KVN examples conform; a failing case per rule; round trips)",test,tests/test_ccsds_odm.py::test_each_kvn_syntax_and_segment_rule_is_enforced,1
@@ -1205,8 +1205,8 @@ CCSDS-502.0-B-3,CCSDS-502.0-B-3 4.1.2,Compliant,R09,"R09 (Phase 2): engine/ccsds
 CCSDS-502.0-B-3,CCSDS-502.0-B-3 4.1.3,Compliant,R09,"R09 (Phase 2): engine/ccsds_odm.py reads, validates and writes KVN OPM/OMM/OEM per the keyword tables and section 7; tests/test_ccsds_odm.py (all Annex G KVN examples conform; a failing case per rule; round trips)",test,tests/test_ccsds_odm.py::test_opm_round_trip_and_elements_match_figure_g2; tests/test_ccsds_odm.py::test_tle_to_omm_to_tle_reproduces_figure_g6,2
 CCSDS-502.0-B-3,CCSDS-502.0-B-3 4.1.4,Requires human or process action,H03,-,-,,0
 CCSDS-502.0-B-3,CCSDS-502.0-B-3 4.1.5,Compliant,R09,"R09 (Phase 2): engine/ccsds_odm.py reads, validates and writes KVN OPM/OMM/OEM per the keyword tables and section 7; tests/test_ccsds_odm.py (all Annex G KVN examples conform; a failing case per rule; round trips)",test,tests/test_ccsds_odm.py::test_every_annex_g_example_reads_and_conforms,1
-CCSDS-502.0-B-3,CCSDS-502.0-B-3 4.1.6,Requires human or process action,H03,-,-,,0
-CCSDS-502.0-B-3,CCSDS-502.0-B-3 4.1.7,Requires human or process action,H03,-,-,,0
+CCSDS-502.0-B-3,CCSDS-502.0-B-3 4.1.6,Partially compliant,R14,"compliance/docs/ICD.md 5.3.4 (default convention: one file per spacecraft named <spacecraft>.opm/.omm/.oem, as the CLI writes them; plain files)",-,,0
+CCSDS-502.0-B-3,CCSDS-502.0-B-3 4.1.7,Partially compliant,R14,"compliance/docs/ICD.md 5.3.4 (default convention: one file per spacecraft named <spacecraft>.opm/.omm/.oem, as the CLI writes them; plain files)",-,,0
 CCSDS-502.0-B-3,CCSDS-502.0-B-3 4.2.2.1,Compliant,R09,"R09 (Phase 2): engine/ccsds_odm.py reads, validates and writes KVN OPM/OMM/OEM per the keyword tables and section 7; tests/test_ccsds_odm.py (all Annex G KVN examples conform; a failing case per rule; round trips)",test,tests/test_ccsds_odm.py::test_each_kvn_syntax_and_segment_rule_is_enforced,1
 CCSDS-502.0-B-3,CCSDS-502.0-B-3 4.2.2.2,Compliant,R09,"R09 (Phase 2): engine/ccsds_odm.py reads, validates and writes KVN OPM/OMM/OEM per the keyword tables and section 7; tests/test_ccsds_odm.py (all Annex G KVN examples conform; a failing case per rule; round trips)",test,tests/test_ccsds_odm.py::test_a_frame_outside_the_recommended_set_is_a_warning; tests/test_ccsds_odm.py::test_cli_export_writes_conforming_opms; tests/test_ccsds_odm.py::test_cli_import_sets_the_orbit_from_an_omm; tests/test_ccsds_odm.py::test_cli_validate_reports_conformance; tests/test_ccsds_odm.py::test_each_kvn_syntax_and_segment_rule_is_enforced; tests/test_ccsds_odm.py::test_each_oem_rule_is_enforced; tests/test_ccsds_odm.py::test_each_opm_rule_is_enforced; tests/test_ccsds_odm.py::test_every_annex_g_example_reads_and_conforms; tests/test_ccsds_odm.py::test_every_ics_keyword_is_read_and_validated; tests/test_ccsds_odm.py::test_line_endings_blank_lines_and_white_space_carry_no_meaning; tests/test_ccsds_odm.py::test_more_oem_rules_and_text_equivalence; tests/test_ccsds_odm.py::test_oem_covariance_shape_is_checked; tests/test_ccsds_odm.py::test_oem_example_content_is_read; tests/test_ccsds_odm.py::test_oem_from_a_run_conforms_and_carries_the_ephemeris; tests/test_ccsds_odm.py::test_oem_interpolation_can_be_lagrange_for_gmat; tests/test_ccsds_odm.py::test_opm_block_rules; tests/test_ccsds_odm.py::test_opm_epochs_in_other_time_systems_are_converted_to_utc; tests/test_ccsds_odm.py::test_opm_round_trip_and_elements_match_figure_g2; tests/test_ccsds_odm.py::test_orbit_ic_from_omm_is_a_tle_orbit; tests/test_ccsds_odm.py::test_the_first_line_must_be_the_version; tests/test_ccsds_odm.py::test_the_written_gm_is_the_gm_the_propagation_uses; tests/test_ccsds_odm.py::test_tle_based_omm_conventions; tests/test_ccsds_odm.py::test_tle_to_omm_to_tle_reproduces_figure_g6; tests/test_ccsds_odm.py::test_written_values_read_back_exactly,24
 CCSDS-502.0-B-3,CCSDS-502.0-B-3 4.2.3.2,Compliant,R09,"R09 (Phase 2): engine/ccsds_odm.py reads, validates and writes KVN OPM/OMM/OEM per the keyword tables and section 7; tests/test_ccsds_odm.py (all Annex G KVN examples conform; a failing case per rule; round trips)",test,tests/test_ccsds_odm.py::test_each_kvn_syntax_and_segment_rule_is_enforced,1
@@ -1218,8 +1218,8 @@ CCSDS-502.0-B-3,CCSDS-502.0-B-3 4.2.4.9,Partially compliant,"R03,R09",R03: engin
 CCSDS-502.0-B-3,CCSDS-502.0-B-3 4.2.4.10,Compliant,R09,"R09 (Phase 2): engine/ccsds_odm.py reads, validates and writes KVN OPM/OMM/OEM per the keyword tables and section 7; tests/test_ccsds_odm.py (all Annex G KVN examples conform; a failing case per rule; round trips)",test,tests/test_ccsds_odm.py::test_every_annex_g_example_reads_and_conforms,1
 CCSDS-502.0-B-3,CCSDS-502.0-B-3 5.1.1,Compliant,R09,"R09 (Phase 2): engine/ccsds_odm.py reads, validates and writes KVN OPM/OMM/OEM per the keyword tables and section 7; tests/test_ccsds_odm.py (all Annex G KVN examples conform; a failing case per rule; round trips)",test,tests/test_ccsds_odm.py::test_every_annex_g_example_reads_and_conforms; tests/test_ccsds_odm.py::test_oem_from_a_run_conforms_and_carries_the_ephemeris; tests/validation/test_v06_ccsds_oem.py::test_gmat_reading_the_tool_oem_returns_the_tool_trajectory; tests/validation/test_v06_ccsds_oem.py::test_the_oem_the_tool_writes_conforms; tests/validation/test_v06_ccsds_oem.py::test_tool_reads_and_checks_the_oem_gmat_writes,5
 CCSDS-502.0-B-3,CCSDS-502.0-B-3 5.1.3,Compliant,R09,"R09 (Phase 2): engine/ccsds_odm.py reads, validates and writes KVN OPM/OMM/OEM per the keyword tables and section 7; tests/test_ccsds_odm.py (all Annex G KVN examples conform; a failing case per rule; round trips)",test,tests/test_ccsds_odm.py::test_more_oem_rules_and_text_equivalence,1
-CCSDS-502.0-B-3,CCSDS-502.0-B-3 5.1.4,Requires human or process action,H03,-,-,,0
-CCSDS-502.0-B-3,CCSDS-502.0-B-3 5.1.5,Requires human or process action,H03,-,-,,0
+CCSDS-502.0-B-3,CCSDS-502.0-B-3 5.1.4,Partially compliant,R14,"compliance/docs/ICD.md 5.3.4 (default convention: one file per spacecraft named <spacecraft>.opm/.omm/.oem, as the CLI writes them; plain files)",-,,0
+CCSDS-502.0-B-3,CCSDS-502.0-B-3 5.1.5,Partially compliant,R14,"compliance/docs/ICD.md 5.3.4 (default convention: one file per spacecraft named <spacecraft>.opm/.omm/.oem, as the CLI writes them; plain files)",-,,0
 CCSDS-502.0-B-3,CCSDS-502.0-B-3 5.2.1.1,Compliant,R09,"R09 (Phase 2): engine/ccsds_odm.py reads, validates and writes KVN OPM/OMM/OEM per the keyword tables and section 7; tests/test_ccsds_odm.py (all Annex G KVN examples conform; a failing case per rule; round trips)",test,tests/test_ccsds_odm.py::test_every_annex_g_example_reads_and_conforms,1
 CCSDS-502.0-B-3,CCSDS-502.0-B-3 5.2.1.2,Compliant,R09,"R09 (Phase 2): engine/ccsds_odm.py reads, validates and writes KVN OPM/OMM/OEM per the keyword tables and section 7; tests/test_ccsds_odm.py (all Annex G KVN examples conform; a failing case per rule; round trips)",test,tests/test_ccsds_odm.py::test_every_annex_g_example_reads_and_conforms,1
 CCSDS-502.0-B-3,CCSDS-502.0-B-3 5.2.2.1,Compliant,R09,"R09 (Phase 2): engine/ccsds_odm.py reads, validates and writes KVN OPM/OMM/OEM per the keyword tables and section 7; tests/test_ccsds_odm.py (all Annex G KVN examples conform; a failing case per rule; round trips)",test,tests/test_ccsds_odm.py::test_each_kvn_syntax_and_segment_rule_is_enforced,1

@@ -9,7 +9,7 @@ Document: SMS-SPAP, issue 1 (outline), 2026-10-08. Remediation R14.
   - the PA organisation, roles and resources (H02);
   - the criticality sign-off and the dependability and safety analysis
     (H04);
-  - nonconformance and problem handling (H05);
+  - nonconformance and problem handling: decided (decision 11), not yet in use;
   - independent review (H06);
   - the agreement of metric thresholds (H09).
 - Each section names its gap.
@@ -107,7 +107,7 @@ PA contributes the technical risks it finds:
 - security risks S-nn;
 - known problems K-nn.
 
-There is no project risk process (H05).
+There is no project risk process: waived (decision 11, deviation D-12).
 
 ### 5.7 Supplier selection and control (B.2.1<5.7>)
 
@@ -178,8 +178,8 @@ All plans are updated at each release (SDP 5.5.2).
 - **Documentation:** the DRD checker and the generated parts keep the
   documents complete and current (SDP 5.5).
 - **Configuration management:** SDP 6.
-- **Nonconformance control:** not established (H05). It should apply from
-  the first release after this audit.
+- **Nonconformance control:** nonconformances are recorded as GitHub issues
+  (decision 11; SMP 10.1). The procedure is not yet in use.
 - **Protection of delivered software:**
   - SHA-256 checksums of every built package (security analysis S-07);
   - releases are labelled by version;
@@ -217,13 +217,13 @@ All plans are updated at each release (SDP 5.5.2).
 | Aspect | Standard or procedure |
 |---|---|
 | Project management | SDP |
-| Risk management | None (H05) |
+| Risk management | None: waived (D-12) |
 | Configuration and documentation management | SDP 5.5, 6 |
 | Verification and validation | SVerP, SValP |
 | Requirements and design | SRS and SDD per E-ST-40C Annexes D and F |
 | Coding | `coding_standard.md` |
 | Metrication | `metrics.py` |
-| Nonconformance control | None (H05) |
+| Nonconformance control | GitHub issues (SMP 10.1) |
 | Security | `security_analysis.md` |
 
 **Adherence:** CI enforces what can be computed: lint, tests, coverage,

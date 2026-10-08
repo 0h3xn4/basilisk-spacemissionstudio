@@ -136,7 +136,8 @@ to stay under 15 (SVR 4.5).
 
 ## 9 Problem reports and nonconformances (C.2.1<9>)
 
-- No problem-report or nonconformance system exists (H05).
+- Problem reports and nonconformances are to be GitHub issues (decision 11);
+  the procedure is not yet in use.
 - The known open problems are K-01 to K-09 (RD4).
 - The deviations D-01 to D-07 are unsigned (H08).
 

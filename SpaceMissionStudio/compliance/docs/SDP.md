@@ -60,7 +60,8 @@ The objectives, in order:
 ### 4.2 Master schedule (O.2.1<4.2>)
 
 No project master schedule exists. Development is continuous and driven by
-the user's requests. Releases are made when the user decides (H05).
+the user's requests. Releases are made when the user decides. The next release
+is 2.1.0, tagged, not signed (decision 11).
 
 ### 4.3 Assumptions, dependencies and constraints (O.2.1<4.3>)
 
@@ -84,7 +85,8 @@ work breakdown. Later work packages are the items of SRelD section 7.
 
 ### 4.5 Risk management (O.2.1<4.5>)
 
-There is no project risk management process (H05). Technical risks are
+There is no project risk management process: waived by the user
+(decision 11, deviation D-12). Technical risks are
 recorded where they arise:
 - findings F-nn (`phase3_log.md`);
 - security risks S-nn (`security_analysis.md`);
@@ -135,8 +137,8 @@ Incremental development on the `develop` line.
   - Each increment is recorded in `HISTORY.md` with what was found, what
     was changed and how it was verified.
 - **Versioning:** semantic version (`MAJOR.MINOR.PATCH`) in
-  `spacemissionstudio/__init__.py` and `pyproject.toml`, set at release
-  (H05).
+  `spacemissionstudio/__init__.py` and `pyproject.toml`, set at release;
+  the next is 2.1.0 (decision 11).
 - **Processes covered:**
   - requirements: SRS;
   - design: SDD;
@@ -243,9 +245,9 @@ the category C tailoring (RD1) and its status. This SDP does not repeat it.
 | Item | In place |
 |---|---|
 | Configuration items | `SpaceMissionStudio/` (code, tests, data, documents), `.github/workflows/spacemissionstudio.yml` |
-| Identification | git commits. Release versions are set in `__init__.py` and `pyproject.toml`. No SpaceMissionStudio release is tagged (the repository's tags are Basilisk's); tagging releases is proposed (H05). |
+| Identification | git commits. Release versions are set in `__init__.py` and `pyproject.toml`. No SpaceMissionStudio release is tagged yet (the repository's tags are Basilisk's); releases are tagged from 2.1.0 on (decision 11). |
 | Baselines | A release commit. The reused baseline is recorded in the SRF (Basilisk 2.12.0 with its published SHA-256). |
-| Change control | Branches. CI must pass. Commit messages reference requirement IDs or findings. A change board does not exist (H05). |
+| Change control | Branches. CI must pass. Commit messages reference requirement IDs or findings. A change board does not exist: waived (decision 11, D-12). |
 | Status accounting | `HISTORY.md`; `compliance/PROGRESS.md`; each run's `provenance.json` records the tool and dependency versions and the data files used |
 | Releases | Build scripts with checksums (`packaging/`) |
-| Proposed | A lock file with hashes for release dependencies (security analysis S-08); signed tags or releases (S-07) |
+| Proposed | A lock file with hashes for release dependencies (security analysis S-08). Signing is waived (decision 11, D-13). |
