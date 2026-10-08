@@ -27,8 +27,8 @@ Result: **2055 passed, 11 skipped, 0 failed** (245 s, 3 workers). Every later ph
 | Phase | Status |
 |---|---|
 | 0 Requirements extraction and tailoring | done; **criticality category C approved by the user (2026-10-08)**; OCM confirmed out of scope |
-| 1 Audit and gap analysis | done: `gap_analysis.md`, `compliance_matrix.csv` (2084 rows); **awaiting approval of the remediation plan (section 9) and decisions D1-D8** |
-| 2 Implementation | not started (waits on Phase 1 approval) |
+| 1 Audit and gap analysis | done: `gap_analysis.md`, `compliance_matrix.csv` (2084 rows); plan and D1-D8 **approved by the user (2026-10-08)** |
+| 2 Implementation | in progress |
 | 3 Verification and validation | not started |
 | 4 Documentation | not started |
 
@@ -38,6 +38,17 @@ Result: **2055 passed, 11 skipped, 0 failed** (245 s, 3 workers). Every later ph
 2. 2026-10-08, user: the CCSDS OCM is **out of scope** (OPM, OMM, OEM only).
 3. ECSS-Q-ST-30 / ECSS-Q-ST-40 not supplied: the classification is the
    user's decision, recorded above, not justified against them here.
+4. 2026-10-08, user: Phase 1 remediation plan (R01-R15) approved and the
+   recommendations for D1-D8 accepted (`gap_analysis.md` section 8):
+   D1 AD10/MSFC only, deviation D-01; D2 WMM2025, deviation D-04; D3
+   deviations D-02, D-03, D-05, D-06 accepted; D4 GM per IERS TN36 if the
+   values can be sourced, else deviation D-07; D5 qualify Basilisk 2.12.0,
+   pinned and checked at start-up; D6 CCSDS KVN first, XML when schemas are
+   available; D7 REF_FRAME EME2000 for Earth-centred data, SPICE J2000
+   equivalence documented in the CSD; D8 security assurance level low.
+5. 2026-10-08, user: after the audit, and a review and update of the whole
+   tool, the UX/UI guidelines (`UX_UI_Guidelines_for_SpaceMissionStudio.md`,
+   2026-10-08) are applied. Not part of this audit.
 
 ## Phase 1 test run
 
