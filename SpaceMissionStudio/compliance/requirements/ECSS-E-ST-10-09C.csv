@@ -14,6 +14,7 @@ ID,clause,requirement_text,type,applicability,earm_id,level,crit_A,crit_B,crit_C
 5.3.1b,5.3.1,Applicable non compliant external conventions shall be converted into the project's convention.,process,Applicable,,shall,,,,,the tool defines and transforms frames and time scales,17
 5.3.1c,5.3.1,The conversion of 5.3.1b shall be specified.,process,Applicable,,shall,,,,,the tool defines and transforms frames and time scales,17
 5.3.2a,5.3.2,A coordinate system shall be identified by a unique descriptive name.,process,Applicable,,shall,,,,,the tool defines and transforms frames and time scales,18
+5.3.2b,5.3.2,Recognised international names should not be used if the exact definition is not followed.,process,Applicable,,should,,,,,the tool defines and transforms frames and time scales,18
 5.3.2c,5.3.2,A unique mnemonic shall be derived from the descriptive name of the coordinate system.,process,Applicable,,shall,,,,,the tool defines and transforms frames and time scales,18
 5.3.2d,5.3.2,"The transformation from one coordinate system to another shall be identified by a unique name, which also indicates the direction of the transformation.",process,Applicable,,shall,,,,,the tool defines and transforms frames and time scales,18
 5.3.2e,5.3.2,The convention for naming coordinate systems and transformations shall be specified.,process,Applicable,,shall,,,,,the tool defines and transforms frames and time scales,18
@@ -21,6 +22,8 @@ ID,clause,requirement_text,type,applicability,earm_id,level,crit_A,crit_B,crit_C
 5.3.2g,5.3.2,Sign conventions shall be identified and defined.,process,Applicable,,shall,,,,,the tool defines and transforms frames and time scales,18
 5.3.3a,5.3.3,"A figure shall show the relationship of a coordinate system with equipment, spacecraft or mission.",process,Applicable,,shall,,,,,the tool defines and transforms frames and time scales,18
 5.3.3b,5.3.3,The origin and axes of a coordinate frame shall be identified in figures using the reference mnemonic as indicated in 5.3.2c.,process,Applicable,,shall,,,,,the tool defines and transforms frames and time scales,18
+5.3.3c,5.3.3,"A figure should show the relationship of a coordinate system to at least one other already defined coordinate system, once the first has been defined.",process,Applicable,,should,,,,,the tool defines and transforms frames and time scales,18
+5.3.3d,5.3.3,"If two or more rotations are used in a transformation between coordinate systems, they should be indicated on the figure with intermediate rotation axes.",process,Applicable,,should,,,,,the tool defines and transforms frames and time scales,18
 5.3.3e,5.3.3,"Symbols used within illustrations, figures and supporting diagrams shall be defined.",process,Applicable,,shall,,,,,the tool defines and transforms frames and time scales,18
 5.3.3f,5.3.3,"In an engineering drawing, the applicable projection system shall be indicated.",process,Applicable,,shall,,,,,the tool defines and transforms frames and time scales,18
 5.3.3g,5.3.3,"In a 3D figure, the axes above, within and below a plane shall be differentiated.",process,Applicable,,shall,,,,,the tool defines and transforms frames and time scales,18
@@ -43,12 +46,14 @@ ID,clause,requirement_text,type,applicability,earm_id,level,crit_A,crit_B,crit_C
 5.4.5c,5.4.5,The process of constructing the origin and axes of a mechanical reference frame using the physical points shall be specified.,functional,Applicable (partial),,shall,,,,,mechanical frames: only the body frame B and facets are defined,20
 5.4.5d,5.4.5,"The mathematical relationship between the coordinate system and physical points, as used in 5.4.5c above, shall be defined.",functional,Applicable (partial),,shall,,,,,mechanical frames: only the body frame B and facets are defined,20
 5.4.5e,5.4.5,The spacecraft interface frame w.r.t. its launcher adapter shall be specified.,functional,Applicable (partial),,shall,,,,,mechanical frames: only the body frame B and facets are defined,20
+5.4.5f,5.4.5,"The mechanical reference frames for the spacecraft, adapter and launch vehicle should be parallel and have the same positive direction.",functional,Applicable (partial),,should,,,,,mechanical frames: only the body frame B and facets are defined,20
 5.4.6a,5.4.6,"The specification of geodetic/planetocentric coordinates shall include the parameters of the ellipsoid used, direction and origin of longitude, and definition of the North Pole.",functional,Applicable,,shall,,,,,the tool defines and transforms frames and time scales,20
 5.4.7a,5.4.7,Any parameterisaton of a position or direction vector shall be specified mathematically.,functional,Applicable,,shall,,,,,the tool defines and transforms frames and time scales,20
 5.4.7b,5.4.7,Permitted parameterisations of a coordinate system shall be specified in the CSD.,functional,Applicable,,shall,,,,,the tool defines and transforms frames and time scales,20
 5.4.8a,5.4.8,"A transformation between coordinate systems shall be decomposed into a translational transformation and a rotational transformation, in a given order.",functional,Applicable,,shall,,,,,the tool defines and transforms frames and time scales,20
 5.4.8b,5.4.8,The order of decomposition of a transformation between coordinate systems shall be the same throughout a project.,functional,Applicable,,shall,,,,,the tool defines and transforms frames and time scales,20
 5.4.8c,5.4.8,"If rotation is composed of three elementary rotations, the order of rotations shall be specified.",functional,Applicable,,shall,,,,,the tool defines and transforms frames and time scales,20
+5.4.8d,5.4.8,Positive angles about an axis should be defined in a right handed sense.,functional,Applicable,,should,,,,,the tool defines and transforms frames and time scales,21
 5.4.8e,5.4.8,Any left handed rotation convention shall be highlighted in the CSD.,functional,Applicable,,shall,,,,,the tool defines and transforms frames and time scales,21
 5.4.8f,5.4.8,An elementary rotation shall be defined by a rotation axis and an angle.,functional,Applicable,,shall,,,,,the tool defines and transforms frames and time scales,21
 5.4.8g,5.4.8,"If the rotation is represented by a quaternion, the order and mathematical definition of the quaternion parameters shall be specified in the CSD.",functional,Applicable,,shall,,,,,the tool defines and transforms frames and time scales,21

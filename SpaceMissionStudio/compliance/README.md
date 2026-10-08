@@ -9,9 +9,9 @@ it.
 |---|---|---|
 | ECSS-E-ST-40C Software | Rev.1, 30 April 2025 | `requirements/ECSS-E-ST-40C.csv` (783) |
 | ECSS-Q-ST-80C Software product assurance | Rev.2, 30 April 2025 | `requirements/ECSS-Q-ST-80C.csv` (347) |
-| ECSS-E-ST-10-09C Reference coordinate systems | 31 July 2008 | `requirements/ECSS-E-ST-10-09C.csv` (87) |
+| ECSS-E-ST-10-09C Reference coordinate systems | 31 July 2008 | `requirements/ECSS-E-ST-10-09C.csv` (92) |
 | ECSS-E-ST-10-04C Space environment | Rev.1, 15 June 2020 | `requirements/ECSS-E-ST-10-04C.csv` (152) |
-| CCSDS 502.0-B Orbit Data Messages | B-3, April 2023 | `requirements/CCSDS-502.0-B-3.csv` (714) |
+| CCSDS 502.0-B Orbit Data Messages | B-3, April 2023 | `requirements/CCSDS-502.0-B-3.csv` (710) |
 
 The task named the standards without issue; the editions above are the
 ones supplied, and every requirement ID and text here comes from them.

@@ -59,7 +59,8 @@ MAX_TEXT = 500  # [chars] longer requirement texts are abbreviated (marked "..."
 
 _DASHES = str.maketrans({"‐": "-", "‑": "-", "‒": "-", "–": "-", "—": "-",
                          " ": " ", "‘": "'", "’": "'", "“": '"', "”": '"'})
-_HEADING = re.compile(r"^((?:\d+|[A-Z])(?:\.\d+)+|\d+)\s+([A-Z<][^\n]*)$")
+# chapters stop at 12 in these standards: "21 March 2005 corresponding to ..." is wrapped text
+_HEADING = re.compile(r"^((?:\d+|[A-Z])(?:\.\d+)+|[1-9]|1[0-2])\s+([A-Z<][^\n]*)$")
 # Q-ST-80C's untitled clauses: "5.1.2.1 ." (a line ending "... of clause 5.6.4.1." is text)
 _BARE_HEADING = re.compile(r"^((?:\d+|[A-Z])(?:\.\d+)+)\s+\.\s*$")
 _DRD_SECTION = re.compile(r"^<(\d+(?:\.\d+)*)>\s+([A-Z<].*)$")  # capital: not a NOTE's "<5.2> to <5.17> below."  # DRD annexes: "<4.2> Environmental ..."
@@ -232,8 +233,9 @@ def parse_ecss_letters(path: Path, standard: str, doc_header: str):
                 else:
                     current["lines"].append(line)
     flush()
-    rows = [r for r in rows if re.search(r"\bshall\b", r["requirement_text"])]
+    rows = [r for r in rows if _level(r["requirement_text"])]  # shall, should or may, as for the others
     for row in rows:
+        row["level"] = _level(row["requirement_text"])
         row["type"] = classify(row["requirement_text"], row["clause"], standard)
     return rows
 
@@ -281,6 +283,9 @@ def parse_ccsds(path: Path):
             m = _CCSDS_PARA.match(line)
             # a paragraph starts with a capital ("7.5.10 for formatting rules.)" is a wrapped table cell)
             if m and not m.group(2)[:1].isupper() and not m.group(2).startswith(("'", '"')):
+                m = None
+            # a keyword-table cell, not a paragraph: "2.2 O DRAG_UNCERTAINTY ...", "0.0033... O ..."
+            if m and (m.group(1).startswith("0") or re.match(r"^[MOC](\s+[A-Z][A-Z0-9_]+\b|\s*$)", m.group(2))):
                 m = None
             if m and not re.match(r"^\d+(\.\d+)+\s+[A-Z][A-Z /'&,\-()]+$", line):  # skip section titles
                 flush()

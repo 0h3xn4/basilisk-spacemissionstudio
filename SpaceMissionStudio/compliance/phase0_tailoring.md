@@ -1,6 +1,6 @@
 # Phase 0 -- Requirements extraction and criticality tailoring
 
-Status: **extraction complete; criticality category awaiting approval.**
+Status: **complete. Criticality category C approved by the user on 2026-10-08; the CCSDS OCM confirmed out of scope.**
 
 ## 1. Extraction
 
@@ -9,8 +9,8 @@ Status: **extraction complete; criticality category awaiting approval.**
 | ECSS-E-ST-40C Rev.1 | 783 | every EARM ID in the text (783) extracted; 503 are DRD contents (Annexes B-P, T) |
 | ECSS-Q-ST-80C Rev.2 | 347 | every EARM ID (347); 51 are DRD contents (Annexes B, C); 3 are `<<deleted>>` |
 | ECSS-E-ST-10-04C Rev.1 | 152 | every EARM ID (152); 13 deleted, 13 are normative data tables |
-| ECSS-E-ST-10-09C | 87 | no EARM IDs in this 2008 issue: clause + letter; clause 5 and the CSD DRD (Annex A) |
-| CCSDS 502.0-B-3 | 714 | 290 numbered paragraphs with "shall" (265) or "should" (25), and 424 items of the Annex A Implementation Conformance Statement requirements lists (92 mandatory, 87 conditional, 245 optional) |
+| ECSS-E-ST-10-09C | 92 | no EARM IDs in this 2008 issue: clause + letter; 87 "shall" and 5 "should"; clause 5 and the CSD DRD (Annex A) |
+| CCSDS 502.0-B-3 | 710 | 286 numbered paragraphs with "shall" (262) or "should" (24), and 424 items of the Annex A Implementation Conformance Statement requirements lists (92 mandatory, 87 conditional, 245 optional) |
 
 Checks run on the result: no duplicate IDs in any file; every EARM ID found
 in the text appears once in the CSV; every ECSS-E-ST-40C requirement listed
@@ -18,8 +18,7 @@ in Table R-1 carries its A-D cells.
 
 ## 2. Criticality category: proposal
 
-**Proposed: category C.** Needs your approval before Phase 1 decides
-applicability.
+**Category C** (proposed here, approved by the user on 2026-10-08).
 
 ECSS-Q-ST-80C Rev.2 Table D-1 defines the categories from the category of
 the functions the software is involved in and whether compensating
@@ -102,7 +101,7 @@ What the choice changes (cells of Table R-1 / Table D-2):
 * **CCSDS 502.0-B-3**: OPM, OMM and OEM (sections 3, 4, 5), the KVN syntax
   (7) and the XML instantiation (8) apply, with their ICS items. The OCM
   (section 6, 8.11, ICS A2.5.4) was not requested and is marked "Not
-  requested": please confirm.
+  requested" (confirmed by the user).
 * **ECSS-E-ST-40C / -Q-ST-80C**: the category C cell; requirements that
   mention flight or on-board aspects (in-flight modification, real-time,
   HW/SW co-engineering, ...) are marked "Review" for the intended use.
