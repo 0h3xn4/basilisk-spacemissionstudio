@@ -89,14 +89,15 @@ def test_path_cell_carries_the_full_path_as_a_tooltip(widget):
     from pathlib import Path
     from types import SimpleNamespace
 
+    path = Path("/home/user/.cache/basilisk/naif0012.tls")
     statuses = [
         SimpleNamespace(filename="naif0012.tls", available=True, error=None,
-                         path=Path("/home/user/.cache/basilisk/naif0012.tls"), modified_utc="2026-01-15T08:23:11"),
+                         path=path, modified_utc="2026-01-15T08:23:11"),
     ]
     widget._on_finished(statuses)
 
     item = widget.table.item(0, 2)
-    assert item.toolTip() == "/home/user/.cache/basilisk/naif0012.tls"
+    assert item.toolTip() == str(path)  # the platform's own separators (backslashes on Windows)
 
 
 def test_refresh_disables_button_while_running(widget, qtbot, monkeypatch):

@@ -1028,7 +1028,9 @@ def test_results_tab_fits_a_narrow_pane(widget):
                    "higher-order integrator"]
     widget.set_result(rs)
     widget.show()
-    assert widget.minimumSizeHint().width() <= 620  # [px]
+    # 620 px at the Linux CI's font; as a count of average characters, so
+    # a platform with wider fonts (Windows) gets the same bound (SRelD K-10).
+    assert widget.minimumSizeHint().width() <= 103 * widget.fontMetrics().averageCharWidth()
     assert "14:33 UTC" in widget.provenance_label.text() and ".434854" not in widget.provenance_label.text()
 
 

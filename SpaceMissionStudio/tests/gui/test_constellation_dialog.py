@@ -24,7 +24,9 @@ def test_description_label_wraps_instead_of_blowing_up_dialog_width(qtbot):
     description_labels = [w for w in dialog.findChildren(QLabel) if len(w.text()) > 100]
     assert description_labels, "expected to find the long top description QLabel"
     assert all(w.wordWrap() for w in description_labels)
-    assert dialog.sizeHint().width() < 900
+    # 900 px at the Linux CI's font; as a count of average characters, so a
+    # platform with wider fonts (Windows) gets the same bound (SRelD K-10).
+    assert dialog.sizeHint().width() < 150 * dialog.fontMetrics().averageCharWidth()
 
 
 def test_defaults_produce_a_valid_request(qtbot):

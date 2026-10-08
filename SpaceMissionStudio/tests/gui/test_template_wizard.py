@@ -185,9 +185,45 @@ def test_wizard_is_sized_to_fit_its_own_busiest_page_not_a_flat_default(qtbot, f
     wizard = TemplateCustomizeWizard(scenario, get_wizard_spec(filename))
     qtbot.addWidget(wizard)
     wizard.show()
+    _assert_no_sideways_scrolling(wizard)
     widest_section = max(p.sizeHint().width() for p in wizard._field_pages)
-    assert wizard._scroll.viewport().width() >= widest_section
+    # The dialog grows to the widest card's one-line layout, up to its cap.
+    assert wizard._scroll.viewport().width() >= widest_section or wizard.size().width() == 1100
     assert wizard.size().width() <= 1100 and wizard.size().height() <= 700
+
+
+def _assert_no_sideways_scrolling(wizard):
+    content = wizard._scroll.widget()
+    assert content.width() <= wizard._scroll.viewport().width()
+    assert max(p.minimumSizeHint().width() for p in wizard._field_pages) <= wizard._scroll.viewport().width()
+
+
+@pytest.mark.parametrize("filename", ["02_elliptical_orbit_with_perturbations.json", "16_lambert_transfer.json"])
+def test_wizard_fits_without_sideways_scrolling_with_large_fonts(qtbot, filename):
+    """SRelD K-10: with wider fonts (the Windows CI measured cards about
+    1.5 times as wide) the cards no longer fit on one line; hints then wrap
+    and long rows put the field under its label, instead of the dialog
+    scrolling sideways."""
+    from PySide6.QtWidgets import QApplication
+
+    from spacemissionstudio.gui.load_scenario_widget import TEMPLATES_DIR
+    from spacemissionstudio.gui.template_wizard import TemplateCustomizeWizard, get_wizard_spec
+    from spacemissionstudio.schema import load_scenario
+
+    app = QApplication.instance()
+    original = app.font()
+    large = app.font()
+    large.setPointSizeF(original.pointSizeF() * 1.5)
+    app.setFont(large)
+    try:
+        wizard = TemplateCustomizeWizard(load_scenario(TEMPLATES_DIR / filename), get_wizard_spec(filename))
+        qtbot.addWidget(wizard)
+        wizard.show()
+        app.processEvents()
+        assert max(p.sizeHint().width() for p in wizard._field_pages) > wizard._scroll.viewport().width()
+        _assert_no_sideways_scrolling(wizard)
+    finally:
+        app.setFont(original)
 
 
 @pytest.mark.parametrize("filename", _ALL_TEMPLATE_FILENAMES)
@@ -377,9 +413,12 @@ def test_inline_hints_and_intros_are_short_plain_lines(qtbot):
     filename = "05_formation_flying_phasing.json"
     wizard = TemplateCustomizeWizard(load_scenario(TEMPLATES_DIR / filename), _SPECS[filename])
     qtbot.addWidget(wizard)
+    wizard.show()
     hint = next(label for label in wizard.findChildren(QLabel)
                 if label.text() == "Distance the follower holds ahead of the chief")
-    assert not hint.wordWrap()
+    # One line at the normal font size; it may wrap only when the dialog is
+    # too narrow (large fonts, SRelD K-10).
+    assert hint.height() < 1.6 * hint.fontMetrics().height()
     assert "follower-1" in hint.toolTip() and "phasing_keeping" not in hint.toolTip()
 
 

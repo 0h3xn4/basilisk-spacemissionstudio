@@ -1438,6 +1438,9 @@ class _WizardFieldPage(QFrame):
         self._form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
         self._form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         self._form.setHorizontalSpacing(16)
+        # A row too wide for the dialog puts its field under the label instead of
+        # forcing sideways scrolling (large fonts, high DPI, the Windows CI).
+        self._form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         self._form.setVerticalSpacing(6)
         outer.addLayout(self._form)
 
@@ -1500,6 +1503,9 @@ class _WizardFieldPage(QFrame):
                     # One short line in normal-size type, centred on the box;
                     # the full explanation is the tooltip.
                     help_label = QLabel(field_spec.inline_hint)
+                    # Wraps only when the dialog is too narrow for one line (large fonts, high DPI,
+                    # the Windows CI): the card then shrinks instead of scrolling sideways.
+                    help_label.setWordWrap(True)
                     help_label.setToolTip(field_spec.help_text)
                     help_label.setMinimumHeight(box.sizeHint().height())
                     help_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)

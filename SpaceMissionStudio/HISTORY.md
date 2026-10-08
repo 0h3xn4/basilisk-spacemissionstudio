@@ -7837,3 +7837,20 @@ now replaced.
 **Correction to the entry above:** Vizard live streaming does not listen on
 all interfaces. In live-stream mode Basilisk connects to Vizard; the tool
 opens no port (security analysis S-06, corrected).
+
+## Windows and macOS CI: two more defects, and test portability
+
+The new Windows and macOS CI jobs (SRS-PO-01) also found:
+
+* **F-10:** `propagate` until periapsis (or apoapsis), started on that apsis,
+  could stop after one step: the starting radial velocity is zero up to
+  rounding, and a negative rounding (Windows) looked like a crossing. The
+  apsis a run starts on no longer counts.
+* **F-11:** the template wizard scrolled sideways with wider fonts (Windows,
+  high DPI). Hints and long rows now wrap when they do not fit; nothing
+  changes at the normal font size.
+* Test-only defects: a test left `sys.platform` set to "linux" for the rest of
+  its process; the Vizard download tests assumed the Linux layout; a path test
+  expected `/`; three width limits were pixel counts at the Linux font.
+
+Details in `compliance/review_log.md`.
