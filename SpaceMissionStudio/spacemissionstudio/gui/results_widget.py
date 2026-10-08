@@ -210,6 +210,7 @@ _SAVE_PNG_PENDING_SENTINEL = "__spacemissionstudio_png_pending__"
 _SAVE_PNG_ERROR_PREFIX = "__spacemissionstudio_png_error__:"
 _SAVE_PNG_POLL_INTERVAL_MS = 100
 _SAVE_PNG_MAX_POLL_ATTEMPTS = 100  # 100 * 100ms = 10s -- Plotly.toImage took ~200ms in practice
+_SAVE_PNG_MAX_WAIT_TICKS = 10  # poll ticks without an answer before asking again (1 s at 100 ms)
 
 # [ms] Real user report: during a live-updating run, clicking the Series
 # dropdown to switch plots appeared to do nothing. Root cause:
@@ -1172,8 +1173,15 @@ class ResultsWidget(QWidget):
         # again (a second file write and "saved" dialog). One query at a
         # time, and answers to a finished poll are ignored.
         state = self._png_poll_state
-        if state is None or state.get("in_flight"):
+        if state is None:
             return
+        if state.get("in_flight"):
+            # An answer that never comes must not stall the save: after a
+            # second without one, ask again (a late answer is then ignored).
+            state["waited_ticks"] = state.get("waited_ticks", 0) + 1
+            if state["waited_ticks"] < _SAVE_PNG_MAX_WAIT_TICKS:
+                return
+        state["waited_ticks"] = 0
         state["attempts"] += 1
         state["in_flight"] = True
 

@@ -27,6 +27,14 @@ Findings of the whole-tool review that followed the human actions
 - macOS: the plot tests ran Qt WebEngine on the offscreen plugin, which does
   not work there (page loads never finished, a worker crashed); the macOS
   job now uses Qt's cocoa plugin.
+- CI run 23: the first plot page sometimes took over 10 s to load on the
+  Windows and macOS runners (four test workers), each time in a different
+  test; the page-load wait is now 30 s. The wizard test allowed for its
+  1100 px cap but not for a narrower screen (the macOS runner's is 1024 px).
+  The one-line hint check measured the label, whose height is pinned to the
+  spin box beside it, instead of the text.
+- Reviewing F-12's one-query-at-a-time rule: an answer that never arrived
+  would have stalled the save; the poll now asks again after a second.
 
 ## Checked, not a defect
 

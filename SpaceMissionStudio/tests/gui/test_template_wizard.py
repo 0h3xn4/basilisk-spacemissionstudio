@@ -187,8 +187,11 @@ def test_wizard_is_sized_to_fit_its_own_busiest_page_not_a_flat_default(qtbot, f
     wizard.show()
     _assert_no_sideways_scrolling(wizard)
     widest_section = max(p.sizeHint().width() for p in wizard._field_pages)
-    # The dialog grows to the widest card's one-line layout, up to its cap.
-    assert wizard._scroll.viewport().width() >= widest_section or wizard.size().width() == 1100
+    # The dialog grows to the widest card's one-line layout, up to its cap:
+    # 1100 px, or less where the screen is narrower (the macOS CI runner's
+    # is 1024 px wide).
+    cap = min(1100, wizard.screen().availableGeometry().width())
+    assert wizard._scroll.viewport().width() >= widest_section or wizard.size().width() >= cap
     assert wizard.size().width() <= 1100 and wizard.size().height() <= 700
 
 
@@ -417,8 +420,14 @@ def test_inline_hints_and_intros_are_short_plain_lines(qtbot):
     hint = next(label for label in wizard.findChildren(QLabel)
                 if label.text() == "Distance the follower holds ahead of the chief")
     # One line at the normal font size; it may wrap only when the dialog is
-    # too narrow (large fonts, SRelD K-10).
-    assert hint.height() < 1.6 * hint.fontMetrics().height()
+    # too narrow (large fonts, SRelD K-10). Measured on the text itself: the
+    # label's own height is pinned to the spin box beside it.
+    from PySide6.QtCore import QRect, Qt
+
+    metrics = hint.fontMetrics()
+    text_height = metrics.boundingRect(QRect(0, 0, hint.contentsRect().width(), 0),
+                                       int(Qt.TextFlag.TextWordWrap), hint.text()).height()
+    assert text_height < 1.6 * metrics.height()
     assert "follower-1" in hint.toolTip() and "phasing_keeping" not in hint.toolTip()
 
 

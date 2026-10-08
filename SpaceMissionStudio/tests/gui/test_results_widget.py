@@ -26,6 +26,11 @@ def _sample_result_set(n=50):
     return rs
 
 
+# The first plot page (plotly.js) can take over 10 s to load on a loaded CI runner
+# with several test workers (Windows, macOS: SRelD K-10); the tool is not at fault.
+_PAGE_LOAD_TIMEOUT_MS = 30000  # [ms]
+
+
 @pytest.fixture
 def widget(qtbot):
     from spacemissionstudio.gui.results_widget import ResultsWidget
@@ -167,7 +172,7 @@ def test_save_plot_as_png_writes_a_real_png_file(widget, tmp_path, monkeypatch, 
     """
     from PySide6.QtWidgets import QFileDialog, QMessageBox
 
-    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=10000):
+    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=_PAGE_LOAD_TIMEOUT_MS):
         widget.set_result(_sample_result_set())
     assert widget.save_png_button.isEnabled()
     out_path = tmp_path / "plot.png"
@@ -188,7 +193,7 @@ def test_save_plot_as_png_writes_a_real_png_file(widget, tmp_path, monkeypatch, 
 def test_save_plot_as_png_appends_extension_if_missing(widget, tmp_path, monkeypatch, qtbot):
     from PySide6.QtWidgets import QFileDialog, QMessageBox
 
-    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=10000):
+    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=_PAGE_LOAD_TIMEOUT_MS):
         widget.set_result(_sample_result_set())
     out_path_no_ext = tmp_path / "plot"
     monkeypatch.setattr(QFileDialog, "getSaveFileName",
@@ -233,7 +238,7 @@ def test_redraw_does_not_reenable_save_button_while_a_png_poll_is_in_flight(widg
     kept firing forever, re-triggering a duplicate file write + a
     duplicate "Plot saved" dialog every poll interval.
     """
-    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=10000):
+    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=_PAGE_LOAD_TIMEOUT_MS):
         widget.set_result(_sample_result_set())
     assert widget.save_png_button.isEnabled()
 
@@ -250,7 +255,7 @@ def test_save_plot_as_png_is_a_no_op_while_a_poll_is_already_in_flight(widget, q
     from PySide6.QtCore import QTimer
     from PySide6.QtWidgets import QFileDialog
 
-    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=10000):
+    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=_PAGE_LOAD_TIMEOUT_MS):
         widget.set_result(_sample_result_set())
 
     calls = []
@@ -270,7 +275,7 @@ def test_save_plot_as_png_poll_state_resets_after_completion_allowing_a_later_sa
     """
     from PySide6.QtWidgets import QFileDialog, QMessageBox
 
-    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=10000):
+    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=_PAGE_LOAD_TIMEOUT_MS):
         widget.set_result(_sample_result_set())
     first_path = tmp_path / "first.png"
     monkeypatch.setattr(QFileDialog, "getSaveFileName",
@@ -300,7 +305,7 @@ def test_save_plot_as_svg_writes_a_real_svg_file(widget, tmp_path, monkeypatch, 
     """
     from PySide6.QtWidgets import QFileDialog, QMessageBox
 
-    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=10000):
+    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=_PAGE_LOAD_TIMEOUT_MS):
         widget.set_result(_sample_result_set())
     assert widget.save_svg_button.isEnabled()
     out_path = tmp_path / "plot.svg"
@@ -321,7 +326,7 @@ def test_save_plot_as_svg_writes_a_real_svg_file(widget, tmp_path, monkeypatch, 
 def test_save_plot_as_svg_appends_extension_if_missing(widget, tmp_path, monkeypatch, qtbot):
     from PySide6.QtWidgets import QFileDialog, QMessageBox
 
-    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=10000):
+    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=_PAGE_LOAD_TIMEOUT_MS):
         widget.set_result(_sample_result_set())
     out_path_no_ext = tmp_path / "plot"
     monkeypatch.setattr(QFileDialog, "getSaveFileName",
@@ -354,7 +359,7 @@ def test_save_png_and_save_svg_share_the_same_re_entrancy_guard(widget, qtbot, m
     from PySide6.QtCore import QTimer
     from PySide6.QtWidgets import QFileDialog
 
-    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=10000):
+    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=_PAGE_LOAD_TIMEOUT_MS):
         widget.set_result(_sample_result_set())
 
     calls = []
@@ -371,7 +376,7 @@ def test_redraw_does_not_reenable_save_svg_button_while_a_poll_is_in_flight(widg
     save_svg_button must stay disabled across a live-update _redraw()
     too, for the same reason.
     """
-    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=10000):
+    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=_PAGE_LOAD_TIMEOUT_MS):
         widget.set_result(_sample_result_set())
     assert widget.save_svg_button.isEnabled()
 
@@ -501,7 +506,7 @@ def test_access_timeline_renders_in_the_real_webview(widget, qtbot):
     (e.g. a NaN/non-JSON-serializable value sneaking into a trace).
     """
     widget.set_result(_access_result_set())
-    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=10000) as blocker:
+    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=_PAGE_LOAD_TIMEOUT_MS) as blocker:
         widget.view_combo.setCurrentIndex(widget.view_combo.findData("access_timeline"))
     assert blocker.args == [True]
 
@@ -509,7 +514,7 @@ def test_access_timeline_renders_in_the_real_webview(widget, qtbot):
 def test_save_plot_default_name_is_access_timeline_in_that_view(widget, tmp_path, monkeypatch, qtbot):
     from PySide6.QtWidgets import QFileDialog
 
-    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=10000):
+    with qtbot.waitSignal(widget.web_view.loadFinished, timeout=_PAGE_LOAD_TIMEOUT_MS):
         widget.set_result(_access_result_set())
     widget.view_combo.setCurrentIndex(widget.view_combo.findData("access_timeline"))
 
@@ -1205,3 +1210,21 @@ def test_a_pending_answer_lets_the_next_tick_ask_again(widget, monkeypatch, tmp_
     assert len(page.pending) == 1 and widget._png_poll_state["attempts"] == 2
     page.pending.pop()("data:image/png;base64,AAAA")
     assert len(rendered) == 1
+
+
+def test_an_answer_that_never_comes_does_not_stall_the_save(widget, monkeypatch, tmp_path):
+    """One query at a time must not mean waiting forever: if an answer is
+    lost, the poll asks again after a second of ticks."""
+    from spacemissionstudio.gui.results_widget import _SAVE_PNG_MAX_WAIT_TICKS
+
+    page, rendered = _deferred_poll(widget, monkeypatch, tmp_path)
+    widget._poll_plot_png()
+    page.pending.clear()  # the answer is lost
+    for _ in range(_SAVE_PNG_MAX_WAIT_TICKS - 1):
+        widget._poll_plot_png()
+    assert page.pending == []
+    widget._poll_plot_png()
+    assert len(page.pending) == 1
+    page.pending.pop()("data:image/png;base64,AAAA")
+    assert len(rendered) == 1 and widget._png_poll_state is None
+
