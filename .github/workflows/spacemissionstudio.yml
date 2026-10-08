@@ -48,6 +48,15 @@ jobs:
           python -m pip install -e ".[dev,gui]"
       - name: Lint (coding standard C-8)
         run: python -m ruff check spacemissionstudio tests scripts compliance/tools
+      - name: Documents complete against their DRDs and generated parts current (R14)
+        run: |
+          python compliance/tools/check_drds.py
+          python compliance/tools/build_icd_schema.py
+          python compliance/tools/build_sdd_components.py
+          python compliance/tools/build_test_specs.py
+          git diff --exit-code -- compliance/docs
+      - name: IERS-based Earth orientation files for the validation cases (SVS VP-1)
+        run: spacemissionstudio earth-orientation --fetch
       - name: Tests with coverage (C-9, C-10)
         run: >
           python -m pytest tests -q -n auto -p no:cacheprovider
