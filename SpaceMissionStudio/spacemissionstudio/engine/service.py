@@ -149,6 +149,8 @@ installed version happens to add.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import math
 from dataclasses import dataclass, field
@@ -163,6 +165,7 @@ from Basilisk.utilities import SimulationBaseClass, macros, orbitalMotion, simHe
 from Basilisk.utilities.supportDataTools.dataFetcher import DataFile, get_path
 
 from .. import __version__ as _SPACEMISSIONSTUDIO_VERSION
+from .. import dependencies
 from ..schema.scenario import OrbitIC, Scenario
 from . import fsw, geodesy, kernels, link_budget, long_run, orbit_maintenance, time_system, tle, vizard
 from .results import ResultSet, RunProvenance, TimeSeries, conservation_drift_warnings
@@ -568,6 +571,7 @@ class SimulationService:
         # the run stopped there rather than integrate it through the Earth
         self.reentry: Optional[tuple] = None
         self._space_weather_warnings: List[str] = []  # what the resolved space weather is built from
+        self._data_files: Dict[str, Dict[str, object]] = {}  # reference data used, for RunProvenance
         self._run_started_utc: Optional[str] = None  # set by build() -- see RunProvenance
         # Set below, during gravity setup, only when a real J2 term is
         # actually being modeled for the central body -- see that
@@ -660,6 +664,12 @@ class SimulationService:
         # run()/run_live()/MissionEngine.run() -- see RunProvenance's own
         # docstring for why this matters).
         self._run_started_utc = datetime.now(timezone.utc).isoformat()
+        self._dependency_versions = dependencies.dependency_versions()
+        self._scenario_sha256 = hashlib.sha256(
+            json.dumps(self.scenario.to_dict(), sort_keys=True).encode("utf-8")).hexdigest()
+        version_note = dependencies.basilisk_check(Basilisk.__version__)
+        if version_note:
+            _logger.warning("%s", version_note)
 
         scenario = self.scenario
         scenario.validate()  # re-validate: the scenario object may have been mutated after load
@@ -717,9 +727,9 @@ class SimulationService:
                     "gravity.central_body_degree == 0 (point-mass) until engine.service is extended "
                     "with that body's gravity-field file."
                 )
-            central_body.useSphericalHarmonicsGravityModel(
-                str(get_path(DataFile.LocalGravData.GGM03S)), gravity.central_body_degree
-            )
+            gravity_file = get_path(DataFile.LocalGravData.GGM03S)
+            central_body.useSphericalHarmonicsGravityModel(str(gravity_file), gravity.central_body_degree)
+            self._data_files["gravity_field"] = dependencies.file_record(gravity_file)
         mu = central_body.mu
         self.mu = mu
         self.grav_factory = grav_factory
@@ -745,6 +755,8 @@ class SimulationService:
 
         spice_time_string = time_system.utc_iso_to_spice_string(scenario.epoch_utc)
         self.spice_object = kernels.build_spice_interface(grav_factory, spice_time_string, epoch_in_msg=True)
+        for status in kernels.ensure_kernels(kernels.DEFAULT_KERNELS):
+            self._data_files[f"spice:{status.filename}"] = dependencies.file_record(status.path)
         # Re-zero every SPICE ephemeris output on the central body (SPICE's
         # own observer/"zeroBase" concept -- see spiceInterface.cpp's
         # spkezr_c call, which queries each body's state relative to
@@ -818,6 +830,7 @@ class SimulationService:
             self._mag_field_model = fsw.build_magnetic_field_wmm(
                 self.scSim, dyn_task_name, central_body_state_out_msg, central_body.radEquator
             )
+            self._data_files["magnetic_field"] = dependencies.file_record(get_path(DataFile.MagneticFieldData.WMM))
 
         # Phase 4: power budget (schema.scenario.PowerConfig),
         # station-keeping's eclipse-gated reboost burn
@@ -919,6 +932,7 @@ class SimulationService:
                 try:
                     resolved_sw = sw.resolve_for(scenario.space_weather, start_utc, end_utc)
                     self._space_weather_warnings = list(resolved_sw.warnings)
+                    self._data_files["space_weather"] = dependencies.file_record(resolved_sw.data_file)
                 except sw.SpaceWeatherError as exc:
                     raise SimulationServiceError(
                         f"could not resolve space weather for atmospheric drag: {exc}") from exc
@@ -1885,6 +1899,11 @@ class SimulationService:
                 run_started_utc=self._run_started_utc,
                 integrator=self.scenario.sim_settings.integrator,
                 dynamics_task_rate_s=self.scenario.sim_settings.dynamics_task_rate_s,
+                qualified_basilisk_version=dependencies.QUALIFIED_BASILISK_VERSION,
+                basilisk_qualified=Basilisk.__version__ == dependencies.QUALIFIED_BASILISK_VERSION,
+                dependency_versions=self._dependency_versions,
+                scenario_sha256=self._scenario_sha256,
+                data_files=dict(self._data_files),
             )
         result.warnings.extend(self._space_weather_warnings)
         spacecraft_by_name = {sc_config.name: sc_config for sc_config in self.scenario.spacecraft}

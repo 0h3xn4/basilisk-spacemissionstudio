@@ -60,6 +60,7 @@ import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from . import dependencies
 from .logging_setup import configure_logging
 from .schema import ScenarioValidationError, load_scenario
 
@@ -91,6 +92,9 @@ def cmd_run(args: argparse.Namespace) -> int:
     except ImportError as exc:
         print(f"ERROR: Basilisk is not installed/built ({exc}) -- see SpaceMissionStudio/README.md", file=sys.stderr)
         return 2
+    version_note = dependencies.basilisk_check()
+    if version_note:
+        print(f"WARNING: {version_note}", file=sys.stderr)
 
     vizard_request = None
     if args.vizard_save_file or args.vizard_live_stream:

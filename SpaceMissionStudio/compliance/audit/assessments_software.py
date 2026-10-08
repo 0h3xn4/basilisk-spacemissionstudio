@@ -236,16 +236,17 @@ SOFTWARE_RULES = [
     ("Q-ST-80C", "6.2.3.*", _H, "-", "Critical software components not identified.", "Identify (e.g. budget, "
      "lifetime, frame/time layer) in the dependability analysis.", "S", "no", "H04"),
     ("Q-ST-80C", "6.2.4.*", "P", "git; version 2.0.0 (pyproject.toml); schema_version + migrations; "
-     "RunProvenance (tool and Basilisk versions)", "No SCMP; no tagged releases of this tool; the Basilisk "
-     "dependency is not pinned (repository src 2.13.0b0, tested 2.12.0).",
-     "SCMP description (Phase 4); pin and check the Basilisk version (R01); tag releases.", "S",
-     "yes (Basilisk version control)", "R01,R14"),
+     "R01 (Phase 2): spacemissionstudio/dependencies.py QUALIFIED_BASILISK_VERSION = 2.12.0, installers pin "
+     "bsk[all]==2.12.0, start-up check (GUI status bar, CLI run), RunProvenance/provenance.json records "
+     "Basilisk version and qualification, dependency versions, scenario SHA-256 and reference data files "
+     "(tests/test_dependencies.py)", "No SCMP; no tagged releases of this tool.",
+     "SCMP description (Phase 4); tag releases.", "S", "yes (Basilisk version control)", "R01,R14"),
     ("Q-ST-80C", "6.2.5*", "N", "-", "No process metrics.", "R11 (metrics collected in CI).", "S", "no", "R11"),
     ("Q-ST-80C", "6.2.6.*", "P", "tests/; ruff", "Verification by tests; no verification plan or reports, no "
      "human review record of AI-written code.", "SVerP/SVR; documented human code review.", "M", "no",
      "R14,H06"),
-    ("Q-ST-80C", "6.2.7.*", "N", "-", "Reuse of Basilisk not justified or documented (no SRF, no "
-     "qualification evidence).", "SRF (Phase 4); evidence: Basilisk's own test suite and the tool's "
+    ("Q-ST-80C", "6.2.7.*", "N", "R01: the reused Basilisk version is fixed (2.12.0), pinned and checked; "
+     "runs record it.", "Reuse of Basilisk not justified or documented (no SRF, no qualification evidence).", "SRF (Phase 4); evidence: Basilisk's own test suite and the tool's "
      "integration tests.", "M", "yes", "R14,R01"),
     ("Q-ST-80C", "6.2.8.*", "NA", "-", "No automatic code generation from models. (AI-assisted coding is "
      "covered by review, H06.)", "-", "S", "no", "H06"),

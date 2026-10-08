@@ -203,7 +203,7 @@ not modified.
 | B8 | sensorThermal: solar constant 1366 (src), 0 K sink, Stefan-Boltzmann 5.76051e-8 | 10-04C 6.2.1a/c | R06 (measure on 2.12, set where exposed) / D-06; report upstream |
 | B9 | GM values from astroConstants / DE-403, not IERS 2010 | 10-04C 4.2.2d | R06 (set `mu`) or D-07 |
 | B10 | `nanoToSec()` loses precision past 2^53 ns (~104 days) | long runs | already handled: segmented runs (engine/long_run.py) |
-| B11 | Repository Basilisk 2.13.0b0 vs installed 2.12.0 | Q-ST-80C 6.2.4, 6.2.7 | D5 / R01 |
+| B11 | Repository Basilisk 2.13.0b0 vs installed 2.12.0 | Q-ST-80C 6.2.4, 6.2.7 | D5 / R01 (done): 2.12.0 qualified, pinned in the installers, checked at start-up, recorded per run |
 
 ## 8. Decisions needed from you
 

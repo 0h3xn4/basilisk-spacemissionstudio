@@ -51,6 +51,7 @@ from PySide6.QtWidgets import (
     QToolBar,
 )
 
+from .. import dependencies
 from ..engine.series_names import featured_series
 from ..logging_setup import get_log_file_path
 from ..schema.scenario import Scenario, ScenarioValidationError, load_scenario
@@ -241,6 +242,15 @@ class MainWindow(QMainWindow):
         self._busy_progress.setVisible(False)
         self.statusBar().addPermanentWidget(self._busy_label)
         self.statusBar().addPermanentWidget(self._busy_progress)
+        # Basilisk version check at start-up (ECSS-Q-ST-80C 6.2.7, decision D5).
+        self.basilisk_version_label = QLabel()
+        version_note = dependencies.basilisk_check()
+        self.basilisk_version_label.setVisible(version_note is not None)
+        if version_note is not None:
+            self.basilisk_version_label.setText("Basilisk version not qualified")
+            self.basilisk_version_label.setToolTip(version_note)
+            self.basilisk_version_label.setStyleSheet("color: #b8860b;")
+        self.statusBar().addPermanentWidget(self.basilisk_version_label)
 
         # Design-philosophy roadmap item M4 (docs/ux_roadmap.md):
         # autosave/crash-recovery for scenario edits -- see

@@ -115,6 +115,12 @@ def test_result_set_export_csv_with_provenance_writes_sidecar_json(tmp_path):
         "integrator": "rkf78",
         "dynamics_task_rate_s": 10.0,
         "rng_seed_note": RunProvenance.__dataclass_fields__["rng_seed_note"].default,
+        # configuration record (R01), empty when not filled by engine.service
+        "qualified_basilisk_version": "",
+        "basilisk_qualified": False,
+        "dependency_versions": {},
+        "scenario_sha256": "",
+        "data_files": {},
     }
 
 

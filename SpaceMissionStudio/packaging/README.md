@@ -14,6 +14,10 @@ platform:
    top of -- still useful directly for anyone who'd rather script an
    install or doesn't want a system-wide package manager entry.
 
+**Basilisk version:** the installers pin `bsk[all]==2.12.0`, the version
+SpaceMissionStudio is qualified with (`spacemissionstudio/dependencies.py`).
+Change both together.
+
 **A real update, made while building the `.deb` installer above:** this
 development sandbox's Basilisk story has changed since earlier sections
 of this file (and `../HISTORY.md`) were written. `pip install "bsk[all]"`

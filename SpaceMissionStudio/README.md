@@ -893,6 +893,19 @@ install from a wheel file already on disk. `--basilisk-wheel` accepts any
 string `pip install` would (a path, a URL, or a plain requirement
 specifier like `"bsk[all]==2.12.0"`), not literally only a `.whl` file.
 
+### Qualified Basilisk version
+
+SpaceMissionStudio is verified against **Basilisk 2.12.0**
+(`spacemissionstudio.dependencies.QUALIFIED_BASILISK_VERSION`; ECSS
+compliance decision D5). The `.deb` and Windows installers install
+`bsk[all]==2.12.0`. Another version still runs, but the GUI status bar and
+`spacemissionstudio run` say so, and every run's `provenance.json` records
+the Basilisk version, whether it is the qualified one, the other dependency
+versions, a SHA-256 of the scenario and the reference data files used
+(SPICE kernels, gravity field, magnetic model, space weather). The Basilisk
+sources in this repository (`../src`, currently 2.13.0b0) are not the
+qualified version.
+
 ## Closed-off/offline policy
 
 SpaceMissionStudio makes **no network calls implicitly**. Nothing here ever

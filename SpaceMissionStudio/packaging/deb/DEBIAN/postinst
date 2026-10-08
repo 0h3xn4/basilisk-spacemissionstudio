@@ -34,8 +34,8 @@ case "$1" in
         python3 -m venv "$VENV_DIR"
         "$VENV_DIR/bin/python3" -m pip install --quiet --upgrade pip
 
-        echo "SpaceMissionStudio: installing Basilisk (bsk[all]) from PyPI -- this needs internet access and can take a few minutes ..."
-        "$VENV_DIR/bin/python3" -m pip install --quiet "bsk[all]"
+        echo "SpaceMissionStudio: installing Basilisk 2.12.0 (bsk[all]==2.12.0, the version SpaceMissionStudio is qualified with) from PyPI -- this needs internet access and can take a few minutes ..."
+        "$VENV_DIR/bin/python3" -m pip install --quiet "bsk[all]==2.12.0"
 
         wheel=$(ls "$INSTALL_DIR"/dist/spacemissionstudio-*.whl 2>/dev/null | head -n1)
         if [ -z "$wheel" ]; then

@@ -84,6 +84,16 @@ class RunProvenance:
         "SysModel RNGSeed (0x1badcad1) -- seeds are only ever dispersed during a Monte Carlo batch, "
         "which does not produce a ResultSet"
     )
+    # Configuration record (ECSS-Q-ST-80C 6.2.4, 6.2.7; remediation R01):
+    # the Basilisk version the tool is qualified with and whether this run
+    # used it, the other runtime dependencies, a hash of the scenario as
+    # run, and the reference data files (SPICE kernels, gravity field,
+    # magnetic model, space weather) with their sizes and SHA-256.
+    qualified_basilisk_version: str = ""
+    basilisk_qualified: bool = False
+    dependency_versions: Dict[str, str] = field(default_factory=dict)
+    scenario_sha256: str = ""
+    data_files: Dict[str, Dict[str, object]] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return asdict(self)
