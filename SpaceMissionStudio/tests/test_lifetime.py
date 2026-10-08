@@ -126,7 +126,7 @@ def test_density_matches_the_simulations_own_atmosphere():
 def test_reentry_date_matches_a_basilisk_decay_run():
     """Template 18's spacecraft from 300 km with no station keeping: the
     estimate's re-entry (perigee at 120 km) within 3% of a full Basilisk
-    run's (24.00 vs 23.79 days on the real 2030 data: +0.9%). The run
+    run's (25.66 vs 25.43 days on MSFC's 2030 prediction: +0.9%). The run
     stops at re-entry with a warning."""
     from spacemissionstudio.engine.service import SimulationService
 
@@ -189,7 +189,7 @@ def test_the_exponential_atmosphere_is_flagged_as_too_thin():
 @pytest.mark.requires_basilisk
 def test_a_run_stops_cleanly_when_its_spacecraft_reenters(monkeypatch):
     """Template 18's spacecraft from 300 km asked to fly 60 days, split
-    into 20-day segments: the run stops at re-entry (~24 days) with its
+    into 20-day segments: the run stops at re-entry (~25 days) with its
     results so far and a warning, rather than integrate on through the
     Earth until the state diverges and the whole run is lost."""
     from spacemissionstudio.engine import long_run

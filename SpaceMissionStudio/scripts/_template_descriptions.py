@@ -107,7 +107,7 @@ the separation drifts out of tolerance.
 What to look at:
 - follower-1.phasing_keeping.separation_error and .relative_semi_major_axis.
 - The separation drifts slowly, leaves its 10% band around day 20, and one correction brings it back in \
-about 3 days. It stays within 45-52 km for ~0.013 m/s.
+about 3 days. It then stays within 48-55 km for ~0.013 m/s.
 
 Try changing:
 - Target separation (a list of values steps through a schedule).
