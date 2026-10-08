@@ -357,6 +357,14 @@ you may need a few extra system libraries -- see "Running the tests" in
 instantly) and keeps whatever partial results were already produced --
 it's always safe to use, never a forced/unsafe kill.
 
+**You want to simulate years, not weeks.** Set the duration (up to about
+10 years) in Propagation setup. Past 100 days the run is split into
+segments of up to 90 days, chained automatically, and the result is
+still one run. Also set **Record every** (e.g. 600 s), or the results
+fill memory. For scale: 5 years of LEO station keeping took 49 minutes
+and 441 MB. Mission sequences, phasing keeping, Monte Carlo and Vizard
+are limited to 100 days.
+
 **You're not sure what a field in the Scenario Editor means.** Hover
 over it -- most fields have a tooltip explaining what it does in plain
 language. The validation message at the bottom of the Scenario Editor

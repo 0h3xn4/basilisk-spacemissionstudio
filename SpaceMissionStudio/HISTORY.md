@@ -7577,3 +7577,34 @@ Every Basilisk recorder and every controller's own telemetry used to record ever
 **Confirmed in Basilisk** (template 18, 2 and 5 days): every 10 minutes instead of every 30 s gives the identical final position and propellant (to 0 m / 0 kg), 1/20 of the samples, and the same burn count.
 
 **Tests:** new `tests/test_record_interval.py` (validation, old files, the pass warning, physics equivalence in Basilisk, the thinner) and a GUI round-trip test.
+
+## Runs longer than 100 days
+
+**Correction.** An earlier answer to "can it do a 5-year LEO station-keeping run?" said yes. It could not: `SimSettings` capped every run at 100 days. The cap is real: Basilisk's `nanoToSec()` returns NaN past 2**53 ns (~104.25 days), so one Basilisk simulation cannot go further.
+
+**Now** a run of up to 3660 days (about 10 years) is split into a chain of simulations of at most 90 days (`engine/long_run.py`). Each segment starts where the last ended:
+* epoch, position and velocity (as a Cartesian state), attitude, body rate, wheel speeds;
+* remaining propellant (station keeping, GEO, constant thrust, fuel tank) and battery charge;
+* thermal-sensor and wheel-motor temperatures.
+
+Results come back as one run on one time axis; cumulative delta-V carries on across segments. Generated space weather is made once for the whole span, so solar activity is continuous. `SimulationService.run()` and `run_live()` split automatically, so the GUI and CLI need no change. Progress and Abort cover the whole run.
+
+**Not carried:** controllers' internal filters (station keeping's altitude smoothing refills over one orbit, the GEO drift fit over one day) and sensor noise sequences. **Refused past 100 days:** mission sequences, phasing keeping and Monte Carlo (each runs as one simulation) and the Vizard view. A long run that records every step now gets a pre-run warning to set "Record every".
+
+**Confirmed in Basilisk:**
+* Template 18's orbit, 2 days, single run vs four half-day segments: final positions agree to 1e-5 m.
+* Template 18 started 1.5 km low, 4 days, single vs one-day segments: identical delta-V (4.71 m/s) and propellant.
+* The 150 kg preset pointing at the Sun with spun-up wheels: no jump in wheel speed, attitude or battery charge at the boundary.
+
+**A real 5-year run** (template 18's 120 kg spacecraft at 400 km, 0.05 N at 1500 s Isp, 5 kg propellant, 2030-2035 with the calendar solar cycle, recorded every 600 s):
+
+| | Year 1 | Year 2 | Year 3 | Year 4 | Year 5 | Total |
+|---|---|---|---|---|---|---|
+| Delta-V [m/s] | 23.7 | 22.0 | 34.7 | 60.9 | 83.9 | 225.2 |
+
+* 1.90 kg propellant used of 5 (the rocket equation gives the same 225.2 m/s), in 292 burns.
+* The daily-mean orbital radius stays within 6777.0-6780.2 km (target 6778) in every year.
+* Year 2 is the cycle-26 minimum (December 2030); years 4-5 climb towards its maximum (late 2035).
+* 21 segments, 49 min wall time, 441 MB peak memory, 263,000 samples per series.
+
+**Tests:** new `tests/test_long_run.py` (segment lengths, refusals, stitching, the warning, and the Basilisk comparisons above plus live progress and Abort across segments).
