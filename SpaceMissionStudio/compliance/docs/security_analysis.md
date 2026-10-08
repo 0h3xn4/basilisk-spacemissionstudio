@@ -74,7 +74,7 @@ packages from PyPI.
 | S-03 | **Scenario JSON parsing.** Scenarios are plain JSON (`json.loads`), never pickled; unknown fields are refused. | Low | None needed. | – | `tests/test_scenario_schema.py::test_load_scenario_rejects_an_unknown_field_naming_it` |
 | S-04 | **Monte Carlo archives** are written by Basilisk's `Controller` as gzipped pickles. Loading a pickle runs code. | Low: the tool writes archives but never loads them. A user who loads someone else's archive with Basilisk's own tools is outside the tool. | None in the tool. The SUM tells users to load only their own archives. | Documented | `grep` shows no load path in `spacemissionstudio/` (this analysis) |
 | S-05 | **The Vizard download is an executable.** It comes from AVS's server over HTTPS. No checksum is published to verify it against. | Low (HTTPS, a fixed URL, only on the user's click), high effect if the server were compromised | Download only on consent, from a constant https URL. Bounded size. Zip-slip guard on extraction. The tool now records the download: `download.json` with URL, size, SHA-256 and time, and the status line shows the hash so the user can compare it. | Partly treated: a hash can be recorded but not verified | `tests/gui/test_vizard_launcher.py::test_fetch_vizard_records_the_download_with_its_sha256`, `test_fetch_vizard_rejects_a_response_over_the_size_cap`; the zip-slip guard tests |
-| S-06 | **Vizard live stream:** Basilisk's `vizInterface` binds its ZMQ sockets on 0.0.0.0, ports 5556 and 5570, so other machines on the network can connect while a live run streams. | Low (only during a live run; the data is the simulation's), low to medium | Proposed: set `reqComAddress` and `pubComAddress` to 127.0.0.1 through Basilisk's public attributes. **Not done:** it cannot be verified with a real Vizard in this environment, and an unverified change could break live streaming. The SUM advises a firewall. | Open: H11 | – |
+| S-06 | **Vizard live stream** (corrected 2026-10-08, decision 17). Earlier issues of this analysis said that Basilisk's `vizInterface` binds its ZMQ sockets on 0.0.0.0, ports 5556 and 5570. That came from Basilisk's documentation (`docs/source/Vizard/vizardAdvanced/vizardLiveComm.rst`), and the code contradicts it. In live-stream mode `vizInterface` *connects* (`zmq_connect`) to Vizard on port 5556. It binds port 5570 only in `broadcastStream` mode, which the tool never enables (`vizInterface.cpp`, `Reset`). During a live run waiting for Vizard (Basilisk 2.12.0), `/proc/net/tcp` showed no listening socket on 5556 or 5570. The listening side is Vizard, a separate program; the tool starts it with `-directComm tcp://localhost:5556`. | Low: the tool opens no port. Vizard's own listener is outside the tool, and its interface binding is unknown. | None needed in the tool (decision 17). The SUM tells users how to check Vizard's listener. The doc/code mismatch is for the user's upstream report (H10). The comment above `DEFAULT_LIVE_STREAM_ADDRESS` in `gui/vizard_launcher.py` repeats the documentation's wording; it is to be corrected in the whole-tool review. | Corrected; residual: Vizard's own listener | The live run of this analysis (decision 17); `vizInterface.cpp` |
 | S-07 | **Integrity of the tool's own releases.** No checksums were published. | Low, high | The build scripts now write `SHA256SUMS` (wheel, sdist) and `<deb>.sha256`. Signing is waived by the user (decision 11, deviation D-13). | Implemented for checksums | `packaging/build_wheel.sh` run in this audit (SHA256SUMS produced) |
 | S-08 | **Dependency supply chain.** Installers run `pip install "bsk[all]==2.12.0"` and the tool's dependencies, from PyPI over HTTPS, without hash checking. Lower-bound pins (`pyproject.toml`) let other versions in. | Low, high | The Basilisk version is pinned and checked at start-up. The versions used are recorded in every run's provenance. Proposed: a lock file with hashes (`--require-hashes`) for releases (SDP, SCMP). | Partly treated | `dependencies.py`, `tests/test_dependencies.py` |
 | S-09 | **Data downloads:** CelesTrak space weather and NAIF Earth PCKs. | Low, medium (wrong results) | Only on the user's request. Constant https URLs. Bounded size. Format and coverage checks (DAF/PCK header; the space-weather parser and coverage check). SHA-256 recorded in the manifest and in each run's provenance. | Implemented | `tests/test_spaceweather.py`, `tests/test_earth_orientation.py` |
@@ -105,12 +105,14 @@ input).
 ## 5 Architecture: residual vulnerabilities (E-ST-40C 5.4.3.2b)
 
 The architecture (SDD 4.1) has no network service. Code from a file
-executes in exactly one place: `script_block`, behind consent. There is one
-listening socket, Vizard's, during live runs only (S-06).
+executes in exactly one place: `script_block`, behind consent. The tool opens
+no listening socket. During live runs Vizard, a separate program, listens
+on port 5556 and Basilisk connects to it (S-06).
 
 **Residual vulnerabilities after treatment:**
 - S-05: the Vizard download is not verifiable.
-- S-06: the live-stream sockets bind to all interfaces.
+- S-06: Vizard's own listener during live runs, outside the tool; its
+  interface binding is unknown.
 - S-08: dependencies are not pinned by hash.
 - S-12: residual resource use in conditions.
 - The consent for S-01 relies on the user reading the code.

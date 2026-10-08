@@ -153,7 +153,7 @@ SOFTWARE_RULES = [
     ("E-ST-40C", "5.9.*", "N", "compliance/docs/SMP.md 7.2 (best effort)", "No operation support entity or procedure: formal operation support waived by the user (decision 11); support is best effort.", "-", "S", "no", "H05,D-12"),
     ("E-ST-40C", "5.10.*", "P", "compliance/docs/SMP.md (process; problem reports as GitHub issues, decision 11)", "Maintenance process defined; the issue procedure is not yet in use; no change board (D-12).", "-", "M", "no", "R14,H05"),
     ("E-ST-40C", "5.11.2*", "N", "-", "No software security management plan: waived by the user (decision 8); no security manager named (roles open, H02).", "-", "S", "no", "H02,D-10"),
-    ("E-ST-40C", "5.11.*", "P", "compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI", "Analysis by the supplier at security level low (D8); not reviewed at the milestones (H01); open items S-05, S-06 (H11), S-08.", "Review (H01); close H11, S-08.", "M", "no", "R15,H01,H11"),
+    ("E-ST-40C", "5.11.*", "P", "compliance/docs/security_analysis.md (S-01 to S-12, treatments with tests); ruff security rules in CI", "Analysis by the supplier at security level low (D8); not reviewed at the milestones (H01); open items S-05, S-08; S-06 corrected (decision 17): the tool opens no listening port.", "Review (H01); close S-08.", "M", "no", "R15,H01,H11"),
     # Annexes: DRDs
     ("E-ST-40C", "B.*", "N", "-", "No SSS: the customer baseline is waived (decision 9).", "-", "M", "no", "H03,D-11"),
     ("E-ST-40C", "C.*", "N", "-", "No IRD: the customer baseline is waived (decision 9).", "-", "S", "no", "H03,D-11"),

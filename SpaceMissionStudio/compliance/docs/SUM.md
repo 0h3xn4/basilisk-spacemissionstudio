@@ -219,9 +219,14 @@ in the CLI. An error never closes the application.
   - Conditions (`if`/`while`) cannot run code (AD3, S-02).
 - **Monte Carlo archives:** Basilisk writes them as pickle files. Do not
   load archives you did not create (AD3, S-04).
-- **Vizard live streaming:** opens network ports 5556 and 5570 on all
-  interfaces while a run streams. On an untrusted network, block them in
-  your firewall, or use a save file instead (AD3, S-06).
+- **Vizard live streaming:** the tool opens no network port. Vizard
+  listens on port 5556 while a run streams, and the simulation connects
+  to it.
+  - To see whether Vizard listens on all interfaces, run
+    `netstat -an | grep 5556` (Linux, macOS) or
+    `netstat -an | findstr 5556` (Windows) during a live run.
+  - On an untrusted network, block port 5556 in your firewall, or use a
+    save file instead (AD3, S-06).
 - **Downloads:**
   - These happen only when you agree, and only from the sources in
     section 6.

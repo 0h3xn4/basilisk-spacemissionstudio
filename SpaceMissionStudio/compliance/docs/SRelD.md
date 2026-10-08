@@ -95,7 +95,7 @@ SpaceMissionStudio". In summary:
 | K-02 | The drag case of V-04 has an unexplained 1.6 % decay difference from GMAT (within tolerance) | Drag results carry it | `phase3_log.md` |
 | K-03 | The time argument is TDB, not TAI (F-05) | About 0.1 m/day in LEO | `phase3_log.md` |
 | K-04 | The field's GM and radius are the body's, not the field file's (F-03) | Centimetres per day | `phase3_log.md` |
-| K-05 | Vizard live streaming listens on all interfaces | Network exposure during a live run | security analysis S-06, H11 |
+| K-05 | During a live stream Vizard, a separate program, listens on port 5556; the tool opens no port. Earlier issues of the security analysis wrongly said Basilisk binds 5556 and 5570 on all interfaces | Exposure depends on Vizard's own binding, not checked | security analysis S-06 (corrected, decision 17) |
 | K-06 | Not tested on Windows or macOS in this audit; the Windows installer was not run | Unknown | SValP 9 |
 | K-07 | Run time and memory requirements (SRS-P-09, SRS-R-02) not measured | Unknown | SVR |
 | K-08 | Tracebacks from `results_widget._poll_plot_png` ("'NoneType' object is not subscriptable") appear in the CI log of the GUI tests | Possibly a timer firing after its state was cleared; no test fails | CI run 3 log; to investigate |

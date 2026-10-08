@@ -171,7 +171,8 @@ All plans are updated at each release (SDP 5.5.2).
 - **Level:** low (D8).
 - **Gaps:**
   - the security management plan and the security manager (H02);
-  - the open items S-05, S-06 (H11) and S-08.
+  - the open items S-05 and S-08; S-06 corrected (decision 17), with
+    Vizard's own listener as residual.
 
 ### 6.5 Documentation and configuration management (B.2.1<6.5>)
 

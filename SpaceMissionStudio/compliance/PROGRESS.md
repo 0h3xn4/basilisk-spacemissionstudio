@@ -87,6 +87,12 @@ Result: **2055 passed, 11 skipped, 0 failed** (245 s, 3 workers). Every later ph
     developers; a workaround is removed only in the requalification of a
     Basilisk release that fixes its defect, with V-04 showing the results
     stay within tolerance.
+17. 2026-10-08, user (H11): no change to the tool. Checking before the
+    change showed that S-06 was wrong: in live-stream mode Basilisk
+    connects to Vizard (`zmq_connect`) and opens no listening port, and
+    port 5570 is bound only in broadcast mode, which the tool does not
+    use. S-06 is corrected; a change built for the earlier decision was
+    discarded uncommitted.
 
 ## Phase 1 test run
 
