@@ -399,3 +399,39 @@ def test_cached_fetch_path_finds_a_real_fetch(tmp_path, monkeypatch):
     fetched = sw.fetch(dataset="SW-All", cache_dir=tmp_path)
 
     assert sw.cached_fetch_path(cache_dir=tmp_path) == fetched
+
+
+def test_a_cut_short_cached_file_is_written_again(tmp_path):
+    """Finding F-09: a resolved file cut short (a parallel writer, or a run
+    that died while writing) used to be reused because it existed. It is
+    now written again in full."""
+    window = (datetime(2003, 10, 1), datetime(2003, 12, 1))
+    first = sw.resolve("bundled", *window, cache_dir=tmp_path)
+    full = first.path.read_text()
+    first.path.write_text("".join(full.splitlines(keepends=True)[:10]))
+    again = sw.resolve("bundled", *window, cache_dir=tmp_path)
+    assert again.path == first.path
+    assert again.path.read_text() == full
+
+
+def test_a_failed_write_leaves_no_file_behind(tmp_path, monkeypatch):
+    """Finding F-09: the resolved file appears only complete; a write that
+    fails part-way leaves neither it nor its temporary file."""
+    real_writer = sw.csv.writer
+
+    def failing_writer(f):
+        writer = real_writer(f)
+        calls = []
+
+        class Writer:
+            def writerow(self, row):
+                calls.append(row)
+                if len(calls) == 5:
+                    raise OSError("disk full")
+                writer.writerow(row)
+        return Writer()
+
+    monkeypatch.setattr(sw.csv, "writer", failing_writer)
+    with pytest.raises(OSError, match="disk full"):
+        sw.resolve("bundled", datetime(2003, 10, 1), datetime(2003, 12, 1), cache_dir=tmp_path)
+    assert list(tmp_path.iterdir()) == []

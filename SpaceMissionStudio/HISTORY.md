@@ -7805,3 +7805,35 @@ The audit's security analysis (`compliance/docs/security_analysis.md`, R15) foun
 * ruff's security rules (S) now run in CI over the package; each remaining finding carries its reason.
 
 **Not changed:** Vizard live streaming still listens on all network interfaces, as Basilisk sets it. Binding it to this computer only needs checking against a real Vizard first (human action H11).
+
+## Parallel runs could read a half-written space-weather file (F-09)
+
+Found by the new Windows CI job: the altitude trade's 400 km case gave
+1.45 kg of propellant on Windows and 7.26 kg on Linux.
+
+**Cause:** every run and every density estimate converts the real space
+weather into a file Basilisk reads, cached by window and percentile. It was
+written in place after an `exists()` check. Processes running in parallel
+(the altitude trade's workers, one per CPU by default; Monte Carlo runs)
+resolve the same window to the same file. One could see the file already
+there while another was still writing it, and Basilisk then read a file cut
+short ("Failed to retrieve a state. Publishing the last available data").
+A run that died while writing left a short file that every later run
+reused. Reproduced on Linux: of five trials of eight processes, two read a
+short file (down to 512 of 3674 lines).
+
+**Fix:** the file is written to a temporary file of its own and moved into
+place in one step (`os.replace`); a cached file with the wrong number of
+lines is written again. After the fix, five trials gave no short read. Tests:
+`test_a_cut_short_cached_file_is_written_again`,
+`test_a_failed_write_leaves_no_file_behind`.
+
+**Effect on earlier results:** any parallel run with NRLMSISE-00 drag may
+have used wrong solar activity: altitude trades with more than one worker,
+and Monte Carlo runs. Re-run them. Single runs were not affected, except
+through a short file left in the cache by an earlier failure; such a file is
+now replaced.
+
+**Correction to the entry above:** Vizard live streaming does not listen on
+all interfaces. In live-stream mode Basilisk connects to Vizard; the tool
+opens no port (security analysis S-06, corrected).

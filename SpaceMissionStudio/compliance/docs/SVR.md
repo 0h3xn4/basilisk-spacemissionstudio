@@ -152,9 +152,10 @@ memory, Linux, Python 3.11, Basilisk 2.12.0.
 | macOS (macos-latest, arm64, Python 3.11) | 2234 | 10 | 11 | **Not met** |
 
 The failures are listed in SRelD K-10. Most are test portability or
-layout differences. One is a possible wrong result on Windows: in the
-altitude trade the 400 km case gave 1.45 kg of propellant, against
-7.26 kg on Linux for the same case. It is under investigation.
+layout differences. One was a real defect: in the altitude trade the
+400 km case gave 1.45 kg of propellant on Windows, against 7.26 kg on
+Linux. The cause was a race between parallel processes writing the
+space-weather file (finding F-09, `review_log.md`), fixed.
 
 **Not done:** the Windows installer has not been run (manual test, H13).
 

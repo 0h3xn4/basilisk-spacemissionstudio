@@ -87,6 +87,8 @@ conservative case follows ESA's guideline).
 from __future__ import annotations
 
 import csv
+import os
+import tempfile
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
@@ -583,17 +585,41 @@ def _span_days(data: "CelestrakData", msfc: Optional[MsfcForecast], percentile: 
     return days
 
 
+def _has_rows(path: Path, rows: int) -> bool:
+    """True if ``path`` exists with exactly ``rows`` lines (header included)."""
+    try:
+        with open(path, newline="") as f:
+            return sum(1 for _line in f) == rows
+    except OSError:
+        return False
+
+
 def _write_basilisk_csv(days: dict, dest_path) -> Path:
-    """``days`` (date -> record) in the columns Basilisk's loader reads."""
+    """``days`` (date -> record) in the columns Basilisk's loader reads.
+
+    Written to a temporary file of its own beside ``dest_path`` and moved
+    into place in one step (``os.replace``), so a reader never sees a part
+    of the file. Parallel processes (the altitude trade) resolve the same
+    window to the same path: with a direct write, one of them could load
+    another's half-written file, and Basilisk then held the last day it had
+    read (finding F-09). A write that fails leaves no file at ``dest_path``.
+    """
     dest_path = Path(dest_path)
     dest_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(dest_path, "w", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(REQUIRED_COLUMNS)
-        for day in sorted(days):
-            rec = days[day]
-            writer.writerow([day.strftime("%Y-%m-%d")] + [f"{v:g}" for v in rec.ap]
-                            + [f"{rec.ap_avg:g}", f"{rec.f107_obs:g}", f"{rec.f107_center81:g}"])
+    handle, tmp_name = tempfile.mkstemp(prefix=dest_path.name + ".", suffix=".part", dir=dest_path.parent)
+    tmp_path = Path(tmp_name)
+    try:
+        with os.fdopen(handle, "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(REQUIRED_COLUMNS)
+            for day in sorted(days):
+                rec = days[day]
+                writer.writerow([day.strftime("%Y-%m-%d")] + [f"{v:g}" for v in rec.ap]
+                                + [f"{rec.ap_avg:g}", f"{rec.f107_obs:g}", f"{rec.f107_center81:g}"])
+        os.replace(tmp_path, dest_path)
+    except BaseException:
+        tmp_path.unlink(missing_ok=True)
+        raise
     return dest_path
 
 
@@ -629,7 +655,7 @@ def _resolve_real(source: str, start_utc: datetime, end_utc: datetime, local_fil
     msfc_tag = f"_{msfc.path.stem}_{int(msfc.path.stat().st_mtime)}" if msfc is not None else ""
     dest = cache_dir / (f"real_{path.stem}_{int(path.stat().st_mtime)}{msfc_tag}_p{forecast_percentile:g}_"
                         f"{first:%Y%m%d}_{last:%Y%m%d}.csv")
-    if not dest.exists():
+    if not _has_rows(dest, len(days) + 1):  # missing, or cut short by a write before F-09's fix
         _write_basilisk_csv(days, dest)
     return ResolvedSpaceWeather(dest, path, warnings)
 

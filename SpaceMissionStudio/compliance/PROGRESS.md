@@ -101,9 +101,9 @@ Result: **2055 passed, 11 skipped, 0 failed** (245 s, 3 workers). Every later ph
     container; Windows and macOS are tested in CI. Results: SRS-P-09 and
     SRS-R-02 met (`performance.md`); 34 test failures on Windows and 10 on
     macOS (SRelD K-10), one a possible wrong altitude-trade result on
-    Windows. The one-day run also warned that NOAA's monthly F10.7 forecast
-    fills a gap before MSFC's prediction starts (real data); both go to
-    the whole-tool review.
+    Windows, which turned out to be finding F-09 (`review_log.md`). The
+    one-day run's warning about NOAA's monthly F10.7 forecast is the
+    designed order of the real data, not a defect.
 
 ## Phase 1 test run
 

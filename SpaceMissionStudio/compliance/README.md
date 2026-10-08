@@ -36,6 +36,7 @@ ones supplied, and every requirement ID and text here comes from them.
 * `docs/dependability_safety_analysis.md` -- category C sign-off and failure modes (H04).
 * `human_actions.md` -- what needs people (H01 to H13).
 * `reviews/code_review_guide.md` -- the guide for the independent code review (H06).
+* `review_log.md` -- findings of the whole-tool review (F-09 on).
 * `performance.md` -- run time and memory on the reference PC (H13; `tools/measure_performance.py`).
 * `summary_report.md` -- the audit's result.
 
