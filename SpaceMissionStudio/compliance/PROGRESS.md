@@ -28,7 +28,7 @@ Result: **2055 passed, 11 skipped, 0 failed** (245 s, 3 workers). Every later ph
 |---|---|
 | 0 Requirements extraction and tailoring | done; **criticality category C approved by the user (2026-10-08)**; OCM confirmed out of scope |
 | 1 Audit and gap analysis | done: `gap_analysis.md`, `compliance_matrix.csv` (2084 rows); plan and D1-D8 **approved by the user (2026-10-08)** |
-| 2 Implementation | in progress |
+| 2 Implementation | done: R01-R12 (`phase2_log.md`); deviations D-01 to D-07 (`deviations.md`) |
 | 3 Verification and validation | not started |
 | 4 Documentation | not started |
 
@@ -60,6 +60,7 @@ the table below.
 |---|---|---|---|
 | Baseline | 2055 | 11 | 0 |
 | After Phase 1 | 2055 | 11 | 0 (no difference) |
+| After Phase 2 (R01-R12) | 2188 | 11 | 0 (133 new tests; changed expectations listed in `phase2_log.md`) |
 
 ## Resuming
 
