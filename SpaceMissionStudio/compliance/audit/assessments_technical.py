@@ -40,18 +40,15 @@ TECHNICAL_RULES = [
     # ======================= ECSS-E-ST-10-09C ===================================
     ("E-ST-10-09C", "5.2.1a", "H", "-", "No responsibility for coordinate-system definition is assigned.",
      "Name the person responsible for the tool's coordinate systems (CSD owner).", "S", "no", "H02"),
-    ("E-ST-10-09C", "5.2.2*", "N", "-", _NO_CSD, _CSD_FIX + " Put it under configuration control (git).",
-     "M", "no", "R14"),
+    ("E-ST-10-09C", "5.2.2*", "P", "compliance/docs/CSD.md (Annex A; under git)", "CSD drafted and under configuration control; not reviewed (H01).", "Review (H01).", "M", "no", "R14,H01"),
     ("E-ST-10-09C", "5.2.2c", "H", "-", "Project-phase milestones (phase A/B) belong to the using project.",
      "Each project using the tool references the tool CSD from its own CSD.", "S", "no", "H01"),
     ("E-ST-10-09C", "5.2.2d", "H", "-", "Configuration control at phase B is a project action.",
      "Baseline the CSD with the tool release (git tag) and record it in the project CM.", "S", "no", "H05"),
     ("E-ST-10-09C", "5.2.2e", "H", "-", "Re-examination at each phase is a project/process action.",
      "Add a CSD review item to each tool release checklist.", "S", "no", "H01"),
-    ('E-ST-10-09C', '5.2.3*', 'P', "R02 (Phase 2): engine/frames.py (definitions: name, mnemonic, origin, axes, epoch, time scale; named transformations; per-series frames) and engine/time_system.py (UTC/TAI/TT/TDB via ERFA), written to every run's provenance.json; tests/test_frames.py, tests/test_time_system.py",
-     'Frames and transformations are inventoried in code and output metadata; the CSD (R14) has to present them and the transformation tree.', 'CSD frame inventory and tree (R14).', 'S', 'yes (documents Basilisk frames)', 'R02,R14'),
-    ("E-ST-10-09C", "5.3.1a", "N", "-", _NO_CSD, "List the conventions applied (IERS 2010, IAU 2006/2000A where "
-     "used, SPICE J2000=ICRF alignment, WGS-84) in the CSD.", "S", "no", "R14"),
+    ("E-ST-10-09C", "5.2.3*", "P", "R02: engine/frames.py, engine/time_system.py, written to every run's provenance.json; compliance/docs/CSD.md sections 6, 8, 9 (inventory, transformation tree, detailed definitions); tests/test_frames.py, tests/test_time_system.py", "Frames, transformations and the tree are documented; the CSD is not reviewed (H01).", "Review (H01).", "S", "yes (documents Basilisk frames)", "R02,R14,H01"),
+    ("E-ST-10-09C", "5.3.1a", "P", "compliance/docs/CSD.md section 3 (conventions: EME2000 as SPICE J2000, ITRF93 by NAIF PCKs, WGS-84, TEME, CCSDS REF_FRAME/TIME_SYSTEM)", "The selection was not checked item by item against the standard's Annex C list; not reviewed (H01).", "Check against Annex C; review (H01).", "S", "no", "R14,H01"),
     ("E-ST-10-09C", "5.3.1b", "C", "R03 (Phase 2): engine/tle.py checks the TLE (length, line numbers, catalogue "
      "number, checksums), propagates it with SGP4 to the scenario epoch and rotates TEME of date -> EME2000 "
      "(IAU 1976 precession, IAU 1980 nutation, equation of the equinoxes without kinematic terms, via ERFA); "
@@ -64,12 +61,8 @@ TECHNICAL_RULES = [
      "TEME, but only at the TLE epoch and into GCRF; the tool no longer calls it. Other external conventions "
      "the tool reads (CelesTrak space weather, MSFC tables) carry no frame; R09 adds CCSDS ODM.",
      "-", "M", "yes (replaces the call to a Basilisk utility; Basilisk unchanged)", "R03"),
-    ("E-ST-10-09C", "5.3.1c", "P", "engine/tle.py module docstring specifies the TLE conversion (steps, models, "
-     "frames, time scales); engine/time_system.py the UTC-offset conversion.",
-     "Specified in code documentation; the CSD (R14) has to carry it.",
-     "Copy the conversion specification into the CSD.", "S", "no", "R03,R14"),
-    ('E-ST-10-09C', '5.3.2*', 'P', "R02 (Phase 2): engine/frames.py (definitions: name, mnemonic, origin, axes, epoch, time scale; named transformations; per-series frames) and engine/time_system.py (UTC/TAI/TT/TDB via ERFA), written to every run's provenance.json; tests/test_frames.py, tests/test_time_system.py; naming, notation and sign conventions in the engine/frames.py docstring",
-     'Conventions are specified in code documentation and metadata; the CSD (R14) has to carry them.', 'Copy the conventions into the CSD.', 'S', 'yes (adopts Basilisk notation)', 'R02,R14'),
+    ("E-ST-10-09C", "5.3.1c", "P", "engine/tle.py docstring (full specification); compliance/docs/CSD.md sections 6 and 8 (TEME -> N chain)", "The CSD summarises the conversion; the full specification stays in the code; not reviewed.", "Review (H01).", "S", "no", "R03,R14,H01"),
+    ("E-ST-10-09C", "5.3.2*", "P", "R02: engine/frames.py and engine/time_system.py, written to every run's provenance.json; compliance/docs/CSD.md section 3 (naming and notation)", "Conventions specified in code, metadata and the CSD; not reviewed (H01).", "Review (H01).", "S", "yes (adopts Basilisk notation)", "R02,R14,H01"),
     ('E-ST-10-09C', '5.3.2a', 'C', "R02 (Phase 2): engine/frames.py (definitions: name, mnemonic, origin, axes, epoch, time scale; named transformations; per-series frames) and engine/time_system.py (UTC/TAI/TT/TDB via ERFA), written to every run's provenance.json; tests/test_frames.py, tests/test_time_system.py: every frame has a unique descriptive name",
      '-', '-', 'S', 'yes', 'R02'),
     ('E-ST-10-09C', '5.3.2c', 'C', "R02 (Phase 2): engine/frames.py (definitions: name, mnemonic, origin, axes, epoch, time scale; named transformations; per-series frames) and engine/time_system.py (UTC/TAI/TT/TDB via ERFA), written to every run's provenance.json; tests/test_frames.py, tests/test_time_system.py: unique one-letter mnemonics (N, P, B, H, L) plus TEME",
@@ -78,13 +71,11 @@ TECHNICAL_RULES = [
      '-', '-', 'S', 'yes', 'R02'),
     ('E-ST-10-09C', '5.3.2b', 'C', "R02 (Phase 2): engine/frames.py (definitions: name, mnemonic, origin, axes, epoch, time scale; named transformations; per-series frames) and engine/time_system.py (UTC/TAI/TT/TDB via ERFA), written to every run's provenance.json; tests/test_frames.py, tests/test_time_system.py: recognised names used only where the definition is followed (EME2000 = SPICE J2000, ITRF93 from IERS-based PCKs, WGS-84); IAU_EARTH named as SPICE's model",
      '-', '-', 'S', 'no', 'R02'),
-    ("E-ST-10-09C", "5.3.3*", "N", "-", "No frame figures exist.", "Frame figures in the CSD.", "M", "no", "R14"),
+    ("E-ST-10-09C", "5.3.3*", "P", "compliance/docs/CSD.md section 8 (text diagrams of the top-level and lower-level chains)", "Text diagrams, not graphical figures; no figure per coordinate system.", "Draw figures if the reviewers require them (H01).", "M", "no", "R14,H01"),
     ('E-ST-10-09C', '5.4.1a', 'C', "R02 (Phase 2): engine/frames.py (definitions: name, mnemonic, origin, axes, epoch, time scale; named transformations; per-series frames) and engine/time_system.py (UTC/TAI/TT/TDB via ERFA), written to every run's provenance.json; tests/test_frames.py, tests/test_time_system.py: origin of every frame",
      '-', '-', 'S', 'yes', 'R02'),
-    ("E-ST-10-09C", "5.4.1b", "P", _FRAMES_IN_CODE, "Derivation of origins from reference points is implicit.",
-     "Document in the CSD.", "S", "yes", "R14"),
-    ("E-ST-10-09C", "5.4.1c", "P", _FRAMES_IN_CODE, "Derivation of axes from reference directions is implicit "
-     "(SPICE frame definitions, Basilisk guidance frames).", "Document in the CSD.", "S", "yes", "R14"),
+    ("E-ST-10-09C", "5.4.1b", "P", "engine/frames.py; compliance/docs/CSD.md section 9 (origin of each frame)", "Origins stated; their derivation from reference points (e.g. the central body's centre of mass via SPICE) is stated, not derived mathematically.", "Review (H01).", "S", "yes", "R14,H01"),
+    ("E-ST-10-09C", "5.4.1c", "P", "engine/frames.py; compliance/docs/CSD.md section 9 (axes of each frame)", "Axes stated with their reference directions; the SPICE and Basilisk definitions are cited, not restated.", "Review (H01).", "S", "yes", "R14,H01"),
     ("E-ST-10-09C", "5.4.1d", "C", "SPICE frames and Basilisk DCM/MRP algebra are orthonormal by construction; "
      "tests/test_osculating_elements.py, tests/test_two_body_validation.py exercise them",
      "-", "Record the evidence in the CSD.", "S", "yes", "R14"),
@@ -128,20 +119,12 @@ TECHNICAL_RULES = [
      "boundary can differ from the geodetic minimum-elevation crossing by up to ~0.19 deg (about 2 s in the "
      "template 19 check). The prime meridian is IAU_EARTH until R04. The CSD (R14) restates the definitions.",
      "-", "S", "yes (Basilisk's public API only)", "R05"),
-    ("E-ST-10-09C", "5.4.7*", "P", "schema OrbitIC (classical elements, cartesian, TLE); results orbit_elements_* "
-     "series (osculating via rv2elem, mean via clMeanOscMap)",
-     "Parameterisations exist and are documented in docstrings, not mathematically in a CSD.",
-     "Specify them in the CSD (element sets, mean-element theory, singularities).", "S", "yes", "R14"),
-    ("E-ST-10-09C", "5.4.8*", "P", "Basilisk MRP attitude (sigma_BN), DCMs; Euler 3-2-1 inputs in schema",
-     "Rotation conventions are Basilisk's (MRPs with shadow-set switching, DCMs); not specified in a CSD.",
-     "Specify rotation decomposition, MRP/quaternion definitions and order in the CSD.", "S",
-     "yes (documents Basilisk conventions)", "R14"),
+    ("E-ST-10-09C", "5.4.7*", "P", "schema OrbitIC; compliance/docs/CSD.md section 7 (parameterisations within systems and transformations)", "Parameterisations specified in words; mean-element theory and singularities are not given mathematically.", "Add the formulae if the reviewers require them (H01).", "S", "yes", "R14,H01"),
+    ("E-ST-10-09C", "5.4.8*", "P", "compliance/docs/CSD.md sections 3 and 7 (DCM convention dcm_XY, MRP sigma_XY with shadow set, right-handed; 3-2-1 Euler only for the Vizard model; no quaternions)", "Conventions stated in words; not reviewed (H01).", "Review (H01).", "S", "yes (documents Basilisk conventions)", "R14,H01"),
     ("E-ST-10-09C", "5.4.8h", "P", "Basilisk outputs MRPs, not quaternions",
      "No error quaternion is output; if quaternions are added (e.g. CCSDS AEM/OEM extensions) the positive "
      "scalar convention applies.", "Keep in mind for any quaternion output.", "S", "no", "R02"),
-    ("E-ST-10-09C", "5.4.9*", "N", "-", "Transformations are not defined verbally, mathematically and graphically; "
-     "time dependence (planet rotation from pck00010) and interpolation (SPICE) are undocumented.",
-     "CSD transformation definitions; frame layer documents time dependence.", "M", "yes", "R02,R14"),
+    ("E-ST-10-09C", "5.4.9*", "P", "compliance/docs/CSD.md sections 6, 8, 9 (each transformation in words, its DCM/MRP parameterisation, time dependence, parent frame); engine/frames.py TRANSFORMATIONS in every provenance", "Mathematical definitions are by reference (SPICE pxform, ERFA, IAU 1976/1980), not written out; not reviewed.", "Review (H01).", "M", "yes", "R02,R14,H01"),
     ("E-ST-10-09C", "5.4.9f", "C", "R04 (Phase 2): engine/earth_orientation.py; with the NAIF Earth PCKs "
      "installed the Earth-fixed frame is SPICE ITRF93 (IAU 1976/1980 + IERS nutation corrections, UT1, polar "
      "motion; NAIF: 'several microradians' within the high-accuracy span) instead of IAU_EARTH (measured 1.5 "
@@ -150,7 +133,10 @@ TECHNICAL_RULES = [
      "Past the files' last datum + 10 weeks the orientation is NAIF's long-term prediction (NAIF: 5-6 mrad); "
      "without the files IAU_EARTH is used and every Earth run warns. Precision needs of users are stated in "
      "the CSD (R14).", "-", "M", "yes (public spiceInterface API; Basilisk unchanged)", "R04"),
-    ("E-ST-10-09C", "A.*", "N", "-", "The CSD does not exist.", _CSD_FIX, "M", "no", "R14"),
+    ("E-ST-10-09C", "A.*", "P", "compliance/docs/CSD.md (restates engine/frames.py, which writes the definitions into every run's provenance)", "Draft per the DRD: every DRD section present and not empty (compliance/tools/check_drds.py); not reviewed (H01); sections that depend on people state the gap and name the human action.", "Review and approve at the reviews of H01; close the human actions named in the document.", "M", "no", "R14,H01"),
+    ("E-ST-10-09C", "A.2.1<1>*", "C", "compliance/docs/CSD.md section 1 (introduction)", "-", "-", "S", "no", "R14"),
+    ("E-ST-10-09C", "A.2.1<2>*", "C", "compliance/docs/CSD.md section 2 (applicable and reference documents)", "-", "-", "S", "no", "R14"),
+    ("E-ST-10-09C", "A.2.1<3>*", "C", "compliance/docs/CSD.md section 3 (terms)", "-", "-", "S", "no", "R14"),
 
     # ======================= ECSS-E-ST-10-04C ===================================
     ("E-ST-10-04C", "4.2.1a", "C", "engine/service.py (gravity bodies: central body point mass or GGM03S "
