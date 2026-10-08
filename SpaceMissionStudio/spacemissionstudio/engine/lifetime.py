@@ -551,7 +551,7 @@ def end_of_life(scenario, spacecraft_name: str, result=None, deorbit_perigee_km:
     if r_m is None:
         from .service import _orbit_ic_to_rv  # the same orbit set-up a run uses
 
-        r_m, v_m_s = _orbit_ic_to_rv(MU_EARTH_M3_S2, spacecraft.orbit)
+        r_m, v_m_s = _orbit_ic_to_rv(MU_EARTH_M3_S2, spacecraft.orbit, scenario.epoch_utc)
     orbit = mean_orbit_from_state(r_m, v_m_s)
     plan = None
     if deorbit_perigee_km is not None:

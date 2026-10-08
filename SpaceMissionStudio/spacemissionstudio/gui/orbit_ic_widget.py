@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox,
     QFormLayout,
     QHBoxLayout,
+    QLabel,
     QLineEdit,
     QMessageBox,
     QPushButton,
@@ -37,6 +38,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ..engine import tle
 from ..engine.orbit_design import DEFAULT_LTAN_HOUR, raan_for_ltan_deg, sun_synchronous_inclination_deg
 from ..schema.scenario import ANOMALY_TYPES, ORBIT_IC_TYPES, OrbitIC
 from .widgets import ComboBox, PreciseDoubleSpinBox
@@ -284,9 +286,39 @@ class OrbitIcWidget(QWidget):
         )
         form.addRow("TLE line 1", self.tle_line1)
         form.addRow("TLE line 2", self.tle_line2)
-        self.tle_line1.textChanged.connect(self.changed)
-        self.tle_line2.textChanged.connect(self.changed)
+        frame_note = QLabel("TEME (SGP4) -> EME2000, propagated to the scenario epoch")
+        frame_note.setToolTip("SGP4 propagates the TLE from its own epoch to the scenario epoch; the state "
+                              "is then rotated from TEME of date to EME2000 (IAU 1976/1980).")
+        form.addRow("Frame", frame_note)
+        self.tle_status = QLabel("")
+        self.tle_status.setWordWrap(True)
+        form.addRow("TLE epoch", self.tle_status)
+        for line in (self.tle_line1, self.tle_line2):
+            line.textChanged.connect(self.changed)
+            line.textChanged.connect(self._refresh_tle_status)
         self.stack.addWidget(page)
+
+    def _refresh_tle_status(self) -> None:
+        """TLE epoch and its distance from the scenario epoch, or the format
+        problem (checksum, length, line numbers)."""
+        line1, line2 = self.tle_line1.text().strip(), self.tle_line2.text().strip()
+        if not line1 or not line2:
+            self.tle_status.setText("")
+            return
+        try:
+            epoch = tle.tle_epoch_utc(tle.parse(line1, line2))
+        except tle.TLEError as exc:
+            self.tle_status.setText(str(exc))
+            return
+        text = f"{epoch:%Y-%m-%d %H:%M:%S} UTC"
+        epoch_utc = (self._epoch_provider() if self._epoch_provider else "").strip()
+        if epoch_utc:
+            try:
+                age_days = tle.state_at(line1, line2, epoch_utc).age_days
+                text += f" ({abs(age_days):.1f} d {'before' if age_days >= 0 else 'after'} the scenario epoch)"
+            except (tle.TLEError, ValueError) as exc:
+                text += f" -- {exc}"
+        self.tle_status.setText(text)
 
     def _on_compute_sso_inclination(self) -> None:
         value = sun_synchronous_inclination_deg(self.sma_km.value(), self.ecc.value())

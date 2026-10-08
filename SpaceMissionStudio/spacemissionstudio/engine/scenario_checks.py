@@ -46,7 +46,7 @@ from typing import List, Optional
 
 import numpy as np
 
-from . import geodesy
+from . import geodesy, tle
 
 _MU_M3_S2 = 3.986004415e14  # [m^3/s^2] Earth, as Basilisk's simIncludeGravBody uses
 _R_EARTH_M = 6378.1366e3  # [m] equatorial radius, as engine.service gives groundLocation
@@ -66,10 +66,15 @@ class GroundPass:
     peak_elevation_deg: float  # [deg]
 
 
-def _initial_elements(orbit):
+def _initial_elements(orbit, epoch_utc: Optional[str] = None):
     """(a [m], e, i, raan, argp, mean anomaly) [rad] -- or None if the
-    orbit type isn't supported here."""
+    orbit type isn't supported here. A TLE needs ``epoch_utc``."""
     kind = getattr(orbit, "type", None)
+    if kind == "tle":
+        if epoch_utc is None:
+            return None
+        state = tle.state_at(orbit.tle_line1, orbit.tle_line2, epoch_utc)
+        return _rv_to_elements(state.r_m, state.v_m_s)
     if kind == "classical_elements":
         a = orbit.semi_major_axis_km * 1e3
         e = orbit.eccentricity or 0.0
@@ -164,7 +169,10 @@ def predict_passes(scenario, horizon_s: Optional[float] = None) -> Optional[List
     with_j2 = (gravity.central_body_degree or 0) >= 2
     passes: List[GroundPass] = []
     for sc in scenario.spacecraft:
-        elements = _initial_elements(sc.orbit)
+        try:
+            elements = _initial_elements(sc.orbit, scenario.epoch_utc)
+        except tle.TLEError:
+            elements = None
         if elements is None:
             continue
         r = _positions(elements, t, with_j2)
@@ -234,7 +242,7 @@ def scenario_warnings(scenario) -> List[str]:
     """Short warnings for setups that can't do what they're configured
     for. Never raises."""
     warnings: List[str] = []
-    for check in (_pass_warnings, _recording_warnings):
+    for check in (_pass_warnings, _recording_warnings, _tle_warnings):
         try:
             warnings += check(scenario)
         except Exception:  # noqa: BLE001 -- a half-edited scenario must never break the Explain tab
@@ -250,6 +258,26 @@ def scenario_warnings(scenario) -> List[str]:
 # [-] samples per series over which recording every step is flagged
 # (~1.7 MB per simulated day at full recording for one LEO spacecraft)
 _MANY_SAMPLES = 1_000_000
+
+
+def _tle_warnings(scenario) -> List[str]:
+    """A TLE that can't be propagated, or whose epoch is far from the
+    scenario epoch (ECSS-E-ST-10-09C 5.3.1b: the TLE is propagated by SGP4
+    to the scenario epoch, so its age is the propagation span)."""
+    warnings = []
+    for sc in scenario.spacecraft:
+        if getattr(sc.orbit, "type", None) != "tle":
+            continue
+        try:
+            age_days = tle.state_at(sc.orbit.tle_line1, sc.orbit.tle_line2, scenario.epoch_utc).age_days
+        except tle.TLEError as exc:
+            warnings.append(f"{sc.name}: {exc}")
+            continue
+        if abs(age_days) > tle.TLE_AGE_WARNING_DAYS:
+            side = "before" if age_days > 0 else "after"
+            warnings.append(f"{sc.name}: TLE epoch is {abs(age_days):.1f} d {side} the scenario epoch -- "
+                            "SGP4 accuracy drops with TLE age")
+    return warnings
 
 
 def _recording_warnings(scenario) -> List[str]:

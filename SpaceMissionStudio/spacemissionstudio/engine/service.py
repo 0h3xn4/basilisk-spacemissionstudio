@@ -151,8 +151,6 @@ from __future__ import annotations
 
 import logging
 import math
-import os
-import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Callable, Dict, List, Optional
@@ -166,7 +164,7 @@ from Basilisk.utilities.supportDataTools.dataFetcher import DataFile, get_path
 
 from .. import __version__ as _SPACEMISSIONSTUDIO_VERSION
 from ..schema.scenario import OrbitIC, Scenario
-from . import fsw, geodesy, kernels, link_budget, long_run, orbit_maintenance, time_system, vizard
+from . import fsw, geodesy, kernels, link_budget, long_run, orbit_maintenance, time_system, tle, vizard
 from .results import ResultSet, RunProvenance, TimeSeries, conservation_drift_warnings
 from .vizard import VizardRequest
 
@@ -331,11 +329,16 @@ def _is_two_body_only(scenario: Scenario, sc_config) -> bool:
     return True
 
 
-def _orbit_ic_to_rv(mu: float, orbit: OrbitIC):
+def _orbit_ic_to_rv(mu: float, orbit: OrbitIC, epoch_utc: Optional[str] = None):
     """(r_N, v_N) [m], [m/s] from a schema.OrbitIC, for any of its three
     forms. ``orbit.validate()`` is assumed to have already been called
     (Scenario.validate() does this) -- this function trusts the fields for
     ``orbit.type`` are populated.
+
+    A TLE is propagated by SGP4 to ``epoch_utc`` (the scenario epoch) and
+    rotated from TEME to EME2000 (:mod:`engine.tle`); without ``epoch_utc``
+    its state at the TLE's own epoch is returned (only for callers that use
+    the orbit's shape, not its timing).
     """
     if orbit.type == "classical_elements":
         oe = orbitalMotion.ClassicElements()
@@ -361,22 +364,13 @@ def _orbit_ic_to_rv(mu: float, orbit: OrbitIC):
         return r_N, v_N
 
     if orbit.type == "tle":
-        # tleHandling.satTle2elem() reads from a FILE (one or more TLEs),
-        # not raw line strings -- the schema stores the two lines directly
-        # for JSON readability, so bridge that with a short-lived temp file.
-        from Basilisk.utilities import tleHandling
-
-        fd, tmp_path = tempfile.mkstemp(suffix=".tle")
         try:
-            with os.fdopen(fd, "w") as f:
-                f.write(orbit.tle_line1.rstrip("\n") + "\n")
-                f.write(orbit.tle_line2.rstrip("\n") + "\n")
-            elements_list, _metadata_list = tleHandling.satTle2elem(tmp_path)
-        finally:
-            os.unlink(tmp_path)
-        if not elements_list:
-            raise SimulationServiceError("TLE parsing (tleHandling.satTle2elem) returned no elements")
-        return orbitalMotion.elem2rv(mu, elements_list[0])
+            if epoch_utc is None:
+                epoch_utc = tle.tle_epoch_utc(tle.parse(orbit.tle_line1, orbit.tle_line2)).isoformat()
+            state = tle.state_at(orbit.tle_line1, orbit.tle_line2, epoch_utc)
+        except tle.TLEError as exc:
+            raise SimulationServiceError(str(exc)) from exc
+        return state.r_m, state.v_m_s
 
     raise SimulationServiceError(f"unknown orbit IC type {orbit.type!r}")  # unreachable if orbit.validate() passed
 
@@ -973,7 +967,12 @@ class SimulationService:
             sc_object.hub.sigma_BNInit = [[v] for v in sc_config.sigma_bn_init]
             sc_object.hub.omega_BN_BInit = [[v] for v in sc_config.omega_bn_b_init_rad_s]
 
-            r_N, v_N = _orbit_ic_to_rv(mu, sc_config.orbit)
+            r_N, v_N = _orbit_ic_to_rv(mu, sc_config.orbit, scenario.epoch_utc)
+            if sc_config.orbit.type == "tle":
+                age_days = tle.state_at(sc_config.orbit.tle_line1, sc_config.orbit.tle_line2,
+                                        scenario.epoch_utc).age_days
+                _logger.info("%s: TLE propagated by SGP4 %.2f d to the scenario epoch, TEME -> EME2000",
+                            sc_config.name, age_days)
             sc_object.hub.r_CN_NInit = r_N
             sc_object.hub.v_CN_NInit = v_N
 

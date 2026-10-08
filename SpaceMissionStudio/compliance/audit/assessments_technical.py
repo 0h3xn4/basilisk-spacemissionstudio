@@ -56,17 +56,22 @@ TECHNICAL_RULES = [
      "R02,R14"),
     ("E-ST-10-09C", "5.3.1a", "N", "-", _NO_CSD, "List the conventions applied (IERS 2010, IAU 2006/2000A where "
      "used, SPICE J2000=ICRF alignment, WGS-84) in the CSD.", "S", "no", "R14"),
-    ("E-ST-10-09C", "5.3.1b", "N", "engine/service.py _orbit_ic_to_rv (TLE branch) -> B2.12 "
-     "tleHandling.satTle2elem",
-     "External conventions are not converted: a TLE's SGP4 mean elements in TEME are turned into Keplerian "
-     "elements (semi-major axis from mean motion) and placed in the J2000-aligned inertial frame without "
-     "SGP4 propagation, TEME-to-inertial rotation or a check of the TLE epoch against the scenario epoch. "
-     "Tz-aware epochs are converted to UTC (engine/time_system.py) -- correct.",
-     "Tool-side TLE import: SGP4 propagation (sgp4 package, already a Basilisk dependency) to the scenario "
-     "epoch, TEME -> GCRF/J2000 rotation in the tool's frame layer, epoch check.", "M",
-     "yes (replaces the call to a Basilisk utility; Basilisk unchanged)", "R03"),
-    ("E-ST-10-09C", "5.3.1c", "N", "-", "No conversion of external conventions is specified (see 5.3.1b).",
-     "Specify the TLE/TEME and UTC-offset conversions in the CSD.", "S", "no", "R03,R14"),
+    ("E-ST-10-09C", "5.3.1b", "C", "R03 (Phase 2): engine/tle.py checks the TLE (length, line numbers, catalogue "
+     "number, checksums), propagates it with SGP4 to the scenario epoch and rotates TEME of date -> EME2000 "
+     "(IAU 1976 precession, IAU 1980 nutation, equation of the equinoxes without kinematic terms, via ERFA); "
+     "engine/service.py uses it for TLE spacecraft; scenario_checks warns when the TLE is > 3 d from the "
+     "scenario epoch; the GUI shows the TLE epoch and age. ISO 8601 epochs with a UTC offset are converted to "
+     "UTC (engine/time_system.py, engine/tle.py). Tests: tests/test_tle.py (Vallado TEME->J2000 example, "
+     "SPICE IAU-1976/1980 frame to 1e-13 rad, propagation to the scenario epoch, malformed TLEs, warnings), "
+     "tests/gui/test_orbit_ic_widget.py.",
+     "Phase 1 misdescribed Basilisk 2.12 (corrected in gap_analysis.md section 3): it does run SGP4 and rotate "
+     "TEME, but only at the TLE epoch and into GCRF; the tool no longer calls it. Other external conventions "
+     "the tool reads (CelesTrak space weather, MSFC tables) carry no frame; R09 adds CCSDS ODM.",
+     "-", "M", "yes (replaces the call to a Basilisk utility; Basilisk unchanged)", "R03"),
+    ("E-ST-10-09C", "5.3.1c", "P", "engine/tle.py module docstring specifies the TLE conversion (steps, models, "
+     "frames, time scales); engine/time_system.py the UTC-offset conversion.",
+     "Specified in code documentation; the CSD (R14) has to carry it.",
+     "Copy the conversion specification into the CSD.", "S", "no", "R03,R14"),
     ("E-ST-10-09C", "5.3.2*", "P", "Basilisk naming convention used throughout (r_BN_N, sigma_BN, dcm_BN; "
      "series names engine/series_names.py)",
      "A consistent naming/notation exists (Basilisk's) but is not specified as the tool's convention; "
@@ -282,8 +287,8 @@ TECHNICAL_RULES = [
      "Record in the ICD.", "S", "no", "H03"),
     ("CCSDS-502.0-B-3", "CCSDS-502.0-B-3 5.1.5", "H", "-", "OEM exchange method to be agreed.", "Record in the ICD.",
      "S", "no", "H03"),
-    ("CCSDS-502.0-B-3", "CCSDS-502.0-B-3 4.2.4.9", "N", "engine/service.py TLE branch",
-     "The standard notes TLEs are in TEME of date; the tool's TLE input ignores that (see ECSS-E-ST-10-09C "
-     "5.3.1b).", "R03, then OMM import/export (MEAN_ELEMENT_THEORY = SGP4, REF_FRAME = TEME).", "M", "yes",
-     "R03,R09"),
+    ("CCSDS-502.0-B-3", "CCSDS-502.0-B-3 4.2.4.9", "P", "R03: engine/tle.py treats TLEs as TEME of date (the "
+     "preferred option) and uses TEME only to read them.",
+     "The ICD (H03) has to state the TEME interpretation; no OMM is read or written yet.",
+     "OMM import/export with MEAN_ELEMENT_THEORY = SGP4, REF_FRAME = TEME (R09).", "M", "yes", "R03,R09"),
 ]

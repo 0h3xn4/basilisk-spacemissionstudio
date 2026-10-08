@@ -77,7 +77,7 @@ Frames used anywhere in the tool, including inside Basilisk calls:
 | Guidance frames **R**, Hill **H** | Basilisk guidance (hillPoint, sunSafePoint, locationPointing, ...) | engine/fsw.py | Basilisk definitions, not specified in a CSD. |
 | Topocentric (ground station) | Basilisk groundLocation from latitude/longitude/altitude | engine/service.py | **Defect: placed on a sphere of radius REQ_EARTH, not the WGS-84 ellipsoid** (src geodeticConversion LLA2PCPF with no polar radius). Up to ~21 km height and ~0.19 deg latitude error at mid-latitudes (5.4.6a). Fix tool-side: R05. |
 | Orbital elements | osculating via `rv2elem` in N; mean via `clMeanOscMap` (first-order J2 short-period terms) | engine/service.py, engine/lifetime.py | Correct; theory undocumented (5.4.7). |
-| **TEME** (TLE input) | not handled | engine/service.py TLE branch -> Basilisk `tleHandling.satTle2elem` | **Defect: SGP4 mean elements are used as Keplerian elements in N** (semi-major axis from mean motion), no SGP4, no TEME rotation, no TLE-epoch check (5.3.1b; CCSDS 4.2.4.9). Fix tool-side: R03. |
+| **TEME** (TLE input) | SGP4 at the TLE epoch, TEME -> GCRF (Basilisk 2.12) | engine/service.py TLE branch -> Basilisk `tleHandling.satTle2elem` | **Defect: the state at the TLE epoch is used as the state at the scenario epoch** (no propagation between them, no epoch check), and the result is GCRF (ICRS frame bias applied, ~0.7 m) rather than the simulation's EME2000 (5.3.1b; CCSDS 4.2.4.9). Fix tool-side: R03. *Corrected in Phase 2: Phase 1 wrongly said that 2.12 used the mean elements as Keplerian elements without SGP4 or TEME rotation; re-reading the installed 2.12 `tleHandling.py` shows `_convertMean2osculating` runs SGP4 and `_teme2j2000` rotates the state.* |
 | Lifetime Earth rotation | own GMST formula, UT1 = UTC | engine/lifetime.py `_gmst_rad` | A second, separate Earth-orientation model; consistent to ~0.1 deg with IAU_EARTH, adequate for orbit-averaged drag, but undocumented. |
 
 Time scales:
@@ -193,7 +193,7 @@ not modified.
 
 | # | Limitation | Affects | Handling |
 |---|---|---|---|
-| B1 | `tleHandling.satTle2elem` treats SGP4 mean elements as Keplerian, ignores TEME and the TLE epoch | 10-09C 5.3.1b; CCSDS 4.2.4.9 | R03: tool-side SGP4 + TEME rotation |
+| B1 | `tleHandling.satTle2elem` returns the SGP4 state at the TLE epoch (in GCRF), with no propagation to a given epoch (corrected in Phase 2, see section 3) | 10-09C 5.3.1b; CCSDS 4.2.4.9 | R03 (done): tool-side SGP4 to the scenario epoch, TEME of date -> EME2000 (`engine/tle.py`) |
 | B2 | `groundLocation.specifyLocation` uses a spherical Earth; its horizon (elevation, access flag) is geocentric with either location call | 10-09C 5.4.6a | R05 (done): tool computes the WGS-84 position, calls `specifyLocationPCPF`, records geodetic elevation/azimuth; the access flag keeps the geocentric horizon (<= 0.19 deg) |
 | B3 | Default Earth frame `IAU_earth` (pck00010), no EOP | 10-09C 5.4.9f; 10-04C 4.2.1c, 4.2.2b | R04: IERS-based high-precision Earth PCK through Basilisk's public `spicePlanetFrame` |
 | B4 | No tide model | 10-04C 4.2.2b | D-03 |
@@ -269,7 +269,7 @@ the requirement IDs they address.
 | H04 | Criticality classification sign-off and a software dependability/safety analysis | Q-ST-80C 5.4.4, 6.2.2, 6.2.3 |
 | H05 | Problem reporting, nonconformance, change control, risk management, operation support | Q-ST-80C 5.2.4-5.2.6, 5.3; E-ST-40C 5.9, 5.10 |
 | H06 | Independent human review of the AI-written code (at least the budget, lifetime, frame/time and environment code) | Q-ST-80C 6.2.6; E-ST-40C 5.8.3.5a |
-| H07 | Reused/procured components: list, licences, export status, acceptance (Basilisk, PySide6, numpy, sgp4, ...) | Q-ST-80C 5.4, 5.5; E-ST-40C 5.3.2.3 |
+| H07 | Reused/procured components: list, licences, export status, acceptance (Basilisk, PySide6, numpy, sgp4, pyerfa (added by R03), ...) | Q-ST-80C 5.4, 5.5; E-ST-40C 5.3.2.3 |
 
 ## 12. Next step
 

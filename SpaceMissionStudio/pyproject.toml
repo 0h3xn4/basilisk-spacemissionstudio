@@ -15,8 +15,13 @@ authors = [
 # Basilisk-independent modules (schema, spaceweather, results); everything
 # in engine/ that talks to Basilisk obviously also needs a Basilisk build
 # on PYTHONPATH, arranged separately (see README.md).
+# sgp4 (Vallado's SGP4) and pyerfa (ERFA, the BSD-licensed SOFA library)
+# convert TLEs to the simulation frame (engine/tle.py, ECSS-E-ST-10-09C
+# 5.3.1b); both are pure offline libraries.
 dependencies = [
     "numpy>=1.24.4",
+    "sgp4>=2.20",
+    "pyerfa>=2.0.1",
 ]
 
 [project.optional-dependencies]

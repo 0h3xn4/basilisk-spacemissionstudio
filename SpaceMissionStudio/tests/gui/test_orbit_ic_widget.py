@@ -109,3 +109,18 @@ def test_from_dataclass_rejects_unknown_type(widget):
 
     with pytest.raises(ValueError, match="doesn't know orbit type"):
         widget.from_dataclass(OrbitIC(type="wormhole"))
+
+
+@pytest.mark.requirement("E-ST-10-09C 5.3.1b")
+def test_tle_page_shows_the_tle_epoch_age_or_the_format_problem(widget):
+    """Pasting a TLE shows its epoch and its distance from the scenario
+    epoch; a wrong checksum shows the reason instead."""
+    from spacemissionstudio.schema.scenario import OrbitIC
+
+    line1 = "1 25544U 98067A   19343.69339541  .00001764  00000-0  38792-4 0  9991"
+    line2 = "2 25544  51.6439 211.2001 0007417  17.6667  85.6398 15.50103472202482"
+    widget.set_epoch_provider(lambda: "2019-12-20T00:00:00")
+    widget.from_dataclass(OrbitIC(type="tle", tle_line1=line1, tle_line2=line2))
+    assert widget.tle_status.text() == "2019-12-09 16:38:29 UTC (10.3 d before the scenario epoch)"
+    widget.tle_line1.setText(line1[:-1] + "2")
+    assert "checksum" in widget.tle_status.text()
