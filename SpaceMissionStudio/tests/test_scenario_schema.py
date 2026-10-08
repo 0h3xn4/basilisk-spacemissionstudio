@@ -295,6 +295,18 @@ def test_load_scenario_missing_schema_version_gives_clear_error(tmp_path):
         load_scenario(path)
 
 
+@pytest.mark.parametrize("where", ["top", "spacecraft"])
+def test_load_scenario_rejects_an_unknown_field_naming_it(tmp_path, where):
+    """An unknown field at the top level or in a spacecraft is refused, and
+    the error names the field (ICD-01)."""
+    data = json.loads(json.dumps(_minimal_scenario().to_dict()))
+    (data if where == "top" else data["spacecraft"][0])["bogus_field"] = 1
+    path = tmp_path / "unknown.json"
+    path.write_text(json.dumps(data))
+    with pytest.raises(ScenarioValidationError, match="unexpected keyword argument 'bogus_field'"):
+        load_scenario(path)
+
+
 def test_load_scenario_future_schema_version_gives_clear_error(tmp_path):
     path = tmp_path / "future.json"
     path.write_text(json.dumps({"schema_version": 999, "name": "from the future", "epoch_utc": "2030-01-01T00:00:00"}))
