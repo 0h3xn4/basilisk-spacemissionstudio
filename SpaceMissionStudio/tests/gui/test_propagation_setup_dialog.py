@@ -308,40 +308,23 @@ def test_exponential_atmosphere_model_disables_space_weather_controls(dialog):
 
     assert not dialog.space_weather_source_combo.isEnabled()
     assert not dialog.local_file_edit.isEnabled()
-    assert not dialog.activity_level_combo.isEnabled()
-    assert not dialog.activity_percentile_spin.isEnabled()
+    assert not dialog.forecast_percentile_combo.isEnabled()
 
     dialog.atmosphere_model_combo.setCurrentIndex(0)  # back to nrlmsise00
     assert dialog.space_weather_source_combo.isEnabled()
     assert dialog.local_file_edit.isEnabled()  # source is still "local_file" from above
-    assert dialog.activity_level_combo.isEnabled()
+    assert dialog.forecast_percentile_combo.isEnabled()
 
 
-def test_activity_level_defaults_to_nominal_with_percentile_disabled(dialog):
-    assert dialog._selected_activity_level() == "nominal"
-    assert not dialog.activity_percentile_spin.isEnabled()
-    assert dialog.to_space_weather().activity_level == "nominal"
-
-
-def test_selecting_conservative_activity_level_enables_percentile_and_round_trips(dialog):
-    dialog.activity_level_combo.setCurrentIndex(1)  # conservative
-    assert dialog._selected_activity_level() == "conservative"
-    assert dialog.activity_percentile_spin.isEnabled()
-
-    dialog.activity_percentile_spin.setValue(97.7)
-    sw = dialog.to_space_weather()
-    assert sw.activity_level == "conservative"
-    assert sw.activity_percentile == pytest.approx(97.7)
-
-
-def test_loading_existing_conservative_config_checks_the_right_controls(qtbot):
-    from spacemissionstudio.schema.scenario import SpaceWeatherConfig
-
-    d = _dialog(space_weather=SpaceWeatherConfig(activity_level="conservative", activity_percentile=90.0))
-    qtbot.addWidget(d)
-    assert d._selected_activity_level() == "conservative"
-    assert d.activity_percentile_spin.isEnabled()
-    assert d.activity_percentile_spin.value() == pytest.approx(90.0)
+def test_solar_activity_offers_nominal_conservative_and_low(dialog):
+    """One choice: nominal (MSFC 50th), conservative (95th, ESA AD10
+    operations) or low (5th); nominal by default."""
+    labels = [dialog.forecast_percentile_combo.itemText(i) for i in range(dialog.forecast_percentile_combo.count())]
+    assert [label.split(":")[0] for label in labels] == ["Nominal", "Conservative", "Low"]
+    assert "95th" in labels[1] and "AD10" in labels[1]
+    assert dialog.to_space_weather().forecast_percentile == 50.0
+    dialog.forecast_percentile_combo.setCurrentIndex(1)
+    assert dialog.to_space_weather().forecast_percentile == 95.0
 
 
 def test_srp_location_pointer_label_is_present(dialog):

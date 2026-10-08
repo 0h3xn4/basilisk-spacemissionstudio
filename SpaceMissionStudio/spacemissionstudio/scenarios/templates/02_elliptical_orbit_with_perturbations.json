@@ -98,8 +98,6 @@
     "local_file_path": null,
     "cache_dir": null,
     "atmosphere_model": "nrlmsise00",
-    "activity_level": "nominal",
-    "activity_percentile": 95.0,
     "forecast_percentile": 50.0,
     "msfc_file_path": null
   },
@@ -118,5 +116,5 @@
   },
   "mission_sequence": [],
   "description": "An eccentric (e = 0.7), transfer-like orbit with Earth's oblateness (degree-10 gravity) and Sun and Moon gravity. Drag is off, so the gravity effects stand out.\n\nWhat to look at:\n- sat-1.orbit_elements_mean.arg_periapsis and .raan: Earth's oblateness turns the perigee about +0.5 deg/day and the orbit plane about -0.3 deg/day (small next to the orbit itself in position_N).\n- sat-1.velocity_N: much faster at periapsis than at apoapsis.\n\nTry changing:\n- Spherical-harmonics degree 0, for the unperturbed orbit.\n- Only the Moon, or only the Sun, as third body, to isolate each effect.\n\nNote:\n- Keep the 1 s time step: a coarser step adds error to the harmonics gravity.",
-  "schema_version": 3
+  "schema_version": 4
 }

@@ -247,8 +247,6 @@
     "local_file_path": null,
     "cache_dir": null,
     "atmosphere_model": "nrlmsise00",
-    "activity_level": "nominal",
-    "activity_percentile": 95.0,
     "forecast_percentile": 50.0,
     "msfc_file_path": null
   },
@@ -267,5 +265,5 @@
   },
   "mission_sequence": [],
   "description": "Sun-safe pointing driven by an estimated Sun direction: eight coarse sun sensors feed a weighted least-squares estimator, instead of using the true direction.\n\nWhat to look at:\n- sat-1.sun_heading_body_estimated settling near [0, 0, 1] as the +Z axis turns to the Sun.\n- Accuracy depends on how many sensors are lit, as on real hardware.\n\nTry changing:\n- The sensors' field of view: narrower means fewer lit sensors and a worse estimate.\n- Turn off \"Estimate Sun heading from coarse sun sensors\" to compare with the true direction.",
-  "schema_version": 3
+  "schema_version": 4
 }

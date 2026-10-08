@@ -7739,3 +7739,9 @@ From 400 km no disposal burn is needed at any date. A launch three years late ne
 **Re-measured at Cd 3.0:** template 05 is unchanged (leaves its band at day 19.9, back by day 23.1, then 48.9-51.6 km for 0.0136 m/s); template 21's off-centre array drags harder: rods-off stores 2.02 N*m*s (rw-x -938 RPM, was 1.77 and -843), rods-on ends under 30 RPM (28.2, was 18.8); descriptions updated.
 
 **Checked:** the full Basilisk suite (2051 passed; the one failure, the 300 km re-entry test landing in its first segment at Cd 3.0, now pins the 2.2 its quoted figures were measured at).
+
+## "Conservative" solar activity is MSFC's 95th percentile
+
+User requirement: the conservative setting follows the ESA guideline -- NASA MSFC's prediction at the 95th percentile -- not historical data.
+
+The old "conservative" drag margin held F10.7 and Ap constant at a percentile of the observed 1957-2025 record for a whole run. AD10 Sec. 5.9 instead takes the predicted solar cycle at the 95th percentile. That cycle still rises and falls, so a 2030 and a 2033 launch differ, as the launch-delay sweep shows. The constant mode is gone: `activity_level` and `activity_percentile` are removed (schema v4), and solar activity is one choice in Propagation setup -- Nominal (MSFC 50th), Conservative (95th, AD10 operations) or Low (5th). Observed days are always the observations. Saved scenarios migrate: "conservative" becomes the 95th percentile. Templates stay nominal.

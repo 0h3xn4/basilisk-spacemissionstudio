@@ -64,7 +64,7 @@ from typing import Optional
 
 from .command import Command, report_before_propagate_errors
 
-CURRENT_SCHEMA_VERSION = 3
+CURRENT_SCHEMA_VERSION = 4
 
 # SPICE-recognized central body name strings this schema accepts, matching
 # Basilisk's simIncludeGravBody.gravBodyFactory named helpers
@@ -1432,10 +1432,10 @@ class SpaceWeatherConfig:
     ``atmosphere_model`` selects which Basilisk atmosphere-density model
     ``engine.service`` builds for ``enable_drag`` spacecraft:
     ``"nrlmsise00"`` (the original, only model this project used to wire
-    up -- needs the ``source``/``activity_level`` space-weather machinery
+    up -- needs the ``source``/``forecast_percentile`` space-weather machinery
     below) or ``"exponential"`` (Basilisk's ``ExponentialAtmosphere``, a
     simple per-planet scale-height model that ignores ``source``/
-    ``activity_level``/``local_file_path`` entirely -- no F10.7/Ap
+    ``forecast_percentile``/``local_file_path`` entirely -- no F10.7/Ap
     dependence at all). ``engine.service`` configures it with Basilisk's
     own ``simSetPlanetEnvironment.exponentialAtmosphere()`` helper (the
     same sea-level Earth baseDensity/scaleHeight a real shipped Basilisk
@@ -1459,23 +1459,22 @@ class SpaceWeatherConfig:
     There is no Jacchia-Roberts model in Basilisk at all, so that specific
     option genuinely cannot be offered here.
 
-    ``activity_level``/``activity_percentile`` (``"nrlmsise00"`` only --
-    ignored for ``"exponential"``) select a CONSERVATIVE, sustained-
-    worst-case drag margin instead of the ordinary resolved space-weather
-    data: see ``engine.spaceweather``'s own docstring, "Conservative
-    ('worst-case') drag margin", for the real user request this
-    implements and exactly what it computes.
+    ``forecast_percentile`` sets how active the predicted Sun is: past
+    the observations, every day uses NASA MSFC's prediction at its 95th
+    (conservative: ESA AD10 Sec. 5.9 for operations), 50th (nominal; AD10
+    for end of life) or 5th percentile. Observed days are always the
+    observations. (Schema v3 also had a "conservative" ``activity_level``
+    holding F10.7/Ap at a percentile of the historical record;
+    ``schema.migrations`` turns it into the 95th percentile.)
     """
 
     source: str = "bundled"  # "bundled" | "local_file"
     local_file_path: Optional[str] = None
     cache_dir: Optional[str] = None  # defaults to engine.spaceweather's own cache dir when None
     atmosphere_model: str = "nrlmsise00"  # "nrlmsise00" | "exponential"
-    activity_level: str = "nominal"  # "nominal" | "conservative"
-    activity_percentile: float = 95.0  # [-] percentile of REAL historical F10.7/Ap; "conservative" only
-    # [%] which of MSFC's predicted percentiles (95, 50, 5) drives the days
-    # past the observations; ESA AD10 Sec. 5.9: 95 for operations
-    # budgets, 50 for end of life
+    # [%] which of MSFC's predicted percentiles drives the days past the
+    # observations: 95 conservative (ESA AD10 Sec. 5.9, operations), 50
+    # nominal (AD10, end of life), 5 low
     forecast_percentile: float = 50.0
     msfc_file_path: Optional[str] = None  # your own MSFC prediction table; None = the one shipped with the app
 
@@ -1490,12 +1489,6 @@ class SpaceWeatherConfig:
         _require(float(self.forecast_percentile) in SUPPORTED_FORECAST_PERCENTILES,
                   f"space_weather.forecast_percentile {self.forecast_percentile!r} must be one of "
                   f"{SUPPORTED_FORECAST_PERCENTILES} (MSFC's published percentiles)")
-        _require(self.activity_level in ("nominal", "conservative"),
-                  f"space_weather.activity_level {self.activity_level!r} must be 'nominal' or 'conservative'")
-        if self.activity_level == "conservative":
-            _require(50.0 <= self.activity_percentile < 100.0,
-                      "space_weather.activity_percentile must be in [50, 100) when activity_level is "
-                      f"'conservative' -- got {self.activity_percentile!r}")
 
 
 @dataclass

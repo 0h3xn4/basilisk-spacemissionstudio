@@ -47,13 +47,12 @@ its own explicit enable control here:
   sees) rather than moving the per-spacecraft fields here, which would
   need a spacecraft-picker of its own and duplicate
   ``SpacecraftEditorDialog``'s existing one.
-* atmosphere-model CHOICE (``atmosphere_model_combo``) and a
-  CONSERVATIVE, historical-percentile drag margin
-  (``activity_level_combo``/``activity_percentile_spin``) -- see
-  ``schema.scenario.SpaceWeatherConfig``'s own docstring for exactly
-  what each selects and why (Basilisk has no Jacchia-Roberts model to
-  offer, checked directly against its source; the percentile margin is
-  computed from the observed days of the real data file). This dialog
+* atmosphere-model CHOICE (``atmosphere_model_combo``) and the solar
+  activity (``forecast_percentile_combo``: nominal, conservative or low,
+  NASA MSFC's 50th, 95th or 5th percentile; conservative is ESA AD10's
+  operations case) -- see ``schema.scenario.SpaceWeatherConfig``'s own
+  docstring (Basilisk has no Jacchia-Roberts model to offer, checked
+  directly against its source). This dialog
   makes no network calls -- the sources are "bundled" (CelesTrak data
   shipped with the app) and "local_file" -- but its Local file field
   pre-fills with the path of the most recent
@@ -389,7 +388,7 @@ class PropagationSetupDialog(QDialog):
             "What atmospheric density model drag (see each spacecraft's own 'Enable "
             "atmospheric drag' checkbox) is actually computed from. NRLMSISE-00 is a real, "
             "physically-detailed density model that responds to solar/geomagnetic activity "
-            "(set via Source/Drag margin below); Exponential is a much simpler fallback with "
+            "(set via Source/Solar activity below); Exponential is a much simpler fallback with "
             "no space-weather dependence at all -- only use it when you specifically want to "
             "isolate drag's effect from solar-cycle variability."
         )
@@ -421,8 +420,9 @@ class PropagationSetupDialog(QDialog):
         local_file_row.addWidget(self.local_file_browse_button)
         form.addRow("Local file", local_file_row)
 
-        self._forecast_items = [("50th (nominal; AD10 end of life)", 50.0),
-                                ("95th (AD10 operations budget)", 95.0), ("5th (low)", 5.0)]
+        self._forecast_items = [("Nominal: MSFC 50th percentile (AD10 end of life)", 50.0),
+                                ("Conservative: MSFC 95th percentile (AD10 operations)", 95.0),
+                                ("Low: MSFC 5th percentile", 5.0)]
         self.forecast_percentile_combo = ComboBox()
         for label, _value in self._forecast_items:
             self.forecast_percentile_combo.addItem(label)
@@ -430,11 +430,11 @@ class PropagationSetupDialog(QDialog):
             next((i for i, (_l, v) in enumerate(self._forecast_items) if v == float(space_weather.forecast_percentile)),
                  0))
         self.forecast_percentile_combo.setToolTip(
-            "Which of NASA MSFC's predicted percentiles (F10.7 and Ap) drives the days past the "
-            "observations. ESA AD10 (EOP-FM/2024-07-177) Sec. 5.9: 95th for operations budgets, "
-            "50th for end of life."
+            "Solar activity past the observations: NASA MSFC's predicted solar cycle (F10.7 and Ap) at "
+            "this percentile. ESA AD10 (EOP-FM/2024-07-177) Sec. 5.9: 95th for operations budgets, "
+            "50th for end of life. Observed days always use the observations."
         )
-        form.addRow("Forecast percentile", self.forecast_percentile_combo)
+        form.addRow("Solar activity", self.forecast_percentile_combo)
 
         msfc_row = QHBoxLayout()
         self.msfc_file_edit = QLineEdit(space_weather.msfc_file_path or "")
@@ -448,36 +448,6 @@ class PropagationSetupDialog(QDialog):
         msfc_row.addWidget(self.msfc_file_edit)
         msfc_row.addWidget(self.msfc_browse_button)
         form.addRow("MSFC prediction", msfc_row)
-
-        self.activity_level_combo = ComboBox()
-        # (display text, schema value)
-        self._activity_level_items = [("Nominal (ordinary resolved space weather)", "nominal"),
-                                       ("Conservative (historical-percentile worst-case margin)", "conservative")]
-        for label, _value in self._activity_level_items:
-            self.activity_level_combo.addItem(label)
-        self.activity_level_combo.setCurrentIndex(0 if space_weather.activity_level == "nominal" else 1)
-        self.activity_level_combo.setToolTip(
-            "'Nominal' uses the resolved space-weather profile (from Source above) as-is -- "
-            "day-to-day variation included. 'Conservative' instead holds activity at a fixed, "
-            "sustained high percentile (set below) for the WHOLE scenario -- a worst-case "
-            "margin for drag-sensitive design questions (e.g. minimum propellant for station "
-            "-keeping), at the cost of being less representative of an ordinary day."
-        )
-        self.activity_level_combo.currentIndexChanged.connect(self._on_activity_level_changed)
-        form.addRow("Drag margin", self.activity_level_combo)
-
-        self.activity_percentile_spin = PreciseDoubleSpinBox()
-        self.activity_percentile_spin.setRange(50.0, 99.9)
-        self.activity_percentile_spin.setDecimals(1)
-        self.activity_percentile_spin.setValue(space_weather.activity_percentile)
-        self.activity_percentile_spin.setToolTip(
-            "Percentile of REAL historical F10.7/Ap data to hold constant across the whole scenario as "
-            "a sustained worst-case drag assumption -- 95.0 is a common 'P95' choice; ~97.7 approximates "
-            "a mean+2-sigma figure. This app makes no network calls at runtime, so 'Conservative' needs "
-            "Source above set to 'local_file', pointing at a real historical space-weather CSV you "
-            "supply yourself (e.g. a CelesTrak extract downloaded ahead of time, outside this app)."
-        )
-        form.addRow("Worst-case percentile", self.activity_percentile_spin)
 
         # cache_dir: internal-infra override, not a mission-design knob --
         # see SpaceWeatherConfig.cache_dir's own comment. Blank (the
@@ -498,12 +468,11 @@ class PropagationSetupDialog(QDialog):
 
         self._on_atmosphere_model_changed(self.atmosphere_model_combo.currentIndex())
         self._on_space_weather_source_changed(self.space_weather_source_combo.currentText())
-        self._on_activity_level_changed(self.activity_level_combo.currentIndex())
         return group
 
     def _on_atmosphere_model_changed(self, _index: int) -> None:
         is_msis = self._selected_atmosphere_model() == "nrlmsise00"
-        # Exponential ignores source/local_file_path/activity_level entirely
+        # Exponential ignores source/local_file_path/solar activity entirely
         # (schema.scenario.SpaceWeatherConfig's own docstring) -- greyed
         # out rather than hidden, so switching back doesn't lose whatever
         # the user had set.
@@ -512,20 +481,11 @@ class PropagationSetupDialog(QDialog):
         self.local_file_browse_button.setEnabled(
             is_msis and self.space_weather_source_combo.currentText() == "local_file"
         )
-        self.activity_level_combo.setEnabled(is_msis)
-        self.activity_percentile_spin.setEnabled(is_msis and self._selected_activity_level() == "conservative")
         for widget in (self.forecast_percentile_combo, self.msfc_file_edit, self.msfc_browse_button):
             widget.setEnabled(is_msis)
 
-    def _on_activity_level_changed(self, _index: int) -> None:
-        is_msis = self._selected_atmosphere_model() == "nrlmsise00"
-        self.activity_percentile_spin.setEnabled(is_msis and self._selected_activity_level() == "conservative")
-
     def _selected_atmosphere_model(self) -> str:
         return self._atmosphere_model_items[self.atmosphere_model_combo.currentIndex()][1]
-
-    def _selected_activity_level(self) -> str:
-        return self._activity_level_items[self.activity_level_combo.currentIndex()][1]
 
     def _on_space_weather_source_changed(self, source: str) -> None:
         is_msis = self._selected_atmosphere_model() == "nrlmsise00"
@@ -587,8 +547,6 @@ class PropagationSetupDialog(QDialog):
             local_file_path=self.local_file_edit.text().strip() or None,
             cache_dir=self.cache_dir_edit.text().strip() or None,
             atmosphere_model=self._selected_atmosphere_model(),
-            activity_level=self._selected_activity_level(),
-            activity_percentile=self.activity_percentile_spin.value(),
             forecast_percentile=self._forecast_items[self.forecast_percentile_combo.currentIndex()][1],
             msfc_file_path=self.msfc_file_edit.text().strip() or None,
         )

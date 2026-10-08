@@ -246,8 +246,6 @@
     "local_file_path": null,
     "cache_dir": null,
     "atmosphere_model": "nrlmsise00",
-    "activity_level": "nominal",
-    "activity_percentile": 95.0,
     "forecast_percentile": 50.0,
     "msfc_file_path": null
   },
@@ -266,5 +264,5 @@
   },
   "mission_sequence": [],
   "description": "Template 11's eight-thruster attitude control with a real fuel tank: propellant runs down as the thrusters fire, and the centre of mass shifts with it.\n\nWhat to look at:\n- sat-1.fuel_mass_remaining with sat-1.thruster_on_time: about 0.3 g of the 0.5 kg drains while the attitude settles; after ~3 minutes only occasional short pulses fire and it barely moves.\n\nTry changing:\n- Propellant below ~0.0003 kg, to run dry mid-manoeuvre.\n- Thruster specific impulse: lower uses more propellant for the same correction.",
-  "schema_version": 3
+  "schema_version": 4
 }

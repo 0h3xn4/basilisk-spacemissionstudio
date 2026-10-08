@@ -265,16 +265,11 @@ actually modeled (Earth with spherical-harmonics degree >= 2), MEAN
 (first-order-J2, osc -> mean) elements alongside the osculating ones,
 via Basilisk's own `orbitalMotion.clMeanOscMap` (the same tool its
 `meanOEFeedback` FSW module uses -- not a bespoke implementation).
-NRLMSISE-00 drag can also use a
-CONSERVATIVE, sustained-worst-case margin (a chosen percentile -- e.g.
-95th -- of REAL historical F10.7/Ap data YOU supply as a local file,
-held constant across the whole scenario, never a fabricated number)
-instead of ordinary resolved space weather -- see
-`engine/spaceweather.py`'s own docstring, "Conservative ('worst-case')
-drag margin". SpaceMissionStudio makes no network calls at runtime (see
-"Closed-off/offline policy" below), so this app can no longer fetch that
-historical data itself; download a CelesTrak CSV yourself, outside this
-app, and point `local_file_path` at it.
+NRLMSISE-00 drag takes its solar activity at one of three levels:
+nominal (NASA MSFC's 50th-percentile prediction), conservative (its 95th
+percentile, ESA AD10's operations case) or low (its 5th). The
+conservative case follows the predicted solar cycle; it is not a
+constant.
 
 **Attitude, sensors & actuators** -- every `fsw_mode` maps to a real
 Basilisk FSW module chain (attitude nav/guidance/control), idealized or
@@ -940,14 +935,14 @@ holds observed daily F10.7 and Ap from 1957-10-01 and CelesTrak's 45-day
 forecast. Beyond that, solar activity comes from NASA MSFC's October 2026
 prediction (also shipped; F10.7 and Ap at the 95th/50th/5th percentiles,
 2026-04 to 2041-10, the last 132 months repeated after that), as ESA's
-AD10 guideline (EOP-FM/2024-07-177, Sec. 5.9) prescribes. "Forecast
-percentile" picks the column: 50th by default, AD10 asks for the 95th for
-operations budgets and the 50th for end of life. Months before MSFC's
+AD10 guideline (EOP-FM/2024-07-177, Sec. 5.9) prescribes. "Solar
+activity" picks the column: Nominal (50th) by default, Conservative
+(95th) as AD10 asks for operations budgets, the 50th for end of life. Months before MSFC's
 first use NOAA's monthly F10.7 with Ap at the observed mean (12.8). Runs
 say which data they used in their warnings. The earlier `"synthetic"` profile was
-removed; older scenario files are migrated to `"bundled"`. The
-`activity_level="conservative"` margin is a percentile of the same file's
-observed days.
+removed; older scenario files are migrated to `"bundled"`. So was the
+old "conservative" margin (a constant percentile of the observed
+record): schema v4 turns it into the 95th percentile.
 
 ## Known limitations
 

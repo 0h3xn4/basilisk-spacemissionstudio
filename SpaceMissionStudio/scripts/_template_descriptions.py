@@ -97,7 +97,7 @@ Try changing:
 
 Note:
 - Drag uses real space weather; 2030 is NASA MSFC's 50th-percentile prediction. For an ESA AD10 \
-operations budget, set the forecast percentile to 95th in Propagation setup.
+operations budget, set Solar activity to Conservative (MSFC 95th) in Propagation setup.
 - Cd 3.0: AD10's operations value.""",
 
     "05": """\

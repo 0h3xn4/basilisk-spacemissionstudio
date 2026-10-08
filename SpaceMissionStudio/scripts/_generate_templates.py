@@ -154,15 +154,15 @@ def _berlin_ground_station(**overrides) -> GroundStationConfig:
     return GroundStationConfig(**params)
 
 
-def _conservative_drag_margin() -> SpaceWeatherConfig:
+def _real_space_weather() -> SpaceWeatherConfig:
     """Drag from NRLMSISE-00 driven by real data shipped with the app
     (``source="bundled"``: CelesTrak's observed record, then NASA MSFC's
-    50th-percentile prediction) -- a fresh instance per call, since
-    ``SpaceWeatherConfig`` is mutable.
-    For a sustained worst case, set ``activity_level="conservative"`` in
-    Propagation setup (a percentile of the same real record).
+    50th-percentile prediction, the nominal case) -- a fresh instance per
+    call, since ``SpaceWeatherConfig`` is mutable. Solar activity
+    "Conservative" in Propagation setup is MSFC's 95th percentile (ESA
+    AD10 Sec. 5.9, operations).
     """
-    return SpaceWeatherConfig(source="bundled", atmosphere_model="nrlmsise00", activity_level="nominal")
+    return SpaceWeatherConfig(source="bundled", atmosphere_model="nrlmsise00", forecast_percentile=50.0)
 
 
 def _save(scenario: Scenario, filename: str) -> None:
@@ -259,7 +259,7 @@ def build_04_walker_constellation() -> Scenario:
     # 700 km is genuinely drag-relevant LEO altitude -- drag/SRP enabled
     # on the shared template so generate_walker_constellation() copies it
     # onto every satellite (see this function's own description update
-    # below for the reasoning and the conservative-margin caveat).
+    # below for the reasoning).
     template = SpacecraftConfig(
         name="placeholder",  # replaced per-satellite by generate_walker_constellation()
         orbit=OrbitIC(type="classical_elements", semi_major_axis_km=1.0, eccentricity=0.0,
@@ -284,7 +284,7 @@ def build_04_walker_constellation() -> Scenario:
         simulation_mode="orbit_only",
         gravity=GravityConfig(central_body="earth", central_body_degree=10, third_body_perturbers=["sun", "moon"]),
         sim_settings=SimSettings(duration_days=1.0, dynamics_task_rate_s=30.0, integrator="rkf78"),
-        space_weather=_conservative_drag_margin(),
+        space_weather=_real_space_weather(),
         spacecraft=spacecraft,
     )
 
@@ -331,7 +331,7 @@ def build_05_formation_flying_phasing() -> Scenario:
         # clear of that limit with margin -- see SimSettings.validate()'s
         # own upper bound on duration_days, added for exactly this reason.
         sim_settings=SimSettings(duration_days=90.0, dynamics_task_rate_s=30.0, integrator="rkf78"),
-        space_weather=_conservative_drag_margin(),
+        space_weather=_real_space_weather(),
         spacecraft=[
             SpacecraftConfig(
                 name="chief-1",
@@ -551,7 +551,7 @@ def build_07_attitude_pointing_with_adcs_hardware() -> Scenario:
         # update above).
         gravity=GravityConfig(central_body="earth", central_body_degree=10, third_body_perturbers=["sun", "moon"]),
         sim_settings=SimSettings(duration_days=0.05, dynamics_task_rate_s=1.0, integrator="rkf78"),
-        space_weather=_conservative_drag_margin(),
+        space_weather=_real_space_weather(),
         spacecraft=[
             SpacecraftConfig(
                 name="sat-1",
@@ -609,7 +609,7 @@ def build_08_mission_sequence_orbit_raise() -> Scenario:
         simulation_mode="orbit_only",
         gravity=GravityConfig(central_body="earth", central_body_degree=10, third_body_perturbers=["sun", "moon"]),
         sim_settings=SimSettings(duration_days=1.0, dynamics_task_rate_s=10.0, integrator="rkf78"),
-        space_weather=_conservative_drag_margin(),
+        space_weather=_real_space_weather(),
         spacecraft=[
             SpacecraftConfig(
                 name="sat-1",
@@ -1026,7 +1026,7 @@ def build_18_leo_station_keeping() -> Scenario:
         simulation_mode="orbit_only",
         gravity=GravityConfig(central_body="earth", central_body_degree=10, third_body_perturbers=["sun", "moon"]),
         sim_settings=SimSettings(duration_days=14.0, dynamics_task_rate_s=30.0, integrator="rkf78"),
-        space_weather=_conservative_drag_margin(),
+        space_weather=_real_space_weather(),
         spacecraft=[
             SpacecraftConfig(
                 name="leo-sat-1",
@@ -1251,7 +1251,7 @@ def build_21_disturbance_torques() -> Scenario:
         simulation_mode="full_attitude",
         gravity=GravityConfig(central_body="earth", central_body_degree=2, third_body_perturbers=["sun"]),
         sim_settings=SimSettings(duration_days=1.0, dynamics_task_rate_s=10.0, integrator="rkf78"),
-        space_weather=_conservative_drag_margin(),
+        space_weather=_real_space_weather(),
         spacecraft=[spacecraft("rods-off", False), spacecraft("rods-on", True)],
     )
 

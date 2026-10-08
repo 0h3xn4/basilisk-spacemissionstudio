@@ -95,8 +95,6 @@
     "local_file_path": null,
     "cache_dir": null,
     "atmosphere_model": "nrlmsise00",
-    "activity_level": "nominal",
-    "activity_percentile": 95.0,
     "forecast_percentile": 50.0,
     "msfc_file_path": null
   },
@@ -166,5 +164,5 @@
     }
   ],
   "description": "A Mission Sequence step that solves for the burn: lambert_transfer finds the delta-V that reaches a target position after a set time of flight, then applies it.\n\nWhat to look at:\n- The Mission Output tab: after the time of flight, the position sits at the target [-6578000, 0, 0] m, within about 2 m (the solver accepts up to 500 m).\n\nTry changing:\n- Target position or time of flight (too short a time is rejected with a clear error).\n- Coast to burn point: shorten it to 10 s and the path dips below Earth's surface, so the minimum orbit radius check rejects it.",
-  "schema_version": 3
+  "schema_version": 4
 }

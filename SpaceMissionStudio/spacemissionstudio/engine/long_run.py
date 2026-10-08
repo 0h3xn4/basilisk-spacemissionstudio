@@ -119,7 +119,7 @@ def _whole_span_space_weather(scenario: Scenario):
     end = start + timedelta(days=scenario.sim_settings.duration_days)
     resolved = spaceweather.resolve_for(sw_config, start, end)
     return SpaceWeatherConfig(source="local_file", local_file_path=str(resolved.path), cache_dir=sw_config.cache_dir,
-                              atmosphere_model=sw_config.atmosphere_model, activity_level="nominal"), \
+                              atmosphere_model=sw_config.atmosphere_model), \
         list(resolved.warnings)
 
 

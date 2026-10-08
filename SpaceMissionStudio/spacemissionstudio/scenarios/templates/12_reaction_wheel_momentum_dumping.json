@@ -306,8 +306,6 @@
     "local_file_path": null,
     "cache_dir": null,
     "atmosphere_model": "nrlmsise00",
-    "activity_level": "nominal",
-    "activity_percentile": 95.0,
     "forecast_percentile": 50.0,
     "msfc_file_path": null
   },
@@ -326,5 +324,5 @@
   },
   "mission_sequence": [],
   "description": "A 500 kg spacecraft whose four 12 N*m*s reaction wheels start heavily spun up. Eight 1 N thrusters dump the excess momentum whenever it passes 9.6 N*m*s, while the wheels stay in control of the attitude.\n\nWhat to look at:\n- sat-1.rw_speeds dropping in sharp steps, one per dump (three in the first 4 minutes).\n- sat-1.thruster_on_time: when the dump thrusters fire.\n\nTry changing:\n- Dump threshold: lower dumps sooner and more often.\n- Initial wheel speeds.\n- Remove momentum dumping: the wheel speeds never come down.",
-  "schema_version": 3
+  "schema_version": 4
 }

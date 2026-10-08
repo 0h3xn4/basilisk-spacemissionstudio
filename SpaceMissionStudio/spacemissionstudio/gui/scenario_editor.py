@@ -245,11 +245,8 @@ class ScenarioEditorWidget(QWidget):
         else:
             add_row("Atmosphere model", "NRLMSISE-00")
             add_row("Space weather source", sw.source)
-            add_row(
-                "Drag margin",
-                f"Conservative (P{sw.activity_percentile:g} historical worst-case)"
-                if sw.activity_level == "conservative" else "Nominal",
-            )
+            level = {95.0: "Conservative", 50.0: "Nominal", 5.0: "Low"}.get(float(sw.forecast_percentile), "")
+            add_row("Solar activity", f"{level}: MSFC {sw.forecast_percentile:g}th percentile")
 
     def _build_spacecraft_group(self) -> QGroupBox:
         group = QGroupBox("Spacecraft")

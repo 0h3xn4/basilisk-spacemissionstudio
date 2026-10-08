@@ -381,7 +381,7 @@ operations value.
 
 **You need a delta-V and propellant budget.** Fill in the spacecraft
 editor's **Budget (AD10)** tab, run the mission (ideally its whole
-length, with the forecast percentile at 95th and Cd 3.0 for an ESA AD10
+length, with Solar activity at Conservative (95th) and Cd 3.0 for an ESA AD10
 budget), then press **Compute budget** on the **Budget** tab. It lists
 each contributor per mission phase with its margin, the total, and notes
 on anything that departs from the guideline. **Copy as CSV** puts the

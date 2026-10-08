@@ -249,73 +249,33 @@ def test_removed_sources_are_rejected_as_unknown(source):
         sw.resolve(source, datetime(2030, 1, 1), datetime(2030, 1, 5))
 
 
-# -- Conservative ("worst-case") drag margin -------------------------------
-# A percentile of the OBSERVED days of the same real file the source names.
+# -- Conservative = MSFC's 95th percentile (ESA AD10 Sec. 5.9) -------------
 
-def test_compute_worst_case_activity_matches_numpy_percentile():
-    f107_all, ap_all = sw._load_historical_activity(sw.BUNDLED_DATA_PATH)
-    f107_p, ap_p, n_samples = sw.compute_worst_case_activity(sw.BUNDLED_DATA_PATH, 95.0)
-    assert n_samples == len(f107_all) == len(ap_all) == 24765  # every observed day, 1957-2025
-    assert f107_p == pytest.approx(np.percentile(f107_all, 95.0))
-    assert ap_p == pytest.approx(np.percentile(ap_all, 95.0))
-
-
-def test_compute_worst_case_activity_rejects_short_history(tmp_path):
-    path = _real_excerpt_csv(tmp_path / "short.csv", date(2024, 1, 1), date(2024, 6, 1))  # well under a year
-    with pytest.raises(sw.SpaceWeatherError, match="need at least"):
-        sw.compute_worst_case_activity(path, 95.0)
-
-
-def test_generate_worst_case_holds_values_constant_and_validates(tmp_path):
-    start, end = datetime(2030, 1, 1), datetime(2030, 1, 10)
-    path = sw.generate_worst_case(230.5, 45.0, start, end, tmp_path / "worst.csv")
-
-    result = sw.validate_file(path, start, end)
-    assert result.ok, result.message
-
-    import csv as _csv
-    with open(path, newline="") as f:
-        rows = list(_csv.DictReader(f))
-    assert rows  # non-empty
-    for row in rows:
-        assert float(row["F10.7_OBS"]) == pytest.approx(230.5)
-        assert float(row["F10.7_OBS_CENTER81"]) == pytest.approx(230.5)
-        assert float(row["AP_AVG"]) == pytest.approx(45.0)
-        for i in range(1, 9):
-            assert float(row[f"AP{i}"]) == pytest.approx(45.0)
+def test_the_conservative_case_is_msfcs_predicted_cycle_at_the_95th_percentile(tmp_path):
+    """Conservative is no constant: the same predicted solar cycle as
+    nominal, at MSFC's 95th percentile, so higher every month and still
+    rising and falling with the cycle (2030 to 2034 here)."""
+    start, end = datetime(2030, 1, 1), datetime(2034, 12, 31)
+    rows = {}
+    for percentile in (50.0, 95.0):
+        resolved = sw.resolve("bundled", start, end, cache_dir=tmp_path, forecast_percentile=percentile)
+        rows[percentile] = {r["DATE"]: float(r["F10.7_OBS"]) for r in csv.DictReader(open(resolved.path))}
+        assert any(f"{percentile:g}th percentile" in w for w in resolved.warnings)
+    months = [f"{year}-{month:02d}-15" for year in range(2030, 2035) for month in (1, 7)]
+    assert all(rows[95.0][m] > rows[50.0][m] for m in months)
+    assert max(rows[95.0][m] for m in months) - min(rows[95.0][m] for m in months) > 30.0  # [sfu] a cycle, not flat
 
 
-@pytest.mark.parametrize("source", ["bundled", "local_file"])
-def test_resolve_conservative_computes_the_real_percentile(tmp_path, source):
-    history_path = (sw.BUNDLED_DATA_PATH if source == "bundled"
-                    else _real_excerpt_csv(tmp_path / "history.csv", date(2000, 1, 1), date(2015, 1, 1)))
-    f107_all, ap_all = sw._load_historical_activity(history_path)
-    start, end = datetime(2030, 1, 1), datetime(2030, 1, 5)
-    resolved = sw.resolve(source, start, end, local_file_path=str(history_path), cache_dir=tmp_path / "cache",
-                          activity_level="conservative", activity_percentile=95.0)
-
-    assert resolved.data_file == history_path
-    assert any("CONSERVATIVE" in w for w in resolved.warnings)
-    assert sw.validate_file(resolved.path, start, end).ok
-    first_row = next(csv.DictReader(open(resolved.path)))
-    # abs=0.05: generate_worst_case's CSV rounds to 1 decimal place
-    assert float(first_row["F10.7_OBS"]) == pytest.approx(np.percentile(f107_all, 95.0), abs=0.05)
-    assert float(first_row["AP_AVG"]) == pytest.approx(np.percentile(ap_all, 95.0), abs=0.05)
-
-
-def test_resolve_conservative_local_file_without_path_raises():
-    with pytest.raises(sw.SpaceWeatherError, match="local_file_path was not set"):
-        sw.resolve("local_file", datetime(2030, 1, 1), datetime(2030, 1, 5), activity_level="conservative")
-
-
-def test_resolve_unknown_activity_level_raises():
-    with pytest.raises(sw.SpaceWeatherError, match="unknown space_weather.activity_level"):
-        sw.resolve("bundled", datetime(2030, 1, 1), datetime(2030, 1, 5), activity_level="extreme")
+def test_resolve_has_no_activity_level_any_more():
+    """Schema v3's historical-percentile "conservative" mode is gone (schema
+    v4: conservative is forecast_percentile 95)."""
+    with pytest.raises(TypeError):
+        sw.resolve("bundled", datetime(2030, 1, 1), datetime(2030, 1, 5), activity_level="conservative")
 
 
 def test_resolve_never_calls_fetch(tmp_path, monkeypatch):
     """resolve() itself must NEVER touch the network, regardless of
-    source/activity_level -- fetch() is only ever reached explicitly, via
+    source -- fetch() is only ever reached explicitly, via
     gui.startup_fetch_dialog's consent-gated prompt. Fails loudly (instead
     of quietly passing) if resolve() is ever wired to call it.
     """

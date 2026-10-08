@@ -241,8 +241,7 @@ def test_space_weather_local_file_requires_path():
 def test_space_weather_defaults_to_nrlmsise00_nominal():
     sc = _minimal_scenario()
     assert sc.space_weather.atmosphere_model == "nrlmsise00"
-    assert sc.space_weather.activity_level == "nominal"
-    assert sc.space_weather.activity_percentile == 95.0
+    assert sc.space_weather.forecast_percentile == 50.0  # nominal; 95 is the conservative AD10 case
     sc.validate()  # defaults must themselves be valid
 
 
@@ -253,26 +252,19 @@ def test_space_weather_rejects_unknown_atmosphere_model():
         sc.validate()
 
 
-def test_space_weather_rejects_unknown_activity_level():
+@pytest.mark.parametrize("percentile", [50.0, 95.0, 5.0])
+def test_space_weather_takes_msfcs_published_percentiles(percentile):
+    """Nominal (50), conservative (95, ESA AD10 operations) and low (5)."""
     sc = _minimal_scenario()
-    sc.space_weather.activity_level = "extreme"
-    with pytest.raises(ScenarioValidationError, match="activity_level"):
-        sc.validate()
-
-
-def test_space_weather_conservative_accepts_valid_percentile():
-    sc = _minimal_scenario()
-    sc.space_weather.activity_level = "conservative"
-    sc.space_weather.activity_percentile = 97.7  # a mean+2-sigma-style figure, not just 95
+    sc.space_weather.forecast_percentile = percentile
     sc.validate()
 
 
-@pytest.mark.parametrize("percentile", [10.0, 49.9, 100.0, 150.0])
-def test_space_weather_conservative_rejects_out_of_range_percentile(percentile):
+@pytest.mark.parametrize("percentile", [97.7, 75.0, 0.0])
+def test_space_weather_rejects_other_percentiles(percentile):
     sc = _minimal_scenario()
-    sc.space_weather.activity_level = "conservative"
-    sc.space_weather.activity_percentile = percentile
-    with pytest.raises(ScenarioValidationError, match="activity_percentile"):
+    sc.space_weather.forecast_percentile = percentile
+    with pytest.raises(ScenarioValidationError, match="forecast_percentile"):
         sc.validate()
 
 

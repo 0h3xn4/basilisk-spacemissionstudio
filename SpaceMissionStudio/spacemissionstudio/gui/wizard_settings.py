@@ -168,7 +168,6 @@ _META: Dict[str, SettingMeta] = {
     "thread_count": SettingMeta("Parallel threads"),
     "verbose": SettingMeta("Verbose output"),
     "central_body_degree": SettingMeta("Spherical-harmonics degree", "", "0 = point-mass gravity."),
-    "activity_percentile": SettingMeta("Space-weather activity percentile"),
     "dynamics_task_rate_s": SettingMeta("Integration time step", " s", "Too coarse a step can make the "
                                         "dynamics diverge (NaN); keep the template's value unless you know why."),
 }

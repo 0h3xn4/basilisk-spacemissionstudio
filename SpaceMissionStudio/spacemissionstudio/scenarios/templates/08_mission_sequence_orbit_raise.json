@@ -98,8 +98,6 @@
     "local_file_path": null,
     "cache_dir": null,
     "atmosphere_model": "nrlmsise00",
-    "activity_level": "nominal",
-    "activity_percentile": 95.0,
     "forecast_percentile": 50.0,
     "msfc_file_path": null
   },
@@ -167,5 +165,5 @@
     }
   ],
   "description": "Introduces the Mission Sequence: coast, take a snapshot, burn +50 m/s prograde, coast, take another snapshot -- instead of one plain propagation.\n\nWhat to look at:\n- The Mission Output tab: the snapshots before and after the burn.\n- The orbit turns into an ellipse: apoapsis raised opposite the burn, periapsis unchanged.\n\nTry changing:\n- Burn size (bigger raises apoapsis more) or sign (negative lowers it).\n- Add a second burn half an orbit later to circularize: a Hohmann transfer.",
-  "schema_version": 3
+  "schema_version": 4
 }

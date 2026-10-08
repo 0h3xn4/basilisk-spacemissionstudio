@@ -95,8 +95,6 @@
     "local_file_path": null,
     "cache_dir": null,
     "atmosphere_model": "nrlmsise00",
-    "activity_level": "nominal",
-    "activity_percentile": 95.0,
     "forecast_percentile": 50.0,
     "msfc_file_path": null
   },
@@ -115,5 +113,5 @@
   },
   "mission_sequence": [],
   "description": "A single spacecraft in a circular low-Earth orbit around a point-mass Earth: no perturbations and no attitude. The \"hello world\" of orbital mechanics. (The inclination is a Sun-synchronous one, but without Earth's oblateness the orbit plane does not actually turn to follow the Sun.)\n\nWhat to look at:\n- sat-1.position_N traces a perfect circle.\n- The period matches Kepler's third law: about 92.6 minutes, so one day is ~15.5 orbits.\n\nTry changing:\n- Semi-major axis: higher means a slower orbit and a longer period.\n- Inclination: watch the ground track change in Vizard.\n- Eccentricity: see template 02 for an elliptical orbit.",
-  "schema_version": 3
+  "schema_version": 4
 }
