@@ -131,10 +131,32 @@ SUITP, run on 2026-10-08 on the audit's container (Python 3.11, Basilisk
 | V-08 sgp4 tests | 49 passed | – | SRF | Met |
 | V-L lifetime vs a decay run | +0.9 % | 3 % | SRS-P-08 | Met |
 
-**Not done:**
-- SRS-P-09 (run time) and SRS-R-02 (memory): not measured on a reference
-  PC (H13).
-- Windows, macOS and the Windows installer: not tested (H13).
+**Reference PC measurements** (decision 19; `compliance/performance.md`,
+made with `compliance/tools/measure_performance.py` on 2026-10-08):
+
+| Requirement | Case | Result | Limit | Verdict |
+|---|---|---|---|---|
+| SRS-P-09 | 1 day, 550 km SSO, NRLMSISE-00 drag, degree-20 field, every 10 s step recorded | 12.1 s wall time, 256 MiB peak | 300 s | Met |
+| SRS-R-02 | Same orbit and models, 365 days, recorded every 60 s | 457.5 MiB peak, 2914 s wall time | 2048 MiB | Met |
+
+The reference PC is the audit's cloud container: 4 x86-64 cores, 15.7 GiB
+memory, Linux, Python 3.11, Basilisk 2.12.0.
+
+**Other platforms** (SRS-PO-01; CI run 20, commit `ddd15ab61`, the
+`platforms` job):
+
+| Platform | Passed | Failed | Skipped | Verdict |
+|---|---|---|---|---|
+| Linux (ubuntu-24.04) | all | 0 | 11 | Met |
+| Windows (windows-latest, Python 3.11) | 2209 | 34 | 11 | **Not met** |
+| macOS (macos-latest, arm64, Python 3.11) | 2234 | 10 | 11 | **Not met** |
+
+The failures are listed in SRelD K-10. Most are test portability or
+layout differences. One is a possible wrong result on Windows: in the
+altitude trade the 400 km case gave 1.45 kg of propellant, against
+7.26 kg on Linux for the same case. It is under investigation.
+
+**Not done:** the Windows installer has not been run (manual test, H13).
 
 **Traceability:**
 - Validation specification → technical specification: SVS section 11.
@@ -155,8 +177,8 @@ SUITP, run on 2026-10-08 on the audit's container (Python 3.11, Basilisk
 ### 5.1 Technical budgets (M.2.1<5.1>)
 
 - **Budgets:** none were allocated (SDD 4.6).
-- **Method:** the way to compute them would be to measure peak memory and
-  wall time of reference runs on the reference PC (H13).
+- **Measured:** peak memory and wall time of the two reference runs on
+  the reference PC (section above; decision 19).
 
 ### 5.2 Margins (M.2.1<5.2>)
 

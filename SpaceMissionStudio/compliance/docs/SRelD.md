@@ -96,8 +96,9 @@ SpaceMissionStudio". In summary:
 | K-03 | The time argument is TDB, not TAI (F-05) | About 0.1 m/day in LEO | `phase3_log.md` |
 | K-04 | The field's GM and radius are the body's, not the field file's (F-03) | Centimetres per day | `phase3_log.md` |
 | K-05 | During a live stream Vizard, a separate program, listens on port 5556; the tool opens no port. Earlier issues of the security analysis wrongly said Basilisk binds 5556 and 5570 on all interfaces | Exposure depends on Vizard's own binding, not checked | security analysis S-06 (corrected, decision 17) |
-| K-06 | Not tested on Windows or macOS in this audit; the Windows installer was not run | Unknown | SValP 9 |
-| K-07 | Run time and memory requirements (SRS-P-09, SRS-R-02) not measured | Unknown | SVR |
+| K-06 | The Windows installer was not run in this audit | Unknown | SValP 9 |
+| K-07 | Closed (decision 19): SRS-P-09 and SRS-R-02 measured and met on the reference PC | – | SVR; `compliance/performance.md` |
+| K-10 | The test suite fails on Windows (34 tests) and macOS (10 tests) in CI. The failures are: the Vizard download tests, which assume the Linux layout (both); the template wizard and dialog width tests (Windows); a path-separator assertion (Windows); a cancel-timing test (Windows); the PNG export tests (macOS); a test-isolation error in `test_ccsds_odm` (macOS). One may be a wrong result: the 400 km altitude-trade budget on Windows (1.45 kg; 7.26 kg on Linux) | Windows and macOS results are not verified; the altitude trade on Windows may be wrong | SVR; CI run 20 |
 | K-08 | Tracebacks from `results_widget._poll_plot_png` ("'NoneType' object is not subscriptable") appear in the CI log of the GUI tests | Possibly a timer firing after its state was cleared; no test fails | CI run 3 log; to investigate |
 | K-09 | 988 of 1488 unit and integration tests have no docstring | Weaker test documentation | `SUITP_test_cases.md` |
 

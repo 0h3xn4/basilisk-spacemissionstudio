@@ -172,7 +172,7 @@ them I (inspection), A (analysis) or R (review):
 
 | Requirement | Method | How |
 |---|---|---|
-| SRS-P-09, SRS-R-02 (run time, memory) | A | Measure on the reference PC; not yet done (SVR) |
+| SRS-P-09, SRS-R-02 (run time, memory) | A | Measured on the reference PC with `compliance/tools/measure_performance.py` (SVR; decision 19) |
 | SRS-D-01 to D-04, SRS-M-01, SRS-M-02 | I | Inspection of code and CI |
 | SRS-Q-01 to Q-03 | A | CI metrics |
 | SRS-H-01 to H-03 | I, T | Inspection of the GUI, and GUI tests |
@@ -215,7 +215,8 @@ planned (4.1).
 None of the SRS requirements needs a real system beyond a PC.
 
 Three requirements need resources the validation environment lacks:
-- SRS-PO-01 (Windows, macOS): not tested on those platforms.
+- SRS-PO-01 (Windows, macOS): the test suite runs on both in CI (decision
+  19); the results are in the SVR.
 - SRS-DEL-01 (installers): the Debian package was test-installed earlier
   in development; the Windows installer has not been tested in this
   audit.

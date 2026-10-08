@@ -97,6 +97,13 @@ Result: **2055 passed, 11 skipped, 0 failed** (245 s, 3 workers). Every later ph
     ECSS-M-ST-10-01, ECSS-Q-ST-30/40, NOAA's WMM2025 report) will be
     supplied; the audit proceeds without them. IERS TN36 stays with H08
     (decision 14). No SRevP: covered by the review waiver D-08.
+19. 2026-10-08, user (H13): the reference PC is the audit's cloud
+    container; Windows and macOS are tested in CI. Results: SRS-P-09 and
+    SRS-R-02 met (`performance.md`); 34 test failures on Windows and 10 on
+    macOS (SRelD K-10), one a possible wrong altitude-trade result on
+    Windows. The one-day run also warned that NOAA's monthly F10.7 forecast
+    fills a gap before MSFC's prediction starts (real data); both go to
+    the whole-tool review.
 
 ## Phase 1 test run
 

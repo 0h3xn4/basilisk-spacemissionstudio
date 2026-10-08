@@ -185,7 +185,7 @@ Accuracy requirements are stated against independent references.
 | SRS-P-06 | The Earth frame with EOP files shall agree with IERS 20 C04 to 1 m at the Earth's surface. | E-ST-10-09C 5.4.9f |
 | SRS-P-07 | Ground-station pass start and end times shall agree with GMAT to 1 s. | E-ST-10-09C 5.4.6a |
 | SRS-P-08 | The lifetime estimate shall agree with a full Basilisk decay run to 3 %. | Tool |
-| SRS-P-09 | A one-day LEO run with drag and a degree-20 field shall complete in under 5 minutes on the reference PC. (desirable; not yet measured systematically) | Tool |
+| SRS-P-09 | A one-day LEO run with drag and a degree-20 field shall complete in under 5 minutes on the reference PC. (desirable; the reference PC is defined in the SVR, decision 19) | Tool |
 
 ### 5.4 Interface requirements (D.2.1<5.4>)
 
@@ -223,7 +223,7 @@ the results so far.
 | ID | Requirement |
 |---|---|
 | SRS-R-01 | The tool shall run on the hardware of 4.2 without special hardware (no GPU needed; Vizard benefits from one). |
-| SRS-R-02 | Memory use shall stay below 2 GB for a one-year run recorded at 60 s (desirable; not yet measured systematically). |
+| SRS-R-02 | Memory use shall stay below 2 GB for a one-year run recorded at 60 s (desirable). |
 
 ### 5.7 Design requirements and implementation constraints (D.2.1<5.7>)
 
@@ -340,7 +340,7 @@ Methods: T = test, A = analysis, I = inspection, R = review of design.
 | SRS-F-17 | T | `tests/test_dependencies.py` |
 | SRS-P-01 to P-07 | T | `tests/validation/` (V-01, V-02, V-04, V-05) |
 | SRS-P-08 | T | `tests/test_lifetime.py::test_reentry_date_matches_a_basilisk_decay_run` |
-| SRS-P-09, SRS-R-02 | A | not yet done (open item in SVR) |
+| SRS-P-09, SRS-R-02 | A | `compliance/tools/measure_performance.py` on the reference PC (SVR) |
 | SRS-I-01 to I-08 | T | see the ICD validation matrix |
 | SRS-O-01, O-02 | T | `tests/gui/test_run_worker*.py`, `tests/test_service_run_live.py` |
 | SRS-S-01 to S-04 | T, R | `tests/test_spaceweather.py` (fetch never called by `resolve`), `tests/gui/test_startup_fetch_dialog.py`; S-03: `tests/test_mission_engine.py`, `tests/test_cli.py`, `tests/gui/test_main_window.py` (script consent); S-04: `tests/test_command.py` (condition evaluator); security analysis |
@@ -348,7 +348,7 @@ Methods: T = test, A = analysis, I = inspection, R = review of design.
 | SRS-RE-01, RE-02 | T | `tests/test_service_execution_errors.py`, `tests/test_lifetime.py::test_a_run_stops_cleanly_when_its_spacecraft_reenters`, `tests/test_autosave.py` |
 | SRS-M-01, M-02 | I | CI workflow; module structure |
 | SRS-D-01 to D-04 | I | coding standard checks (ruff); import tests |
-| SRS-PO-01 | T | CI (Linux); Windows installer test (manual, H01) |
+| SRS-PO-01 | T | CI (Linux, Windows, macOS); Windows installer test (manual, H13) |
 | SRS-DEL-01 | T, I | `tests/test_dependencies.py` (installer pins) |
 | SRS-DF-01 to DF-03 | T | as SRS-F-12, SRS-F-14 |
 | SRS-H-01 to H-03 | I, T | GUI tests; UX review (UD-5) |
