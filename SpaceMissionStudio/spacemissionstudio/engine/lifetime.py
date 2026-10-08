@@ -345,10 +345,13 @@ def drag_properties(spacecraft) -> tuple:
     return spacecraft.drag_area_m2, spacecraft.drag_coeff
 
 
-def density_for_scenario(scenario, start_utc: datetime, max_years: float, points: int = RING_POINTS):
+def density_for_scenario(scenario, start_utc: datetime, max_years: float, points: int = RING_POINTS,
+                         forecast_percentile: float = 50.0):
     """The scenario's atmosphere model as a :data:`DensityModel` from
     ``start_utc``, the years it can look ahead (``max_years``, or less
-    where the real space-weather data ends), and any warnings."""
+    where the real space-weather data ends), and any warnings. Solar
+    activity at MSFC's ``forecast_percentile`` (ESA AD10 Sec. 5.9: 50
+    for end of life)."""
     sw_config = scenario.space_weather
     if sw_config.atmosphere_model == "exponential":
         return exponential_density, max_years, [
@@ -357,33 +360,38 @@ def density_for_scenario(scenario, start_utc: datetime, max_years: float, points
     from . import spaceweather
 
     try:
-        first, last = spaceweather.data_coverage(sw_config.source, sw_config.local_file_path, sw_config.cache_dir)
+        first, last = spaceweather.data_coverage(sw_config.source, sw_config.local_file_path, sw_config.cache_dir,
+                                                 sw_config.msfc_file_path)
     except spaceweather.SpaceWeatherError as exc:
         raise LifetimeError(str(exc)) from None
     pad = timedelta(days=11.0)  # [day] the resolver's own padding, plus a day
-    data_years = ((datetime.combine(last, datetime.min.time()) - pad) - start_utc).total_seconds() / (365.25 * 86400.0)
-    if data_years <= 0.0 or start_utc - pad < datetime.combine(first, datetime.min.time()):
-        raise LifetimeError(f"the real space-weather data covers {first}..{last}, not {start_utc:%Y-%m-%d}")
+    if start_utc - pad < datetime.combine(first, datetime.min.time()):
+        raise LifetimeError(f"the real space-weather data starts {first}, after {start_utc:%Y-%m-%d}")
     warnings = []
-    if data_years < max_years:
-        warnings.append(f"the real space-weather data ends {last}: looked {data_years:.1f} years ahead, "
-                        f"not {max_years:g}")
-        max_years = data_years
+    if last is not None:
+        data_years = ((datetime.combine(last, datetime.min.time()) - pad) - start_utc).total_seconds() \
+            / (365.25 * 86400.0)
+        if data_years <= 0.0:
+            raise LifetimeError(f"the real space-weather data ends {last}, before {start_utc:%Y-%m-%d}")
+        if data_years < max_years:
+            warnings.append(f"the real space-weather data ends {last}: looked {data_years:.1f} years ahead, "
+                            f"not {max_years:g}")
+            max_years = data_years
     end_utc = start_utc + timedelta(days=max_years * 365.25)
     try:
-        resolved = spaceweather.resolve(sw_config.source, start_utc, end_utc, local_file_path=sw_config.local_file_path,
-                                        cache_dir=sw_config.cache_dir, activity_level=sw_config.activity_level,
-                                        activity_percentile=sw_config.activity_percentile)
+        resolved = spaceweather.resolve_for(sw_config, start_utc, end_utc, forecast_percentile=forecast_percentile)
     except spaceweather.SpaceWeatherError as exc:
         raise LifetimeError(str(exc)) from None
     return MsisDensity(resolved.path, start_utc, points), max_years, warnings + list(resolved.warnings)
 
 
 def spacecraft_lifetime(scenario, spacecraft_name: str, max_years: float = 30.0,
-                        should_cancel: Optional[Callable[[], bool]] = None) -> LifetimeResult:
+                        should_cancel: Optional[Callable[[], bool]] = None,
+                        forecast_percentile: float = 50.0) -> LifetimeResult:
     """Natural lifetime of one spacecraft from the scenario's start (see
     :func:`end_of_life` for after a run, or with a deorbit burn)."""
-    return end_of_life(scenario, spacecraft_name, max_years=max_years, should_cancel=should_cancel).lifetime
+    return end_of_life(scenario, spacecraft_name, max_years=max_years, should_cancel=should_cancel,
+                       forecast_percentile=forecast_percentile).lifetime
 
 
 @dataclass
@@ -426,11 +434,14 @@ def _remaining_propellant(result, name: str, initial_kg: float) -> float:
 
 
 def end_of_life(scenario, spacecraft_name: str, result=None, deorbit_perigee_km: Optional[float] = None,
-                max_years: float = 30.0, should_cancel: Optional[Callable[[], bool]] = None) -> EndOfLife:
+                max_years: float = 30.0, should_cancel: Optional[Callable[[], bool]] = None,
+                forecast_percentile: float = 50.0) -> EndOfLife:
     """Lifetime of one spacecraft after the run in ``result`` (from its
     last state, with the propellant left), or from the scenario's start
     when ``result`` is None. With ``deorbit_perigee_km``, an apogee burn
-    first lowers the perigee there, or as far as the propellant allows."""
+    first lowers the perigee there, or as far as the propellant allows.
+    Solar activity at MSFC's ``forecast_percentile`` (ESA AD10 Sec. 5.9:
+    50 for end of life, whatever the scenario's operations setting)."""
     spacecraft = next((sc for sc in scenario.spacecraft if sc.name == spacecraft_name), None)
     if spacecraft is None:
         raise LifetimeError(f"no spacecraft named {spacecraft_name!r}")
@@ -469,7 +480,8 @@ def end_of_life(scenario, spacecraft_name: str, result=None, deorbit_perigee_km:
         orbit, mass_kg = lowered, mass_kg - needed_kg
     area_m2, drag_coeff = drag_properties(spacecraft)
     start_utc = _parse_utc(scenario.epoch_utc) + timedelta(seconds=elapsed_s)
-    density, horizon_years, warnings = density_for_scenario(scenario, start_utc, max_years)
+    density, horizon_years, warnings = density_for_scenario(scenario, start_utc, max_years,
+                                                            forecast_percentile=forecast_percentile)
     lifetime = propagate_decay(orbit, start_utc, drag_coeff * area_m2 / mass_kg, density, horizon_years,
                                should_cancel)
     lifetime.horizon_years = horizon_years

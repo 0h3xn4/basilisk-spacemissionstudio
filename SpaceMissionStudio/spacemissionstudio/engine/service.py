@@ -573,6 +573,7 @@ class SimulationService:
         # (spacecraft name, t [s]) once a spacecraft with drag re-entered;
         # the run stopped there rather than integrate it through the Earth
         self.reentry: Optional[tuple] = None
+        self._space_weather_warnings: List[str] = []  # what the resolved space weather is built from
         self._run_started_utc: Optional[str] = None  # set by build() -- see RunProvenance
         # Set below, during gravity setup, only when a real J2 term is
         # actually being modeled for the central body -- see that
@@ -914,13 +915,8 @@ class SimulationService:
                 start_utc = datetime.fromisoformat(scenario.epoch_utc)
                 end_utc = start_utc + timedelta(days=sim_settings.duration_days)
                 try:
-                    resolved_sw = sw.resolve(
-                        scenario.space_weather.source, start_utc, end_utc,
-                        local_file_path=scenario.space_weather.local_file_path,
-                        cache_dir=scenario.space_weather.cache_dir,
-                        activity_level=scenario.space_weather.activity_level,
-                        activity_percentile=scenario.space_weather.activity_percentile,
-                    )
+                    resolved_sw = sw.resolve_for(scenario.space_weather, start_utc, end_utc)
+                    self._space_weather_warnings = list(resolved_sw.warnings)
                 except sw.SpaceWeatherError as exc:
                     raise SimulationServiceError(
                         f"could not resolve space weather for atmospheric drag: {exc}") from exc
@@ -1883,6 +1879,7 @@ class SimulationService:
                 integrator=self.scenario.sim_settings.integrator,
                 dynamics_task_rate_s=self.scenario.sim_settings.dynamics_task_rate_s,
             )
+        result.warnings.extend(self._space_weather_warnings)
         spacecraft_by_name = {sc_config.name: sc_config for sc_config in self.scenario.spacecraft}
         for name, handle in self._handles.items():
             t_s = handle.recorder.times() * macros.NANO2SEC

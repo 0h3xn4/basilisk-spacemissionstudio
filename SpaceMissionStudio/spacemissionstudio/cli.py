@@ -264,7 +264,7 @@ def cmd_lifetime(args: argparse.Namespace) -> int:
         return 2
     try:
         end = lifetime.end_of_life(scenario, name, deorbit_perigee_km=args.deorbit_perigee_km,
-                                   max_years=args.max_years)
+                                   max_years=args.max_years, forecast_percentile=args.forecast_percentile)
     except lifetime.LifetimeError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 3
@@ -315,11 +315,7 @@ def cmd_spaceweather_resolve(args: argparse.Namespace) -> int:
     start = datetime.fromisoformat(scenario.epoch_utc)
     end = start + timedelta(days=scenario.sim_settings.duration_days)
     try:
-        resolved = sw.resolve(
-            scenario.space_weather.source, start, end,
-            local_file_path=scenario.space_weather.local_file_path,
-            cache_dir=scenario.space_weather.cache_dir,
-        )
+        resolved = sw.resolve_for(scenario.space_weather, start, end)
     except Exception as exc:  # noqa: BLE001 -- report ANY resolve failure with a specific message, not a bare traceback
         print(f"ERROR: space weather resolve failed: {exc}", file=sys.stderr)
         return 3
@@ -498,6 +494,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_life.add_argument("--deorbit-perigee-km", type=float, default=None,
                         help="first lower the perigee to this altitude [km] with the orbit thruster")
     p_life.add_argument("--max-years", type=float, default=30.0, help="how far ahead to look [years]")
+    p_life.add_argument("--forecast-percentile", type=float, choices=(95.0, 50.0, 5.0), default=50.0,
+                        help="MSFC solar-activity percentile (ESA AD10: 50 for end of life)")
     p_life.set_defaults(func=cmd_lifetime)
 
     p_kernels = subparsers.add_parser("kernels-status", help="fetch/check SPICE kernel cache status")

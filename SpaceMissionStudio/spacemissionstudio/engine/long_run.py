@@ -105,22 +105,22 @@ def _parse_epoch(epoch_utc: str) -> datetime:
     return epoch
 
 
-def _whole_span_space_weather(scenario: Scenario) -> SpaceWeatherConfig:
+def _whole_span_space_weather(scenario: Scenario):
     """One resolved file for the whole run (only matters with drag on an
     NRLMSISE atmosphere), handed to every segment as a local file: the
-    whole span is checked against the data's dates up front."""
+    whole span is checked against the data's dates up front. Returns the
+    segments' config and the resolver's warnings (what the data is)."""
     sw_config = scenario.space_weather
     if sw_config.atmosphere_model != "nrlmsise00" or not any(sc.enable_drag for sc in scenario.spacecraft):
-        return sw_config
+        return sw_config, []
     from . import spaceweather
 
     start = _parse_epoch(scenario.epoch_utc)
     end = start + timedelta(days=scenario.sim_settings.duration_days)
-    resolved = spaceweather.resolve(sw_config.source, start, end, local_file_path=sw_config.local_file_path,
-                                    cache_dir=sw_config.cache_dir, activity_level=sw_config.activity_level,
-                                    activity_percentile=sw_config.activity_percentile)
+    resolved = spaceweather.resolve_for(sw_config, start, end)
     return SpaceWeatherConfig(source="local_file", local_file_path=str(resolved.path), cache_dir=sw_config.cache_dir,
-                              atmosphere_model=sw_config.atmosphere_model, activity_level="nominal")
+                              atmosphere_model=sw_config.atmosphere_model, activity_level="nominal"), \
+        list(resolved.warnings)
 
 
 def _carry_state(segment: Scenario, service, result: ResultSet) -> Dict[str, float]:
@@ -198,7 +198,7 @@ def run_segmented(scenario: Scenario, on_progress: Optional[Callable[[ResultSet,
     total_s = sum(lengths)  # [s]
     epoch = _parse_epoch(scenario.epoch_utc)
     segment = copy.deepcopy(scenario)
-    segment.space_weather = _whole_span_space_weather(scenario)
+    segment.space_weather, weather_warnings = _whole_span_space_weather(scenario)
     merged: Optional[ResultSet] = None
     dv_offsets: Dict[str, float] = {}
     offset_s = 0.0  # [s]
@@ -234,6 +234,9 @@ def run_segmented(scenario: Scenario, on_progress: Optional[Callable[[ResultSet,
             finals = _carry_state(segment, service, part)
             dv_offsets = {name: dv_offsets.get(name, 0.0) + value for name, value in finals.items()}
         offset_s += length_s
+    for warning in weather_warnings:
+        if warning not in merged.warnings:
+            merged.warnings.insert(0, warning)
     return merged
 
 

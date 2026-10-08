@@ -26,12 +26,16 @@ weather -- only real atmospheric models and data"). ``source`` is
 app, ``data/spaceweather/SW-All.txt``, or a newer one the startup prompt
 downloaded) or ``"local_file"`` (the user's own CelesTrak file). The file
 holds observed daily Kp/Ap and F10.7 since 1957, CelesTrak's 45-day
-forecast, and NOAA's monthly F10.7 forecast (to 2041 in the shipped
-copy). That monthly forecast has no Ap, and NRLMSISE-00 needs one: there,
-Ap is held at the mean of every observed day in the file (user decision;
-12.8 for the shipped copy) -- a single fixed number from the real
-record, reported in the run's warnings. A run outside the file's dates is
-refused rather than filled in.
+forecast, and NOAA's monthly F10.7 forecast. Past the observations and
+the 45-day forecast, solar activity comes from NASA MSFC's prediction
+(``data/spaceweather/oct2026f10-prd.txt``, or the study's own file):
+monthly 13-month-smoothed F10.7 and Ap at the 95th/50th/5th percentiles,
+as ESA's AD10 guideline (EOP-FM/2024-07-177, Sec. 5.9) prescribes, with
+its last 132 months repeated past its end. Only months MSFC does not
+reach (before its first) fall back to NOAA's monthly F10.7, which has no
+Ap: there, Ap is held at the mean of every observed day in the file (user
+decision; 12.8). Runs say which of these they used in their warnings; a
+run before the record starts is refused.
 
 **Closed-off/offline policy**: SpaceMissionStudio never accesses the
 network implicitly at runtime (real user requirement -- "the app must be
@@ -100,7 +104,7 @@ import csv
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -142,6 +146,12 @@ _MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024
 # a 45-day daily forecast, NOAA's monthly F10.7 forecast) -- see
 # data/spaceweather/README.md for its source and date.
 BUNDLED_DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "spaceweather" / "SW-All.txt"
+# NASA MSFC's solar-cycle prediction (13-month smoothed F10.7 and Ap at the
+# 95th/50th/5th percentiles), the source ESA's AD10 guideline
+# (EOP-FM/2024-07-177 v3.0, Sec. 5.9) prescribes for future solar activity.
+MSFC_BUNDLED_PATH = BUNDLED_DATA_PATH.parent / "oct2026f10-prd.txt"
+MSFC_PERCENTILES = (95.0, 50.0, 5.0)  # [%] the columns MSFC publishes, in file order
+_MSFC_REPEAT_MONTHS = 132  # AD10 Sec. 5.9: past the file's end, its last 132 months repeat
 _PAD_DAYS = 10  # [day] around a run: MSIS reads the previous days' Ap and F10.7
 
 class SpaceWeatherError(Exception):
@@ -429,7 +439,8 @@ def load_celestrak(path) -> CelestrakData:
     ``.csv``) into daily records. NOAA's monthly F10.7 forecast covers
     every day of its month as published; it has no Ap, so Ap there is
     held at the mean of every observed day in the file -- one fixed
-    number from the real record, nothing generated."""
+    number from the real record, nothing generated. (MSFC's prediction,
+    with its own Ap, takes over wherever it reaches: :func:`_span_days`.)"""
     path = Path(path)
     if not path.exists():
         raise SpaceWeatherError(f"{path} does not exist")
@@ -462,6 +473,69 @@ def load_celestrak(path) -> CelestrakData:
     return data
 
 
+_MONTHS = ("JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC")
+
+
+@dataclass
+class MsfcForecast:
+    """MSFC's monthly prediction: per month, F10.7 [sfu] and Ap at each of
+    :data:`MSFC_PERCENTILES`."""
+
+    path: Path
+    months: dict  # date(year, month, 1) -> (f107 tuple, ap tuple), in MSFC_PERCENTILES order
+
+    @property
+    def first_month(self):
+        return min(self.months)
+
+    @property
+    def last_month(self):
+        return max(self.months)
+
+    def values(self, month, percentile: float):
+        """(F10.7, Ap, repeated) for ``month`` (the first of a month). Past
+        the file's end the last 132 months repeat cyclically (AD10 Sec.
+        5.9); ``repeated`` says so. None before the file starts."""
+        if month < self.first_month:
+            return None
+        column = MSFC_PERCENTILES.index(float(percentile))
+        repeated = False
+        last = self.last_month
+        if month > last:
+            behind = (month.year - last.year) * 12 + month.month - last.month  # [month] past the end
+            back = _MSFC_REPEAT_MONTHS - (behind - 1) % _MSFC_REPEAT_MONTHS  # into the last 132 months
+            index = last.year * 12 + last.month - 1 - back + 1
+            month = date(index // 12, index % 12 + 1, 1)
+            repeated = True
+        f107, ap = self.months[month]
+        return f107[column], ap[column], repeated
+
+
+def load_msfc(path) -> MsfcForecast:
+    """Parse an MSFC prediction table ("TABLE 3 ESTIMATES OF 13-MONTH
+    SMOOTH SOLAR ACTIVITY ..."): rows of decimal year, month, then F10.7
+    and Ap at the 95.0/50/5.0 percentiles."""
+    path = Path(path)
+    if not path.exists():
+        raise SpaceWeatherError(f"{path} does not exist")
+    months = {}
+    with open(path) as f:
+        for line in f:
+            fields = line.split()
+            if len(fields) != 8 or fields[1] not in _MONTHS:
+                continue
+            try:
+                year = int(float(fields[0]) + 1e-6)
+                numbers = [float(v) for v in fields[2:]]
+            except ValueError:
+                continue
+            months[date(year, _MONTHS.index(fields[1]) + 1, 1)] = (tuple(numbers[:3]), tuple(numbers[3:]))
+    if len(months) < _MSFC_REPEAT_MONTHS:
+        raise SpaceWeatherError(f"{path} has {len(months)} monthly rows; an MSFC prediction table needs at least "
+                                f"{_MSFC_REPEAT_MONTHS} (one solar cycle)")
+    return MsfcForecast(path, months)
+
+
 def real_data_path(source: str, local_file_path: Optional[str] = None, cache_dir: Optional[Path] = None) -> Path:
     """The real data file a ``source`` uses: the user's own file, or for
     ``"bundled"`` the newer of the file shipped with the app and one the
@@ -486,53 +560,93 @@ def real_data_path(source: str, local_file_path: Optional[str] = None, cache_dir
     return best
 
 
-def data_coverage(source: str, local_file_path: Optional[str] = None, cache_dir: Optional[Path] = None):
-    """(first, last) calendar dates the real data covers."""
+def data_coverage(source: str, local_file_path: Optional[str] = None, cache_dir: Optional[Path] = None,
+                  msfc_file_path: Optional[str] = None):
+    """(first, last) calendar dates the real data covers; ``last`` is
+    None when an MSFC prediction extends it without end (its last 132
+    months repeat, AD10 Sec. 5.9)."""
     data = load_celestrak(real_data_path(source, local_file_path, cache_dir))
-    return data.first_date, data.last_date
+    msfc = _msfc_or_none(msfc_file_path)
+    return data.first_date, None if msfc is not None else data.last_date
 
 
-def _write_basilisk_csv(data: CelestrakData, first, last, dest_path) -> Path:
-    """The days ``first``..``last`` in the columns Basilisk's loader reads."""
+def _msfc_or_none(msfc_file_path: Optional[str]) -> Optional[MsfcForecast]:
+    """The MSFC prediction: the user's file, else the shipped one."""
+    if msfc_file_path:
+        return load_msfc(msfc_file_path)
+    return load_msfc(MSFC_BUNDLED_PATH) if MSFC_BUNDLED_PATH.exists() else None
+
+
+def _span_days(data: "CelestrakData", msfc: Optional[MsfcForecast], percentile: float, first, last):
+    """Day -> record over ``first``..``last``: observed days and the
+    45-day forecast from CelesTrak first, then MSFC's prediction (at
+    ``percentile``, 13-month smoothed F10.7 and Ap used for the day and
+    its 81-day average alike), then NOAA's monthly forecast for any
+    months MSFC does not cover. Raises on a day none of them covers."""
+    days = {}
+    day = first
+    while day <= last:
+        record = data.days.get(day)
+        if record is None or record.kind == "monthly_forecast":
+            values = msfc.values(day.replace(day=1), percentile) if msfc is not None else None
+            if values is not None:
+                f107, ap, repeated = values
+                record = _DailyRecord((ap,) * 8, ap, f107, f107, "msfc_repeated" if repeated else "msfc_forecast")
+        if record is None:
+            raise SpaceWeatherError(f"no real space-weather data for {day}")
+        days[day] = record
+        day += timedelta(days=1)
+    return days
+
+
+def _write_basilisk_csv(days: dict, dest_path) -> Path:
+    """``days`` (date -> record) in the columns Basilisk's loader reads."""
     dest_path = Path(dest_path)
     dest_path.parent.mkdir(parents=True, exist_ok=True)
     with open(dest_path, "w", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(REQUIRED_COLUMNS)
-        day = first
-        while day <= last:
-            rec = data.days[day]
+        for day in sorted(days):
+            rec = days[day]
             writer.writerow([day.strftime("%Y-%m-%d")] + [f"{v:g}" for v in rec.ap]
                             + [f"{rec.ap_avg:g}", f"{rec.f107_obs:g}", f"{rec.f107_center81:g}"])
-            day += timedelta(days=1)
     return dest_path
 
 
 def _resolve_real(source: str, start_utc: datetime, end_utc: datetime, local_file_path: Optional[str],
-                  cache_dir: Optional[Path], warnings: list) -> "ResolvedSpaceWeather":
+                  cache_dir: Optional[Path], warnings: list, forecast_percentile: float = 50.0,
+                  msfc_file_path: Optional[str] = None) -> "ResolvedSpaceWeather":
+    if float(forecast_percentile) not in MSFC_PERCENTILES:
+        raise SpaceWeatherError(f"forecast_percentile {forecast_percentile!r} must be one of {MSFC_PERCENTILES}")
     path = real_data_path(source, local_file_path, cache_dir)
     data = load_celestrak(path)
+    msfc = _msfc_or_none(msfc_file_path)
     first = (start_utc - timedelta(days=_PAD_DAYS)).date()
     last = (end_utc + timedelta(days=_PAD_DAYS)).date()
-    if first < data.first_date or last > data.last_date:
+    if first < data.first_date or (msfc is None and last > data.last_date):
+        end = "" if msfc is not None else f"..{data.last_date}"
         raise SpaceWeatherError(
-            f"the real space-weather data ({path.name}) covers {data.first_date}..{data.last_date}; this run needs "
+            f"the real space-weather data ({path.name}) covers {data.first_date}{end}; this run needs "
             f"{first}..{last} (incl. {_PAD_DAYS} days either side) -- move the epoch or shorten the run")
-    missing = next((d for d in (first + timedelta(days=k) for k in range((last - first).days + 1))
-                    if d not in data.days), None)
-    if missing is not None:
-        raise SpaceWeatherError(f"{path.name} has no usable data for {missing}")
-    kinds = data.kinds_between(start_utc.date(), end_utc.date())
+    days = _span_days(data, msfc, forecast_percentile, first, last)
+    kinds = {rec.kind for day, rec in days.items() if start_utc.date() <= day <= end_utc.date()}
     stamp = f", updated {data.updated}" if data.updated else ""
     if "daily_forecast" in kinds:
         warnings.append(f"space weather includes CelesTrak's 45-day forecast ({path.name}{stamp})")
     if "monthly_forecast" in kinds:
-        warnings.append(f"space weather uses NOAA's monthly F10.7 forecast ({path.name}{stamp}), with Ap held at "
-                        f"the observed mean of {data.long_term_ap:.1f}")
+        warnings.append(f"space weather uses NOAA's monthly F10.7 forecast ({path.name}{stamp}) where MSFC's "
+                        f"prediction does not reach, with Ap held at the observed mean of {data.long_term_ap:.1f}")
+    if kinds & {"msfc_forecast", "msfc_repeated"}:
+        warnings.append(f"space weather uses MSFC's prediction ({msfc.path.name}), {forecast_percentile:g}th "
+                        "percentile F10.7 and Ap")
+    if "msfc_repeated" in kinds:
+        warnings.append(f"past {msfc.last_month:%Y-%m} MSFC's last 132 months repeat (ESA AD10 Sec. 5.9)")
     cache_dir = Path(cache_dir) if cache_dir else DEFAULT_CACHE_DIR
-    dest = cache_dir / f"real_{path.stem}_{int(path.stat().st_mtime)}_{first:%Y%m%d}_{last:%Y%m%d}.csv"
+    msfc_tag = f"_{msfc.path.stem}_{int(msfc.path.stat().st_mtime)}" if msfc is not None else ""
+    dest = cache_dir / (f"real_{path.stem}_{int(path.stat().st_mtime)}{msfc_tag}_p{forecast_percentile:g}_"
+                        f"{first:%Y%m%d}_{last:%Y%m%d}.csv")
     if not dest.exists():
-        _write_basilisk_csv(data, first, last, dest)
+        _write_basilisk_csv(days, dest)
     return ResolvedSpaceWeather(dest, path, warnings)
 
 
@@ -629,7 +743,8 @@ def _resolve_conservative(source: str, start_utc: datetime, end_utc: datetime,
 
 def resolve(source: str, start_utc: datetime, end_utc: datetime,
             local_file_path: Optional[str] = None, cache_dir: Optional[Path] = None,
-            activity_level: str = "nominal", activity_percentile: float = 95.0) -> ResolvedSpaceWeather:
+            activity_level: str = "nominal", activity_percentile: float = 95.0,
+            forecast_percentile: float = 50.0, msfc_file_path: Optional[str] = None) -> ResolvedSpaceWeather:
     """Resolve a ``SpaceWeatherConfig`` (see ``schema.scenario``) into a
     CSV Basilisk's ``spaceWeatherData.loadSpaceWeatherFile()`` loads.
     Real data only -- no network here (see this module's docstring):
@@ -639,8 +754,11 @@ def resolve(source: str, start_utc: datetime, end_utc: datetime,
     * ``source == "local_file"``: the user's own CelesTrak file (``.txt``
       or ``.csv``) or CSV in Basilisk's columns.
 
-    The run's days (plus padding) are written out from that file; a run
-    outside the file's dates is refused, naming the range it covers.
+    Days past the observations and CelesTrak's 45-day forecast come from
+    MSFC's prediction (``msfc_file_path``, else the shipped one) at
+    ``forecast_percentile`` (95, 50 or 5; ESA AD10 Sec. 5.9: 95 for
+    operations budgets, 50 for end of life), repeating its last 132
+    months past its end. A run outside the data is refused.
 
     ``activity_level == "conservative"`` instead holds F10.7/Ap constant
     at the ``activity_percentile``-th percentile of the file's observed
@@ -652,4 +770,17 @@ def resolve(source: str, start_utc: datetime, end_utc: datetime,
     if activity_level == "conservative":
         return _resolve_conservative(source, start_utc, end_utc, local_file_path, cache_dir,
                                       activity_percentile, warnings)
-    return _resolve_real(source, start_utc, end_utc, local_file_path, cache_dir, warnings)
+    return _resolve_real(source, start_utc, end_utc, local_file_path, cache_dir, warnings, forecast_percentile,
+                         msfc_file_path)
+
+
+def resolve_for(config, start_utc: datetime, end_utc: datetime,
+                forecast_percentile: Optional[float] = None) -> ResolvedSpaceWeather:
+    """:func:`resolve` for a ``schema.scenario.SpaceWeatherConfig``;
+    ``forecast_percentile`` overrides the config's (e.g. 50 for an
+    end-of-life estimate, AD10 Sec. 5.9)."""
+    return resolve(config.source, start_utc, end_utc, local_file_path=config.local_file_path,
+                   cache_dir=config.cache_dir, activity_level=config.activity_level,
+                   activity_percentile=config.activity_percentile,
+                   forecast_percentile=config.forecast_percentile if forecast_percentile is None
+                   else forecast_percentile, msfc_file_path=config.msfc_file_path)

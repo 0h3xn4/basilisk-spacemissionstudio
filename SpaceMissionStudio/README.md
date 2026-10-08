@@ -926,11 +926,15 @@ data only: `source` is `"bundled"` (the default: CelesTrak's SW-All file
 shipped in `spacemissionstudio/data/spaceweather/`, or a newer copy the
 startup prompt downloaded) or `"local_file"` (your own CelesTrak file).
 The shipped file (updated 2025-07-21; <https://celestrak.org/SpaceData/>)
-holds observed daily F10.7 and Ap from 1957-10-01, CelesTrak's 45-day
-forecast, and NOAA's monthly F10.7 forecast to 2041-10. That monthly
-forecast has no Ap; there, Ap is held at the mean of every observed day
-(12.8), and runs say so in their warnings. A run outside the data's dates
-is refused, naming the range. The earlier `"synthetic"` profile was
+holds observed daily F10.7 and Ap from 1957-10-01 and CelesTrak's 45-day
+forecast. Beyond that, solar activity comes from NASA MSFC's October 2026
+prediction (also shipped; F10.7 and Ap at the 95th/50th/5th percentiles,
+2026-04 to 2041-10, the last 132 months repeated after that), as ESA's
+AD10 guideline (EOP-FM/2024-07-177, Sec. 5.9) prescribes. "Forecast
+percentile" picks the column: 50th by default, AD10 asks for the 95th for
+operations budgets and the 50th for end of life. Months before MSFC's
+first use NOAA's monthly F10.7 with Ap at the observed mean (12.8). Runs
+say which data they used in their warnings. The earlier `"synthetic"` profile was
 removed; older scenario files are migrated to `"bundled"`. The
 `activity_level="conservative"` margin is a percentile of the same file's
 observed days.

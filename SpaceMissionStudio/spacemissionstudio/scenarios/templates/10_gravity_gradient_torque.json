@@ -95,7 +95,9 @@
     "cache_dir": null,
     "atmosphere_model": "nrlmsise00",
     "activity_level": "nominal",
-    "activity_percentile": 95.0
+    "activity_percentile": 95.0,
+    "forecast_percentile": 50.0,
+    "msfc_file_path": null
   },
   "sim_settings": {
     "duration_days": 0.5,

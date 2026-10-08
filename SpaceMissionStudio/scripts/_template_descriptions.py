@@ -96,8 +96,8 @@ Try changing:
 - Satellite count, planes or phasing factor: regenerate with Spacecraft > Generate Walker constellation.
 
 Note:
-- Drag uses real CelesTrak space weather; 2030 is NOAA's monthly forecast. For a worst case, set the \
-drag margin to conservative in Propagation setup.""",
+- Drag uses real space weather; 2030 is NASA MSFC's 50th-percentile prediction. For an ESA AD10 \
+operations budget, set the forecast percentile to 95th in Propagation setup.""",
 
     "05": """\
 Two spacecraft in Sun-synchronous orbits, with follower-1 holding 50 km ahead of chief-1 for 90 days. The \
@@ -280,7 +280,7 @@ Try changing:
 - Deadband.
 
 Note:
-- Drag uses real CelesTrak space weather; 2030 is NOAA's monthly forecast.""",
+- Drag uses real space weather; 2030 is NASA MSFC's 50th-percentile prediction.""",
 
     "19": """\
 leo-comms-1 points its solar panel at the Sun, and slews its antenna to the Berlin ground station whenever \

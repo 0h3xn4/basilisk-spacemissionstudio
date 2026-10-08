@@ -400,10 +400,10 @@ class PropagationSetupDialog(QDialog):
         self.space_weather_source_combo.addItems(list(SUPPORTED_SPACE_WEATHER_SOURCES))
         self.space_weather_source_combo.setCurrentText(space_weather.source)
         self.space_weather_source_combo.setToolTip(
-            "Where NRLMSISE-00's F10.7 and Ap come from -- real data only. 'bundled': CelesTrak's "
-            "record shipped with the app (observed since 1957, a 45-day forecast, NOAA's monthly "
-            "F10.7 forecast to 2041; past the 45 days Ap is the observed mean). A newer copy from "
-            "the startup download is used automatically. 'local_file': your own CelesTrak file."
+            "Where NRLMSISE-00's observed F10.7 and Ap come from -- real data only. 'bundled': "
+            "CelesTrak's record shipped with the app (since 1957, plus a 45-day forecast); a newer "
+            "copy from the startup download is used automatically. 'local_file': your own CelesTrak "
+            "file. Later days use NASA MSFC's prediction (below)."
         )
         self.space_weather_source_combo.currentTextChanged.connect(self._on_space_weather_source_changed)
         form.addRow("Source", self.space_weather_source_combo)
@@ -419,7 +419,35 @@ class PropagationSetupDialog(QDialog):
         self.local_file_browse_button.clicked.connect(self._on_browse_local_file)
         local_file_row.addWidget(self.local_file_edit)
         local_file_row.addWidget(self.local_file_browse_button)
-        form.addRow("Local CSV file", local_file_row)
+        form.addRow("Local file", local_file_row)
+
+        self._forecast_items = [("50th (nominal; AD10 end of life)", 50.0),
+                                ("95th (AD10 operations budget)", 95.0), ("5th (low)", 5.0)]
+        self.forecast_percentile_combo = ComboBox()
+        for label, _value in self._forecast_items:
+            self.forecast_percentile_combo.addItem(label)
+        self.forecast_percentile_combo.setCurrentIndex(
+            next((i for i, (_l, v) in enumerate(self._forecast_items) if v == float(space_weather.forecast_percentile)),
+                 0))
+        self.forecast_percentile_combo.setToolTip(
+            "Which of NASA MSFC's predicted percentiles (F10.7 and Ap) drives the days past the "
+            "observations. ESA AD10 (EOP-FM/2024-07-177) Sec. 5.9: 95th for operations budgets, "
+            "50th for end of life."
+        )
+        form.addRow("Forecast percentile", self.forecast_percentile_combo)
+
+        msfc_row = QHBoxLayout()
+        self.msfc_file_edit = QLineEdit(space_weather.msfc_file_path or "")
+        self.msfc_file_edit.setPlaceholderText("(MSFC prediction shipped with the app)")
+        self.msfc_file_edit.setToolTip(
+            "Your own NASA MSFC prediction table (e.g. oct2026f10-prd.txt), to keep a study on the "
+            "file it started with. Empty: the one shipped with the app."
+        )
+        self.msfc_browse_button = QPushButton("Browse...")
+        self.msfc_browse_button.clicked.connect(self._on_browse_msfc_file)
+        msfc_row.addWidget(self.msfc_file_edit)
+        msfc_row.addWidget(self.msfc_browse_button)
+        form.addRow("MSFC prediction", msfc_row)
 
         self.activity_level_combo = ComboBox()
         # (display text, schema value)
@@ -486,6 +514,8 @@ class PropagationSetupDialog(QDialog):
         )
         self.activity_level_combo.setEnabled(is_msis)
         self.activity_percentile_spin.setEnabled(is_msis and self._selected_activity_level() == "conservative")
+        for widget in (self.forecast_percentile_combo, self.msfc_file_edit, self.msfc_browse_button):
+            widget.setEnabled(is_msis)
 
     def _on_activity_level_changed(self, _index: int) -> None:
         is_msis = self._selected_atmosphere_model() == "nrlmsise00"
@@ -522,6 +552,11 @@ class PropagationSetupDialog(QDialog):
         if cached is not None:
             self.local_file_edit.setText(str(cached))
 
+    def _on_browse_msfc_file(self) -> None:
+        path, _filter = QFileDialog.getOpenFileName(self, "Select an MSFC prediction table", "", "Text (*.txt)")
+        if path:
+            self.msfc_file_edit.setText(path)
+
     def _on_browse_local_file(self) -> None:
         path, _filter = QFileDialog.getOpenFileName(self, "Select a CelesTrak space-weather file", "",
                                                     "Space weather (*.txt *.csv)")
@@ -554,6 +589,8 @@ class PropagationSetupDialog(QDialog):
             atmosphere_model=self._selected_atmosphere_model(),
             activity_level=self._selected_activity_level(),
             activity_percentile=self.activity_percentile_spin.value(),
+            forecast_percentile=self._forecast_items[self.forecast_percentile_combo.currentIndex()][1],
+            msfc_file_path=self.msfc_file_edit.text().strip() or None,
         )
 
     def _on_accept(self) -> None:

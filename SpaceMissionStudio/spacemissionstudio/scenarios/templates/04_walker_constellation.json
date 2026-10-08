@@ -493,7 +493,9 @@
     "cache_dir": null,
     "atmosphere_model": "nrlmsise00",
     "activity_level": "nominal",
-    "activity_percentile": 95.0
+    "activity_percentile": 95.0,
+    "forecast_percentile": 50.0,
+    "msfc_file_path": null
   },
   "sim_settings": {
     "duration_days": 1.0,
@@ -509,6 +511,6 @@
     "dispersions": []
   },
   "mission_sequence": [],
-  "description": "A 6-satellite Walker delta constellation (2 planes of 3, phasing factor 1) at 700 km and 53 deg, with full perturbations: degree-10 gravity, Sun and Moon, drag and radiation pressure.\n\nWhat to look at:\n- Ground tracks in Vizard, or each satellite's position_N.\n- The planes are 180 deg apart in RAAN; satellites are evenly spaced in a plane, offset between planes by the phasing factor.\n\nTry changing:\n- Satellite count, planes or phasing factor: regenerate with Spacecraft > Generate Walker constellation.\n\nNote:\n- Drag uses real CelesTrak space weather; 2030 is NOAA's monthly forecast. For a worst case, set the drag margin to conservative in Propagation setup.",
+  "description": "A 6-satellite Walker delta constellation (2 planes of 3, phasing factor 1) at 700 km and 53 deg, with full perturbations: degree-10 gravity, Sun and Moon, drag and radiation pressure.\n\nWhat to look at:\n- Ground tracks in Vizard, or each satellite's position_N.\n- The planes are 180 deg apart in RAAN; satellites are evenly spaced in a plane, offset between planes by the phasing factor.\n\nTry changing:\n- Satellite count, planes or phasing factor: regenerate with Spacecraft > Generate Walker constellation.\n\nNote:\n- Drag uses real space weather; 2030 is NASA MSFC's 50th-percentile prediction. For an ESA AD10 operations budget, set the forecast percentile to 95th in Propagation setup.",
   "schema_version": 3
 }

@@ -154,10 +154,10 @@ def _berlin_ground_station(**overrides) -> GroundStationConfig:
 
 
 def _conservative_drag_margin() -> SpaceWeatherConfig:
-    """Drag from NRLMSISE-00 driven by real CelesTrak data shipped with the
-    app (``source="bundled"``: observed since 1957, NOAA's monthly F10.7
-    forecast to 2041, Ap at the observed mean past the 45-day forecast) --
-    a fresh instance per call, since ``SpaceWeatherConfig`` is mutable.
+    """Drag from NRLMSISE-00 driven by real data shipped with the app
+    (``source="bundled"``: CelesTrak's observed record, then NASA MSFC's
+    50th-percentile prediction) -- a fresh instance per call, since
+    ``SpaceWeatherConfig`` is mutable.
     For a sustained worst case, set ``activity_level="conservative"`` in
     Propagation setup (a percentile of the same real record).
     """

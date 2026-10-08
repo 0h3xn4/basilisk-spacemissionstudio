@@ -66,18 +66,63 @@ def test_a_past_run_gets_the_observed_days_unchanged(tmp_path):
     assert sw.validate_file(resolved.path, datetime(2003, 10, 28), datetime(2003, 11, 2)).ok
 
 
-def test_a_future_run_uses_noaas_forecast_and_says_so(tmp_path):
-    resolved = sw.resolve("bundled", datetime(2030, 1, 1), datetime(2030, 2, 1), cache_dir=tmp_path)
-    assert len(resolved.warnings) == 1
-    assert "NOAA's monthly F10.7 forecast" in resolved.warnings[0] and "observed mean of 12.8" in resolved.warnings[0]
-    row = next(r for r in csv.DictReader(open(resolved.path)) if r["DATE"] == "2030-01-15")
-    assert float(row["F10.7_OBS"]) == 77.8  # [sfu]
+def test_a_future_run_uses_msfcs_prediction_at_the_chosen_percentile(tmp_path):
+    """January 2030 from MSFC's October 2026 table: 74.2 sfu / Ap 11.5 at
+    the 50th percentile, 78.7 / 16.2 at the 95th (AD10: operations)."""
+    for percentile, f107, ap in ((50.0, 74.2, 11.5), (95.0, 78.7, 16.2)):  # [%], [sfu], [-]
+        resolved = sw.resolve("bundled", datetime(2030, 1, 1), datetime(2030, 2, 1), cache_dir=tmp_path,
+                              forecast_percentile=percentile)
+        assert resolved.warnings == [f"space weather uses MSFC's prediction (oct2026f10-prd.txt), "
+                                     f"{percentile:g}th percentile F10.7 and Ap"]
+        row = next(r for r in csv.DictReader(open(resolved.path)) if r["DATE"] == "2030-01-15")
+        assert (float(row["F10.7_OBS"]), float(row["F10.7_OBS_CENTER81"]), float(row["AP_AVG"])) == (f107, f107, ap)
+        assert all(float(row[f"AP{k}"]) == ap for k in range(1, 9))
 
 
-def test_a_run_past_the_data_is_refused_with_the_range(tmp_path):
-    with pytest.raises(sw.SpaceWeatherError, match=r"covers 1957-10-01\.\.2041-10-31"):
-        sw.resolve("bundled", datetime(2041, 6, 1), datetime(2042, 1, 1), cache_dir=tmp_path)
-    assert sw.data_coverage("bundled") == (date(1957, 10, 1), date(2041, 10, 31))
+def test_noaa_fills_only_the_months_before_msfc_starts(tmp_path):
+    """The shipped CelesTrak file ends its 45-day forecast in August 2025;
+    MSFC's table starts in April 2026. In between, NOAA's monthly F10.7
+    (with the observed-mean Ap) is all the real data there is."""
+    resolved = sw.resolve("bundled", datetime(2025, 11, 1), datetime(2026, 5, 1), cache_dir=tmp_path)
+    assert any("NOAA's monthly F10.7 forecast" in w and "where MSFC's prediction does not reach" in w
+               for w in resolved.warnings)
+    rows = {r["DATE"]: r for r in csv.DictReader(open(resolved.path))}
+    assert float(rows["2026-01-15"]["F10.7_OBS"]) == sw.load_celestrak(_SHIPPED).days[date(2026, 1, 15)].f107_obs
+    assert float(rows["2026-04-15"]["F10.7_OBS"]) == 133.9  # [sfu] MSFC, April 2026, 50th
+
+
+def test_msfc_parses_as_published_and_repeats_its_last_132_months():
+    """AD10 Sec. 5.9: past the prediction's end, its last 132 months repeat."""
+    msfc = sw.load_msfc(sw.MSFC_BUNDLED_PATH)
+    assert (msfc.first_month, msfc.last_month, len(msfc.months)) == (date(2026, 4, 1), date(2041, 10, 1), 187)
+    assert msfc.months[date(2026, 4, 1)] == ((137.7, 133.9, 131.3), (13.9, 13.1, 12.1))
+    assert msfc.values(date(2041, 10, 1), 50.0) == (70.0, 8.9, False)
+    assert msfc.values(date(2041, 11, 1), 50.0) == (*msfc.values(date(2030, 11, 1), 50.0)[:2], True)
+    assert msfc.values(date(2052, 10, 1), 95.0) == (*msfc.values(date(2041, 10, 1), 95.0)[:2], True)
+    assert msfc.values(date(2026, 3, 1), 50.0) is None
+
+
+def test_runs_past_2041_continue_on_the_repeated_cycle(tmp_path):
+    resolved = sw.resolve("bundled", datetime(2041, 6, 1), datetime(2045, 1, 1), cache_dir=tmp_path)
+    assert "past 2041-10 MSFC's last 132 months repeat (ESA AD10 Sec. 5.9)" in resolved.warnings
+    assert sw.data_coverage("bundled") == (date(1957, 10, 1), None)
+
+
+def test_a_run_before_the_record_is_refused_with_the_range(tmp_path):
+    with pytest.raises(sw.SpaceWeatherError, match=r"covers 1957-10-01; this run needs"):
+        sw.resolve("bundled", datetime(1957, 9, 1), datetime(1957, 11, 1), cache_dir=tmp_path)
+
+
+def test_an_unknown_forecast_percentile_is_refused():
+    with pytest.raises(sw.SpaceWeatherError, match="forecast_percentile"):
+        sw.resolve("bundled", datetime(2030, 1, 1), datetime(2030, 1, 5), forecast_percentile=90.0)
+
+
+def test_a_short_table_is_not_taken_for_an_msfc_prediction(tmp_path):
+    path = tmp_path / "short.txt"
+    path.write_text("".join(sw.MSFC_BUNDLED_PATH.read_text().splitlines(keepends=True)[:40]))
+    with pytest.raises(sw.SpaceWeatherError, match="needs at least 132"):
+        sw.load_msfc(path)
 
 
 def test_a_celestrak_csv_with_forecast_rows_reads_like_the_text_file(tmp_path):

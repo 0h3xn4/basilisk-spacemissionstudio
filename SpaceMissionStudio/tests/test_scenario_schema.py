@@ -1956,3 +1956,12 @@ def test_station_keeping_thruster_realism_fields_default_to_an_ideal_thruster_wh
     loaded = Scenario.from_dict(data)
     assert loaded.spacecraft[0].station_keeping.min_on_time_s == 0.0  # [s]
     assert loaded.spacecraft[0].station_keeping.eccentricity_neutral_burns is False
+
+
+def test_forecast_percentile_must_be_one_msfc_publishes():
+    """MSFC publishes the 95th, 50th and 5th percentiles only."""
+    from spacemissionstudio.schema.scenario import SpaceWeatherConfig
+
+    _minimal_scenario(space_weather=SpaceWeatherConfig(forecast_percentile=95.0)).validate()
+    with pytest.raises(ScenarioValidationError, match="forecast_percentile 90.0 must be one of"):
+        _minimal_scenario(space_weather=SpaceWeatherConfig(forecast_percentile=90.0)).validate()

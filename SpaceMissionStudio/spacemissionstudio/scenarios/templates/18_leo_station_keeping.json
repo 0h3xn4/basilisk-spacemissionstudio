@@ -107,7 +107,9 @@
     "cache_dir": null,
     "atmosphere_model": "nrlmsise00",
     "activity_level": "nominal",
-    "activity_percentile": 95.0
+    "activity_percentile": 95.0,
+    "forecast_percentile": 50.0,
+    "msfc_file_path": null
   },
   "sim_settings": {
     "duration_days": 14.0,
@@ -123,6 +125,6 @@
     "dispersions": []
   },
   "mission_sequence": [],
-  "description": "The LEO counterpart to 03: a 400 km satellite holding its altitude against atmospheric drag with a 1 km deadband. Radiation pressure is off, to isolate drag.\n\nWhat to look at:\n- leo-sat-1.station_keeping.altitude and .propellant_remaining: each reboost, and the propellant it costs over 14 days; compare 03, which holds a GEO slot's longitude and inclination instead.\n\nTry changing:\n- Orbit altitude: lower decays much faster (try 350 or 300 km).\n- Drag area or coefficient.\n- Deadband.\n\nNote:\n- Drag uses real CelesTrak space weather; 2030 is NOAA's monthly forecast.",
+  "description": "The LEO counterpart to 03: a 400 km satellite holding its altitude against atmospheric drag with a 1 km deadband. Radiation pressure is off, to isolate drag.\n\nWhat to look at:\n- leo-sat-1.station_keeping.altitude and .propellant_remaining: each reboost, and the propellant it costs over 14 days; compare 03, which holds a GEO slot's longitude and inclination instead.\n\nTry changing:\n- Orbit altitude: lower decays much faster (try 350 or 300 km).\n- Drag area or coefficient.\n- Deadband.\n\nNote:\n- Drag uses real space weather; 2030 is NASA MSFC's 50th-percentile prediction.",
   "schema_version": 3
 }

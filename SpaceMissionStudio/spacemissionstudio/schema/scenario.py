@@ -1344,6 +1344,7 @@ class GroundStationConfig:
 
 
 SUPPORTED_SPACE_WEATHER_SOURCES = ("bundled", "local_file")
+SUPPORTED_FORECAST_PERCENTILES = (95.0, 50.0, 5.0)  # [%] MSFC's published columns
 
 
 @dataclass
@@ -1403,6 +1404,11 @@ class SpaceWeatherConfig:
     atmosphere_model: str = "nrlmsise00"  # "nrlmsise00" | "exponential"
     activity_level: str = "nominal"  # "nominal" | "conservative"
     activity_percentile: float = 95.0  # [-] percentile of REAL historical F10.7/Ap; "conservative" only
+    # [%] which of MSFC's predicted percentiles (95, 50, 5) drives the days
+    # past the observations; ESA AD10 Sec. 5.9: 95 for operations
+    # budgets, 50 for end of life
+    forecast_percentile: float = 50.0
+    msfc_file_path: Optional[str] = None  # your own MSFC prediction table; None = the one shipped with the app
 
     def validate(self) -> None:
         _require(self.source in SUPPORTED_SPACE_WEATHER_SOURCES,
@@ -1412,6 +1418,9 @@ class SpaceWeatherConfig:
                       "space_weather.source is 'local_file' but local_file_path was not set")
         _require(self.atmosphere_model in ("nrlmsise00", "exponential"),
                   f"space_weather.atmosphere_model {self.atmosphere_model!r} must be 'nrlmsise00' or 'exponential'")
+        _require(float(self.forecast_percentile) in SUPPORTED_FORECAST_PERCENTILES,
+                  f"space_weather.forecast_percentile {self.forecast_percentile!r} must be one of "
+                  f"{SUPPORTED_FORECAST_PERCENTILES} (MSFC's published percentiles)")
         _require(self.activity_level in ("nominal", "conservative"),
                   f"space_weather.activity_level {self.activity_level!r} must be 'nominal' or 'conservative'")
         if self.activity_level == "conservative":

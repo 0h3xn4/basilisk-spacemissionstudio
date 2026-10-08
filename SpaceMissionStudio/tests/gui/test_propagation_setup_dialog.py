@@ -366,3 +366,15 @@ def test_record_interval_round_trips_and_zero_reads_every_step(qtbot):
     dialog.record_interval_spin.setValue(0.0)
     assert dialog.record_interval_spin.text() == "Every step"
     assert dialog.to_sim_settings().record_interval_s == 0.0
+
+
+def test_forecast_percentile_and_msfc_file_round_trip(qtbot):
+    """AD10's 95th-percentile operations setting and a study's own MSFC
+    file survive opening and OK-ing the dialog."""
+    from spacemissionstudio.schema.scenario import SpaceWeatherConfig
+
+    d = _dialog(space_weather=SpaceWeatherConfig(forecast_percentile=95.0, msfc_file_path="/study/oct2026f10-prd.txt"))
+    qtbot.addWidget(d)
+    weather = d.to_space_weather()
+    assert weather.forecast_percentile == 95.0 and weather.msfc_file_path == "/study/oct2026f10-prd.txt"
+    assert _dialog().to_space_weather().forecast_percentile == 50.0

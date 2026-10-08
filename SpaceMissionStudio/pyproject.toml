@@ -63,7 +63,8 @@ include = ["spacemissionstudio*"]
 # (see gui/theme.py) -- no __init__.py there either, same reason.
 [tool.setuptools.package-data]
 spacemissionstudio = ["scenarios/*.json", "scenarios/templates/*.json", "scenarios/templates/README.md",
-                      "gui/assets/*.svg", "data/spaceweather/SW-All.txt", "data/spaceweather/README.md"]
+                      "gui/assets/*.svg", "data/spaceweather/SW-All.txt", "data/spaceweather/oct2026f10-prd.txt",
+                      "data/spaceweather/README.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
