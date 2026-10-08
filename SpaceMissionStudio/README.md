@@ -617,15 +617,15 @@ python3 -m pip install -e ".[dev,gui]"
 python3 -m pytest tests/ -v
 ```
 
-The suite has 1997 tests. Without Basilisk on `PYTHONPATH`, 1737 of
+The suite has 2015 tests. Without Basilisk on `PYTHONPATH`, 1749 of
 them run and pass (schema, space weather, results, link budget,
 constellation generation, CLI, and the full PySide6 GUI, run headless),
-and the 260 that need a real Basilisk build (marked `requires_basilisk`,
+and the 266 that need a real Basilisk build (marked `requires_basilisk`,
 or skipped on a Basilisk-availability check, per `tests/conftest.py`)
 are skipped.
 
 With Basilisk installed (`pip install "bsk[all]"` -- see "Getting
-started" above), those tests run for real: 1986 pass and 11 skip (the
+started" above), those tests run for real: 2004 pass and 11 skip (the
 ones whose premise is specifically "Basilisk is unavailable"). The
 first run needs internet access once, so Basilisk can download its
 SPICE ephemeris kernels; without them, the ~45 kernel-dependent tests
