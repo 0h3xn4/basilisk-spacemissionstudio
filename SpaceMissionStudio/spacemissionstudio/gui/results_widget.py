@@ -1165,10 +1165,22 @@ class ResultsWidget(QWidget):
         poll_timer.start(_SAVE_PNG_POLL_INTERVAL_MS)
 
     def _poll_plot_png(self) -> None:
+        # runJavaScript() answers asynchronously, while the timer keeps
+        # firing (SRelD K-08): a tick can arrive after the poll finished
+        # (state None: the traceback in the CI logs), and on a slow machine
+        # several queries could be in flight, each answer finishing the save
+        # again (a second file write and "saved" dialog). One query at a
+        # time, and answers to a finished poll are ignored.
         state = self._png_poll_state
+        if state is None or state.get("in_flight"):
+            return
         state["attempts"] += 1
+        state["in_flight"] = True
 
         def on_poll_result(value: object) -> None:
+            state["in_flight"] = False
+            if self._png_poll_state is not state:
+                return  # this poll already finished (or was replaced)
             if value == _SAVE_PNG_PENDING_SENTINEL:
                 if state["attempts"] >= _SAVE_PNG_MAX_POLL_ATTEMPTS:
                     state["timer"].stop()

@@ -11,6 +11,7 @@ Findings of the whole-tool review that followed the human actions
 
 | F-10 | `propagate` with `stop_condition: event` (periapsis, apoapsis) started on that apsis: the radial velocity there is zero up to rounding (+2.3e-13 m/s on Linux for the test orbit). When the rounding made it negative, as on Windows, the first steps already "crossed" the apsis and the run stopped after one step instead of one orbit. Found by the Windows CI job (`test_should_cancel_checked_mid_propagate_event_command`: did not raise); reproduced on Linux by starting 1e-9 deg before the apsis (1.0 s instead of 5829 s). | The same scenario gave a different mission timeline per platform | Fixed in `engine/mission_engine.py`: a first sample within 1e-6 m/s of zero counts as on the apsis, which then does not count. Test: `test_propagate_to_an_apsis_from_that_apsis_flies_a_whole_orbit` (six start points, both apsides). |
 | F-11 | Template wizard cards could not shrink: hint labels never wrapped and form rows never wrapped, so wider fonts (the Windows CI measured cards about 1.5 times as wide; also high DPI and large-font settings) forced sideways scrolling. | Usability on Windows and with large fonts | Fixed in `gui/template_wizard.py`: hints wrap and long rows put the field under its label, only when the row does not fit. Unchanged at the normal font size. Test: `test_wizard_fits_without_sideways_scrolling_with_large_fonts` (1.5 times the font). |
+| F-12 | The plot export (PNG, SVG) polled the page every 100 ms with asynchronous `runJavaScript()` queries without waiting for the answers. A tick after the poll had finished read the cleared state (the `'NoneType' object is not subscriptable` tracebacks of SRelD K-08), and with several queries in flight each answer could finish the save again (a second file write and dialog). | Spurious tracebacks; possible duplicate saves on slow machines | Fixed in `gui/results_widget.py`: one query at a time, ticks without a poll and answers to a finished poll ignored. Tests: `test_a_poll_tick_after_the_poll_finished_is_ignored`, `test_only_one_poll_query_is_in_flight_and_late_answers_are_ignored` (both fail without the fix). K-08 closed. |
 
 ## Test defects found by the platform jobs (not tool defects)
 
@@ -23,6 +24,9 @@ Findings of the whole-tool review that followed the human actions
 - `test_path_cell_carries_the_full_path_as_a_tooltip` expected `/` on Windows.
 - Three width tests had pixel limits measured at the Linux CI's font; they
   are now in average character widths (the same limits on Linux).
+- macOS: the plot tests ran Qt WebEngine on the offscreen plugin, which does
+  not work there (page loads never finished, a worker crashed); the macOS
+  job now uses Qt's cocoa plugin.
 
 ## Checked, not a defect
 

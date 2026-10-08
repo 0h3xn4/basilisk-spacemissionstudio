@@ -7854,3 +7854,7 @@ The new Windows and macOS CI jobs (SRS-PO-01) also found:
   expected `/`; three width limits were pixel counts at the Linux font.
 
 Details in `compliance/review_log.md`.
+* **F-12 (K-08):** saving a plot as PNG or SVG polled the page with
+  overlapping asynchronous queries; a late timer tick raised the
+  "'NoneType' object is not subscriptable" tracebacks seen in the CI logs,
+  and several answers could save the file twice. One query at a time now.

@@ -1143,3 +1143,65 @@ def test_newly_named_series_get_plot_titles():
         "leo-comms-1: Pointing Error"
     assert label("sat-1.actuator.rw-1.motor_temperature", ("temperature",), "C") == "sat-1: Motor Temperature: rw-1"
     assert label("sat-1.sensor.therm-1", ("temperature",), "C") == "sat-1: Thermal Sensor: therm-1"
+
+
+class _DeferredPage:
+    """Stands in for the web page: runJavaScript() keeps the callbacks, which
+    the test answers later, as the real asynchronous page does."""
+
+    def __init__(self):
+        self.pending = []
+
+    def runJavaScript(self, script, callback=None):  # noqa: N802 -- Qt's name
+        if callback is not None:
+            self.pending.append(callback)
+
+
+def _deferred_poll(widget, monkeypatch, tmp_path):
+    from PySide6.QtCore import QTimer
+
+    page = _DeferredPage()
+    monkeypatch.setattr(widget.web_view, "page", lambda: page)
+    rendered = []
+    monkeypatch.setattr(widget, "_on_plot_png_rendered", lambda *args: rendered.append(args))
+    widget._png_poll_state = {"path": str(tmp_path / "p.png"), "fmt": "png", "timer": QTimer(widget), "attempts": 0}
+    return page, rendered
+
+
+def test_a_poll_tick_after_the_poll_finished_is_ignored(widget):
+    """SRelD K-08: a timer tick queued before the poll finished used to read
+    the cleared state ("'NoneType' object is not subscriptable")."""
+    widget._png_poll_state = None
+    widget._poll_plot_png()  # must not raise
+
+
+def test_only_one_poll_query_is_in_flight_and_late_answers_are_ignored(widget, monkeypatch, tmp_path):
+    """SRelD K-08: on a slow machine several queries were in flight at once;
+    each answer finished the save again (a second write and "saved"
+    dialog). Ticks wait for the outstanding answer, and an answer to a
+    finished poll does nothing."""
+    page, rendered = _deferred_poll(widget, monkeypatch, tmp_path)
+    widget._poll_plot_png()
+    widget._poll_plot_png()  # the first answer is still outstanding
+    widget._poll_plot_png()
+    assert len(page.pending) == 1
+
+    page.pending.pop()("data:image/png;base64,AAAA")
+    assert len(rendered) == 1 and widget._png_poll_state is None
+
+    widget._poll_plot_png()  # a late tick: nothing to do
+    assert page.pending == [] and len(rendered) == 1
+
+
+def test_a_pending_answer_lets_the_next_tick_ask_again(widget, monkeypatch, tmp_path):
+    """While the plot is still rendering, each answer frees the next tick
+    to ask again, until the result arrives."""
+    from spacemissionstudio.gui.results_widget import _SAVE_PNG_PENDING_SENTINEL
+
+    page, rendered = _deferred_poll(widget, monkeypatch, tmp_path)
+    widget._poll_plot_png()
+    page.pending.pop()(_SAVE_PNG_PENDING_SENTINEL)
+    widget._poll_plot_png()
+    assert len(page.pending) == 1 and widget._png_poll_state["attempts"] == 2
+    page.pending.pop()("data:image/png;base64,AAAA")
+    assert len(rendered) == 1

@@ -67,7 +67,7 @@ Identifiers are module paths: `engine/service` is `spacemissionstudio/engine/ser
 | `gui/param_form` | A labelled form for an open ``params`` dict, driven by parameter specs. | SRS-H-01 | `is_vector`, `short_label`, `choices`, `ParamForm` | gui/theme, gui/widgets | PySide6 | 321 |
 | `gui/phasing_formation_dialog` | PhasingFormationDialog | SRS-F-15 | `PhasingFormationDialog` | engine/constellation, engine/formation, gui/widgets, schema/scenario | PySide6 | 379 |
 | `gui/propagation_setup_dialog` | PropagationSetupDialog | SRS-F-15 | `PropagationSetupDialog` | engine/spaceweather, gui/widgets, schema/scenario | PySide6 | 565 |
-| `gui/results_widget` | ResultsWidget | SRS-F-15 | `ResultsWidget` | engine/results, engine/time_system, gui/flow_layout, gui/theme, gui/widgets, plot_categories | PySide6, numpy, plotly | 1228 |
+| `gui/results_widget` | ResultsWidget | SRS-F-15 | `ResultsWidget` | engine/results, engine/time_system, gui/flow_layout, gui/theme, gui/widgets, plot_categories | PySide6, numpy, plotly | 1240 |
 | `gui/run_worker` | RunWorker/MonteCarloWorker | SRS-O-01, SRS-RE-01 | `RunWorker`, `MonteCarloWorker` | engine/mission_engine, engine/monte_carlo, engine/service, schema/scenario | PySide6 | 187 |
 | `gui/scenario_editor` | ScenarioEditorWidget | SRS-F-15 | `ScenarioEditorWidget` | engine/series_names, gui/ground_station_editor, gui/mission_sequence_editor, gui/monte_carlo_editor, gui/propagation_setup_dialog, gui/spacecraft_editor, gui/theme, gui/widgets, schema/scenario | PySide6 | 367 |
 | `gui/scenario_explainer_widget` | ScenarioExplainerWidget | SRS-F-15, SRS-H-03 | `ScenarioExplainerWidget` | engine/scenario_explainer, gui/badges, gui/formation_diagram_widget, gui/theme, schema/scenario | PySide6 | 275 |

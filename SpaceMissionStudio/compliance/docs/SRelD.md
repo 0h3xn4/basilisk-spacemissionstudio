@@ -100,7 +100,7 @@ SpaceMissionStudio". In summary:
 | K-07 | Closed (decision 19): SRS-P-09 and SRS-R-02 measured and met on the reference PC | – | SVR; `compliance/performance.md` |
 | K-10 | The test suite fails on Windows (34 tests) and macOS (10 tests) in CI. The failures are: the Vizard download tests, which assume the Linux layout (both); the template wizard and dialog width tests (Windows); a path-separator assertion (Windows); a cancel-timing test (Windows); the PNG export tests (macOS); a test-isolation error in `test_ccsds_odm` (macOS). The 400 km altitude-trade budget on Windows (1.45 kg; 7.26 kg on Linux) was a real defect, F-09 (K-11) | Windows and macOS results are not verified | SVR; CI run 20; `review_log.md` |
 | K-11 | F-09, fixed: parallel runs could read a half-written space-weather file. Altitude trades with more than one worker and Monte Carlo runs with NRLMSISE-00 drag, made before the fix, may have used wrong solar activity | Those results are to be re-run | `review_log.md` F-09 |
-| K-08 | Tracebacks from `results_widget._poll_plot_png` ("'NoneType' object is not subscriptable") appear in the CI log of the GUI tests | Possibly a timer firing after its state was cleared; no test fails | CI run 3 log; to investigate |
+| K-08 | Closed: the PNG/SVG export polled the page with overlapping asynchronous queries; a late timer tick read the cleared state (the CI tracebacks), and several answers could save the file twice. One query at a time now, late answers ignored (F-12) | – | `review_log.md` F-12 |
 | K-09 | 988 of 1488 unit and integration tests have no docstring | Weaker test documentation | `SUITP_test_cases.md` |
 
 **Waivers and deviations:** D-01 to D-13 (RD4). D-08 to D-13 are signed; D-01 to D-07

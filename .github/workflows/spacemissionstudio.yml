@@ -98,7 +98,10 @@ jobs:
       run:
         working-directory: SpaceMissionStudio
     env:
-      QT_QPA_PLATFORM: offscreen
+      # macOS runners have a window server; Qt WebEngine (the plots) does not
+      # work on the offscreen plugin there (page loads never finished, a test
+      # worker crashed: CI run 20), so macOS uses Qt's normal cocoa plugin.
+      QT_QPA_PLATFORM: ${{ matrix.os == 'macos-latest' && 'cocoa' || 'offscreen' }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
