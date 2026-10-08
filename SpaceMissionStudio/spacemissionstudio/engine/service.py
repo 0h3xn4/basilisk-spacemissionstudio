@@ -166,7 +166,7 @@ from Basilisk.utilities.supportDataTools.dataFetcher import DataFile, get_path
 
 from .. import __version__ as _SPACEMISSIONSTUDIO_VERSION
 from ..schema.scenario import OrbitIC, Scenario
-from . import fsw, kernels, link_budget, orbit_maintenance, time_system, vizard
+from . import fsw, kernels, link_budget, long_run, orbit_maintenance, time_system, vizard
 from .results import ResultSet, RunProvenance, TimeSeries, conservation_drift_warnings
 from .vizard import VizardRequest
 
@@ -507,6 +507,7 @@ class _SpacecraftHandle:
     nav_recorder: Optional[object] = None
     control_torque_recorder: Optional[object] = None
     rw_speed_recorder: Optional[object] = None
+    rw_speed_out_msg: Optional[object] = None  # the wheels' own speed message, read for segmented runs
     num_rw: int = 0
     thruster_on_time_recorder: Optional[object] = None
     num_thrusters: int = 0
@@ -1269,6 +1270,7 @@ class SimulationService:
                         self.scSim, dyn_task_name, sc_config.name, mrp, rw_config_msg, rw_state_effector
                     )
                     handle.rw_speed_recorder = self._record(rw_state_effector.rwSpeedOutMsg)
+                    handle.rw_speed_out_msg = rw_state_effector.rwSpeedOutMsg
                     self.scSim.AddModelToTask(dyn_task_name, handle.rw_speed_recorder)
                     rw_effector_for_viz = rw_state_effector
 
@@ -1624,6 +1626,12 @@ class SimulationService:
         interval_s = self.scenario.sim_settings.record_interval_s  # [s]
         return msg.recorder(macros.sec2nano(interval_s)) if interval_s > 0.0 else msg.recorder()
 
+    def _run_segmented(self, on_progress=None, should_cancel=None) -> ResultSet:
+        try:
+            return long_run.run_segmented(self.scenario, on_progress, should_cancel, self.vizard_request)
+        except long_run.LongRunError as exc:
+            raise SimulationServiceError(str(exc)) from None
+
     def run(self) -> ResultSet:
         """Build (if not already built) and execute the simulation, then
         extract every spacecraft's logged time histories into a
@@ -1639,7 +1647,12 @@ class SimulationService:
         See :meth:`run_live` for a variant that streams intermediate
         results back while the simulation is still running (e.g. to drive
         a live-updating plot), rather than only once at the end.
+
+        A run longer than ``SimSettings._MAX_SINGLE_RUN_DAYS`` is split
+        into a chain of shorter simulations (see :mod:`.long_run`).
         """
+        if self.scSim is None and long_run.needs_segments(self.scenario):
+            return self._run_segmented()
         if self.scSim is None:
             self.build()
         try:
@@ -1703,7 +1716,11 @@ class SimulationService:
                 already does for plot-update smoothness. ``None`` (the
                 default) means never cancel, matching every existing
                 caller's behavior unchanged.
+
+        Longer than ``SimSettings._MAX_SINGLE_RUN_DAYS``: as :meth:`run`.
         """
+        if self.scSim is None and long_run.needs_segments(self.scenario):
+            return self._run_segmented(on_progress, should_cancel)
         if self.scSim is None:
             self.build()
 

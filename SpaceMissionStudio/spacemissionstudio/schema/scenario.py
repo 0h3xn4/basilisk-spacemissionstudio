@@ -1511,26 +1511,25 @@ class SimSettings:
     # anything (the GUI, saved scenario files) came to depend on the
     # redundant field -- there is deliberately only one place to set this now.
 
-    # _MAX_DURATION_DAYS: a real Basilisk platform limit, not a stylistic
-    # choice. Basilisk's own nanoToSec() (C++,
+    # _MAX_SINGLE_RUN_DAYS: a real Basilisk platform limit, not a
+    # stylistic choice. Basilisk's own nanoToSec() (C++,
     # src/architecture/utilities/macroDefinitions.h) converts simulated
     # nanoseconds to a double, which can only exactly represent integers up
     # to 2**53 (DBL_MANT_DIG) -- 9007199254740992 ns, ~104.25 days. Past
     # that it prints a stderr error on EVERY call and returns NaN, which
     # poisons every downstream time-dependent calculation for the rest of
     # the run -- confirmed directly: a 180-day test run hit this and became
-    # severely degraded (simulated time barely progressed past the cliff at
-    # all, drowned in repeated stderr errors). 100.0 days keeps a safety
-    # margin under the real ~104.25-day cliff rather than sitting right on it.
-    _MAX_DURATION_DAYS = 100.0
+    # severely degraded. 100.0 days keeps a safety margin under the cliff.
+    # A longer duration (up to _MAX_DURATION_DAYS) runs as a chain of
+    # shorter simulations -- see engine/long_run.py -- which mission
+    # sequences and phasing keeping cannot do (Scenario.validate()).
+    _MAX_SINGLE_RUN_DAYS = 100.0  # [day]
+    _MAX_DURATION_DAYS = 3660.0  # [day] about 10 years
 
     def validate(self) -> None:
         _require(self.duration_days > 0, "sim_settings.duration_days must be > 0")
         _require(self.duration_days <= self._MAX_DURATION_DAYS,
-                  f"sim_settings.duration_days must be <= {self._MAX_DURATION_DAYS} days: Basilisk's own "
-                  "nanoToSec() (C++, src/architecture/utilities/macroDefinitions.h) can only exactly "
-                  "represent simulated time as a double up to 2**53 ns (~104.25 days) -- beyond that it "
-                  "silently returns NaN for simulated time, corrupting the whole run")
+                  f"sim_settings.duration_days must be <= {self._MAX_DURATION_DAYS:g} days (about 10 years)")
         _require(self.dynamics_task_rate_s > 0, "sim_settings.dynamics_task_rate_s must be > 0")
         _require(0.0 <= self.record_interval_s <= 86400.0,
                   "sim_settings.record_interval_s must be in [0, 86400] s (0 = every dynamics step)")
@@ -1648,6 +1647,17 @@ class Scenario:
                 _require(sc.phasing_keeping.chief_spacecraft in names,
                           f"{sc.name}: phasing_keeping.chief_spacecraft {sc.phasing_keeping.chief_spacecraft!r} "
                           f"is not one of this scenario's spacecraft {names}")
+        # Past one Basilisk run's limit the run is split into segments
+        # (engine/long_run.py); these two cannot be split.
+        single_run_days = SimSettings._MAX_SINGLE_RUN_DAYS
+        if self.sim_settings.duration_days > single_run_days:
+            _require(not self.mission_sequence,
+                      f"sim_settings.duration_days is over {single_run_days:g} days, which a mission sequence "
+                      "cannot run -- shorten the run or remove the mission sequence")
+            for sc in self.spacecraft:
+                _require(sc.phasing_keeping is None,
+                          f"{sc.name}: phasing_keeping runs at most {single_run_days:g} days "
+                          "(sim_settings.duration_days) -- shorten the run")
         # engine.service.SimulationService.build() raises a
         # SimulationServiceError for this same condition (power/
         # station_keeping/enable_srp all need the real eclipse shadow

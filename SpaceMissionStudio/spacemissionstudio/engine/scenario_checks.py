@@ -241,9 +241,20 @@ def scenario_warnings(scenario) -> List[str]:
     return warnings
 
 
+# [-] samples per series over which recording every step is flagged
+# (~1.7 MB per simulated day at full recording for one LEO spacecraft)
+_MANY_SAMPLES = 1_000_000
+
+
 def _recording_warnings(scenario) -> List[str]:
-    """Passes shorter than the recording interval can fall between samples."""
-    interval_s = scenario.sim_settings.record_interval_s  # [s]
+    """Recording every step of a long run fills memory; passes shorter than
+    the recording interval can fall between samples."""
+    settings = scenario.sim_settings
+    interval_s = settings.record_interval_s  # [s]
+    samples = settings.duration_days * 86400.0 / settings.dynamics_task_rate_s
+    if interval_s <= 0.0 and samples > _MANY_SAMPLES:
+        return [f"every step is recorded: {samples / 1e6:.1f} million samples per series -- set "
+                "'Record every' (e.g. 600 s) to save memory"]
     if interval_s <= 0.0 or not scenario.ground_stations:
         return []
     passes = predict_passes(scenario, horizon_s=min(scenario.sim_settings.duration_days * 86400.0, 86400.0))

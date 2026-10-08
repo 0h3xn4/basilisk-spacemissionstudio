@@ -285,14 +285,15 @@ class PropagationSetupDialog(QDialog):
         form = QFormLayout(group)
 
         self.duration_days_spin = PreciseDoubleSpinBox()
-        self.duration_days_spin.setRange(0.0001, 100000.0)
+        self.duration_days_spin.setRange(0.0001, SimSettings._MAX_DURATION_DAYS)
         self.duration_days_spin.setDecimals(4)
         self.duration_days_spin.setValue(sim_settings.duration_days)
         self.duration_days_spin.setToolTip(
             "Total simulated time, starting from the epoch. Longer means more wall-clock run "
             "time (roughly proportional to duration / task rate below) and a bigger recorded "
             "dataset -- pick just enough to see what you're looking for (e.g. a few orbits for "
-            "a quick geometry check, weeks/months for a real decay/station-keeping study)."
+            "a quick geometry check, weeks/months for a real decay/station-keeping study). "
+            "Over 100 days runs as several shorter simulations, chained."
         )
         form.addRow("Duration [days]", self.duration_days_spin)
 

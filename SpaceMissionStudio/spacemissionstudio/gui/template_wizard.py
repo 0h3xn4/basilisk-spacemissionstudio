@@ -79,7 +79,7 @@ from PySide6.QtWidgets import (
     QListWidgetItem, QScrollArea, QVBoxLayout, QWidget,
 )
 
-from ..schema.scenario import Scenario
+from ..schema.scenario import Scenario, SimSettings
 from .theme import PALETTE
 from .widgets import PreciseDoubleSpinBox
 from .wizard_settings import build_all_settings_pages, setting_paths, get_setting
@@ -805,11 +805,9 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
                         "Duration", "Total simulated time.",
                         lambda s: s.sim_settings.duration_days,
                         lambda s, v: setattr(s.sim_settings, "duration_days", v),
-                        # upper bound 100.0 matches SimSettings._MAX_DURATION_DAYS
-                        # (Basilisk's own nanoToSec() precision ceiling, ~104.25
-                        # days -- see that field's own comment) -- never let this
-                        # wizard field offer a value schema.validate() would reject.
-                        0.1, 100.0, decimals=2, step=1.0, suffix=" days",
+                        # upper bound matches SimSettings._MAX_DURATION_DAYS; past
+                        # 100 days the run is split into segments (engine/long_run.py)
+                        0.1, SimSettings._MAX_DURATION_DAYS, decimals=2, step=1.0, suffix=" days",
                     ),
                 ],
             ),

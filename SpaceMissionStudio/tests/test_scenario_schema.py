@@ -109,13 +109,26 @@ def test_duration_days_at_the_100_day_cap_validates():
     scenario.validate()
 
 
-def test_duration_days_beyond_the_basilisk_nanotosec_limit_rejected():
-    # Guards against Basilisk's own nanoToSec() (C++, src/architecture/
-    # utilities/macroDefinitions.h) silently returning NaN simulated time
-    # past its 2**53-ns (~104.25 day) double-precision limit -- see
-    # SimSettings.validate()'s own comment for the full story.
-    scenario = _minimal_scenario(sim_settings=SimSettings(duration_days=120.0))
-    with pytest.raises(ScenarioValidationError, match="duration_days must be <= 100"):
+def test_duration_days_beyond_ten_years_rejected():
+    scenario = _minimal_scenario(sim_settings=SimSettings(duration_days=4000.0))
+    with pytest.raises(ScenarioValidationError, match="duration_days must be <= 3660"):
+        scenario.validate()
+
+
+def test_a_run_past_one_basilisk_run_validates():
+    """Past ~104 days Basilisk's nanoToSec() returns NaN, so such a run is
+    split into segments (engine/long_run.py); the schema allows it."""
+    scenario = _minimal_scenario(sim_settings=SimSettings(duration_days=1826.25))  # [day] 5 years
+    scenario.validate()
+
+
+def test_a_mission_sequence_past_one_basilisk_run_is_rejected():
+    """A mission sequence cannot be split into segments."""
+    from spacemissionstudio.schema.command import Command
+
+    scenario = _minimal_scenario(sim_settings=SimSettings(duration_days=120.0),  # [day]
+                                 mission_sequence=[Command(kind="propagate", params={"stop_condition": "duration", "duration_days": 1.0})])  # [day]
+    with pytest.raises(ScenarioValidationError, match="which a mission sequence cannot run"):
         scenario.validate()
 
 
