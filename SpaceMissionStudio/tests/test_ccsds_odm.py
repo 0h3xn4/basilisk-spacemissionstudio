@@ -404,3 +404,17 @@ def test_each_kvn_syntax_and_segment_rule_is_enforced(example, old, new, clause)
     (TIME_SYSTEM outside the 3.2.3.2 set is a warning: it needs an ICD)."""
     issues = [i for i in odm.validate(_replace(_example(example), old, new)) if i.level in ("error", "warning")]
     assert issues and any(i.clause.startswith(clause) for i in issues), [str(i) for i in issues]
+
+
+@pytest.mark.requires_basilisk
+@pytest.mark.requirement("CCSDS-502.0-B-3 3.1.2")
+def test_the_written_gm_is_the_gm_the_propagation_uses():
+    """OPM elements and the CLI's element-to-state conversion use the Earth
+    GM of the simulation (Basilisk 2.12: 398600.436 km^3/s^2), not GGM03S's."""
+    from spacemissionstudio.engine.service import SimulationService
+    from spacemissionstudio.schema import load_scenario
+
+    source = Path(__file__).resolve().parent.parent / "spacemissionstudio" / "scenarios" / "two_body_validation.json"
+    service = SimulationService(load_scenario(source))
+    service.build()
+    assert service.grav_factory.gravBodies["earth"].mu == odm.EARTH_GM_KM3_S2 * 1e9
