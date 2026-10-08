@@ -574,7 +574,7 @@ def main(text_dir: Path) -> int:
             refine(row, short)
         out = OUT_DIR / f"{stem.replace('_', '-')}.csv"
         with open(out, "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, COLUMNS, extrasaction="ignore")
+            writer = csv.DictWriter(f, COLUMNS, extrasaction="ignore", lineterminator="\n")
             writer.writeheader()
             for row in rows:
                 writer.writerow({c: row.get(c, "") for c in COLUMNS})
