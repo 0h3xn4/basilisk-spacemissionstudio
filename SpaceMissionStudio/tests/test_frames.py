@@ -75,6 +75,23 @@ def test_run_metadata_carries_frames_time_scales_and_units(tmp_path):
     assert all(series.units and str(series.units).strip() for series in result.series.values())
 
 
+@pytest.mark.requires_basilisk
+@pytest.mark.requirement("E-ST-10-04C 4.2.1c")
+def test_a_gravity_field_without_iers_data_warns_of_its_accuracy():
+    """Without the IERS-based Earth files (the test default), a run with a
+    spherical-harmonics field warns that the IAU orientation limits its
+    accuracy (finding F-06), so the user knows the field and the
+    orientation do not match."""
+    from spacemissionstudio.engine.service import SimulationService
+    from spacemissionstudio.schema import load_scenario
+
+    scenario = load_scenario(next(_TEMPLATES.glob("19_*.json")))
+    assert scenario.gravity.central_body_degree > 0
+    scenario.sim_settings.duration_days = 0.01  # [day]
+    result = SimulationService(scenario).run()
+    assert any("no IERS data" in w and "~160 m/day" in w for w in result.warnings)
+
+
 @pytest.mark.requirement("E-ST-10-09C 5.3.2d")
 def test_each_transformation_has_a_unique_name_between_defined_frames():
     """Transformations are named "Y -> X" once each, between frames that
