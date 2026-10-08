@@ -33,6 +33,14 @@ Findings of the whole-tool review that followed the human actions
   1100 px cap but not for a narrower screen (the macOS runner's is 1024 px).
   The one-line hint check measured the label, whose height is pinned to the
   spin box beside it, instead of the text.
+- F-09's fix on Windows (CI run 26): `os.replace` is refused while another
+  process has the target open. That process wrote the same window, so a
+  complete file there is now kept and the new copy dropped; an incomplete
+  one is retried, then reported. Tests:
+  `test_a_refused_replace_keeps_the_complete_file_another_process_wrote`,
+  `test_a_refused_replace_of_an_incomplete_file_is_reported`.
+- The hint check now states the rule exactly: one line wherever the text
+  fits, wrapping (at most two lines) only where it does not (Windows CI).
 - Reviewing F-12's one-query-at-a-time rule: an answer that never arrived
   would have stalled the save; the poll now asks again after a second.
 

@@ -8,6 +8,7 @@ urllib.request.urlopen mocked.
 
 import csv
 from datetime import date, datetime
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -435,3 +436,39 @@ def test_a_failed_write_leaves_no_file_behind(tmp_path, monkeypatch):
     with pytest.raises(OSError, match="disk full"):
         sw.resolve("bundled", datetime(2003, 10, 1), datetime(2003, 12, 1), cache_dir=tmp_path)
     assert list(tmp_path.iterdir()) == []
+
+
+def test_a_refused_replace_keeps_the_complete_file_another_process_wrote(tmp_path, monkeypatch):
+    """F-09 on Windows: a file another process has open cannot be replaced
+    (PermissionError). That process wrote the same window, so its complete
+    file is kept and the new copy dropped, instead of the run failing."""
+    window = (datetime(2003, 10, 1), datetime(2003, 12, 1))
+    first = sw.resolve("bundled", *window, cache_dir=tmp_path)
+    full = first.path.read_text()
+    first.path.write_text("".join(full.splitlines(keepends=True)[:10]))  # force a rewrite
+
+    def refuse(src, dst):
+        Path(dst).write_text(full)  # meanwhile another process finished the same file
+        raise PermissionError("Access is denied")
+
+    monkeypatch.setattr(sw.os, "replace", refuse)
+    again = sw.resolve("bundled", *window, cache_dir=tmp_path)
+    assert again.path.read_text() == full
+    assert sorted(p.name for p in tmp_path.iterdir()) == [first.path.name]  # no temporary file left
+
+
+def test_a_refused_replace_of_an_incomplete_file_is_reported(tmp_path, monkeypatch):
+    """If the file held open never becomes complete, the error is raised
+    rather than a short file being used."""
+    window = (datetime(2003, 10, 1), datetime(2003, 12, 1))
+    first = sw.resolve("bundled", *window, cache_dir=tmp_path)
+    first.path.write_text("DATE\n")
+    monkeypatch.setattr(sw, "_REPLACE_RETRY_S", 0.0)
+
+    def refuse(src, dst):
+        raise PermissionError("Access is denied")
+
+    monkeypatch.setattr(sw.os, "replace", refuse)
+    with pytest.raises(PermissionError):
+        sw.resolve("bundled", *window, cache_dir=tmp_path)
+    assert sorted(p.name for p in tmp_path.iterdir()) == [first.path.name]

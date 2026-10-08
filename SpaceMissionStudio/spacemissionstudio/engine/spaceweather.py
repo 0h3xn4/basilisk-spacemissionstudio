@@ -89,6 +89,7 @@ from __future__ import annotations
 import csv
 import os
 import tempfile
+import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
@@ -603,6 +604,10 @@ def _write_basilisk_csv(days: dict, dest_path) -> Path:
     window to the same path: with a direct write, one of them could load
     another's half-written file, and Basilisk then held the last day it had
     read (finding F-09). A write that fails leaves no file at ``dest_path``.
+
+    On Windows a file another process has open cannot be replaced. That
+    process wrote the same window, so a complete file already there is kept
+    and the new copy discarded; an incomplete one is retried briefly.
     """
     dest_path = Path(dest_path)
     dest_path.parent.mkdir(parents=True, exist_ok=True)
@@ -616,11 +621,32 @@ def _write_basilisk_csv(days: dict, dest_path) -> Path:
                 rec = days[day]
                 writer.writerow([day.strftime("%Y-%m-%d")] + [f"{v:g}" for v in rec.ap]
                                 + [f"{rec.ap_avg:g}", f"{rec.f107_obs:g}", f"{rec.f107_center81:g}"])
-        os.replace(tmp_path, dest_path)
+        _replace_or_keep_complete(tmp_path, dest_path, len(days) + 1)
     except BaseException:
         tmp_path.unlink(missing_ok=True)
         raise
     return dest_path
+
+
+_REPLACE_RETRIES = 20  # [-] attempts while another process holds the file (Windows)
+_REPLACE_RETRY_S = 0.05  # [s] between attempts
+
+
+def _replace_or_keep_complete(tmp_path: Path, dest_path: Path, rows: int) -> None:
+    """Move ``tmp_path`` to ``dest_path``. Where the move is refused because
+    another process has ``dest_path`` open (Windows), keep ``dest_path`` if it
+    is complete (``rows`` lines) and drop ``tmp_path``; retry otherwise."""
+    for attempt in range(_REPLACE_RETRIES):
+        try:
+            os.replace(tmp_path, dest_path)
+            return
+        except PermissionError:
+            if _has_rows(dest_path, rows):
+                tmp_path.unlink(missing_ok=True)
+                return
+            if attempt == _REPLACE_RETRIES - 1:
+                raise
+            time.sleep(_REPLACE_RETRY_S)
 
 
 def _resolve_real(source: str, start_utc: datetime, end_utc: datetime, local_file_path: Optional[str],

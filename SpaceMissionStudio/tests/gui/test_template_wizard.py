@@ -419,15 +419,19 @@ def test_inline_hints_and_intros_are_short_plain_lines(qtbot):
     wizard.show()
     hint = next(label for label in wizard.findChildren(QLabel)
                 if label.text() == "Distance the follower holds ahead of the chief")
-    # One line at the normal font size; it may wrap only when the dialog is
-    # too narrow (large fonts, SRelD K-10). Measured on the text itself: the
-    # label's own height is pinned to the spin box beside it.
+    # One line wherever it fits; it wraps only when its one-line text is
+    # wider than the space it has (wide fonts at the dialog's cap, as on the
+    # Windows CI: SRelD K-10). Measured on the text itself: the label's own
+    # height is pinned to the spin box beside it.
     from PySide6.QtCore import QRect, Qt
 
     metrics = hint.fontMetrics()
-    text_height = metrics.boundingRect(QRect(0, 0, hint.contentsRect().width(), 0),
-                                       int(Qt.TextFlag.TextWordWrap), hint.text()).height()
-    assert text_height < 1.6 * metrics.height()
+    width = hint.contentsRect().width()
+    text_height = metrics.boundingRect(QRect(0, 0, width, 0), int(Qt.TextFlag.TextWordWrap), hint.text()).height()
+    if metrics.horizontalAdvance(hint.text()) <= width:
+        assert text_height < 1.6 * metrics.height()
+    else:
+        assert text_height < 3.2 * metrics.height()  # at most two short lines
     assert "follower-1" in hint.toolTip() and "phasing_keeping" not in hint.toolTip()
 
 
