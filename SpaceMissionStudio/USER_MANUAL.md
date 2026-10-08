@@ -361,8 +361,8 @@ it's always safe to use, never a forced/unsafe kill.
 10 years) in Propagation setup. Past 100 days the run is split into
 segments of up to 90 days, chained automatically, and the result is
 still one run. Also set **Record every** (e.g. 600 s), or the results
-fill memory. For scale: 5 years of LEO station keeping took 49 minutes
-and 441 MB. Mission sequences, phasing keeping, Monte Carlo and Vizard
+fill memory. For scale: 5 years of LEO station keeping took about 50
+minutes and 450 MB. Mission sequences, phasing keeping, Monte Carlo and Vizard
 are limited to 100 days.
 
 **You want to know when the spacecraft comes down.** Open the **End of

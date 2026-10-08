@@ -7656,3 +7656,19 @@ Kept, by user decision: the exponential atmosphere, and the `conservative` worst
 **Migration:** schema version 3 rewrites `"synthetic"` to `"bundled"`; every template now uses `"bundled"`. The synthetic generator, its cycle shape and its cache files are gone. The 5-year and lifetime figures in the two entries above were measured with the synthetic profile; they are re-measured on the real data below.
 
 **Tests:** `tests/test_spaceweather.py` rewritten on excerpts of the real record (parsing against the raw file, observed and forecast windows, the coverage refusal, CelesTrak CSV parity, choosing the newer file, conservative percentiles), plus migration and GUI updates.
+
+**Re-measured on the real data** (template 18's spacecraft, 2030-2035, CelesTrak/NOAA with Ap 12.8, recorded every 600 s):
+
+| | Year 1 | Year 2 | Year 3 | Year 4 | Year 5 | Total |
+|---|---|---|---|---|---|---|
+| Delta-V [m/s] | 28.0 | 23.9 | 39.7 | 75.9 | 107.5 | 275.0 |
+
+* 2.32 kg of 5 kg propellant in 358 burns (the rocket equation gives the same 275.0 m/s); the synthetic profile had given 225 m/s, mainly by underestimating cycle 26 (NOAA: ~148 sfu in 2034-35).
+* The daily-mean semi-major axis held 394.5-397.2 km above the equatorial radius, the same every year.
+* 53 min wall time (on a shared machine), 454 MB peak.
+* Lifetime against Basilisk decay runs: 300 km 24.0 vs 23.8 days (+0.9%), 400 km 321.7 vs 318.7 days (+0.9%), 250 x 700 km 120.1 vs 121.7 days (-1.4%).
+* Templates: 05 leaves its band at day 19.9, recovers in ~3 days, then holds 48.8-52.0 km for 0.013 m/s; 21 stores 1.8 N*m*s rods-off (rw-x -860 RPM), rods-on under ~25 RPM.
+
+These use NOAA's middle forecast and Cd 2.2 -- nominal figures, not an ESA AD10-style budget (95th-percentile MSFC activity and Cd 3.0 for operations).
+
+**Also fixed:** a run whose spacecraft re-enters now stops there with its results and a warning (perigee checked every 6 h, every 5 min below 200 km). Integrating on through the Earth had gone non-physical and lost a whole 250 x 700 km decay run.
