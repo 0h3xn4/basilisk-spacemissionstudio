@@ -7768,3 +7768,13 @@ Template 18 (5-year mission, 95th percentile, Cd 3.0, no run; worst launch 2033 
 None fits the template's 2 kg tank (550 km misses by 0.02 kg). 9 min on 3 processes; the disposal searches at 500-550 km (about a minute each) take most of it.
 
 **Fixed on the way:** picking an altitude whose worst launch sat in the same sweep-table row as the previous one left the previous altitude's budget below (the row was re-selected, so no selection change fired). The Budget tab now scrolls, as its three tables outgrow short windows.
+
+**Checked at the worst launch:** a full five-year Basilisk run of template 18 launched 2033-01-01 (95th percentile, Cd 3.0, a 20 kg tank so it never runs dry) spent 1333.6 m/s in 1520 burns (51 min, 452 MB). The drag estimate for the same case gives 1263.7 m/s, 5.2% low, as at the planned launch:
+
+| | Year 1 | Year 2 | Year 3 | Year 4 | Year 5 | Total |
+|---|---|---|---|---|---|---|
+| Basilisk [m/s] | 230.9 | 324.3 | 320.8 | 275.5 | 182.2 | 1333.6 |
+| Estimate [m/s] | 223.9 | 311.0 | 302.0 | 255.9 | 170.8 | 1263.7 |
+| Difference | -3.0% | -4.1% | -5.8% | -7.1% | -6.3% | -5.2% |
+
+The bias is steady enough for ratios between launch windows to carry over; the absolute figure needs the ~5% the notes already flag.
