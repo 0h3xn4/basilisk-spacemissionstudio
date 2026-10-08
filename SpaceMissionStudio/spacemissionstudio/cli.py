@@ -286,6 +286,43 @@ def cmd_lifetime(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_budget(args: argparse.Namespace) -> int:
+    try:
+        scenario = load_scenario(args.scenario)
+    except ScenarioValidationError as exc:
+        print(f"INVALID: {exc}", file=sys.stderr)
+        return 1
+    name = args.spacecraft or scenario.spacecraft[0].name
+    try:
+        from .engine import propellant_budget as pb
+        from .engine.service import SimulationService
+    except ImportError as exc:
+        print(f"ERROR: Basilisk is not installed/built ({exc}) -- see SpaceMissionStudio/README.md", file=sys.stderr)
+        return 2
+    result = None
+    if args.run:
+        print(f"Running {scenario.name!r} for the simulated contributors...")
+        try:
+            result = SimulationService(scenario).run()
+        except Exception as exc:  # noqa: BLE001 -- report ANY run failure with a specific message
+            print(f"ERROR: run failed: {exc}", file=sys.stderr)
+            return 3
+    try:
+        budget = pb.compute_budget(scenario, name, result)
+    except pb.BudgetError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 3
+    print(f"{name}: dry mass {budget.dry_mass_kg:.1f} kg, Isp {budget.isp_s:g} s, efficiency {budget.efficiency:.3f}")
+    print(f"{'Phase':<18} {'Contributor':<52} {'dV [m/s]':>9} {'Prop. [kg]':>10}  Margin")
+    for row in budget.rows:
+        dv = "" if row.delta_v_m_s is None else f"{row.delta_v_m_s:.2f}"
+        print(f"{row.phase:<18} {row.contributor:<52} {dv:>9} {row.propellant_kg:>10.3f}  {row.margin} ({row.source})")
+    print(f"{'Total':<71} {budget.total_delta_v_m_s:>9.2f} {budget.total_propellant_kg:>10.3f}")
+    for note in budget.notes:
+        print(f"NOTE: {note}")
+    return 0
+
+
 def cmd_kernels_status(args: argparse.Namespace) -> int:
     try:
         from .engine import kernels
@@ -497,6 +534,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_life.add_argument("--forecast-percentile", type=float, choices=(95.0, 50.0, 5.0), default=50.0,
                         help="MSFC solar-activity percentile (ESA AD10: 50 for end of life)")
     p_life.set_defaults(func=cmd_lifetime)
+
+    p_budget = subparsers.add_parser("budget", help="delta-V and propellant budget (ESA AD10 style)")
+    p_budget.add_argument("scenario", type=Path)
+    p_budget.add_argument("--spacecraft", help="spacecraft name (default: the first)")
+    p_budget.add_argument("--run", action="store_true",
+                          help="run the scenario first, for orbit control and formation keeping")
+    p_budget.set_defaults(func=cmd_budget)
 
     p_kernels = subparsers.add_parser("kernels-status", help="fetch/check SPICE kernel cache status")
     p_kernels.set_defaults(func=cmd_kernels_status)

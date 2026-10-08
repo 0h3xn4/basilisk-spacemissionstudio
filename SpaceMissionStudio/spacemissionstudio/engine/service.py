@@ -2042,6 +2042,11 @@ class SimulationService:
                                        ("propellant_remaining",), np.asarray(geo.propellantLog), units="kg"))
                 result.add(TimeSeries(f"{name}.geo_station_keeping.delta_v", geo_t_s, ("cumulative_delta_v",),
                                        np.asarray(geo.deltaVLog), units="m/s"))
+                # split for budgets (ESA AD10 Sec. 6.2.2 reports in- and out-of-plane control apart)
+                result.add(TimeSeries(f"{name}.geo_station_keeping.east_west.delta_v", geo_t_s,
+                                       ("cumulative_delta_v",), np.asarray(geo.ewDeltaVLog), units="m/s"))
+                result.add(TimeSeries(f"{name}.geo_station_keeping.north_south.delta_v", geo_t_s,
+                                       ("cumulative_delta_v",), np.asarray(geo.nsDeltaVLog), units="m/s"))
 
             if handle.phasing_keeping_controller is not None:
                 phase_controller = handle.phasing_keeping_controller

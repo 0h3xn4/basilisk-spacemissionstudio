@@ -377,6 +377,14 @@ simulations to about 2%. It uses the scenario's atmosphere and the real
 space-weather record, which ends in 2041 (NOAA's forecast); a longer
 look-ahead stops there and says so.
 
+**You need a delta-V and propellant budget.** Fill in the spacecraft
+editor's **Budget (AD10)** tab, run the mission (ideally its whole
+length, with the forecast percentile at 95th and Cd 3.0 for an ESA AD10
+budget), then press **Compute budget** on the **Budget** tab. It lists
+each contributor per mission phase with its margin, the total, and notes
+on anything that departs from the guideline. **Copy as CSV** puts the
+table on the clipboard.
+
 **You're not sure what a field in the Scenario Editor means.** Hover
 over it -- most fields have a tooltip explaining what it does in plain
 language. The validation message at the bottom of the Scenario Editor

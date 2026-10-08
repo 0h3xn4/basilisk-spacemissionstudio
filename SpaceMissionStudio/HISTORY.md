@@ -7672,3 +7672,23 @@ Kept, by user decision: the exponential atmosphere, and the `conservative` worst
 These use NOAA's middle forecast and Cd 2.2 -- nominal figures, not an ESA AD10-style budget (95th-percentile MSFC activity and Cd 3.0 for operations).
 
 **Also fixed:** a run whose spacecraft re-enters now stops there with its results and a warning (perigee checked every 6 h, every 5 min below 200 km). Integrating on through the Earth had gone non-physical and lost a whole 250 x 700 km decay run.
+
+## NASA MSFC solar activity and an ESA AD10-style propellant budget
+
+User request: apply ESA's "Guidelines for the computation of the Delta-V and Propellant Mass budgets" (AD10, EOP-FM/2024-07-177 v3.0) wherever applicable. The guideline is not stored in this repository; code and docs cite it by section.
+
+**Solar activity (AD10 Sec. 5.9).** NASA MSFC's October 2026 prediction now ships in `data/spaceweather/` (monthly 13-month-smoothed F10.7 and Ap at the 95th/50th/5th percentiles, 2026-04 to 2041-10). Past the CelesTrak observations and 45-day forecast, every day uses it at `space_weather.forecast_percentile` (default 50; AD10: 95 for operations budgets, 50 for end of life), and its last 132 months repeat past its end, as AD10 prescribes. MSFC's own Ap replaces the fixed 12.8, which now only fills the months before MSFC's first (September 2025 to March 2026 with the shipped files). A study can point at its own MSFC file. Runs now report which data they used in their warnings (the service used to drop them). The lifetime estimate uses the 50th percentile and is no longer capped at 2041.
+
+**Budget (AD10 Secs. 5-7).** A new Budget (AD10) tab in the spacecraft editor holds the inputs (saved as `propellant_budget`). A new Budget tab and `spacemissionstudio budget` (with `--run`) give the table in AD10's summary layout, per phase:
+* **beginning of life:** injection-error correction (the larger of the a and e-vector corrections; inclination separately), RAAN, orbit acquisition;
+* **operations:** transfers; in- and out-of-plane control and formation keeping from the last run (delta-V and propellant as flown, scaled to the mission if the run is shorter; GEO station keeping now records east-west and north-south apart); collision avoidance (+-100 m of semi-major axis each, count x4); thruster attitude control (+100%);
+* **end of life:** clearance; disposal by uncontrolled re-entry (the perigee is lowered until the lifetime is 5 years, found with the lifetime estimate at the 50th percentile, Cd 2.2 and the tumbling area: about a minute), controlled re-entry (+15% on the last burn), or a GEO graveyard orbit 235 + 1000 Cr A/m km up;
+* residual 1% and uncertainty 2% of the tank load; 15% dry-mass margin unless included; thruster efficiency from the four AD10 factors.
+
+Propellant per contributor is the phase's starting mass times exp(dV/Ve) - 1, iterated until the total moves by under 0.1 kg. The notes flag a run shorter than the mission, one not at the 95th percentile or Cd 3.0, a missing collision-avoidance count (AD10 takes it from DRAMA), and the summary table's 10%/20% against the equations' 1%/2%.
+
+**Checked:** the formulas against hand calculations (a CAM at 400 km is 0.113 m/s; a 5 km clearance 2.83 m/s; the GEO graveyard for Cr 1.3, 10 m^2, 500 kg is 261 km up, 9.5 m/s); from 550 km in 2035 the disposal search lowers the perigee to ~513 km (6.8 m/s) for a 4.9-5.0-year lifetime.
+
+**Re-measured on MSFC's 50th percentile:** template 21 rods-off 1.77 N*m*s (rw-x -843 RPM), rods-on under ~20 RPM; template 05 recovers by day 23 and holds 48-55 km for 0.013 m/s; 300 km lifetime 25.66 vs 25.43 days in Basilisk (+0.9%).
+
+**Not covered yet:** the launch-delay sweep (AD10 Sec. 5.5), the number of collision avoidances (DRAMA), Cd 3.0 in the templates (they keep 2.2).

@@ -540,3 +540,16 @@ def test_lifetime_reports_reentry_and_the_disposal_rules(capsys):
     assert "leo-sat-1: re-entry 2030-" in out and "5-year rule: met" in out
     assert cli.main(["lifetime", str(path), "--deorbit-perigee-km", "200"]) == 0
     assert "-> perigee 200 km" in capsys.readouterr().out
+
+
+@pytest.mark.requires_basilisk
+def test_budget_prints_the_ad10_table(capsys):
+    """Template 18 without a run: the table, a total and the notes."""
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parent.parent / "spacemissionstudio" / "scenarios" / "templates" \
+        / "18_leo_station_keeping.json"
+    assert cli.main(["budget", str(path)]) == 0
+    out = capsys.readouterr().out
+    assert "Launcher injection errors, in-plane" in out and "Residual" in out and out.count("Total") == 1
+    assert "NOTE: no collision avoidances entered" in out

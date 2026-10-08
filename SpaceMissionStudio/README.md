@@ -396,10 +396,17 @@ lifetime`) estimating when a spacecraft re-enters, with or without a
 deorbit burn, checked against the 5- and 25-year disposal rules. The
 estimate agrees with full Basilisk decay runs to within ~2% in seconds.
 
+**Propellant budgets (ESA AD10 style)** -- a Budget tab and
+`spacemissionstudio budget`: delta-V and propellant per mission phase with
+the guideline's margins, residuals and iteration, simulated orbit control
+taken from the last run, and the disposal burn sized for a 5-year
+lifetime; solar activity from NASA MSFC's prediction at the 95th/50th
+percentile.
+
 **GUI & CLI** -- a full PySide6 desktop shell (scenario editor,
 Monte Carlo, live progress feedback, a real visual theme/icon/
 toolbar) and an equivalent headless CLI (`spacemissionstudio validate/run/
-monte-carlo/lifetime/kernels-status/generate-constellation/gui`), both built on
+monte-carlo/lifetime/budget/kernels-status/generate-constellation/gui`), both built on
 the exact same `schema`/`engine` layer -- neither is a thin wrapper
 around the other. Result plots are Plotly figures (a validated,
 colorblind-safe categorical palette; a unified hover tooltip; plain
@@ -728,6 +735,7 @@ spacemissionstudio run spacemissionstudio/scenarios/two_body_validation.json --o
 spacemissionstudio run scenario_with_fsw.json --out-dir results/ --vizard-save-file results/viz.bin
 spacemissionstudio monte-carlo scenario_with_dispersions.json --archive-dir mc_results/
 spacemissionstudio lifetime scenario.json --deorbit-perigee-km 250
+spacemissionstudio budget scenario.json --run
 spacemissionstudio kernels-status
 
 # launches the PySide6 GUI (needs the 'gui' extra; does NOT need Basilisk

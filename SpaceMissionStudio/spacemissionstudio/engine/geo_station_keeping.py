@@ -131,6 +131,8 @@ class GeoStationKeepingController(sysModel.SysModel):
         self._stepS = 0.0  # [s]
         self._lastFit = None  # (t [s], (error [rad], drift [rad/s]))
         self._cumulativeDv = 0.0  # [m/s]
+        self._cumulativeEwDv = 0.0  # [m/s] east-west (in-plane) burns
+        self._cumulativeNsDv = 0.0  # [m/s] north-south (out-of-plane) burns
         self.ewManeuvers = 0
         self.nsManeuvers = 0
 
@@ -144,6 +146,8 @@ class GeoStationKeepingController(sysModel.SysModel):
         self.nsBurnLog: list = []
         self.propellantLog: list = []
         self.deltaVLog: list = []
+        self.ewDeltaVLog: list = []
+        self.nsDeltaVLog: list = []
 
     def Reset(self, CurrentSimNanos):
         self._lastT = CurrentSimNanos * macros.NANO2SEC
@@ -255,6 +259,8 @@ class GeoStationKeepingController(sysModel.SysModel):
         total_thrust = float(np.linalg.norm(force))  # [N]
         if total_thrust > 0.0:
             self._cumulativeDv += (ew_thrust + ns_thrust) / mass * dt
+            self._cumulativeEwDv += ew_thrust / mass * dt
+            self._cumulativeNsDv += ns_thrust / mass * dt
         hub_mass = self.scObject.hub.mHub if self.scObject is not None else self.dryMass + self.propellant
         new_mass, self.propellant, _burned, _m_dot = apply_propellant_burn(
             hub_mass, self.propellant, ew_thrust + ns_thrust, self.ispS, dt, self.g0)
@@ -311,6 +317,8 @@ class GeoStationKeepingController(sysModel.SysModel):
         self.nsBurnLog.append(1.0 if ns_thrust > 0.0 else 0.0)
         self.propellantLog.append(self.propellant)
         self.deltaVLog.append(self._cumulativeDv)
+        self.ewDeltaVLog.append(self._cumulativeEwDv)
+        self.nsDeltaVLog.append(self._cumulativeNsDv)
 
 
 def build_geo_station_keeping(scSim, task_name: str, tag: str, sc_object, mu: float, r_equator_m: float,

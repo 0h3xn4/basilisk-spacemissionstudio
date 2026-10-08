@@ -802,6 +802,72 @@ class FuelTankConfig:
                   f"{spacecraft_name}: fuel_tank.tank_position_b_m must be a 3-element [x, y, z] list [m]")
 
 
+SUPPORTED_DISPOSALS = ("uncontrolled_reentry", "controlled_reentry", "graveyard", "none")
+
+
+@dataclass
+class PropellantBudgetConfig:
+    """Inputs for a delta-V and propellant budget in the manner of ESA's
+    AD10 guideline (EOP-FM/2024-07-177 v3.0; see
+    engine/propellant_budget.py). Contributors left as None are taken
+    from the spacecraft's last run (in- and out-of-plane orbit control,
+    formation keeping); the rest are entered here or computed (collision
+    avoidance, clearance, injection corrections, disposal)."""
+
+    mission_years: float = 5.0  # [year] nominal operations from the epoch (AD10 Sec. 5.7)
+    dry_mass_includes_margin: bool = False  # else the system margin below is added (Sec. 5.10)
+    system_margin_fraction: float = 0.15  # [-] Sec. 5.10 default
+    tank_capacity_kg: float = 0.0  # [kg] maximum propellant load (Sec. 5.8); 0 = the budget's own total
+    isp_s: Optional[float] = None  # [s] None = the orbit thruster's (station keeping etc.)
+    thrust_angle_deg: float = 0.0  # [deg] thruster axis vs wanted thrust direction (Sec. 5.11)
+    misalignment_deg: float = 0.0  # [deg] incl. attitude error while thrusting
+    plume_efficiency: float = 1.0  # [-]
+    modulation_efficiency: float = 1.0  # [-]
+    # Beginning of life (Sec. 6.1), 2-sigma launcher injection errors
+    injection_sma_error_km: float = 0.0  # [km]
+    injection_eccentricity_error: float = 0.0  # [-] eccentricity-vector error to correct (frozen orbit)
+    injection_inclination_error_deg: float = 0.0  # [deg]
+    injection_raan_delta_v_m_s: float = 0.0  # [m/s] RAAN/MLST correction, strategy-specific
+    orbit_acquisition_delta_v_m_s: float = 0.0  # [m/s]
+    # Mission operations (Sec. 6.2); None = from the last run
+    transfer_delta_v_m_s: float = 0.0  # [m/s]
+    in_plane_control_delta_v_m_s: Optional[float] = None  # [m/s]
+    out_of_plane_control_delta_v_m_s: Optional[float] = None  # [m/s]
+    formation_delta_v_m_s: Optional[float] = None  # [m/s]
+    collision_avoidance_count: float = 0.0  # [-] e.g. from ESA DRAMA, before the x4 margin
+    attitude_thruster_propellant_kg: float = 0.0  # [kg] before the 100% margin
+    # End of life (Sec. 6.3)
+    disposal: str = "uncontrolled_reentry"  # see SUPPORTED_DISPOSALS
+    clearance_sma_drop_km: float = 0.0  # [km] AD10 suggests >= 5 km for formation flyers
+    disposal_lifetime_years: float = 5.0  # [year] orbit lifetime after the disposal burn
+    controlled_reentry_delta_v_m_s: float = 0.0  # [m/s] burns before the last
+    controlled_reentry_last_burn_m_s: float = 0.0  # [m/s] the last burn, before its 15% margin
+    hall_thruster_ignition_kg: float = 0.0  # [kg] cathode start-up losses over the mission
+
+    def validate(self, spacecraft_name: str) -> None:
+        where = f"{spacecraft_name}: propellant_budget"
+        _require(0.0 < self.mission_years <= 30.0, f"{where}.mission_years must be in (0, 30]")
+        _require(0.0 <= self.system_margin_fraction < 1.0, f"{where}.system_margin_fraction must be in [0, 1)")
+        _require(self.tank_capacity_kg >= 0.0, f"{where}.tank_capacity_kg must be >= 0")
+        _require(self.isp_s is None or self.isp_s > 0.0, f"{where}.isp_s must be > 0")
+        _require(0.0 <= self.thrust_angle_deg < 90.0 and 0.0 <= self.misalignment_deg < 90.0,
+                  f"{where}: thrust_angle_deg and misalignment_deg must be in [0, 90)")
+        _require(0.0 < self.plume_efficiency <= 1.0 and 0.0 < self.modulation_efficiency <= 1.0,
+                  f"{where}: plume_efficiency and modulation_efficiency must be in (0, 1]")
+        for name in ("injection_sma_error_km", "injection_eccentricity_error", "injection_inclination_error_deg",
+                     "injection_raan_delta_v_m_s", "orbit_acquisition_delta_v_m_s", "transfer_delta_v_m_s",
+                     "collision_avoidance_count", "attitude_thruster_propellant_kg", "clearance_sma_drop_km",
+                     "controlled_reentry_delta_v_m_s", "controlled_reentry_last_burn_m_s",
+                     "hall_thruster_ignition_kg"):
+            _require(getattr(self, name) >= 0.0, f"{where}.{name} must be >= 0")
+        for name in ("in_plane_control_delta_v_m_s", "out_of_plane_control_delta_v_m_s", "formation_delta_v_m_s"):
+            value = getattr(self, name)
+            _require(value is None or value >= 0.0, f"{where}.{name} must be >= 0 (or unset: from the last run)")
+        _require(self.disposal in SUPPORTED_DISPOSALS,
+                  f"{where}.disposal {self.disposal!r} must be one of {SUPPORTED_DISPOSALS}")
+        _require(0.0 < self.disposal_lifetime_years <= 25.0, f"{where}.disposal_lifetime_years must be in (0, 25]")
+
+
 @dataclass
 class FacetConfig:
     """One flat plate of the spacecraft's outer surface, for attitude
@@ -910,6 +976,7 @@ class SpacecraftConfig:
     momentum_dumping: Optional[MomentumDumpingConfig] = None
     magnetic_momentum_management: Optional[MagneticMomentumManagementConfig] = None
     fuel_tank: Optional[FuelTankConfig] = None
+    propellant_budget: Optional[PropellantBudgetConfig] = None  # see engine/propellant_budget.py
 
     # Phase 5: PURELY COSMETIC Vizard display -- replaces this spacecraft's
     # default cube icon with a custom CAD model
@@ -1279,6 +1346,8 @@ class SpacecraftConfig:
                       "actuator (desaturation hardware) on this spacecraft")
             num_reaction_wheels = sum(1 for a in self.actuators if a.kind == "reaction_wheel")
             self.magnetic_momentum_management.validate(self.name, num_reaction_wheels)
+        if self.propellant_budget is not None:
+            self.propellant_budget.validate(self.name)
         if self.fuel_tank is not None:
             _require("thruster" in actuator_kinds_present,
                       f"{self.name}: fuel_tank needs at least one 'thruster' actuator on this spacecraft to "
@@ -1798,7 +1867,9 @@ class Scenario:
             )
             fuel_tank_data = sc.pop("fuel_tank", None)
             fuel_tank = FuelTankConfig(**fuel_tank_data) if fuel_tank_data is not None else None
-            spacecraft.append(SpacecraftConfig(orbit=orbit, sensors=sensors, actuators=actuators,
+            budget_data = sc.pop("propellant_budget", None)
+            propellant_budget = PropellantBudgetConfig(**budget_data) if budget_data is not None else None
+            spacecraft.append(SpacecraftConfig(propellant_budget=propellant_budget, orbit=orbit, sensors=sensors, actuators=actuators,
                                                 power=power, rf_link=rf_link, comms_pointing=comms_pointing,
                                                 station_keeping=station_keeping,
                                                 geo_station_keeping=geo_station_keeping,

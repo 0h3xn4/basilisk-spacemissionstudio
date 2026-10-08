@@ -1299,6 +1299,16 @@ class SpacecraftEditorDialog(QDialog):
         viz_model_layout.addStretch(1)
         tabs.addTab(_scrollable(viz_model_tab), "Vizard model")
 
+        # -- Delta-V and propellant budget inputs (ESA AD10) --------------------
+        from .budget_widget import BudgetInputsGroup
+
+        budget_tab = QWidget()
+        budget_layout = QVBoxLayout(budget_tab)
+        self.budget_group = BudgetInputsGroup(config.propellant_budget if config else None)
+        budget_layout.addWidget(self.budget_group)
+        budget_layout.addStretch(1)
+        tabs.addTab(_scrollable(budget_tab), "Budget (AD10)")
+
         if self._orbit_only:
             tabs.setTabVisible(self._sensors_tab_index, False)
             tabs.setTabVisible(self._fsw_tab_index, False)
@@ -1528,6 +1538,7 @@ class SpacecraftEditorDialog(QDialog):
             momentum_dumping=self._momentum_dumping_to_dataclass(),
             magnetic_momentum_management=self._magnetic_momentum_management_to_dataclass(),
             fuel_tank=self._fuel_tank_to_dataclass(),
+            propellant_budget=self.budget_group.to_config(),
             enable_drag=self.enable_drag_check.isChecked(),
             drag_coeff=self.drag_coeff.value(),
             drag_area_m2=self.drag_area_m2.value(),
