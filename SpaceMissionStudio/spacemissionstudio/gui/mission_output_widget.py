@@ -54,6 +54,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from .. import output_provenance
 from ..engine.results import CommandSummary, ResultSet, TimeSeries
 from ..plot_categories import categorize, legacy_display
 from .theme import PALETTE
@@ -341,6 +342,9 @@ class MissionOutputWidget(QWidget):
             path = path.with_suffix(".csv")
         try:
             self._summary.export_csv(path)
+            provenance = getattr(self._result, "provenance", None)
+            if provenance is not None:  # provenance on every output (UX/UI guidelines)
+                output_provenance.write_sidecar(path, provenance.to_dict())
         except OSError as exc:
             QMessageBox.critical(self, "Export failed", str(exc))
             return

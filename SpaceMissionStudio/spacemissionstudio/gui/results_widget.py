@@ -145,6 +145,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from .. import output_provenance
 from ..engine import time_system
 from ..engine.results import ResultSet, TimeSeries
 from ..plot_categories import categorize as _categorize
@@ -1229,6 +1230,10 @@ class ResultsWidget(QWidget):
                 return
             try:
                 svg_text = urllib.parse.unquote(data_url[len(prefix):])
+                provenance = self._result.provenance if self._result is not None else None
+                if provenance is not None:  # provenance on every output (UX/UI guidelines)
+                    svg_text = output_provenance.svg_with_provenance(svg_text, provenance.summary_lines(),
+                                                                     provenance.to_dict())
                 Path(path).write_text(svg_text, encoding="utf-8")
             except OSError as exc:
                 QMessageBox.critical(self, "Save failed", str(exc))
@@ -1241,6 +1246,9 @@ class ResultsWidget(QWidget):
             return
         try:
             png_bytes = base64.b64decode(data_url[len(prefix):])
+            provenance = self._result.provenance if self._result is not None else None
+            if provenance is not None:  # provenance on every output (UX/UI guidelines)
+                png_bytes = output_provenance.png_with_provenance(png_bytes, provenance.to_dict())
             Path(path).write_bytes(png_bytes)
         except (OSError, ValueError) as exc:
             QMessageBox.critical(self, "Save failed", str(exc))

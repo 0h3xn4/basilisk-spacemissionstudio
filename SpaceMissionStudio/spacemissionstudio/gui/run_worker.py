@@ -70,6 +70,7 @@ from typing import Optional
 
 from PySide6.QtCore import QThread, Signal
 
+from .. import output_provenance
 from ..schema.scenario import MonteCarloConfig, Scenario
 
 _logger = logging.getLogger(__name__)
@@ -177,6 +178,8 @@ class MonteCarloWorker(QThread):
             return
         try:
             failures = run_monte_carlo(self.scenario, self.mc_config, self.archive_dir)
+            output_provenance.write_sidecar(Path(self.archive_dir) / "archive",
+                                            output_provenance.scenario_record(self.scenario))
         except MonteCarloError as exc:
             self.failed.emit(str(exc))
             return

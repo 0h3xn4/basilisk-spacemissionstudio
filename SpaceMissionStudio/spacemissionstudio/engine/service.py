@@ -150,8 +150,6 @@ installed version happens to add.
 from __future__ import annotations
 
 import dataclasses
-import hashlib
-import json
 import logging
 import math
 import os
@@ -168,7 +166,7 @@ from Basilisk.utilities import SimulationBaseClass, macros, orbitalMotion, simHe
 from Basilisk.utilities.supportDataTools.dataFetcher import DataFile
 
 from .. import __version__ as _SPACEMISSIONSTUDIO_VERSION
-from .. import dependencies
+from .. import dependencies, output_provenance
 from ..schema.scenario import OrbitIC, Scenario
 from . import (earth_orientation, environment_models, frames, fsw, geodesy, geodetic_atmosphere, kernels,
                link_budget, long_run, orbit_maintenance, planet_rotation, time_system, tle, vizard)
@@ -672,8 +670,7 @@ class SimulationService:
         # docstring for why this matters).
         self._run_started_utc = datetime.now(timezone.utc).isoformat()
         self._dependency_versions = dependencies.dependency_versions()
-        self._scenario_sha256 = hashlib.sha256(
-            json.dumps(self.scenario.to_dict(), sort_keys=True).encode("utf-8")).hexdigest()
+        self._scenario_sha256 = output_provenance.scenario_sha256(self.scenario)
         version_note = dependencies.basilisk_check(Basilisk.__version__)
         if version_note:
             _logger.warning("%s", version_note)

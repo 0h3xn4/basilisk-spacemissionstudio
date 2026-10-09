@@ -60,7 +60,7 @@ import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from . import dependencies
+from . import dependencies, output_provenance
 from .logging_setup import configure_logging
 from .schema import ScenarioValidationError, load_scenario
 from .schema.command import script_blocks
@@ -272,6 +272,7 @@ def cmd_monte_carlo(args: argparse.Namespace) -> int:
           f"({len(scenario.monte_carlo.dispersions)} dispersion(s), {scenario.monte_carlo.thread_count} thread(s))...")
     try:
         failures = run_monte_carlo(scenario, scenario.monte_carlo, args.archive_dir)
+        output_provenance.write_sidecar(Path(args.archive_dir) / "archive", output_provenance.scenario_record(scenario))
     except MonteCarloError as exc:
         print(f"ERROR: Monte Carlo run failed: {exc}", file=sys.stderr)
         return 3
@@ -502,7 +503,8 @@ def cmd_ccsds_export(args: argparse.Namespace) -> int:
     epoch = time_system.elapsed_to_utc(scenario.epoch_utc, [0.0])[0]
     for sc in scenario.spacecraft:
         if sc.orbit.type == "tle":
-            text = ccsds_odm.omm_from_tle(sc.orbit.tle_line1, sc.orbit.tle_line2, sc.name)
+            text = ccsds_odm.omm_from_tle(sc.orbit.tle_line1, sc.orbit.tle_line2, sc.name,
+                                          comments=output_provenance.scenario_lines(scenario))
             path = args.out / f"{sc.name}.omm"
         else:
             try:
@@ -520,7 +522,8 @@ def cmd_ccsds_export(args: argparse.Namespace) -> int:
                 srp_area_m2=sc.srp_area_m2 if sc.enable_srp else None, srp_coeff=sc.srp_coeff if sc.enable_srp else None,
                 drag_area_m2=sc.drag_area_m2 if sc.enable_drag else None,
                 drag_coeff=sc.drag_coeff if sc.enable_drag else None,
-                comments=[f"Initial state of scenario {scenario.name!r}; EME2000 is SPICE J2000"])
+                comments=[f"Initial state of scenario {scenario.name!r}; EME2000 is SPICE J2000",
+                          *output_provenance.scenario_lines(scenario)])
             path = args.out / f"{sc.name}.opm"
         path.write_text(text, encoding="ascii")
         print(f"wrote {path}")
