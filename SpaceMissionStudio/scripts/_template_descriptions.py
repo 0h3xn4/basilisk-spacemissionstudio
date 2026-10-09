@@ -441,4 +441,27 @@ Try changing:
 - Data rate 10 Mbit/s: the edge margin falls to 0.6 dB.
 - Antenna pattern: a gain table from your patch's datasheet. The cos^n model is broader than most real \
 patches.""",
+    "27": """\
+A 300 kg satellite whose cells sit on two deployed wings, 2.4 x 1.0 m and 8 kg each, one on each side. Each \
+wing is a panel on a spring-damper hinge, so it flexes and its motion acts back on the attitude. The \
+satellite starts 71 deg off the Sun and turns to it with its wheels. 2.4 hours.
+
+The wings' first mode is assumed: 0.2 Hz with the hub held fixed, and 0.5% damping. Use your array's \
+measured or analysed value.
+
+What to look at:
+- flex-sat.solar_array.wing-1.deflection: 0.07 deg as the wheels start the turn, ringing at 0.26 Hz. \
+Free of the hub's mass, the wing rings faster than its hub-fixed 0.2 Hz.
+- The ringing is below 0.001 deg within 4.3 min: the attitude control damps it through the hub.
+- flex-sat.sun_heading_body: within 0.1 deg of the Sun after 7.1 min, the same as with the wings rigid.
+- flex-sat.solar_array.wing-1.power: up to 980 W per wing in sunlight, 0 in each eclipse (the first from 23 to 58 min).
+
+Try changing:
+- First mode 0.05 Hz (Flexible solar arrays, Orbit / mass tab): the wings swing 0.94 deg and ring at \
+0.065 Hz, and the pointing still settles as before.
+- Damping 5%: the ringing dies only slightly sooner, since the control already damps most of it.
+- Recording interval 5 s: the Explain tab warns that the samples are too far apart to show the flexing.
+
+Note:
+- Flexible arrays need the rkf45 or rkf78 integrator.""",
 }

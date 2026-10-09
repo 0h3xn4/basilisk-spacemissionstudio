@@ -170,6 +170,11 @@ def _sc(scenario: Scenario):
     return scenario.spacecraft[0]
 
 
+def _set_all_arrays(scenario: Scenario, attribute: str, value: float) -> None:
+    for array in _sc(scenario).solar_arrays:
+        setattr(array, attribute, value)
+
+
 def _rw_max_momentum(scenario: Scenario) -> float:
     return float(_sc(scenario).actuators[0].params["maxMomentum"])
 
@@ -1638,6 +1643,31 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
                 ],
             ),
             _duration_page("Berlin's pass groups come twice a day, so two days show the memory filling twice.",
+                           SimSettings._MAX_SINGLE_RUN_DAYS),
+        ],
+    ),
+    "27_flexible_solar_arrays.json": TemplateWizardSpec(
+        template_filename="27_flexible_solar_arrays.json",
+        pages=[
+            WizardPageSpec(
+                title="Flexible wings",
+                intro="Both wings get the same values. The turn to the Sun at the start swings them.",
+                fields=[
+                    WizardField(
+                        "First mode", "Each wing's first bending frequency with the hub held fixed.",
+                        lambda s: _sc(s).solar_arrays[0].first_mode_hz,
+                        lambda s, v: _set_all_arrays(s, "first_mode_hz", v),
+                        0.01, 100.0, decimals=3, step=0.05, suffix=" Hz", hint="0.05 Hz swings 0.94 deg",
+                    ),
+                    WizardField(
+                        "Damping ratio", "Each wing's structural damping, as a fraction of critical.",
+                        lambda s: _sc(s).solar_arrays[0].damping_ratio * 100.0,
+                        lambda s, v: _set_all_arrays(s, "damping_ratio", v / 100.0),
+                        0.0, 99.0, decimals=2, step=0.5, suffix=" %", hint="The attitude control damps most",
+                    ),
+                ],
+            ),
+            _duration_page("The wings ring out within minutes; longer runs add orbits of power.",
                            SimSettings._MAX_SINGLE_RUN_DAYS),
         ],
     ),

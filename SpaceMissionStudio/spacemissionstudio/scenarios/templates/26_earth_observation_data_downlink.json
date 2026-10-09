@@ -356,6 +356,7 @@
         ],
         "transmitter_power_w": 12.0
       },
+      "solar_arrays": [],
       "station_keeping": null,
       "geo_station_keeping": null,
       "phasing_keeping": null,

@@ -308,6 +308,29 @@ def _power_comms_section(scenario) -> ExplanationSection | None:
     return ExplanationSection(title="Power & comms", badges=badges)
 
 
+def _solar_array_section(scenario) -> ExplanationSection | None:
+    """Flexible arrays (engine.solar_arrays): their mass and first mode, and
+    a warning when the recorded samples are too sparse to show the flexing
+    (it then aliases into a slower false oscillation)."""
+    with_arrays = [sc for sc in scenario.spacecraft if sc.solar_arrays]
+    if not with_arrays:
+        return None
+    badges = [Badge("Flexible solar arrays", "accent")]
+    notes = []
+    settings = scenario.sim_settings
+    sample_s = settings.record_interval_s if settings.record_interval_s > 0 else settings.dynamics_task_rate_s  # [s]
+    for sc in with_arrays:
+        mass_kg = sum(a.mass_kg for a in sc.solar_arrays)  # [kg]
+        lowest_hz = min(a.first_mode_hz for a in sc.solar_arrays)  # [Hz]
+        count = len(sc.solar_arrays)
+        notes.append(f"{sc.name}: {count} array{'s' if count > 1 else ''}, {mass_kg:g} kg, first mode from "
+                     f"{lowest_hz:.3g} Hz")
+        fastest_hz = max(a.first_mode_hz for a in sc.solar_arrays)  # [Hz] hub fixed; free, it is higher
+        if fastest_hz > 0.5 / sample_s:
+            badges.append(Badge(f"{sc.name}: samples every {sample_s:g} s alias the flexing", "warning"))
+    return ExplanationSection(title="Flexible solar arrays", badges=badges, notes=notes)
+
+
 _PASS_MINUTES = 10.0  # [min] a typical LEO pass, for the "per pass" figure only
 
 
@@ -438,6 +461,7 @@ def _explain(scenario) -> ScenarioExplanation:
         _environment_section(scenario),
         _power_comms_section(scenario),
         _data_handling_section(scenario),
+        _solar_array_section(scenario),
         _ground_stations_section(scenario),
         _monte_carlo_section(scenario),
     ) if s is not None]

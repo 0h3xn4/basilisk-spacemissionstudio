@@ -104,6 +104,10 @@ def _spacecraft_series(scenario: Scenario, sc) -> List[str]:
         names += [f"{name}.constant_thrust.propellant_remaining", f"{name}.constant_thrust.delta_v"]
     if sc.comms_pointing is not None:
         names += [f"{name}.comms_pointing.active_mode", f"{name}.comms_pointing.pointing_error_deg"]
+    for array in sc.solar_arrays:
+        names += [f"{name}.solar_array.{array.name}.deflection", f"{name}.solar_array.{array.name}.deflection_rate"]
+        if array.generates_power and sc.power is not None:
+            names.append(f"{name}.solar_array.{array.name}.power")
     if sc.data_handling is not None:
         names += [f"{name}.data_handling.{part}"
                   for part in ("stored", "downlink_rate", "data_generated", "data_downlinked", "data_lost")]

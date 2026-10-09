@@ -248,6 +248,22 @@ _DATA_HANDLING_DISPLAYS = {
 }
 
 
+def _solar_array_display(name: str) -> Optional[SeriesDisplay]:
+    """``"{sc}.solar_array.{array}.<field>"`` series (``engine.solar_arrays``)."""
+    if ".solar_array." not in name:
+        return None
+    array, _, field_name = name.rsplit(".solar_array.", 1)[-1].rpartition(".")
+    if field_name == "deflection":
+        return SeriesDisplay(f"Solar Array Deflection: {array}", "Deflection", "deg", _RAD2DEG,
+                              {"deflection": "Deflection"})
+    if field_name == "deflection_rate":
+        return SeriesDisplay(f"Solar Array Deflection Rate: {array}", "Deflection rate", "deg/s", _RAD2DEG,
+                              {"deflection_rate": "Deflection rate"})
+    if field_name == "power":
+        return SeriesDisplay(f"Solar Array Power: {array}", "Power", "W", 1.0, {"power": "Power"})
+    return None
+
+
 def _data_handling_display(name: str) -> Optional[SeriesDisplay]:
     """``"{sc}.data_handling.<field>"`` series (``engine.data_handling``):
     bits shown in Gbit, rates in Mbit/s."""
@@ -371,7 +387,7 @@ def categorize(name: str, series: TimeSeries) -> Optional[SeriesDisplay]:
     this feature existed -- rather than erroring or looking unfinished.
     """
     for fn in (_vector_display, _orbit_element_display, _controller_display, _comms_and_thermal_display,
-               _access_pair_display, _monte_carlo_display, _data_handling_display):
+               _access_pair_display, _monte_carlo_display, _data_handling_display, _solar_array_display):
         result = fn(name)
         if result is not None:
             return result

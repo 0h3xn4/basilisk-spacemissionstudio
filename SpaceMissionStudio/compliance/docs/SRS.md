@@ -157,7 +157,7 @@ states or modes beyond those in 5.5.
 | SRS-F-06 | The Earth-fixed frame shall be ITRF93 from installed IERS-based NAIF files. Without them it shall be IAU_EARTH, with a warning stating the accuracy cost. | E-ST-10-09C 5.4.9f; E-ST-10-04C 4.2.1c |
 | SRS-F-07 | Time shall be converted UTC → TAI → TT → TDB with ERFA. The simulation time variable shall be TDB seconds since the scenario epoch. Results shall be convertible to UTC. | E-ST-10-09C 5.4.4 |
 | SRS-F-08 | Ground stations shall be WGS-84 geodetic sites. Access shall use the geodetic elevation above a mask. Passes shall be predicted and recorded. | E-ST-10-09C 5.4.6a |
-| SRS-F-09 | Attitude guidance and control shall use Basilisk FSW chains for: inertial, Hill, velocity, Sun-safe and location pointing. Sensors and actuators shall be modelled with noise, bias, saturation and faults where Basilisk provides them. | Tool |
+| SRS-F-09 | Attitude guidance and control shall use Basilisk FSW chains for: inertial, Hill, velocity, Sun-safe and location pointing. Sensors and actuators shall be modelled with noise, bias, saturation and faults where Basilisk provides them. Deployed solar arrays may be flexible: a panel on a spring-damper hinge whose motion acts on the attitude. | Tool |
 | SRS-F-10 | Orbit maintenance shall be available: LEO station keeping, along-track phasing (by a drift-orbit controller or by Basilisk's `meanOEFeedback` or `hillFrameRelativeControl` formation-flying modules), GEO longitude/inclination keeping, momentum management. | Tool |
 | SRS-F-11 | A mission sequence shall run these commands: propagate (duration, epoch or event); impulsive maneuver; Lambert transfer; assignment; report; if; while; script block. | Tool |
 | SRS-F-12 | Each run shall produce named series. Each series shall carry units and its frame. Results shall export to CSV with a `provenance.json` recording: tool and Basilisk versions; qualification; dependencies; scenario SHA-256; data files; time system; frames. | E-ST-10-09C 5.4.1a/h, 5.4.2a, 5.4.3; Q-ST-80C 6.2.4 |
@@ -329,7 +329,7 @@ Methods: T = test, A = analysis, I = inspection, R = review of design.
 | SRS-F-06 | T | `tests/test_earth_orientation.py`, `tests/validation/test_v02_earth_orientation.py` |
 | SRS-F-07 | T | `tests/test_time_system.py`, `tests/validation/test_v01_time_scales.py` |
 | SRS-F-08 | T | `tests/test_geodesy.py`, `tests/validation/test_v05_passes.py` |
-| SRS-F-09 | T | `tests/test_device_realism.py`, `tests/test_css_estimation.py`, FSW tests |
+| SRS-F-09 | T | `tests/test_device_realism.py`, `tests/test_css_estimation.py`, `tests/test_solar_arrays.py`, FSW tests |
 | SRS-F-10 | T | `tests/test_orbit_maintenance*.py`, `tests/test_formation_control.py`, `tests/test_geo_station_keeping.py`, `tests/test_momentum_dumping.py` |
 | SRS-F-11 | T | `tests/test_mission_engine.py`, `tests/test_command.py` |
 | SRS-F-12 | T | `tests/test_results.py`, `tests/test_frames.py`, `tests/test_dependencies.py` |

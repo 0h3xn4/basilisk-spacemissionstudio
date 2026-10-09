@@ -564,6 +564,69 @@ class DataHandlingConfig:
 
 
 @dataclass
+class SolarArrayConfig:
+    """A deployed solar array that flexes: a rigid flat panel on a
+    torsional spring-damper hinge at its root (Basilisk's
+    ``hingedRigidBodyStateEffector``, the Allard, Schaub and Piggott hinged
+    panel model of a structure's first flexing mode). Its mass and inertia
+    move with it and act on the hub, so slews and torques excite it and
+    its oscillation shows in the hub's attitude.
+
+    The hinge stiffness and damping come from ``first_mode_hz`` and
+    ``damping_ratio``: the array's first bending frequency with the hub
+    held fixed (cantilevered), as a structural analysis or test gives it.
+    Free in orbit, the hub swings with the array, so the coupled frequency
+    the run shows is somewhat higher.
+
+    ``mass_kg`` is part of ``SpacecraftConfig.dry_mass_kg`` (the hub gets
+    the rest); ``SpacecraftConfig.inertia_kg_m2`` is the hub's own, without
+    the arrays. With ``generates_power`` and a power budget, the array is
+    a solar panel of ``span_m * width_m`` facing ``normal_b``, following its
+    own flexed orientation.
+    """
+
+    name: str
+    mass_kg: float  # [kg]
+    span_m: float  # [m] hinge to tip
+    width_m: float  # [m] along the hinge
+    hinge_position_b: list  # [m] body frame
+    deploy_direction_b: list  # body-frame direction from the hinge to the tip
+    normal_b: list  # body-frame normal of the cell side, perpendicular to deploy_direction_b
+    first_mode_hz: float  # [Hz] first bending frequency, hub held fixed
+    damping_ratio: float  # [-] of that mode
+    initial_deflection_deg: float = 0.0  # [deg] about the hinge, positive toward normal_b
+    initial_rate_deg_s: float = 0.0  # [deg/s]
+    generates_power: bool = True
+
+    def validate(self, spacecraft_name: str) -> None:
+        label = f"{spacecraft_name}: solar array {self.name!r}"
+        _require(bool(self.name), f"{spacecraft_name}: every solar array needs a name")
+        for key in ("mass_kg", "span_m", "width_m", "first_mode_hz"):
+            value = getattr(self, key)
+            _require(_is_finite_number(value) and value > 0, f"{label}: {key} must be > 0")
+        _require(self.span_m <= 100.0 and self.width_m <= 100.0,
+                  f"{label}: span_m and width_m must be at most 100 m -- check for a units mixup")
+        _require(self.first_mode_hz <= 100.0, f"{label}: first_mode_hz must be at most 100 Hz")
+        _require(_is_finite_number(self.damping_ratio) and 0.0 <= self.damping_ratio < 1.0,
+                  f"{label}: damping_ratio must be in [0, 1)")
+        for key in ("hinge_position_b",):
+            vector = getattr(self, key)
+            _require(isinstance(vector, list) and len(vector) == 3 and all(_is_finite_number(v) for v in vector),
+                      f"{label}: {key} must be a finite 3-element [x, y, z] list")
+        for key in ("deploy_direction_b", "normal_b"):
+            _require(_is_direction_vector(getattr(self, key)),
+                      f"{label}: {key} must be a non-zero, finite 3-element [x, y, z] list")
+        e = [v / math.sqrt(sum(c * c for c in self.deploy_direction_b)) for v in self.deploy_direction_b]
+        n = [v / math.sqrt(sum(c * c for c in self.normal_b)) for v in self.normal_b]
+        _require(abs(sum(a * b for a, b in zip(e, n))) < 1e-3,
+                  f"{label}: normal_b must be perpendicular to deploy_direction_b (the hinge runs along both "
+                  "faces' common edge)")
+        for key in ("initial_deflection_deg", "initial_rate_deg_s"):
+            _require(_is_finite_number(getattr(self, key)), f"{label}: {key} must be a finite number")
+        _require(abs(self.initial_deflection_deg) < 90.0, f"{label}: initial_deflection_deg must be within 90 deg")
+
+
+@dataclass
 class StationKeepingConfig:
     """Automated altitude/semi-major-axis station-keeping for one
     spacecraft, with delta-V and propellant bookkeeping
@@ -1129,6 +1192,7 @@ class SpacecraftConfig:
     rf_link: Optional[RFLinkConfig] = None
     comms_pointing: Optional[CommsPointingConfig] = None
     data_handling: Optional[DataHandlingConfig] = None
+    solar_arrays: list = field(default_factory=list)  # SolarArrayConfig: flexible, hinged arrays
     station_keeping: Optional[StationKeepingConfig] = None
     geo_station_keeping: Optional[GeoStationKeepingConfig] = None
     phasing_keeping: Optional[PhasingKeepingConfig] = None
@@ -1468,6 +1532,13 @@ class SpacecraftConfig:
                       f"{self.name}: rf_link.antenna_pattern {self.rf_link.antenna_pattern!r} needs "
                       "rf_link.antenna_boresight_b (or comms_pointing's): the gain toward the station depends "
                       "on where the antenna points")
+        for array in self.solar_arrays:
+            array.validate(self.name)
+        array_names = [array.name for array in self.solar_arrays]
+        _require(len(set(array_names)) == len(array_names), f"{self.name}: solar array names must be unique")
+        _require(sum(array.mass_kg for array in self.solar_arrays) < self.dry_mass_kg,
+                  f"{self.name}: the solar arrays weigh as much as dry_mass_kg or more -- dry_mass_kg is the "
+                  "whole dry spacecraft, arrays included")
         if self.data_handling is not None:
             self.data_handling.validate(self.name)
             _require(self.power is not None or not self.data_handling.needs_power,
@@ -1872,8 +1943,16 @@ class Scenario:
         _require(len(names) == len(set(names)), f"spacecraft names must be unique, got {names}")
         for sc in self.spacecraft:
             sc.validate()
+        flexible = [sc.name for sc in self.spacecraft if sc.solar_arrays]
+        _require(not flexible or self.sim_settings.integrator in ("rkf45", "rkf78"),
+                  f"{flexible[0] if flexible else ''}: flexible solar arrays need an adaptive integrator "
+                  f"(rkf45 or rkf78) -- with {self.sim_settings.integrator!r} a hinge oscillating faster than the "
+                  "step diverges")
         if self.simulation_mode == "orbit_only":
             for sc in self.spacecraft:
+                _require(not sc.solar_arrays,
+                          f"{sc.name}: solar arrays are set but scenario.simulation_mode is 'orbit_only' -- their "
+                          "flexing moves the attitude 'full_attitude' mode simulates, or remove them")
                 _require(sc.fsw_mode is None,
                           f"{sc.name}: fsw_mode is set but scenario.simulation_mode is 'orbit_only' -- attitude "
                           "control needs 'full_attitude' mode, or remove fsw_mode from this spacecraft")
@@ -2071,6 +2150,7 @@ class Scenario:
             rf_link = RFLinkConfig(**rf_link_data) if rf_link_data is not None else None
             comms_pointing_data = sc.pop("comms_pointing", None)
             comms_pointing = CommsPointingConfig(**comms_pointing_data) if comms_pointing_data is not None else None
+            solar_arrays = [SolarArrayConfig(**a) for a in sc.pop("solar_arrays", [])]
             data_handling_data = sc.pop("data_handling", None)
             data_handling = None
             if data_handling_data is not None:
@@ -2100,7 +2180,7 @@ class Scenario:
             propellant_budget = PropellantBudgetConfig(**budget_data) if budget_data is not None else None
             spacecraft.append(SpacecraftConfig(propellant_budget=propellant_budget, orbit=orbit, sensors=sensors, actuators=actuators,
                                                 power=power, rf_link=rf_link, comms_pointing=comms_pointing,
-                                                data_handling=data_handling,
+                                                data_handling=data_handling, solar_arrays=solar_arrays,
                                                 station_keeping=station_keeping,
                                                 geo_station_keeping=geo_station_keeping,
                                                 phasing_keeping=phasing_keeping, constant_thrust=constant_thrust,

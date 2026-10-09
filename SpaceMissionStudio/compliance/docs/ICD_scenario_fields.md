@@ -317,6 +317,25 @@ One sensor instance. ``kind`` is one of :data:`SUPPORTED_SENSOR_KINDS` (see the 
 | `integrator` | str | `'rkf78'` | see SUPPORTED_INTEGRATORS |
 | `record_interval_s` | float | `0.0` |  |
 
+## SolarArrayConfig
+
+A deployed solar array that flexes: a rigid flat panel on a torsional spring-damper hinge at its root (Basilisk's ``hingedRigidBodyStateEffector``, the Allard, Schaub and Piggott hinged panel model of a structure's first flexing mode). Its mass and inertia move with it and act on the hub, so slews and torques excite it and its oscillation shows in the hub's attitude.
+
+| Field | Type | Default | Unit / note |
+|---|---|---|---|
+| `name` | str | `required` |  |
+| `mass_kg` | float | `required` | [kg] |
+| `span_m` | float | `required` | [m] hinge to tip |
+| `width_m` | float | `required` | [m] along the hinge |
+| `hinge_position_b` | list | `required` | [m] body frame |
+| `deploy_direction_b` | list | `required` | body-frame direction from the hinge to the tip |
+| `normal_b` | list | `required` | body-frame normal of the cell side, perpendicular to deploy_direction_b |
+| `first_mode_hz` | float | `required` | [Hz] first bending frequency, hub held fixed |
+| `damping_ratio` | float | `required` | [-] of that mode |
+| `initial_deflection_deg` | float | `0.0` | [deg] about the hinge, positive toward normal_b |
+| `initial_rate_deg_s` | float | `0.0` | [deg/s] |
+| `generates_power` | bool | `True` |  |
+
 ## SpaceWeatherConfig
 
 See engine/spaceweather.py and engine/service.py. Real data only (user requirement): ``source`` is ``"bundled"`` (the default: CelesTrak's SW-All file shipped with the app -- observed since 1957, a 45-day forecast, NOAA's monthly F10.7 forecast to 2041 -- or a newer one the startup prompt downloaded) or ``"local_file"`` (your own CelesTrak ``.txt``/``.csv`` file, used only when ``local_file_path`` is set). SpaceMissionStudio never accesses the network at runtime. The ``"synthetic"`` profile of schema versions 1-2 was removed; ``schema.migrations`` moves old files to ``"bundled"``.
@@ -359,6 +378,7 @@ See engine/spaceweather.py and engine/service.py. Real data only (user requireme
 | `rf_link` | Optional[RFLinkConfig] | `None` |  |
 | `comms_pointing` | Optional[CommsPointingConfig] | `None` |  |
 | `data_handling` | Optional[DataHandlingConfig] | `None` |  |
+| `solar_arrays` | list | `[]` | SolarArrayConfig: flexible, hinged arrays |
 | `station_keeping` | Optional[StationKeepingConfig] | `None` |  |
 | `geo_station_keeping` | Optional[GeoStationKeepingConfig] | `None` |  |
 | `phasing_keeping` | Optional[PhasingKeepingConfig] | `None` |  |

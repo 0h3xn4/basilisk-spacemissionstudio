@@ -131,6 +131,16 @@ _META: Dict[str, SettingMeta] = {
     "antenna_front_to_back_db": SettingMeta("Antenna front-to-back ratio", " dB",
                                             "Patch pattern only: gain behind the ground plane, below the peak."),
     "antenna_gain_table": SettingMeta("Antenna gain table [deg, dBi]"),
+    # Flexible solar arrays
+    "span_m": SettingMeta("Span", " m", "Hinge to tip."),
+    "width_m": SettingMeta("Width", " m", "Along the hinge."),
+    "hinge_position_b": SettingMeta("Hinge position (body frame)", " m"),
+    "deploy_direction_b": SettingMeta("Extends toward (body frame)"),
+    "first_mode_hz": SettingMeta("First mode (hub held fixed)", " Hz"),
+    "damping_ratio": SettingMeta("Damping ratio"),
+    "initial_deflection_deg": SettingMeta("Initial deflection", " deg"),
+    "initial_rate_deg_s": SettingMeta("Initial deflection rate", " deg/s"),
+    "generates_power": SettingMeta("Generates power"),
     # Data handling
     "storage_capacity_gbit": SettingMeta("Memory capacity", " Gbit", "8 Gbit = 1 GB."),
     "transmitter_power_w": SettingMeta("Transmitter power draw", " W", "DC power while sending."),
@@ -310,6 +320,9 @@ def _page_and_label(path: Path, scenario: Scenario) -> Tuple[str, str, str, str,
             if name == "area_m2":
                 label, suffix = "Area", " m^2"
             page = f"{craft.name}: surface facets"
+        elif part == "solar_arrays":
+            group = craft.solar_arrays[path[3]].name
+            page = f"{craft.name}: solar arrays"
         elif part == "data_handling" and len(path) > 4 and path[3] == "instruments":
             group = craft.data_handling.instruments[path[4]].name
             page = f"{craft.name}: data handling"

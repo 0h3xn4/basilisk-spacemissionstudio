@@ -31,7 +31,8 @@ simulation starting where the last one ended:
   thrust, fuel tank) and battery charge;
 * thermal-sensor and wheel-motor temperatures (from their last recorded
   value);
-* the data in each instrument's memory partition (``data_handling``).
+* the data in each instrument's memory partition (``data_handling``);
+* each flexible solar array's deflection and its rate.
 
 Results are stitched into one :class:`ResultSet` on one time axis;
 cumulative delta-V series, and the generated, downlinked and lost data
@@ -152,6 +153,12 @@ def _carry_state(segment: Scenario, service, result: ResultSet) -> Dict[str, flo
         if handle.battery_module is not None and sc.power is not None:
             stored_j = float(handle.battery_module.batPowerOutMsg.read().storageLevel)  # [J]
             sc.power.battery_initial_soc = min(1.0, max(0.0, stored_j / (sc.power.battery_capacity_wh * 3600.0)))
+        if handle.solar_arrays is not None:
+            effectors = [e for e in handle.solar_arrays.effectors if hasattr(e, "hingedRigidBodyOutMsg")]
+            for array, effector in zip(sc.solar_arrays, effectors):
+                state = effector.hingedRigidBodyOutMsg.read()
+                array.initial_deflection_deg = math.degrees(float(state.theta))  # [deg]
+                array.initial_rate_deg_s = math.degrees(float(state.thetaDot))  # [deg/s]
         if handle.data_handling is not None:
             from .data_handling import BITS_PER_GBIT, stored_bits_by_instrument
 

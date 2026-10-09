@@ -186,6 +186,7 @@ from Basilisk.utilities.MonteCarlo.RetentionPolicy import RetentionPolicy
 
 from ..schema.scenario import DispersionConfig, MonteCarloConfig, Scenario, SimSettings
 from . import monte_carlo_results
+from .solar_arrays import hub_mass_offset_kg
 from .service import SimulationService, _orbit_ic_to_rv
 
 _logger = logging.getLogger(__name__)
@@ -240,18 +241,12 @@ def _accessor_name(spacecraft_name: str) -> str:
 
 def _propellant_offset_kg(sc_config) -> float:
     """How much MORE than ``dry_mass_kg`` ``engine.service.build()`` itself
-    puts in ``hub.mHub`` for this spacecraft at t=0 -- see
-    ``schema.scenario.SpacecraftConfig.dry_mass_kg``'s docstring
-    (station-keeping/constant-thrust propellant is additional mass on top
-    of the dry mass, both added if both are configured, mirroring
-    ``service.py``'s own ``initial_mass_kg`` computation exactly).
-    """
-    offset = 0.0
-    if sc_config.station_keeping is not None:
-        offset += sc_config.station_keeping.propellant_kg
-    if sc_config.constant_thrust is not None:
-        offset += sc_config.constant_thrust.propellant_kg
-    return offset
+    puts in ``hub.mHub`` for this spacecraft at t=0 -- the shared
+    ``engine.solar_arrays.hub_mass_offset_kg`` both use: the station-keeping,
+    GEO station-keeping and constant-thrust propellant, less any flexible
+    arrays (their own state effectors). It used to leave out the GEO
+    station-keeping propellant that service.py adds."""
+    return hub_mass_offset_kg(sc_config)
 
 
 class _DryMassPlusPropellantUniformDispersion(UniformDispersion):

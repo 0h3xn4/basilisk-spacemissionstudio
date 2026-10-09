@@ -271,6 +271,7 @@
       "rf_link": null,
       "comms_pointing": null,
       "data_handling": null,
+      "solar_arrays": [],
       "station_keeping": null,
       "geo_station_keeping": null,
       "phasing_keeping": null,
