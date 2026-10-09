@@ -8382,3 +8382,98 @@ the memory only and 21.8 s with the downlink as well.
 
 **SRS-F-13** now names "onboard data generation, storage and downlink"
 among the analyses; `tests/test_data_handling.py` verifies it.
+
+## Flexible solar arrays (SRS-F-09)
+
+A spacecraft can now have deployed solar arrays that flex
+(`SpacecraftConfig.solar_arrays`, `engine.solar_arrays`). Each array is
+one Basilisk `hingedRigidBodyStateEffector`, as
+`examples/scenarioHingedRigidBody.py` uses it: a rigid panel on a hinge
+with a torsional spring and damper. The panel's motion is part of the
+spacecraft's equations of motion, so its swinging acts back on the
+attitude. Basilisk itself is unchanged.
+
+**From the configuration to Basilisk's parameters.** The user gives what
+an array's datasheet or structural analysis gives: mass, span, width,
+the hinge position, the direction the panel extends, its cell-side
+normal, its first mode and its damping ratio. The engine derives:
+
+* the hinge frame (`dcm_HB`): h1 against the deploy direction, h3 along
+  the normal, the hinge line h2 = h3 x h1, as Basilisk's
+  `r_SP = r_HB - d * sHat1` requires;
+* `d` = span / 2 and a uniform thin plate's inertia about its centre;
+* `k = J (2 pi f)^2` and `c = 2 zeta sqrt(k J)`, with J the panel's
+  inertia about the hinge line, so that f and zeta are the mode with the
+  hub held fixed.
+
+A test checks this against Basilisk directly: on a hub of 10^6 kg, an
+array configured for 0.8 Hz and 3% damping rings at 0.8 Hz and decays at
+3%, both within 1%. Another checks the sign (a positive angle turns the
+tip toward the cells) and the panel's centre-of-mass position against
+the hinge geometry.
+
+**Mass and inertia.** `dry_mass_kg` is the whole dry spacecraft with its
+arrays; the hub gets the rest (`hub_mass_kg`). `inertia_kg_m2` is the
+hub's alone. The flight software (`VehicleConfigMsg`, `mrpFeedback`)
+uses the hub's inertia plus the undeflected arrays' about the body
+origin, as a real spacecraft's flight software would. The Monte Carlo
+dry-mass dispersion now uses the same hub-mass rule as the run. Doing so
+showed that it had left out the GEO station-keeping propellant
+`engine.service` adds to the hub; it now includes it.
+
+**Power.** With a power budget, each generating array gets its own
+`simpleSolarPanel`, subscribed to the array's
+`hingedRigidBodyConfigLogOutMsg` (the panel's own position and attitude),
+as in `examples/scenarioDeployingPanel.py`. The cells' Sun angle
+follows the deflected panel. Basilisk writes that message only when
+something subscribes to it, so a test that read it unsubscribed saw
+zeros; the test now records it.
+
+**Integrator and sampling.** Basilisk's default fixed-step RK4 went to
+NaN in trial runs at 0.5 s and 1 s steps with flexible arrays, while
+rkf78 at a 1 s step stayed within 4e-5 deg of a fine reference. The
+schema therefore requires rkf45 or rkf78 when arrays are present
+(rk4 is not among the tool's integrators; euler and rk2 are refused).
+Arrays are refused in `orbit_only`. The Explain tab warns when the
+recording interval is more than half a period of the fastest first mode,
+since the samples would then alias the flexing.
+
+**Results and the GUI.** Series `<sc>.solar_array.<array>.deflection`,
+`.deflection_rate` and, for a generating array, `.power`. Long runs carry
+each array's angle and rate into the next segment (a test splits a run
+in two and matches the unsplit run within 1e-6 rad). The spacecraft
+editor's Orbit / mass tab has a Flexible solar arrays table; the wizard,
+plot categories and the Explain tab know the new fields.
+
+**Template 27** (Flexible solar arrays): the 300 kg preset in Sun-safe
+pointing, its cells on two wings of 2.4 x 1.0 m and 8 kg each, with an
+assumed 0.2 Hz first mode and 0.5% damping, starting 71 deg off the Sun.
+Measured as shipped over its 2.4 h:
+
+* each wing swings 0.066 deg, 2 s in, as the wheels start the turn, and
+  rings at 0.26 Hz: free of the hub's mass, the wing's mode is the
+  coupled one, above its hub-fixed 0.2 Hz;
+* the ringing is below 0.001 deg within 4.3 min;
+* the Sun is within 0.1 deg after 7.1 min, and within 0.01 deg after
+  9.4 min, the same as with the wings' mass and inertia rigid on the
+  hub;
+* each wing gives up to 980 W in sunlight.
+
+Its "try changing" items were run. With a 0.05 Hz first mode, the wings
+swing 0.94 deg and ring at 0.065 Hz, and the pointing still settles at
+7.1 min. With 5% damping, the ringing falls below 0.001 deg after 4.2 min
+instead of 4.3: the attitude control already damps most of it through
+the hub.
+
+Earlier trial slews, of 12 kg wings of 3.0 x 1.2 m and 60 deg inertial
+turns with the default gains, showed the same pattern: 0.03 deg of
+deflection at 0.3 Hz and 1.06 deg at 0.05 Hz, and the same settling as
+rigid. Much higher gains made the rigid case limit-cycle as well, so no
+claim about them is made.
+
+**Cost.** One hour of template 27 at its 0.5 s step took 7 s, against
+5 to 6 s with the wings rigid.
+
+**SRS-F-09** now says that "Deployed solar arrays may be flexible: a
+panel on a spring-damper hinge whose motion acts on the attitude"; it is
+verified by `tests/test_solar_arrays.py`.

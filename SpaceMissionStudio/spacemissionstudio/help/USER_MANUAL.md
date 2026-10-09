@@ -207,7 +207,7 @@ path, each step building on the one before:
 |---|---|---|
 | 1. Orbits | 01, 02, 22 | An ideal orbit; what Earth's shape, the Sun and the Moon do to it; a realistic satellite with drag and a ground station |
 | 2. Keeping an orbit | 18, 03, 17 | Station keeping against drag (low orbit) and drift (geostationary); how propellant runs down |
-| 3. Pointing | 06, 07, 15, 14 | Attitude control, ideal and with real hardware; pointing at the Moon; finding the Sun with sun sensors |
+| 3. Pointing | 06, 07, 15, 14, 27 | Attitude control, ideal and with real hardware; pointing at the Moon; finding the Sun with sun sensors; flexible wings swinging in a turn |
 | 4. Disturbances and momentum | 10, 21, 12, 13, 11 | Gravity-gradient and surface torques; unloading wheels with thrusters or torque rods; thrusters for pointing |
 | 5. Missions in steps | 08, 16, 23 | Mission Sequences: burns, a Lambert transfer, stopping on a ground pass |
 | 6. Several spacecraft | 04, 05, 24 | A Walker constellation; a formation held by two different control laws |
@@ -413,6 +413,47 @@ Not modelled: rates that change over an orbit; more than one transmitter,
 or adaptive coding; atmosphere, rain and polarisation losses in the link
 budget (lump them into the implementation loss); ground antenna pointing,
 which is assumed perfect.
+
+### Flexible solar arrays
+
+**Flexible solar arrays** (spacecraft editor, **Orbit / mass** tab) lists
+deployed arrays that flex. Each is a flat panel on a hinge with a spring
+and a damper (Basilisk's `hingedRigidBodyStateEffector`): when the
+spacecraft turns, the panel swings, and its swinging pushes back on the
+attitude.
+
+| Column | Meaning |
+|---|---|
+| Mass, Span, Width | The panel; span is its length out from the hinge |
+| Hinge at | Where the hinge sits, in the body frame |
+| Extends toward | The way the panel points out from the hinge |
+| Cell-side normal | The cell side, perpendicular to "Extends toward" |
+| First mode, Damping ratio | The panel's first bending frequency with the spacecraft held still, and its damping as a fraction of critical |
+| Initial deflection, Initial rate | The hinge angle and rate at the start; positive turns the tip toward the cell side |
+| Generates power | Whether the panel's cells feed the power budget |
+
+* **Dry mass includes the arrays.** The hub gets the rest; set the
+  spacecraft's inertia to the hub's alone. The attitude control uses the
+  hub's inertia plus the undeflected arrays'.
+* **First mode and damping** come from the array's test or analysis.
+  Flexible on the spacecraft, the panel rings faster than its first mode
+  says, because the hub moves too (template 27: 0.26 Hz for a 0.2 Hz
+  wing).
+* **Power.** With a power budget, each generating panel has its own
+  solar cells at the panel's own deflected attitude. The power budget's
+  panel stays as body-mounted cells.
+* **Integrator.** Flexible arrays need the rkf45 or rkf78 integrator; a
+  fixed-step integrator went unstable in trial runs. The Explain tab
+  warns when the recording interval is too long to show the flexing
+  (more than half a period of the fastest first mode).
+* Long runs carry each panel's angle and rate from segment to segment.
+
+The run records `<sc>.solar_array.<array>.deflection` and
+`.deflection_rate`, and `.power` for a generating panel. Template 27
+shows all of it.
+
+Not modelled: more than one mode per panel, twisting, and panels that
+deploy or are driven during the run.
 
 ## 7. Reading the Results tab
 
@@ -769,6 +810,10 @@ anyone who hasn't worked with spacecraft before:
   from a body OTHER than the one it's orbiting -- e.g. the Sun or Moon's
   gravity acting on a satellite orbiting Earth. Usually a small effect
   next to the central body's own gravity, but real over long enough runs.
+* **Flexible appendage** -- a large, light part of a spacecraft, such
+  as a solar-array wing, that bends and swings when the spacecraft turns.
+  Its **first mode** is its lowest bending frequency; its **damping
+  ratio** says how quickly the swinging dies away by itself.
 * **Ground station** -- a fixed point on Earth's surface a spacecraft
   might need to communicate with; SpaceMissionStudio can compute exactly
   when each spacecraft is visible to each ground station.

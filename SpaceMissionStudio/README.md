@@ -182,6 +182,11 @@ with its own measurement noise/bias/fault layer
 separately gain an OPTIONAL per-wheel motor-thermal model
 (`motorThermal.MotorThermal`, motor inefficiency/friction heat vs.
 ambient dissipation) via the `motor_thermal_*` params. See template '20'.
+Deployed solar arrays can be flexible (`SpacecraftConfig.solar_arrays`):
+each is a panel on a spring-damper hinge
+(`hingedRigidBodyStateEffector`), whose swinging acts back on the
+attitude and whose cells feed the power budget at the panel's own
+deflected attitude. See template 27 and User Manual Sec. 6.
 
 **Mission planning** -- a GMAT/FreeFlyer-inspired Resources / Mission
 Sequence / Output architecture: `propagate` (duration, epoch, or
