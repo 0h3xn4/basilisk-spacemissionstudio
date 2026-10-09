@@ -18,4 +18,5 @@ fff45f420f0d026b4a39f99b3bfc47dfc06561c598c8db825cfce5fd706bda7a  IBMPlexSans-Se
 
 The files are IBM's, unmodified. Licence: SIL Open Font License 1.1,
 Copyright 2017 IBM Corp., Reserved Font Name "Plex" (`OFL.txt`, identical
-in both packages).
+in both packages; stored here with LF line endings and one trailing space
+removed for the repository's whitespace hooks, the text is unchanged).
