@@ -185,19 +185,24 @@ class StartupFetchDialog(QDialog):
         label.setMaximumWidth(420)
         layout.addWidget(label)
 
-        self.kernels_checkbox = QCheckBox("Support-data kernels (SPICE, gravity, magnetic field)")
+        from ..engine.reference_data import DOWNLOADS
+
+        support, weather = DOWNLOADS["support_data"], DOWNLOADS["space_weather"]
+        self.kernels_checkbox = QCheckBox(f"Support data (SPICE, gravity, magnetic field) -- {support.approx_size}")
         self.kernels_checkbox.setChecked(True)
         self.kernels_checkbox.setToolTip(
+            f"From {support.source}: {', '.join(support.files)}. "
             "Normally only needed once, ever (every packaging/ installer already pre-fetches these) -- "
             "this is a safety net for a dev checkout or a corrupted/cleared cache, and a no-op (no "
             "network touched) if everything is already cached."
         )
         layout.addWidget(self.kernels_checkbox)
 
-        self.space_weather_checkbox = QCheckBox("Real space-weather history (CelesTrak)")
+        self.space_weather_checkbox = QCheckBox(f"Space weather from CelesTrak (SW-All.csv) -- {weather.approx_size}")
         self.space_weather_checkbox.setChecked(True)
         self.space_weather_checkbox.setToolTip(
-            "Downloads a real F10.7/Ap CSV, refreshed every time you agree. The Propagation Setup "
+            f"From {weather.source}. The file is checked before it replaces the current one, which is kept "
+            "for rollback (Data tab). Downloads a real F10.7/Ap CSV, refreshed every time you agree. The Propagation Setup "
             "dialog's Local file field pre-fills with it automatically once fetched."
         )
         layout.addWidget(self.space_weather_checkbox)
@@ -206,7 +211,7 @@ class StartupFetchDialog(QDialog):
 
         installed = eo.installed()
         until = eo.high_accuracy_until(installed)
-        self.earth_orientation_checkbox = QCheckBox("Earth orientation (NAIF ITRF93 Earth PCKs, ~36 MB)")
+        self.earth_orientation_checkbox = QCheckBox("Earth orientation from NAIF (ITRF93 Earth PCKs) -- about 36 MB")
         # Checked when nothing is installed or the high-accuracy span is over.
         self.earth_orientation_checkbox.setChecked(not installed or until is None or until < datetime.utcnow())
         self.earth_orientation_checkbox.setToolTip(

@@ -470,7 +470,7 @@ def test_run_with_live_plot_clears_previous_result_and_shows_results_tab(window,
     stale = ResultSet(scenario_name="stale")
     stale.add(TimeSeries("sat-1.position_N", [0.0], ("x", "y", "z"), [[0.0, 0.0, 0.0]], units="m"))
     window.results_widget.set_result(stale)
-    window.right_tabs.setCurrentWidget(window.kernel_status_widget)
+    window.right_tabs.setCurrentWidget(window.data_panel_widget)
 
     window.live_plot_action.setChecked(True)
     window.on_run()
@@ -957,7 +957,7 @@ def test_run_finished_with_command_summary_shows_mission_output_tab(window):
 def test_run_finished_without_command_summary_shows_results_tab(window):
     from spacemissionstudio.engine.results import ResultSet
 
-    window.right_tabs.setCurrentWidget(window.kernel_status_widget)
+    window.right_tabs.setCurrentWidget(window.data_panel_widget)
     window._on_run_finished(ResultSet(scenario_name="test", series={}))
     assert window.right_tabs.currentWidget() is window.results_widget
 

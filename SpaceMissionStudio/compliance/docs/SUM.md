@@ -61,7 +61,7 @@ The tool lets a mission analyst do the following without writing code:
 
 | File | Location | Notes |
 |---|---|---|
-| Basilisk 2.12.0 and its data (SPICE kernels) | Python environment; Basilisk's data cache | Installed by the installer; kernels fetched by Basilisk (**Kernel Status** tab) |
+| Basilisk 2.12.0 and its data (SPICE kernels) | Python environment; Basilisk's data cache | Installed by the installer; runs never download. The **Data** tab lists every file (source, dates, SHA-256) and downloads only after asking |
 | Space weather (CelesTrak SW-All, NASA MSFC prediction) | Bundled in the package; optional newer copy in `~/.cache/SpaceMissionStudio/` | Downloaded only when you agree (start-up prompt) |
 | IERS-based Earth orientation files (NAIF PCKs) | `~/.cache/SpaceMissionStudio/earth_orientation/` or the installation's `share/` | Optional. Without them the Earth frame is less accurate and runs say so. `spacemissionstudio earth-orientation --fetch` |
 | Vizard (optional) | Downloaded on request, or your own installation | 3-D view only |
@@ -108,7 +108,7 @@ The tool lets a mission analyst do the following without writing code:
 - **Window layout:** UM section 3:
   - left tabs **Load Scenario** and **Scenario Editor**;
   - right tabs **Results**, **Mission Dashboard**, **Mission Output**,
-    **Kernel Status**, **Explain**.
+    **Data**, **Explain**.
 - **States:**
   - **Editing:** everything available.
   - **Running:** the run controls are disabled and **Abort Run** is

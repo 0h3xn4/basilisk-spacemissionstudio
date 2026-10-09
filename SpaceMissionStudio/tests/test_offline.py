@@ -171,7 +171,7 @@ def test_a_run_with_a_support_file_missing_stops_instead_of_downloading(no_netwo
     monkeypatch.setattr(dataFetcher.POOCH, "path", tmp_path)  # an empty cache
     scenario = load_scenario(sorted(_templates().glob("18_*.json"))[0])
     scenario.sim_settings.duration_days = 0.01  # [day]
-    with pytest.raises(kernels.KernelError, match="Kernel Status"):
+    with pytest.raises(kernels.KernelError, match="Data tab"):
         SimulationService(scenario).run()
     assert no_network == []
 

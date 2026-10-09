@@ -346,7 +346,7 @@ def _data_coverage_warnings(scenario) -> List[str]:
         kernels = earth_orientation.installed()
         if needs_frame and not kernels:
             warnings.append("Earth orientation: no IERS files installed -- the Earth-fixed frame is IAU_EARTH "
-                            "(about 160 m/day of error at 400 km); fetch them from Kernel Status")
+                            "(about 160 m/day of error at 400 km); download them from the Data tab")
         for kernel in kernels:
             until = kernel.high_accuracy_until
             if kernel.role == "high_precision" and until is not None and end > until:

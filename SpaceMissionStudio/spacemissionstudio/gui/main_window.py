@@ -59,7 +59,7 @@ from ..schema.scenario import Scenario, ScenarioValidationError, load_scenario
 from . import autosave
 from .feedback import show_toast
 from .icons import toolbar_icon
-from .kernel_status_widget import KernelStatusWidget
+from .data_panel_widget import DataPanelWidget
 from .load_scenario_widget import LoadScenarioWidget
 from .mission_dashboard_widget import MissionDashboardWidget
 from .mission_output_widget import MissionOutputWidget
@@ -177,7 +177,7 @@ class MainWindow(QMainWindow):
         self.results_widget = ResultsWidget()
         self.mission_dashboard_widget = MissionDashboardWidget()
         self.mission_output_widget = MissionOutputWidget()
-        self.kernel_status_widget = KernelStatusWidget()
+        self.data_panel_widget = DataPanelWidget()
         self.scenario_explainer_widget = ScenarioExplainerWidget()
         self.lifetime_widget = LifetimeWidget()
         self.budget_widget = BudgetWidget()
@@ -186,7 +186,7 @@ class MainWindow(QMainWindow):
         self.right_tabs.addTab(self.results_widget, "Results")
         self.right_tabs.addTab(self.mission_dashboard_widget, "Mission Dashboard")
         self.right_tabs.addTab(self.mission_output_widget, "Mission Output")
-        self.right_tabs.addTab(self.kernel_status_widget, "Kernel Status")
+        self.right_tabs.addTab(self.data_panel_widget, "Data")
         self.right_tabs.addTab(self.scenario_explainer_widget, "Explain")
         self.right_tabs.addTab(self.lifetime_widget, "End of Life")
         budget_scroll = QScrollArea()  # the budget, launch-delay and altitude tables together outgrow short windows
@@ -390,13 +390,13 @@ class MainWindow(QMainWindow):
         self.live_plot_action = live_plot_action
 
         check_kernels_action = QAction(toolbar_icon("check-kernels"),
-                                        "&Check Kernels", self)
+                                        "&Check Reference Data", self)
         check_kernels_action.setToolTip(
-            "Checks whether the SPICE ephemeris kernels every run needs (for real Sun/Moon/"
-            "planet positions) are already cached locally, fetching any that are missing -- "
-            "needs network access once; after that, every run works fully offline."
+            "Shows every reference data file (SPICE kernels, gravity field, magnetic model, space "
+            "weather, Earth orientation) with its source, dates and checksum. No network: downloads "
+            "start only from the Data tab's Download menu, after asking."
         )
-        check_kernels_action.triggered.connect(self.kernel_status_widget.refresh)
+        check_kernels_action.triggered.connect(self._show_data_panel)
         run_menu.addAction(check_kernels_action)
         self.check_kernels_action = check_kernels_action
 
@@ -451,6 +451,10 @@ class MainWindow(QMainWindow):
         help_menu.addAction(about_action)
 
         self._build_toolbar()
+
+    def _show_data_panel(self) -> None:
+        self.data_panel_widget.refresh()
+        self.right_tabs.setCurrentWidget(self.data_panel_widget)
 
     def on_user_manual(self) -> None:
         from .help_dialog import ManualDialog

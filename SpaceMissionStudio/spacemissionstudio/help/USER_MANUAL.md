@@ -97,7 +97,7 @@ A few things to notice right away:
   **Scenario Editor** (where you build/edit a mission in detail --
   Section 6).
 * Five tabs on the **right**: **Results**, **Mission Dashboard**,
-  **Mission Output**, **Kernel Status** (all empty until you run
+  **Mission Output**, **Data** (the first three empty until you run
   something), and **Explain** (a live, always-current summary of
   what the scenario you're currently editing actually does -- see
   the end of Section 7).
@@ -255,10 +255,17 @@ With exactly two reports (e.g. "Before burn" / "After burn") a
 to a report or a quantity; **Export CSV...** always writes every report
 in SI units. Without a Mission Sequence you can ignore this tab.
 
-**Kernel Status** shows whether the SPICE data files Basilisk needs
-(planetary positions, leap seconds, etc.) are downloaded and current --
-see [Section 11](#11-common-questions-and-problems) if Run ever
-complains about missing kernels.
+**Data** lists every reference data file the app uses (SPICE kernels,
+gravity field, magnetic model, space weather, Earth orientation) with
+its status, the dates it covers, where it came from and its SHA-256.
+Files that are missing or out of date are marked. This is the only place
+the app downloads anything: **Download...** asks first, naming the
+source, the files and their size, and afterwards says what changed.
+**Import file...** installs a space-weather or Earth orientation file you
+already have (for example from a USB stick), and **Roll back...** puts
+back the version the last download or import replaced. See
+[Section 11](#11-common-questions-and-problems) if Run ever says a file
+is missing.
 
 **Explain** is different from the other four tabs: it doesn't need a
 run at all, and it updates live as you edit the Scenario Editor. It's a
@@ -339,13 +346,14 @@ if not, see "Getting started" in [`README.md`](README.md). The app
 always reports this clearly rather than crashing -- if you see a plain
 error message naming Basilisk, that's exactly what's going on, not a bug.
 
-**The first run (or Check Kernels) is slow / needs the internet.**
-The very first time anything touches real planetary/time data, Basilisk
-downloads a set of standard reference files (called SPICE kernels --
-leap seconds, planet positions, around 100 MB total) and caches them
-locally. This needs internet access once; after that, runs use the
-cached copy. **Run > Check Kernels** tells you exactly what's
-missing/cached, rather than failing silently mid-run.
+**Run says a support-data file is not installed.** Runs never
+download anything. The installer fetches the standard reference files
+(SPICE kernels -- leap seconds, planet positions -- plus the gravity
+field and magnetic model, around 116 MB) once. If they are missing (a
+development checkout, a cleared cache), open the **Data** tab
+(**Run > Check Reference Data**) and choose **Download... > Support
+data**; it asks before fetching. `spacemissionstudio kernels-status`
+does the same from the command line.
 
 **The Results plot area stays blank after a run.** The plots run inside
 an embedded web-rendering component. On a very minimal Linux install,

@@ -491,7 +491,8 @@ SpaceMissionStudio/
       constellation_dialog.py        -- Phase 4: "Generate Walker constellation" dialog
       phasing_formation_dialog.py    -- "Generate phasing formation..." dialog
       spacecraft_template_dialog.py  -- Phase 5: "New from template" picker dialog
-      kernel_status_widget.py        -- SPICE kernel status panel
+      data_panel_widget.py           -- Data tab: every reference data file; consented downloads, import, rollback
+      help_dialog.py                 -- Help: the bundled user manual and keyboard shortcuts
       results_widget.py              -- Plotly results plot (QWebEngineView) + CSV export + save-plot-as-PNG
       flow_layout.py                 -- wrapping chip layout (the Results tab's "Suggested" series)
       mission_dashboard_widget.py    -- "Mission Dashboard" tab: live operating-state/attitude/power/RF-link telemetry for a comms_pointing spacecraft
@@ -611,7 +612,7 @@ SpaceMissionStudio/
       test_scenario_editor.py
       test_propagation_setup_dialog.py
       test_results_widget.py
-      test_kernel_status_widget.py
+      test_data_panel_widget.py
       test_run_worker.py
       test_main_window.py
       test_mission_sequence_editor.py -- Phase 6
@@ -737,7 +738,7 @@ spacemissionstudio budget scenario.json --run
 spacemissionstudio kernels-status
 
 # launches the PySide6 GUI (needs the 'gui' extra; does NOT need Basilisk
-# to open -- only Run/Check Kernels need it, and report clearly if it's
+# to open -- only runs need it, and report clearly if it's
 # missing rather than crashing):
 spacemissionstudio gui
 ```
