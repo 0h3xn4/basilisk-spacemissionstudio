@@ -8089,3 +8089,40 @@ Tests: `tests/test_formation_control.py` (19, including real Basilisk
 runs of both laws, the thrust cut, the minimum on-time, eclipse and empty
 tank), plus the editor, dialog, generator, CLI and Explain tab. Suite:
 2365 passed, 10 skipped, 0 failed.
+
+## More Monte Carlo dispersions (SRS-F-13)
+
+Monte Carlo runs could vary only dry mass and starting attitude. Five more
+quantities can now vary per spacecraft, each through one of Basilisk's own
+`MonteCarlo.Dispersions` classes, unmodified (`engine/monte_carlo.py`):
+
+| Quantity | Basilisk class | Notes |
+|---|---|---|
+| `orbit_elements` | `OrbitalElementDispersion` | normal (1-sigma) or uniform (half-width) on each of a, e, i, RAAN, argument of periapsis and true anomaly, around the spacecraft's own starting orbit (any orbit type) |
+| `inertia_kg_m2` | `InertiaTensorDispersion` | normal on each diagonal element, optional rotation for products of inertia |
+| `angular_rate_bn_b` | `NormalVectorCartDispersion`, `UniformVectorCartDispersion` | per-axis spread in deg/s, added to the configured rate |
+| `drag_coeff`, `srp_coeff` | `NormalDispersion`, `UniformDispersion` | the sphere drag or SRP coefficient |
+
+Three behaviours of the Basilisk classes had to be worked around, all
+without changing Basilisk:
+
+* `OrbitalElementDispersion` sets an element with no entry to zero, so
+  every element gets an entry: its nominal value, spread or not.
+* The vector Cartesian classes write an absolute random vector; the body
+  rate subclasses add the nominal rate back.
+* `InertiaTensorDispersion` clips each diagonal offset to [-1, 1] kg m^2
+  unless given bounds; the tool passes infinite bounds unless the scenario
+  sets a clip.
+
+The orbit is never dispersed as raw Cartesian components, so each run
+starts on a real orbit. Validation: inertia and rate need full attitude;
+the coefficients need drag or SRP on and no surface facets. The service
+now keeps each spacecraft's drag and SRP effectors so a dispersion can
+reach them. The Monte Carlo editor shows only the fields the chosen
+quantity uses: one spread per orbital element, and the inertia rotation.
+
+Tests: each new quantity's validation; one draw each against template 07
+(an orbit spread moves only the elements it names; the rate spread sits on
+the nominal rate; a 5 kg m^2 inertia spread is not clipped to 1); and a
+three-run batch through Basilisk's Controller whose archived run
+parameters differ per run and stay within bounds; the editor round trip.

@@ -51,7 +51,14 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..schema.scenario import DISPERSION_KINDS_BY_QUANTITY, DISPERSION_QUANTITIES, DispersionConfig, MonteCarloConfig
+from ..schema.scenario import (
+    SPREAD_ONLY_DISPERSION_QUANTITIES,
+    DISPERSION_KINDS_BY_QUANTITY,
+    DISPERSION_QUANTITIES,
+    ORBIT_ELEMENT_SPREAD_KEYS,
+    DispersionConfig,
+    MonteCarloConfig,
+)
 from .feedback import show_toast
 from .widgets import ComboBox, PreciseDoubleSpinBox, SpinBox
 
@@ -63,6 +70,26 @@ def _spin(minimum: float, maximum: float, decimals: int = 4, step: float = 1.0, 
     box.setSingleStep(step)
     box.setValue(value)
     return box
+
+
+# What the numbers below mean for each quantity (DispersionConfig field comments).
+_UNITS = {
+    "dry_mass_kg": "kg",
+    "attitude_sigma_bn": "rad, as Euler angles",
+    "orbit_elements": "a spread on each element of the initial orbit",
+    "inertia_kg_m2": "kg m^2 on each diagonal element, added to the inertia",
+    "angular_rate_bn_b": "deg/s on each axis, added to the initial rate",
+    "drag_coeff": "drag coefficient Cd [-]",
+    "srp_coeff": "radiation-pressure coefficient Cr [-]",
+}
+_ELEMENT_LABELS = {
+    "semi_major_axis_km": "Semi-major axis [km]",
+    "eccentricity": "Eccentricity [-]",
+    "inclination_deg": "Inclination [deg]",
+    "raan_deg": "RAAN [deg]",
+    "arg_periapsis_deg": "Argument of periapsis [deg]",
+    "true_anomaly_deg": "True anomaly [deg]",
+}
 
 
 class _DispersionEditorDialog(QDialog):
@@ -97,12 +124,14 @@ class _DispersionEditorDialog(QDialog):
 
         self.quantity_combo = ComboBox()
         self.quantity_combo.setToolTip(
-            "Which initial-condition quantity gets randomized, independently, on each Monte "
-            "Carlo run -- e.g. a real uncertainty in orbit insertion or initial attitude. Every "
-            "other dispersion on this spacecraft (if any) varies independently alongside it."
+            "Which quantity gets randomized, independently, on each Monte Carlo run -- e.g. a "
+            "real uncertainty in orbit insertion, mass properties, initial attitude or rate, or "
+            "the drag and radiation-pressure coefficients. Every other dispersion on this "
+            "spacecraft (if any) varies independently alongside it. See User Manual, section 10."
         )
         self.quantity_combo.addItems(DISPERSION_QUANTITIES)
         self.quantity_combo.currentTextChanged.connect(self._refresh_kind_choices)
+        self.quantity_combo.currentTextChanged.connect(lambda _text: self._refresh_rows())
         form.addRow("Quantity", self.quantity_combo)
 
         self.kind_combo = ComboBox()
@@ -133,6 +162,23 @@ class _DispersionEditorDialog(QDialog):
             "deviation of the mean, ~95% within two."
         )
         form.addRow("Std deviation", self.std_spin)
+        self.units_label = QLabel()
+        self.units_label.setWordWrap(True)
+        form.addRow("Units", self.units_label)
+        # "orbit_elements": one spread per element (1-sigma for normal,
+        # half-width for uniform); 0 leaves the element at its nominal value.
+        self.element_spins = {}
+        for key in ORBIT_ELEMENT_SPREAD_KEYS:
+            spin = _spin(0.0, 1.0e6, decimals=6, value=0.0)
+            spin.setToolTip("Spread around this spacecraft's initial value: 1-sigma for 'normal', half-width "
+                            "for 'uniform'. 0 keeps the element as configured. For a near-circular orbit put "
+                            "an along-track spread on the true anomaly only.")
+            self.element_spins[key] = spin
+            form.addRow(_ELEMENT_LABELS[key], spin)
+        self.angle_std_spin = _spin(0.0, 180.0, decimals=4, value=0.0)
+        self.angle_std_spin.setToolTip("1-sigma of a small random rotation of the inertia tensor, which mixes "
+                                       "in off-diagonal (product-of-inertia) terms. 0 disperses the diagonal only.")
+        form.addRow("Off-diagonal angle 1-sigma [deg]", self.angle_std_spin)
         self._form = form
 
         layout.addLayout(form)
@@ -153,6 +199,11 @@ class _DispersionEditorDialog(QDialog):
                 self.mean_spin.setValue(item.mean)
             if item.std_deviation is not None:
                 self.std_spin.setValue(item.std_deviation)
+            for key, value in (item.element_spread or {}).items():
+                if key in self.element_spins:
+                    self.element_spins[key].setValue(value)
+            if item.angle_std_deg is not None:
+                self.angle_std_spin.setValue(item.angle_std_deg)
         # _on_kind_changed already ran (connected above, and both
         # _refresh_kind_choices()/setCurrentIndex() fire
         # currentTextChanged as they go) -- one more explicit call in
@@ -192,11 +243,19 @@ class _DispersionEditorDialog(QDialog):
         ignored. Hiding the irrelevant row(s) makes the dialog show
         only what will actually be used.
         """
-        needs_bounds = kind in ("uniform", "uniform_euler_mrp")
-        needs_normal = kind == "normal"
-        self._set_row_visible(self._bounds_row, needs_bounds)
-        self._set_row_visible(self.mean_spin, needs_normal)
-        self._set_row_visible(self.std_spin, needs_normal)
+        self._refresh_rows()
+
+    def _refresh_rows(self) -> None:
+        """Only the fields the selected quantity and kind use are shown."""
+        quantity, kind = self.quantity_combo.currentText(), self.kind_combo.currentText()
+        orbit = quantity == "orbit_elements"
+        self._set_row_visible(self._bounds_row, kind in ("uniform", "uniform_euler_mrp") and not orbit)
+        self._set_row_visible(self.mean_spin, kind == "normal" and quantity not in SPREAD_ONLY_DISPERSION_QUANTITIES)
+        self._set_row_visible(self.std_spin, kind == "normal" and not orbit)
+        for spin in self.element_spins.values():
+            self._set_row_visible(spin, orbit)
+        self._set_row_visible(self.angle_std_spin, quantity == "inertia_kg_m2")
+        self.units_label.setText(_UNITS.get(quantity, ""))
 
     def _set_row_visible(self, field, visible: bool) -> None:
         label = self._form.labelForField(field)
@@ -222,14 +281,19 @@ class _DispersionEditorDialog(QDialog):
         if not self.spacecraft_combo.count():
             raise ValueError("this scenario has no spacecraft to disperse yet -- add one first")
         kind = self.kind_combo.currentText()
+        quantity = self.quantity_combo.currentText()
+        orbit = quantity == "orbit_elements"
         config = DispersionConfig(
             spacecraft=self.spacecraft_combo.currentData(),
-            quantity=self.quantity_combo.currentText(),
+            quantity=quantity,
             kind=kind,
             bounds=[self.bounds_lo_spin.value(), self.bounds_hi_spin.value()]
-            if kind in ("uniform", "uniform_euler_mrp") else None,
-            mean=self.mean_spin.value() if kind == "normal" else None,
-            std_deviation=self.std_spin.value() if kind == "normal" else None,
+            if kind in ("uniform", "uniform_euler_mrp") and not orbit else None,
+            mean=self.mean_spin.value() if kind == "normal" and quantity not in SPREAD_ONLY_DISPERSION_QUANTITIES else None,
+            std_deviation=self.std_spin.value() if kind == "normal" and not orbit else None,
+            element_spread={key: spin.value() for key, spin in self.element_spins.items() if spin.value() > 0}
+            if orbit else None,
+            angle_std_deg=self.angle_std_spin.value() if quantity == "inertia_kg_m2" else None,
         )
         config.validate()
         return config

@@ -405,13 +405,32 @@ everything numerically; Vizard is for *seeing* the mission.
 
 Real spacecraft never have perfectly known mass, attitude, etc. --
 **Monte Carlo** mode runs your scenario many times with small, randomized
-variations (currently: dry mass and/or starting attitude) and reports
-the spread of outcomes, instead of one single result. In the Scenario
-Editor's **Monte Carlo** section, check **Enabled**, set how many runs
-and how many to run in parallel, and add one or more **dispersions**
-(which quantity varies, and by how much) -- then use **Run > Run Monte
-Carlo...** instead of the ordinary Run Simulation. This is a more
-advanced feature; most people won't need it for a first mission.
+variations and reports the spread of outcomes, instead of one single
+result. In the Scenario Editor's **Monte Carlo** section, check
+**Enabled**, set how many runs and how many to run in parallel, and add
+one or more **dispersions** (which quantity varies, and by how much) --
+then use **Run > Run Monte Carlo...** instead of the ordinary Run
+Simulation. This is a more advanced feature; most people won't need it
+for a first mission.
+
+What can vary, each spacecraft on its own:
+
+| Quantity | Varies | Kinds |
+|---|---|---|
+| `dry_mass_kg` | dry mass [kg] | uniform, normal |
+| `attitude_sigma_bn` | starting attitude, as random Euler angles | uniform |
+| `orbit_elements` | each orbital element around the spacecraft's starting orbit: semi-major axis [km], eccentricity, inclination, RAAN, argument of periapsis, true anomaly [deg] | normal (1-sigma), uniform (half-width) |
+| `inertia_kg_m2` | each diagonal element of the inertia [kg m^2], plus an optional small rotation that adds products of inertia | normal |
+| `angular_rate_bn_b` | starting body rate, each axis [deg/s], on top of the configured rate | normal, uniform |
+| `drag_coeff`, `srp_coeff` | the drag or radiation-pressure coefficient | uniform, normal |
+
+The orbit varies as orbital elements, never as raw position and velocity,
+so every run starts on a real orbit; an element left at 0 is not varied.
+For a near-circular orbit, put an along-track spread on the true anomaly
+only (its argument of periapsis is not well defined). Inertia and body
+rate need full attitude simulation. The coefficients need drag or solar
+pressure switched on, and a spacecraft without surface facets (facets
+carry their own coefficients).
 
 ## 11. Common questions and problems
 

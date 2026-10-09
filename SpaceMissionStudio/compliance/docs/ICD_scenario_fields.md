@@ -74,9 +74,11 @@ One dispersed quantity for one spacecraft in a Monte Carlo batch -- see :data:`D
 | `spacecraft` | str | `required` | must match a SpacecraftConfig.name in this scenario |
 | `quantity` | str | `required` | one of DISPERSION_QUANTITIES |
 | `kind` | str | `required` | one of DISPERSION_KINDS_BY_QUANTITY[quantity] |
-| `bounds` | Optional[list] | `None` | [lo, hi]; required for "uniform"/"uniform_euler_mrp" |
-| `mean` | Optional[float] | `None` | required for "normal" |
-| `std_deviation` | Optional[float] | `None` | required for "normal" |
+| `bounds` | Optional[list] | `None` | [lo, hi] in the quantity's unit (User Manual section 10) |
+| `mean` | Optional[float] | `None` | required for "normal" on dry_mass_kg, drag_coeff, srp_coeff |
+| `std_deviation` | Optional[float] | `None` | 1-sigma in the quantity's unit (User Manual section 10) |
+| `element_spread` | Optional[dict] | `None` | "orbit_elements": {element key: spread} |
+| `angle_std_deg` | Optional[float] | `None` | [deg] "inertia_kg_m2": 1-sigma rotation that mixes in off-diagonal terms |
 
 ## FacetConfig
 
