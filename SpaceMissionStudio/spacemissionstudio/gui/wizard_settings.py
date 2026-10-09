@@ -128,6 +128,14 @@ _META: Dict[str, SettingMeta] = {
     "required_ebno_db": SettingMeta("Required Eb/N0", " dB"),
     "tx_antenna_gain_dbi": SettingMeta("Transmit antenna gain", " dBi"),
     "tx_power_w": SettingMeta("Transmit power", " W"),
+    "antenna_front_to_back_db": SettingMeta("Antenna front-to-back ratio", " dB",
+                                            "Patch pattern only: gain behind the ground plane, below the peak."),
+    "antenna_gain_table": SettingMeta("Antenna gain table [deg, dBi]"),
+    # Data handling
+    "storage_capacity_gbit": SettingMeta("Memory capacity", " Gbit", "8 Gbit = 1 GB."),
+    "transmitter_power_w": SettingMeta("Transmitter power draw", " W", "DC power while sending."),
+    "power_w": SettingMeta("Power draw", " W"),
+    "initial_data_gbit": SettingMeta("Data on board at the start", " Gbit"),
     # Attitude control
     "K": SettingMeta("Attitude gain K"),
     "P": SettingMeta("Rate gain P"),
@@ -183,6 +191,7 @@ _BLOCK_TITLES = {
     "power": "power",
     "comms_pointing": "comms pointing",
     "rf_link": "RF link",
+    "data_handling": "data handling",
 }
 _ATTITUDE_KEYS = {"fsw_params", "control_params", "sigma_bn_init", "omega_bn_b_init_rad_s"}
 _SKIPPED_TOP_LEVEL = {"schema_version"}
@@ -301,6 +310,9 @@ def _page_and_label(path: Path, scenario: Scenario) -> Tuple[str, str, str, str,
             if name == "area_m2":
                 label, suffix = "Area", " m^2"
             page = f"{craft.name}: surface facets"
+        elif part == "data_handling" and len(path) > 4 and path[3] == "instruments":
+            group = craft.data_handling.instruments[path[4]].name
+            page = f"{craft.name}: data handling"
         elif part in _ATTITUDE_KEYS:
             page = f"{craft.name}: attitude"
         elif part in _BLOCK_TITLES:
