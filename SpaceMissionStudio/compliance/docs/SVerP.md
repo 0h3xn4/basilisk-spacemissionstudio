@@ -32,7 +32,7 @@ validation against the SRS is planned separately in the SValP.
 
 | Term | Meaning |
 |---|---|
-| CI | The GitHub Actions workflow RD4, run on every push and pull request that touches the tool |
+| CI | The GitHub Actions workflow RD4, run on every push and pull request that touches the tool (a Markdown-only change runs its document checks only) |
 | Generated document | A document written by a tool in `compliance/tools/` from the code, which cannot drift from it |
 
 ## 4 Software verification process overview

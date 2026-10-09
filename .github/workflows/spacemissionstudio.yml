@@ -21,7 +21,91 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # A change that only touches Markdown (manual, history, compliance
+  # documents) runs the "docs" job below instead of the full suite and the
+  # platform runs: those documents are what the docs job checks, and no
+  # test reads Markdown except tests/gui/test_help.py, which it runs. Any
+  # other file, a new branch, a force push or a manual run takes the full
+  # path. A pull request is classified by its whole diff.
+  changes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.classify.outputs.code }}
+      base: ${{ steps.classify.outputs.base }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - id: classify
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          case "$EVENT" in
+            pull_request) base="$PR_BASE" ;;
+            push) base="$PUSH_BEFORE" ;;
+            *) base="" ;;
+          esac
+          code=true
+          if [ -n "$base" ] && git cat-file -e "$base^{commit}" 2>/dev/null; then
+            changed=$(git diff --name-only "$base" HEAD)
+            if [ -n "$changed" ] && ! printf '%s\n' "$changed" | grep -qv '\.md$'; then
+              code=false
+            fi
+            printf 'Changed files:\n%s\n' "$changed"
+          fi
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+          echo "Full test path: $code"
+
+  docs:
+    needs: changes
+    if: needs.changes.outputs.code == 'false'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Install Qt runtime libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libegl1 libgl1 libxkbcommon0 libxkbcommon-x11-0 \
+            libdbus-1-3 libfontconfig1 libnss3 libxcomposite1 libxdamage1 libxrandr2 libxtst6 libasound2t64
+      - name: Install the tool and the dev tools (no Basilisk needed for these checks)
+        working-directory: SpaceMissionStudio
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,gui]" pre-commit
+      - name: Whitespace and end-of-file hooks on the changed files
+        env:
+          BASE: ${{ needs.changes.outputs.base }}
+        run: |
+          git diff --name-only --diff-filter=d "$BASE" HEAD > changed.txt
+          pre-commit run trailing-whitespace --files $(cat changed.txt)
+          pre-commit run end-of-file-fixer --files $(cat changed.txt)
+      - name: Documents complete against their DRDs and generated parts current (R14)
+        working-directory: SpaceMissionStudio
+        run: |
+          python compliance/tools/check_drds.py
+          python compliance/tools/build_icd_schema.py
+          python compliance/tools/build_sdd_components.py
+          python compliance/tools/build_test_specs.py
+          git diff --exit-code -- compliance/docs
+      - name: The bundled Help copy matches the manual and its links resolve
+        working-directory: SpaceMissionStudio
+        run: python -m pytest tests/gui/test_help.py -q -p no:cacheprovider
+
   test:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     defaults:
@@ -95,6 +179,8 @@ jobs:
   # other two platforms, against the same qualified Basilisk release. The
   # Windows installer itself is tested by hand (SValP 9).
   platforms:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     strategy:
       fail-fast: false
       matrix:
