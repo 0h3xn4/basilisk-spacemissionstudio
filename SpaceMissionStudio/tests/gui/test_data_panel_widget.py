@@ -102,10 +102,10 @@ def test_an_accepted_download_runs_and_reports_what_changed(panel, qtbot, monkey
                                                                      lambda now=None: list(after)))
     monkeypatch.setattr(panel, "confirm_download", lambda download: True)
     assert panel.download("space_weather") is True
-    assert not panel.download_button.isEnabled()  # busy while the worker runs
-    with qtbot.waitSignal(panel._worker.finished, timeout=10000):
-        pass
-    qtbot.waitUntil(lambda: panel.download_button.isEnabled(), timeout=5000)
+    assert not panel.download_button.isEnabled()  # busy until the result is shown (a queued slot)
+    # Wait for the shown result, not for QThread.finished: the task is quick
+    # enough to finish before a waitSignal starts listening (CI run 51).
+    qtbot.waitUntil(lambda: panel.download_button.isEnabled(), timeout=10000)
     assert calls == [1]
     assert any("observed to 2026-10-08" in line and "was" in line for line in panel.last_changes)
     assert panel.status_label.text().startswith("Done.")
