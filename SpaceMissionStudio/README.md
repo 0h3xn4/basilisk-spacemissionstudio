@@ -188,6 +188,18 @@ each is a panel on a spring-damper hinge
 attitude and whose cells feed the power budget at the panel's own
 deflected attitude. See template 27 and User Manual Sec. 6.
 
+**Flight-software export** -- the Flight Software tab and
+`spacemissionstudio export-fsw` write a spacecraft's attitude flight
+software as a standalone C99 project (`spacemissionstudio.fsw_export`):
+the Basilisk C modules it runs, copied unchanged from Basilisk 2.12.0,
+every parameter traced to its scenario field and GUI control, a
+scheduler, a CMake build of a static library and a host program, an
+interface control document, and unit and replay tests recorded from the
+simulation. Every attitude template's export builds and reproduces the
+simulation's flight software exactly (GCC and Clang, Linux). The scenario
+records each export and flags it stale when its flight-software settings
+change. User Manual Sec. 6, "Exporting the flight software".
+
 **Mission planning** -- a GMAT/FreeFlyer-inspired Resources / Mission
 Sequence / Output architecture: `propagate` (duration, epoch, or
 event stop conditions: periapsis, apoapsis, or the start/end of the next

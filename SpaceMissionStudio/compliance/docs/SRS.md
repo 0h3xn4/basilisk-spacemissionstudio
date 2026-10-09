@@ -166,6 +166,7 @@ states or modes beyond those in 5.5.
 | SRS-F-15 | The GUI shall offer: scenario editing; validation feedback; results plots; mission dashboard; mission output; the run's events as a timeline and a sortable, exportable table; one time cursor shared by these views; comparison of a session's runs and their inputs; undo of scenario edits; a command palette; the reference data files with their sources, dates and checksums; explanation of the scenario; end of life; budget; template loading. The CLI shall offer the same functions headless. | Tool |
 | SRS-F-16 | Vizard visualisation, live or from a file. (desirable) | Tool |
 | SRS-F-17 | At start-up the tool shall check the Basilisk version against the qualified one (2.12.0). It shall warn when they differ, and record the outcome in provenance. | Q-ST-80C 6.2.7; UD-4 (D5) |
+| SRS-F-18 | The tool shall export a spacecraft's attitude flight software as a standalone C project: the Basilisk C module sources it runs, unchanged and from the qualified Basilisk revision; every module parameter; a scheduler running the modules in the simulation's order and rate; a CMake build of a static library and a host program; an interface control document of every input, output, telemetry and configuration message; a traceability table from each GUI parameter to its configuration symbol and source file; and one unit test per module plus a replay of a recorded run, both passing without changes. Exports of flight software the tool runs in Python shall be refused, with the reason. The scenario shall record each export with a hash of its flight-software configuration, and the tool shall show when an export no longer matches. | Tool |
 
 There is no safety or dependability function. The software does not command
 equipment, and category C does not call for one (RD1). The dependability
@@ -338,6 +339,7 @@ Methods: T = test, A = analysis, I = inspection, R = review of design.
 | SRS-F-15 | T, I | `tests/gui/`, `tests/test_cli.py` |
 | SRS-F-16 | T | `tests/test_vizard*.py` |
 | SRS-F-17 | T | `tests/test_dependencies.py` |
+| SRS-F-18 | T | `tests/test_fsw_export.py` (every attitude template built with CMake and its CTest suite passing), `tests/test_fsw_export_units.py`, `tests/test_fsw_vendored_sources.py`, `tests/gui/test_fsw_workbench_widget.py` |
 | SRS-P-01 to P-07 | T | `tests/validation/` (V-01, V-02, V-04, V-05) |
 | SRS-P-08 | T | `tests/test_lifetime.py::test_reentry_date_matches_a_basilisk_decay_run` |
 | SRS-P-09, SRS-R-02 | A | `compliance/tools/measure_performance.py` on the reference PC (SVR) |

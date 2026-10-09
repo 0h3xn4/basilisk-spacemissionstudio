@@ -57,7 +57,11 @@ SOFTWARE_RULES = [
      "accepted by the user as-is (decision 13)", "No procurement process as such (the items are open-source "
      "software installed from PyPI); exportability not identified (left open, decision 13).", "-", "S",
      "yes (Basilisk reuse)", "R14,H07"),
-    ("E-ST-40C", "5.3.2.4*", "NA", "-", "No automatic code generation from models.", "-", "S", "no", ""),
+    ("E-ST-40C", "5.3.2.4*", "NA", "-", "SpaceMissionStudio's own code is not generated. Its flight-software "
+     "export (SRS-F-18) generates C for the user's flight software; for that software these requirements fall on its "
+     "developer, and each export carries the records they need: the generation's inputs and provenance "
+     "(manifest.json, capture.json), the interfaces (ICD.md), the parameter traceability (TRACEABILITY.md) and its "
+     "verification (unit tests and the replay of a recorded run).", "-", "S", "no", ""),
     ("E-ST-40C", "5.3.2.5a", "P", "compliance/docs/SDP.md section 6 (configuration management description); git", "Changes go through git and CI; no change board (waived, D-12) and no release tags yet (version 2.1.0 to be tagged, decision 11).", "-", "S", "no", "R14,D-12"),
     ("E-ST-40C", "5.3.3*", "N", "-", "No joint or technical reviews held.", _REVIEW_FIX, "M", "no", "H01,D-08"),
     ("E-ST-40C", "5.3.4*", "N", "-", "No project reviews (SRR, PDR, CDR, QR, AR) held.", _REVIEW_FIX, "M", "no", "H01,D-08"),

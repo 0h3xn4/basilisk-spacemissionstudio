@@ -8477,3 +8477,105 @@ claim about them is made.
 **SRS-F-09** now says that "Deployed solar arrays may be flexible: a
 panel on a spring-damper hinge whose motion acts on the attitude"; it is
 verified by `tests/test_solar_arrays.py`.
+
+## Flight-software export (SRS-F-18): workbench phase 1
+
+The tool can now write a spacecraft's attitude flight software as a
+standalone C project (`spacemissionstudio.fsw_export`, the Flight Software
+tab, `spacemissionstudio export-fsw` and `fsw-status`). Basilisk itself is
+unchanged: the export is generated from its sources and templates.
+
+**Investigation first (phase 0).**
+- All of the tool's flight software runs in the one dynamics task, at
+  its step, in insertion order; there is no separate flight-software rate.
+- Fifteen of the modules `engine.fsw` builds are Basilisk C modules, and
+  depend on each other only through `XMsg_C` message containers.
+- Basilisk ships no packaging or autocode hooks to reuse.
+- The installed 2.12.0 wheel holds no C sources, but records the revision
+  it was built from (`611665f74`, the `v2.12.0` tag). The checked-out
+  tree is 2.13.0b0, so exporting from it would have shipped other code
+  than the simulation runs.
+- Basilisk generates its C message interface at build time from
+  `msg_C.h.in`/`msg_C.cpp.in`; the `.cpp` template's C-to-C half is plain
+  C. A throwaway build of `mrpFeedback` from the 2.12.0 sources with a
+  10-line logging stub gave a torque bit-identical to Basilisk's.
+- Each payload class's numpy `__dtype__` has the C struct's exact size,
+  padding and nested structs included, for all 24 message types.
+
+**Sources.** The include closure of the fifteen modules (71 files and
+Basilisk's licence) is vendored unchanged from the 2.12.0 revision as one
+zip (`scripts/vendor_basilisk_fsw.py`). A zip rather than loose files:
+16 of the files end lines with spaces, and the repository's whitespace
+hooks would have rewritten them. Every read recomputes the file's git blob
+hash and refuses a changed file.
+
+**Capture, not a second description.** `fsw_export.capture` builds the
+scenario with `engine.service`, stops before `InitializeSimulation()`
+(`build()` now has an `initialize()` step that can be called separately),
+and reads the flight software off the Basilisk objects:
+- the modules in the task's execution order, with every configuration
+  field's value;
+- each input's `payloadPointer`, matched against module outputs, other
+  models' messages, or else a standalone configuration message (then a
+  constant, checked unchanged at every step);
+- the simulation readers of each output (`isSubscribedTo()`).
+
+It refuses an export whose flight software would see different values
+outside the simulation, and comms pointing (a Python mode switch). A
+recorder at the end of the task keeps, for a short run, what each module
+read and wrote. It also records the state when `InitializeSimulation()`
+had run every `Reset()`: that mattered, because the reaction-wheel
+effector writes its speeds during its own `Reset`, and
+`thrMomentumManagement` reads them in its `Reset`.
+
+**Generated project.**
+- `basilisk/`: the sources, unchanged.
+- `generated/cMsgCInterface/`: the C message interface from Basilisk's
+  templates.
+- `fsw_config.[ch]`: every parameter, each with its unit, scenario field
+  and GUI control.
+- `fsw_scheduler.c`: init, reset, step, and the start-up re-Reset the
+  tool does for momentum dumping.
+- `fsw_ports.c`: the port tables with layout hashes.
+- `fsw_layout_check.c`: compile-time `sizeof`/`offsetof` checks against
+  the recorded layouts.
+- `fsw_log.c`: Basilisk's C logging API without Basilisk.
+- `fsw_host`: `info` and `replay`.
+- One C unit test per module, a replay test, CMake, `ICD.md`,
+  `TRACEABILITY.md` and `manifest.json`.
+
+**Found on the way.**
+- `thrFiringSchmitt.lastThrustState` (a `boolean_t[MAX_EFF_CNT]`) comes
+  back from SWIG as a bare pointer. A first export wrote the pointer's
+  address as the array's value; it passed only because the module's
+  `Reset` overwrites the field. The array is now read from memory at its
+  declared size, and the generator refuses any value that is not a number.
+- `cssWlsEst` initialises its residual output only when something
+  subscribes to it; reading it through its NULL pointer segfaulted the
+  test. Reads now fall back to the container's own payload, which is what
+  the simulation recorded.
+- The scenario and spacecraft names went into generated C comments, a C
+  string literal and a CMake comment as typed. A shared scenario could
+  have put code into the project. User text now goes through escaping
+  helpers (security analysis S-14).
+
+**Measured.**
+- Every attitude template (14 spacecraft) exports, builds with
+  `-Wall -Wextra` without warnings in the generated code, and passes
+  CTest.
+- Replayed at zero tolerance over 300 recorded steps, every output and
+  telemetry port equals the simulation's exactly, with GCC 14 and with
+  Clang on Linux x86-64.
+
+**Records.** `Scenario.fsw_exports` keeps each export's folder and its
+configuration hash, with a short hash per setting group. The tab and
+`fsw-status` then say Up to date, Stale (naming the groups that changed),
+Changed on disk or Folder missing. The orbit, the duration, other
+spacecraft and star trackers do not make an export stale. The scenario
+editor carries the records through every edit (no widget edits them).
+
+**Compliance.** SRS-F-18 with its verification; ICD-09 (the export
+format); SRF (the export redistributes Basilisk sources); security
+analysis S-14. The 5.3.2.4 (automatic code generation) entries stay not
+applicable to the tool's own code, and now say what each export provides
+to the developer of the flight software it generates.

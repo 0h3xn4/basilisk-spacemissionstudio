@@ -109,6 +109,27 @@ set a spacecraft's orbit from a CCSDS OPM or TLE-based OMM
 | `--set-epoch` | move the scenario epoch to the OPM's epoch |
 | `--out` | write the updated scenario here (default: overwrite) |
 
+## `export-fsw`
+
+export a spacecraft's flight software as a standalone C project (needs Basilisk)
+
+| Argument | Help |
+|---|---|
+| `scenario` |  |
+| `--spacecraft` |  |
+| `--out` | the export folder (empty, or an earlier export) |
+| `--steps` | flight-software steps to record for the tests (200) |
+| `--overwrite` | replace an earlier export in --out |
+| `--record` | record the export in the scenario file |
+
+## `fsw-status`
+
+check the scenario's recorded flight-software exports (stale or not)
+
+| Argument | Help |
+|---|---|
+| `scenario` |  |
+
 ## `spaceweather-resolve`
 
 resolve space weather for a scenario without running it (no Basilisk needed)

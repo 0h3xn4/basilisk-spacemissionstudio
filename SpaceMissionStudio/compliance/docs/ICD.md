@@ -57,10 +57,11 @@ See SRS section 4 for the software overview.
 | ICD-06 | SPICE kernels come from Basilisk's data fetcher. IERS-based NAIF Earth PCKs come from the user directory or the installation directory. | SRS-I-06 |
 | ICD-07 | Basilisk is used only through its public Python API (2.12.0). | SRS-I-07 |
 | ICD-08 | Vizard is used through Basilisk's `vizSupport`: a save file or a live stream to a separate Vizard process. | SRS-I-08 |
+| ICD-09 | A flight-software export is a folder holding a standalone C project for one spacecraft, its interface control document, its traceability table, a `manifest.json` with the configuration digest and the SHA-256 of every file, and the recorded run (`capture.json`, `tests/data/*.trace`). | SRS-F-18 |
 
 The interfaces are of three kinds:
 
-- **Software to software:** ICD-04 to ICD-08.
+- **Software to software:** ICD-04 to ICD-09.
 - **Software to hardware:** none. The tool uses only the host computer.
 - **Man-machine:** the GUI and the CLI (ICD-02). The GUI is described in
   the SUM.
@@ -156,6 +157,16 @@ messages (`SimulationBaseClass`, `spacecraft`, `gravityEffector`,
   user.
 - Vizard is downloaded only on consent.
 
+#### 5.3.9 Flight-software export (ICD-09)
+
+| Item | Definition |
+|---|---|
+| Service | `export-fsw` (CLI) or the Flight Software tab writes one spacecraft's attitude flight software as a C project; `fsw-status` and the tab check a recorded export against the scenario. |
+| Format | A folder: `CMakeLists.txt`; `basilisk/` (the Basilisk 2.12.0 C sources the modules need, unchanged, with Basilisk's licence); `generated/` (C message interface, `fsw_config.[ch]`, scheduler, port tables, layout checks); `host/fsw_host.c`; `tests/` (one C unit test per module, replay traces); `ICD.md`; `TRACEABILITY.md`; `README.md`; `capture.json`; `manifest.json`. |
+| Key items | `manifest.json`: `format` (1), `config_digest` (64 hex digits), `basilisk_revision`, `rate_ns`, `ports` (name, message type, size in bytes, 16-hex-digit layout hash), `files` (path to SHA-256). Trace files: magic `SMSFTRC1`, little-endian, one record per step of time in ns, written flags and raw payloads (`generated/fsw_trace.h`). |
+| Record in the scenario | `Scenario.fsw_exports[]`: spacecraft, folder, `config_digest`, per-group hashes (`parts`), export time, Basilisk revision (RD1). |
+| Frequency | On the user's request. |
+
 ## 6 Validation requirements (E.2.1<6>)
 
 | ID | Method | Evidence |
@@ -168,11 +179,12 @@ messages (`SimulationBaseClass`, `spacecraft`, `gravityEffector`,
 | ICD-06 | T | `tests/test_earth_orientation.py`, `tests/test_dependencies.py` |
 | ICD-07 | T, I | the test suite against Basilisk 2.12.0 (CI); `tests/test_dependencies.py` |
 | ICD-08 | T | `tests/test_vizard*.py` |
+| ICD-09 | T | `tests/test_fsw_export.py`, `tests/test_fsw_export_units.py`, `tests/test_fsw_vendored_sources.py` |
 
 ## 7 Traceability (E.2.1<7>)
 
 - **Backward (ICD → SRS):** column "SRS" of 5.2.
 - **Forward (SRS-I-01 to SRS-I-08 → ICD):** one-to-one. ICD-nn details
-  SRS-I-nn.
+  SRS-I-nn. ICD-09 details the export format of SRS-F-18.
 - **Further:** the CCSDS items are traced in
   `compliance/traceability_matrix.csv`.

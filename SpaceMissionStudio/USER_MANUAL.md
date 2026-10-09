@@ -455,6 +455,71 @@ shows all of it.
 Not modelled: more than one mode per panel, twisting, and panels that
 deploy or are driven during the run.
 
+### Exporting the flight software
+
+The **Flight Software** tab (or `spacemissionstudio export-fsw`) writes a
+spacecraft's attitude flight software as a standalone C project: the same
+Basilisk C modules the simulation runs, with every parameter the scenario
+gives them, ready to build without Python or Basilisk.
+
+1. Set up and check the spacecraft as usual (pointing mode, gains,
+   actuators).
+2. On the **Flight Software** tab, press **Export...** on its card and
+   choose an empty folder.
+3. Build and test it:
+
+   ```sh
+   cmake -S <folder> -B <folder>/build
+   cmake --build <folder>/build
+   ctest --test-dir <folder>/build
+   ```
+
+The export records a short run of the scenario (200 flight-software steps)
+and writes:
+
+| In the folder | What it is |
+|---|---|
+| `basilisk/` | The Basilisk 2.12.0 sources of the modules, unchanged, with Basilisk's ISC licence |
+| `generated/fsw_config.c` | Every module parameter and fixed configuration message, each with the scenario field and GUI control it comes from |
+| `generated/fsw_scheduler.c` | `fsw_init`, `fsw_reset` and `fsw_step`: the modules in the simulation's order, at its step |
+| `host/fsw_host.c` | `fsw_host info` lists the ports; `fsw_host replay` runs a recorded input trace |
+| `tests/` | One unit test per module and a replay of the recorded run |
+| `ICD.md` | Every input, output, telemetry and configuration message: fields, units, producer, consumers, rate |
+| `TRACEABILITY.md` | GUI parameter, scenario field, symbol and line in `fsw_config.c`, Basilisk source file |
+| `manifest.json` | The configuration hash, the Basilisk revision, a SHA-256 of every file |
+
+`ctest` checks each module alone against what it computed at the first
+step of the recorded run, and the whole flight software against every
+step. On Linux with GCC and Clang, all the templates' exports reproduce
+the simulation exactly.
+
+**Staying in step.** The scenario remembers each export (save the
+scenario to keep it). The card then shows:
+
+| Badge | Meaning |
+|---|---|
+| Up to date | The export matches the scenario's flight-software settings |
+| Stale | A setting changed since; the card names which (gains, pointing, actuators, inertia, sun sensors, the dynamics step) |
+| Changed on disk | A file in the folder differs from the export |
+| Folder missing | The folder or its `manifest.json` is gone |
+
+The orbit, the duration, other spacecraft and star trackers do not make
+an export stale: the flight software does not depend on them.
+`spacemissionstudio fsw-status <scenario>` reports the same.
+
+**What can be exported.** The attitude modules: inertial, Hill, velocity,
+Sun-safe and location pointing; tracking error; MRP feedback; reaction
+wheel, thruster and torque-rod command mapping; momentum dumping and
+magnetic momentum management; sun-heading estimation from sun sensors.
+Refused, with the reason: comms pointing (its mode switch is Python), and
+spacecraft without attitude flight software. Station keeping, phasing,
+formation control and the data-handling gate run in Python in the tool
+and are listed in the ICD as not exported.
+
+Limits: the navigation inputs are what the simulation's `simpleNav`
+gives, the true state without navigation error; one rate group, the
+dynamics step; payloads in the host's byte order.
+
 ## 7. Reading the Results tab
 
 After a run finishes, the **Results** tab shows one plot at a time:
@@ -814,6 +879,9 @@ anyone who hasn't worked with spacecraft before:
   as a solar-array wing, that bends and swings when the spacecraft turns.
   Its **first mode** is its lowest bending frequency; its **damping
   ratio** says how quickly the swinging dies away by itself.
+* **Interface control document (ICD)** -- a document that lists every
+  message a piece of software reads and writes: its fields, units, who
+  produces it and who reads it. Each flight-software export has one.
 * **Ground station** -- a fixed point on Earth's surface a spacecraft
   might need to communicate with; SpaceMissionStudio can compute exactly
   when each spacecraft is visible to each ground station.

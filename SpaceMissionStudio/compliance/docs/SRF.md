@@ -70,6 +70,17 @@ The tool uses these Basilisk modules (from its imports):
 | `fswAlgorithms` | `inertial3D`, `hillPoint`, `velocityPoint`, `sunSafePoint`, `locationPointing`, `attTrackingError`, `mrpFeedback`, `rwMotorTorque`, `cssWlsEst`, `tamComm`, `mtbMomentumManagement`, `thrForceMapping`, `thrFiringSchmitt`, `thrMomentumManagement`, `thrMomentumDumping`, `lambertPlanner`, `lambertSolver`, `lambertValidator`, `meanOEFeedback`, `hillFrameRelativeControl` |
 | `utilities` | `SimulationBaseClass`, `macros`, `orbitalMotion`, `RigidBodyKinematics`, `simIncludeGravBody` (gravity bodies and the SPICE interface), `simIncludeRW`, `simIncludeThruster`, `simSetPlanetEnvironment`, `simHelpers`, `vizSupport`, the Monte Carlo `Controller` and dispersions, `DataFile`, `get_path` |
 
+The flight-software export (SRS-F-18) also redistributes Basilisk C
+sources: the include closure of the fifteen `fswAlgorithms` C modules
+above that can be exported, with the architecture utilities, payload
+headers and C message templates they need (71 files and Basilisk's
+`LICENSE`), copied unchanged from the 2.12.0 revision
+(`611665f742999951453d4e128c8540c761de8a4f`) into
+`spacemissionstudio/fsw_export/basilisk_fsw_sources.zip`. The git blob
+hash of every file is listed in `basilisk_fsw_sources.json` and checked on
+every read (`tests/test_fsw_vendored_sources.py`); each export carries the
+files it needs, still unchanged, with the ISC licence.
+
 ### Reused data
 
 These data files are reused through Basilisk or by the tool:
