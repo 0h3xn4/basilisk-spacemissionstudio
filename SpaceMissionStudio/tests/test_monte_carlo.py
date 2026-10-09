@@ -223,3 +223,37 @@ def test_a_batch_disperses_every_new_quantity_in_every_run(tmp_path):
     assert all(1.2 <= cr <= 1.5 for cr in srp)
     for suffix in ("r_CN_NInit", "v_CN_NInit", "IHubPntBc_B", "omega_BN_BInit"):
         assert len({next(v for k, v in run.items() if k.endswith(suffix)) for run in runs}) == 3, suffix
+
+
+def test_a_batch_leaves_a_pickle_free_summary_of_every_run(tmp_path):
+    """After the batch, run_monte_carlo reads back the run files it just
+    wrote and saves batch_results.npz/.json (security analysis S-04): every
+    run's trajectory and its drawn values under readable labels, matching
+    what the Controller recorded in runN.json."""
+    import json
+
+    from spacemissionstudio.engine import monte_carlo_results as mcr
+    from spacemissionstudio.engine.monte_carlo import run_monte_carlo
+
+    scenario = _template_07_with([
+        {"quantity": "orbit_elements", "kind": "normal",
+         "element_spread": {"semi_major_axis_km": 0.5, "true_anomaly_deg": 0.1}},
+        {"quantity": "drag_coeff", "kind": "uniform", "bounds": [2.0, 3.0]},
+        {"quantity": "inertia_kg_m2", "kind": "normal", "std_deviation": 0.5},
+    ])
+    assert run_monte_carlo(scenario, scenario.monte_carlo, tmp_path) == []
+    batch = mcr.load(tmp_path)
+    name = scenario.spacecraft[0].name
+    assert batch.runs == [0, 1, 2] and batch.failed == []
+    assert batch.positions[name].shape == (3, batch.time_s.size, 3)
+    assert batch.time_s[-1] == pytest.approx(120.0)  # [s] the shortened run
+    for k, drawn in enumerate(batch.drawn):
+        params = json.loads((tmp_path / f"run{k}.json").read_text())
+        cd = float(next(v for key, v in params.items() if key.endswith("dragCoeff")))
+        assert drawn[f"{name} drag coefficient [-]"] == pytest.approx(cd)
+        assert set(drawn) >= {f"{name} semi-major axis [km]", f"{name} true anomaly [deg]", f"{name} Ixx [kg m^2]"}
+        assert drawn[f"{name} semi-major axis [km]"] == pytest.approx(6928.0, abs=5.0)  # [km] nominal +/- 10 sigma
+        assert abs(drawn[f"{name} true anomaly [deg]"]) < 1.0  # [deg] near the nominal 0, not 359.9
+    assert len({drawn[f"{name} drag coefficient [-]"] for drawn in batch.drawn}) == 3
+    # the starting positions differ along track, as the true-anomaly spread says
+    assert mcr.offsets(batch.positions[name], batch.velocities[name])[:, 0, 1].std() > 100.0  # [m]

@@ -286,6 +286,11 @@ def cmd_monte_carlo(args: argparse.Namespace) -> int:
         return 3
 
     print(f"Archived results to {args.archive_dir}")
+    from .engine import monte_carlo_results
+
+    if monte_carlo_results.has_summary(args.archive_dir):
+        for line in monte_carlo_results.summary_lines(monte_carlo_results.load(args.archive_dir)):
+            print(f"  {line}")
     if failures:
         print(f"FAILED runs: {failures}", file=sys.stderr)
         return 4
