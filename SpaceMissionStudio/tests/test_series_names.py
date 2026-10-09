@@ -32,7 +32,8 @@ _TEMPLATE_PATHS = sorted(_TEMPLATES_DIR.glob("*.json"))
 
 def test_template_05_matches_a_real_run():
     """The exact series set of a real template-05 run (the user's own
-    results export: 40 CSV files)."""
+    results export: 40 CSV files), plus each spacecraft's eclipse
+    illumination, recorded since the Events tab (UX/UI guidelines step 3)."""
     names = expected_series_names(load_scenario(_TEMPLATES_DIR / "05_formation_flying_phasing.json"))
     elements = ("arg_periapsis", "eccentricity", "inclination", "raan", "semi_major_axis", "true_anomaly")
     expected = set()
@@ -41,10 +42,11 @@ def test_template_05_matches_a_real_run():
         expected |= {f"{sc}.orbit_elements.{e}" for e in elements}
         expected |= {f"{sc}.orbit_elements_mean.{e}" for e in elements}
         expected |= {f"{sc}.station_keeping.{p}" for p in ("altitude", "burn_on", "delta_v", "propellant_remaining")}
+        expected.add(f"{sc}.eclipse.illumination_factor")
     expected |= {f"follower-1.phasing_keeping.{p}"
                  for p in ("delta_v", "relative_semi_major_axis", "separation_error", "state")}
     assert set(names) == expected
-    assert len(names) == 40
+    assert len(names) == 42
 
 
 def test_devices_and_ground_stations_add_their_series():

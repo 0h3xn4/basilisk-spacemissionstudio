@@ -71,12 +71,12 @@ From `compliance_matrix.csv`. "Was" is after Phase 3; Phase 1 values are in
 | Standard | Compliant | Partially | Non-compliant | Not applicable | Human/process action |
 |---|---|---|---|---|---|
 | ECSS-E-ST-40C | 45 (was 4) | 533 (was 86) | 165 (was 553) | 33 | 7 (was 107) |
-| ECSS-Q-ST-80C | 12 (was 5) | 235 (was 96) | 22 (was 96) | 33 | 45 (was 117) |
+| ECSS-Q-ST-80C | 12 (was 5) | 236 (was 96) | 22 (was 96) | 33 | 44 (was 117) |
 | ECSS-E-ST-10-09C | 23 | 59 | 0 | 6 | 4 |
 | ECSS-E-ST-10-04C | 9 | 4 | 17 | 122 | 0 |
 | CCSDS 502.0-B-3 | 263 | 10 | 71 | 369 | 2 |
 
-Counts as of the human-action decisions 7 to 13 (2026-10-08): a waived
+Counts as of the human-action decisions 7 to 19 (2026-10-08): a waived
 requirement counts as non-compliant (with its deviation), and a decided
 human action moves its rows out of the last column.
 
@@ -140,7 +140,7 @@ the time of writing.
   result changes:
   - template 18's spacecraft re-enters from 300 km after 34 days, not 25;
   - drag figures published earlier (5-year run, altitude trade, budgets)
-    are out of date (SRelD K-01).
+    were re-measured: 12-20 % lower (SRelD K-01, `drag_remeasure.md`).
 - **F-02:** the Earth GM is 398600.436 km³/s² (Basilisk's), under
   deviation D-07 (decision 6).
 - **Security:** a scenario file could run code without the user's
@@ -162,6 +162,7 @@ the time of writing.
 
 ## 7 Next steps (planned)
 
-1. The whole-tool review and update, starting from the known problems:
-   re-measure K-01, investigate K-08.
-2. Then the UX/UI guidelines (decision 5).
+1. The whole-tool review and update: done (K-01 re-measured, K-08 closed,
+   `review_log.md`).
+2. The UX/UI guidelines (decision 5): steps 1-3 done, step 4 and the Carbon
+   restyle next (`docs/ux_guidelines_gap.md`).

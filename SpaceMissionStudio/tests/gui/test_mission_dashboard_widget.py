@@ -247,3 +247,25 @@ def test_cards_fit_their_content_and_stack_when_narrow(qtbot):
     qtbot.wait(20)
     assert len({left(card) for card in cards}) == 1  # one column
     assert w.visibility_badge.text() == "In view of gs-1"
+
+
+def test_the_dashboard_shows_the_moment_under_the_shared_time_cursor(widget):
+    """UX/UI guidelines, "one shared time cursor across views": with a
+    cursor the panels show that moment; cleared, the end of the run."""
+    from spacemissionstudio.gui.time_cursor import TimeCursor
+
+    result = _result_set(
+        active_mode=[0, 1, 1], pointing_error_deg=[1.0, 12.0, 3.0], has_access=[0, 1, 1],
+        slant_range_m=[2.0e7, 1.2e6, 9.0e5], battery_charge_wh=[35.0, 34.0, 33.0], net_power_w=[8.0, -9.0, -10.0],
+    )
+    widget.set_result(result, _scenario())
+    cursor = TimeCursor()
+    widget.set_time_cursor(cursor)
+    assert widget.mode_badge.text() == "Ground-station-pointing"
+    cursor.set_time(0.4)  # [s] between the first two samples: the first one is shown
+    assert widget.mode_badge.text() == "Sun-pointing"
+    assert widget.sim_time_label.text() == "0.0 s (time cursor)"
+    cursor.set_time(1.0)  # [s]
+    assert widget.tracking_badge.text() == "Slewing" and "1,200.0 km" in widget.slant_range_label.text()
+    cursor.clear()
+    assert widget.sim_time_label.text() == "2.0 s" and widget.tracking_badge.text() == "Converged"

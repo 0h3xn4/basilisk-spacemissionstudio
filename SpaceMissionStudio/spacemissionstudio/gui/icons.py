@@ -66,8 +66,8 @@ from pathlib import Path
 from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QColor, QGuiApplication, QIcon, QPainter, QPen, QPixmap
 
-_ACCENT = "#3457D5"  # solar panels -- theme.py's own accent color
-_ACCENT_DARK = "#243C99"  # antenna + panel grid lines
+_ACCENT = "#0F62FE"  # solar panels -- theme.py's accent (Carbon interactive)
+_ACCENT_DARK = "#002D9C"  # antenna + panel grid lines (Carbon blue 80)
 _GOLD = "#CFB87C"  # satellite body -- see module docstring for why gold, not decorative
 _GOLD_DARK = "#A88F53"  # body centerline detail
 

@@ -107,8 +107,9 @@ the separation drifts out of tolerance.
 
 What to look at:
 - follower-1.phasing_keeping.separation_error and .relative_semi_major_axis.
-- The separation drifts slowly, leaves its 10% band around day 20, and one correction brings it back in \
-about 3 days. It then stays within 48-55 km for ~0.013 m/s.
+- The separation drifts slowly and reaches the edge of its 10% band around day 20; one correction turns \
+it round within a day, never more than 0.2 km outside.
+- It then stays within 45-54 km, for ~0.014 m/s in all.
 
 Try changing:
 - Target separation (a list of values steps through a schedule).
@@ -333,9 +334,9 @@ steady torque. rods-off has only reaction wheels; rods-on also has torque rods.
 
 What to look at:
 - rods-off.rw_speeds: after the first turn to the Sun, the wheels soak up the torque all day -- about \
-2.0 N*m*s stored by the end, rw-x near -940 RPM.
+1.7 N*m*s stored by the end, rw-x near -815 RPM.
 - rods-on.rw_speeds: the torque rods hand that momentum to Earth's magnetic field; the wheels stay under \
-~30 RPM.
+~20 RPM.
 - rods-on.mtb_dipole_commanded: the rods working against the torque.
 
 Try changing:

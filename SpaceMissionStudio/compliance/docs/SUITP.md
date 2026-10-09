@@ -155,7 +155,6 @@ the test designs for each requirement.
 | The installers (Debian package, Windows installer) | Not part of the test suite. The Debian package was installed and launched by hand during development. |
 | Network downloads against the real servers | Network access is not available in tests; the downloads are tested with local stand-ins |
 | Every combination of scenario options | Not feasible. The 21 templates cover the supported features together, and each option is tested on its own. |
-| Windows and macOS | Not available in CI (SValP 9) |
 
 ### 7.5 Test pass and fail criteria (K.2.1<7.5>)
 

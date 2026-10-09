@@ -69,10 +69,13 @@ include = ["spacemissionstudio*"]
 # alone would silently drop everything one directory deeper.
 # gui/assets/*.svg are the theme's combo/spin arrow and check-mark glyphs
 # (see gui/theme.py) -- no __init__.py there either, same reason.
+# gui/assets/fonts/ holds IBM Plex (SIL OFL 1.1, the licence and the
+# provenance ship with the fonts).
 [tool.setuptools.package-data]
 spacemissionstudio = ["scenarios/*.json", "scenarios/templates/*.json", "scenarios/templates/README.md",
-                      "gui/assets/*.svg", "data/spaceweather/SW-All.txt", "data/spaceweather/oct2026f10-prd.txt",
-                      "data/spaceweather/README.md"]
+                      "gui/assets/*.svg", "gui/assets/fonts/*.woff", "gui/assets/fonts/OFL.txt",
+                      "gui/assets/fonts/README.md", "data/spaceweather/SW-All.txt", "data/spaceweather/oct2026f10-prd.txt",
+                      "data/spaceweather/README.md", "help/USER_MANUAL.md", "help/docs/images/*.png"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

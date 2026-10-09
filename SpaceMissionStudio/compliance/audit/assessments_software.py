@@ -108,7 +108,7 @@ SOFTWARE_RULES = [
      "SUITP integration part; reports.", "S", "no", "R12,R14"),
     # 5.6 validation
     ("E-ST-40C", "5.6.2.1*", "P", "compliance/docs/SValP.md", "Validation plan drafted by the supplier; reviews waived (D-08).", "-", "M", "no", "R14"),
-    ("E-ST-40C", "5.6.3.*", "P", "compliance/docs/SValP.md, SVS.md, SVR.md; tests/validation (V-01, V-02, V-04 to V-08 within tolerance)", "Validation against the TS is specified, done and reported; not reviewed (CDR, H01); SRS-P-09/R-02 measured and met on the reference PC (decision 19); the suite fails on Windows and macOS (SRelD K-10).", "Fix the platform failures (K-10).", "M", "no", "R13,R14,H01,H13"),
+    ("E-ST-40C", "5.6.3.*", "P", "compliance/docs/SValP.md, SVS.md, SVR.md; tests/validation (V-01, V-02, V-04 to V-08 within tolerance)", "Validation against the TS is specified, done and reported; not reviewed (CDR, H01); SRS-P-09/R-02 measured and met on the reference PC (decision 19); the suite passes on Linux, Windows and macOS in CI (SVR 4.6, SRelD K-10 closed).", "Review (H01); run the Windows installer by hand (H13).", "M", "no", "R13,R14,H01,H13"),
     ("E-ST-40C", "5.6.3.4a", "N", "-", "No CDR.", _REVIEW_FIX, "S", "no", "H01,D-08"),
     ("E-ST-40C", "5.6.4.*", "N", "compliance/docs/SValP.md 4.1", "Validation against a requirements baseline is not possible: the baseline is waived (decision 9). Validation against the technical specification (5.6.3) is done.", "-", "M", "no", "H03,D-11"),
     ("E-ST-40C", "5.6.4.4a", "N", "-", "No QR.", _REVIEW_FIX, "S", "no", "H01,D-08"),
@@ -245,7 +245,7 @@ SOFTWARE_RULES = [
     ("Q-ST-80C", "6.2.1*", "P", "compliance/docs/SDP.md, SPAP.md 6.2 (plans and their status)", "Plans written after the activities they cover; drafted by the supplier; reviews waived (D-08).", "-", "M", "no", "R14"),
     ("Q-ST-80C", "6.2.2.1a", "P", "compliance/docs/dependability_safety_analysis.md section 1", "Classification by the user's judgement; the ECSS-Q-ST-40 6.5.6.3 analysis is not available; ECSS-Q-ST-40 not supplied (decision 18).", "-", "S", "no", "H04,H12"),
     ("Q-ST-80C", "6.2.2.*", "P", "compliance/docs/dependability_safety_analysis.md (functional FMEA, FM-01 to FM-12, safeguards with evidence)", "Drafted by the supplier, waiting for the user's approval; methods not agreed with a separate customer; no system-level analysis to start from.", "User approves the analysis (H04).", "S", "no", "H04"),
-    ("Q-ST-80C", "6.2.3.*", "P", "compliance/docs/dependability_safety_analysis.md section 4 (measures for critical software: the whole tool, category C)", "Measures applied and verified by the supplier; unreachable-code analysis (6.2.3.6a) open; no independent verification (H06).", "Analyse the uncovered branches; H06.", "S", "no", "H04,H06"),
+    ("Q-ST-80C", "6.2.3.*", "P", "compliance/docs/dependability_safety_analysis.md section 4 (measures for critical software: the whole tool, category C)", "Measures applied and verified by the supplier; unreachable-code analysis (6.2.3.6a) done, unreachable code removed (review_log F-13), defensive checks kept as an interpretation to confirm; no independent verification (H06).", "Confirm the defensive-check interpretation; H06.", "S", "no", "H04,H06"),
     ("Q-ST-80C", "6.2.4.*", "P", "git; version 2.0.0 (pyproject.toml); schema_version + migrations; "
      "R01 (Phase 2): spacemissionstudio/dependencies.py QUALIFIED_BASILISK_VERSION = 2.12.0, installers pin "
      "bsk[all]==2.12.0, start-up check (GUI status bar, CLI run), RunProvenance/provenance.json records "

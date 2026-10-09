@@ -796,8 +796,6 @@ class MissionEngine:
         # Not eval(): see schema.command.evaluate_condition (finding S-02).
         try:
             return bool(evaluate_condition(expression, self._script_context()))
-        except MissionEngineError:
-            raise
         except Exception as exc:
             raise MissionEngineError(f"{path}: condition {expression!r} failed to evaluate: {exc}") from exc
 

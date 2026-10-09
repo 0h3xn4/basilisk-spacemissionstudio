@@ -1215,11 +1215,13 @@ def build_magnetic_field_wmm(scSim, task_name: str, planet_state_out_msg, centra
     indexed ``envOutMsgs[i]`` entry (index == call order, verified via
     ``magneticFieldWMM``'s own unit test).
     """
-    from Basilisk.utilities.supportDataTools.dataFetcher import DataFile, get_path
+    from Basilisk.utilities.supportDataTools.dataFetcher import DataFile
+
+    from . import kernels
 
     mod = magneticFieldWMM.MagneticFieldWMM()
     mod.ModelTag = "magneticFieldWMM"
-    mod.configureWMMFile(str(get_path(DataFile.MagneticFieldData.WMM)))
+    mod.configureWMMFile(str(kernels.cached_path(DataFile.MagneticFieldData.WMM)))  # no download (F-16)
     mod.planetRadius = central_body_radius_m
     mod.planetPosInMsg.subscribeTo(planet_state_out_msg)
     scSim.AddModelToTask(task_name, mod)

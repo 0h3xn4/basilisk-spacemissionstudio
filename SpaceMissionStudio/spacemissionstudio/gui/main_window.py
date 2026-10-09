@@ -59,7 +59,8 @@ from ..schema.scenario import Scenario, ScenarioValidationError, load_scenario
 from . import autosave
 from .feedback import show_toast
 from .icons import toolbar_icon
-from .kernel_status_widget import KernelStatusWidget
+from .data_panel_widget import DataPanelWidget
+from .event_timeline_widget import EventTimelineWidget
 from .load_scenario_widget import LoadScenarioWidget
 from .mission_dashboard_widget import MissionDashboardWidget
 from .mission_output_widget import MissionOutputWidget
@@ -70,6 +71,10 @@ from .budget_widget import BudgetWidget
 from .lifetime_widget import LifetimeWidget
 from .scenario_explainer_widget import ScenarioExplainerWidget
 from .startup_fetch_dialog import maybe_run_startup_fetch
+from .time_cursor import TimeCursor, describe as describe_time
+from .theme import PALETTE
+from .undo_history import ScenarioHistory
+from .run_history import RunHistory
 from .vizard_dialog import VizardDialog
 from .vizard_launcher import (
     DEFAULT_LIVE_STREAM_ADDRESS,
@@ -79,8 +84,10 @@ from .vizard_launcher import (
     remember_vizard_executable,
 )
 from .widgets import TabWidget
+from ..engine.vizard import playback_file as vizard_playback_file
 
 _FILE_FILTER = "SpaceMissionStudio scenario (*.json)"
+_HISTORY_SETTLE_MS = 400  # [ms] an edit is recorded for undo once typing pauses this long
 
 # [ms] Design-philosophy roadmap item M4 (docs/ux_roadmap.md) -- how
 # often _on_autosave_tick() writes a crash-recovery copy of the
@@ -163,12 +170,23 @@ class MainWindow(QMainWindow):
         # also isn't nagged repeatedly once they do.
         self._vizard_live_stream_hint_shown = False
         self._last_run_epoch_utc: str | None = None  # set in on_run(); see its own comment
+        self._last_run_vizard_file: str | None = None  # the playback file the last run writes, if any
+        self.run_history = RunHistory()  # this session's runs, for comparison
         self._last_run_scenario: Scenario | None = None  # set in on_run(); fed to mission_dashboard_widget
 
         self.scenario_editor = ScenarioEditorWidget()
         self.scenario_editor.reset_to_default()
         self.scenario_editor.changed.connect(self._mark_dirty)
         self.scenario_editor.changed.connect(self._refresh_scenario_explainer)
+        # Undo and redo (gui.undo_history): one snapshot per settled edit.
+        self._history = ScenarioHistory()
+        self._restoring_history = False
+        self._history_timer = QTimer(self)
+        self._history_timer.setSingleShot(True)
+        self._history_timer.setInterval(_HISTORY_SETTLE_MS)
+        self._history_timer.timeout.connect(self._record_history)
+        self.scenario_editor.changed.connect(self._schedule_history)
+        self._history.reset(self._editor_state())
 
         self.load_scenario_widget = LoadScenarioWidget()
         self.load_scenario_widget.path_chosen.connect(self._on_load_scenario_path_chosen)
@@ -177,7 +195,15 @@ class MainWindow(QMainWindow):
         self.results_widget = ResultsWidget()
         self.mission_dashboard_widget = MissionDashboardWidget()
         self.mission_output_widget = MissionOutputWidget()
-        self.kernel_status_widget = KernelStatusWidget()
+        self.data_panel_widget = DataPanelWidget()
+        self.event_timeline_widget = EventTimelineWidget()
+        # One time cursor for every view of a run (UX/UI guidelines).
+        self.time_cursor = TimeCursor(self)
+        self.event_timeline_widget.set_time_cursor(self.time_cursor)
+        self.results_widget.set_time_cursor(self.time_cursor)
+        self.mission_dashboard_widget.set_time_cursor(self.time_cursor)
+        self.mission_output_widget.set_time_cursor(self.time_cursor)
+        self.results_widget.open_in_vizard.connect(self.open_vizard_playback)
         self.scenario_explainer_widget = ScenarioExplainerWidget()
         self.lifetime_widget = LifetimeWidget()
         self.budget_widget = BudgetWidget()
@@ -186,7 +212,8 @@ class MainWindow(QMainWindow):
         self.right_tabs.addTab(self.results_widget, "Results")
         self.right_tabs.addTab(self.mission_dashboard_widget, "Mission Dashboard")
         self.right_tabs.addTab(self.mission_output_widget, "Mission Output")
-        self.right_tabs.addTab(self.kernel_status_widget, "Kernel Status")
+        self.right_tabs.addTab(self.event_timeline_widget, "Events")
+        self.right_tabs.addTab(self.data_panel_widget, "Data")
         self.right_tabs.addTab(self.scenario_explainer_widget, "Explain")
         self.right_tabs.addTab(self.lifetime_widget, "End of Life")
         budget_scroll = QScrollArea()  # the budget, launch-delay and altitude tables together outgrow short windows
@@ -250,8 +277,14 @@ class MainWindow(QMainWindow):
         if version_note is not None:
             self.basilisk_version_label.setText("Basilisk version not qualified")
             self.basilisk_version_label.setToolTip(version_note)
-            self.basilisk_version_label.setStyleSheet("color: #b8860b;")
+            self.basilisk_version_label.setStyleSheet(f"color: {PALETTE['warning']};")
         self.statusBar().addPermanentWidget(self.basilisk_version_label)
+        self.time_cursor_label = QLabel()
+        self.time_cursor_label.setToolTip("The shared time cursor. Click a plot or the Events timeline to move it; "
+                                          "Run > Clear Time Cursor clears it.")
+        self.time_cursor_label.setVisible(False)
+        self.statusBar().addPermanentWidget(self.time_cursor_label)
+        self.time_cursor.changed.connect(self._on_time_cursor_changed)
 
         # Design-philosophy roadmap item M4 (docs/ux_roadmap.md):
         # autosave/crash-recovery for scenario edits -- see
@@ -352,6 +385,19 @@ class MainWindow(QMainWindow):
         quit_action.triggered.connect(self.close)
         file_menu.addAction(quit_action)
 
+        edit_menu = self.menuBar().addMenu("&Edit")
+        self.undo_action = QAction("&Undo", self)
+        self.undo_action.setShortcut(QKeySequence.StandardKey.Undo)
+        self.undo_action.setToolTip("Undo the last scenario edit. A field being typed in undoes its own text first.")
+        self.undo_action.triggered.connect(self.on_undo)
+        edit_menu.addAction(self.undo_action)
+        self.redo_action = QAction("&Redo", self)
+        self.redo_action.setShortcut(QKeySequence.StandardKey.Redo)
+        self.redo_action.setToolTip("Redo the scenario edit just undone.")
+        self.redo_action.triggered.connect(self.on_redo)
+        edit_menu.addAction(self.redo_action)
+        self._update_undo_actions()
+
         run_menu = self.menuBar().addMenu("&Run")
         run_action = QAction(toolbar_icon("run"), "&Run Simulation", self)
         run_action.setShortcut("Ctrl+R")
@@ -390,13 +436,13 @@ class MainWindow(QMainWindow):
         self.live_plot_action = live_plot_action
 
         check_kernels_action = QAction(toolbar_icon("check-kernels"),
-                                        "&Check Kernels", self)
+                                        "&Check Reference Data", self)
         check_kernels_action.setToolTip(
-            "Checks whether the SPICE ephemeris kernels every run needs (for real Sun/Moon/"
-            "planet positions) are already cached locally, fetching any that are missing -- "
-            "needs network access once; after that, every run works fully offline."
+            "Shows every reference data file (SPICE kernels, gravity field, magnetic model, space "
+            "weather, Earth orientation) with its source, dates and checksum. No network: downloads "
+            "start only from the Data tab's Download menu, after asking."
         )
-        check_kernels_action.triggered.connect(self.kernel_status_widget.refresh)
+        check_kernels_action.triggered.connect(self._show_data_panel)
         run_menu.addAction(check_kernels_action)
         self.check_kernels_action = check_kernels_action
 
@@ -424,6 +470,12 @@ class MainWindow(QMainWindow):
         monte_carlo_action.triggered.connect(self.on_run_monte_carlo)
         run_menu.addAction(monte_carlo_action)
         self.monte_carlo_action = monte_carlo_action
+        run_menu.addSeparator()
+        clear_cursor_action = QAction("Clear &Time Cursor", self)
+        clear_cursor_action.setToolTip("Clears the shared time cursor; the views show the end of the run again.")
+        clear_cursor_action.triggered.connect(self.time_cursor.clear)
+        run_menu.addAction(clear_cursor_action)
+        self.clear_cursor_action = clear_cursor_action
 
         # Real gap, found while auditing the rest of the app for UX
         # issues: spacemissionstudio.__version__ already exists (this is a
@@ -434,12 +486,80 @@ class MainWindow(QMainWindow):
         # even state which version they were running from inside the
         # app itself.
         help_menu = self.menuBar().addMenu("&Help")
+        manual_action = QAction("&User Manual", self)
+        # F1 on every platform (macOS's HelpContents is Ctrl+?, CI run 48), plus the platform's own key
+        manual_action.setShortcuts([QKeySequence("F1")] + [k for k in QKeySequence.keyBindings(
+            QKeySequence.StandardKey.HelpContents) if k.toString() != "F1"])
+        manual_action.setToolTip("Opens the user manual shipped with the app (works offline).")
+        manual_action.triggered.connect(self.on_user_manual)
+        help_menu.addAction(manual_action)
+        self.manual_action = manual_action
+        shortcuts_action = QAction("&Keyboard Shortcuts", self)
+        shortcuts_action.setToolTip("Lists the keyboard shortcuts.")
+        shortcuts_action.triggered.connect(self.on_keyboard_shortcuts)
+        help_menu.addAction(shortcuts_action)
+        palette_action = QAction("&Command Palette...", self)
+        palette_action.setShortcut(QKeySequence("Ctrl+K"))
+        palette_action.setToolTip("Find any command or tab by typing part of its name (Ctrl+K).")
+        palette_action.triggered.connect(self.on_command_palette)
+        help_menu.addAction(palette_action)
+        self.palette_action = palette_action
+        help_menu.addSeparator()
         about_action = QAction("&About SpaceMissionStudio", self)
         about_action.setToolTip("Shows the installed version and licensing information.")
         about_action.triggered.connect(self.on_about)
         help_menu.addAction(about_action)
 
         self._build_toolbar()
+
+    def _show_data_panel(self) -> None:
+        self.data_panel_widget.refresh()
+        self.right_tabs.setCurrentWidget(self.data_panel_widget)
+
+    def on_user_manual(self) -> None:
+        from .help_dialog import ManualDialog
+
+        dialog = ManualDialog(self)
+        dialog.setModal(False)
+        dialog.show()
+        self._manual_dialog = dialog  # keep it alive while it is open
+
+    def palette_entries(self):
+        """For the command palette: every menu command, every tab, every
+        template, and every series of the result shown."""
+        from .command_palette import PaletteEntry, menu_entries
+
+        entries = [e for e in menu_entries(self.menuBar()) if not e.label.endswith("Command Palette...")]
+        for tabs in (self.left_tabs, self.right_tabs):
+            for index in range(tabs.count()):
+                name = tabs.tabText(index).replace("&", "")
+                entries.append(PaletteEntry(f"Go to tab > {name}",
+                                            lambda tabs=tabs, index=index: tabs.setCurrentIndex(index)))
+        from .load_scenario_widget import TEMPLATES_DIR
+
+        for path in sorted(TEMPLATES_DIR.glob("*.json")):
+            entries.append(PaletteEntry(f"Open template > {path.stem.replace('_', ' ')}",
+                                        lambda path=path: self._on_load_scenario_path_chosen(path)))
+        result = self.results_widget._result
+        for name in sorted(result.series) if result is not None else []:
+            entries.append(PaletteEntry(f"Show series > {name}", lambda name=name: self._show_series(name)))
+        return entries
+
+    def _show_series(self, name: str) -> None:
+        self.results_widget.show_series(name)
+        self.right_tabs.setCurrentWidget(self.results_widget)
+
+    def on_command_palette(self) -> None:
+        from .command_palette import CommandPalette
+
+        CommandPalette(self.palette_entries(), self).exec()
+
+    def on_keyboard_shortcuts(self) -> None:
+        from .help_dialog import ShortcutsDialog
+
+        actions = [action for menu_action in self.menuBar().actions() if menu_action.menu() is not None
+                   for action in menu_action.menu().actions()]
+        ShortcutsDialog(actions, self).exec()
 
     def on_about(self) -> None:
         import importlib.util
@@ -602,15 +722,115 @@ class MainWindow(QMainWindow):
             autosave.clear_recovery_file()
             return
         self.scenario_editor.from_scenario(info.scenario)
+        self._reset_history()
         self._refresh_scenario_explainer()
         self._current_path = info.original_path
-        self.results_widget.set_result(None)
-        self.mission_dashboard_widget.set_result(None)
-        self.mission_output_widget.clear()
+        self._clear_run_views()
         self._mark_dirty()
         self.statusBar().showMessage("Restored autosaved changes.")
         show_toast(self, "Restored autosaved changes")
         self.left_tabs.setCurrentWidget(self.scenario_editor)
+
+    # -- undo and redo ----------------------------------------------------
+
+    def _editor_state(self):
+        """The edited scenario as a dict, valid or not (a scenario being built
+        from scratch is invalid until it has a spacecraft); None if the form
+        cannot be read at all."""
+        try:
+            return self.scenario_editor.draft_scenario().to_dict()
+        except Exception:  # noqa: BLE001 -- a half-edited form must never break undo
+            _logger.debug("Undo: the edited scenario could not be read", exc_info=True)
+            return None
+
+    def _reset_history(self) -> None:
+        self._history_timer.stop()
+        self._history.reset(self._editor_state())
+        self._update_undo_actions()
+
+    def _schedule_history(self) -> None:
+        if not self._restoring_history:
+            self._history_timer.start()
+
+    def _record_history(self) -> None:
+        state = self._editor_state()
+        if state is not None and self._history.record(state):
+            self._update_undo_actions()
+
+    def _update_undo_actions(self) -> None:
+        if hasattr(self, "undo_action"):
+            self.undo_action.setEnabled(self._history.can_undo())
+            self.redo_action.setEnabled(self._history.can_redo())
+
+    def on_undo(self) -> None:
+        if self._history_timer.isActive():  # the edit just made counts first
+            self._history_timer.stop()
+            self._record_history()
+        self._restore_history(self._history.undo(), "Undone.")
+
+    def on_redo(self) -> None:
+        self._restore_history(self._history.redo(), "Redone.")
+
+    def _restore_history(self, state, message: str) -> None:
+        if state is None:
+            return
+        self._restoring_history = True
+        try:
+            self.scenario_editor.from_scenario(Scenario.from_dict(state))
+        finally:
+            self._restoring_history = False
+        self._history_timer.stop()
+        current = self._editor_state()
+        if current is not None:
+            self._history.replace_current(current)
+        self._refresh_scenario_explainer()
+        self._mark_dirty()
+        self._update_undo_actions()
+        self.statusBar().showMessage(message)
+
+    def _clear_run_views(self) -> None:
+        """Clear every view of the previous run, and the time cursor."""
+        self.results_widget.set_result(None)
+        self.mission_dashboard_widget.set_result(None)
+        self.mission_output_widget.clear()
+        self.event_timeline_widget.set_result(None)
+        self.results_widget.set_vizard_file(None)
+        self.results_widget.set_runs(self.run_history.runs, None)
+        self.time_cursor.clear()
+
+    def _keep_run(self, result, cancelled: bool) -> None:
+        """Keep the run for comparison (gui.run_history) and offer the earlier ones."""
+        if self._last_run_scenario is None:
+            return
+        record = self.run_history.add(self._last_run_scenario.to_dict(), result, self._last_run_epoch_utc or "",
+                                      cancelled=cancelled)
+        self.results_widget.set_runs(self.run_history.runs, record)
+
+    def _offer_vizard_playback(self) -> None:
+        """Show "Open in Vizard" on Results when the run wrote a playback file."""
+        path = self._last_run_vizard_file
+        self.results_widget.set_vizard_file(path if path and Path(path).is_file() else None)
+
+    def open_vizard_playback(self, path: str) -> bool:
+        """Start Vizard on ``path`` (``-loadFile``); False if it could not be started."""
+        if not path or not Path(path).is_file():
+            QMessageBox.warning(self, "No playback file", f"The run's Vizard file is not there: {path}")
+            return False
+        executable = find_vizard_executable() or self._locate_vizard()
+        if executable is None:
+            return False
+        try:
+            launch_vizard(executable, load_file=Path(path))
+        except OSError as exc:
+            QMessageBox.critical(self, "Could not launch Vizard", f"{executable}: {exc}")
+            return False
+        self.statusBar().showMessage(f"Opened {path} in Vizard.")
+        return True
+
+    def _on_time_cursor_changed(self, time_s) -> None:
+        self.time_cursor_label.setVisible(time_s is not None)
+        if time_s is not None:
+            self.time_cursor_label.setText("Cursor " + describe_time(time_s, self._last_run_epoch_utc))
 
     def _confirm_discard_unsaved(self) -> bool:
         """Returns True if it's OK to proceed (no unsaved changes, or the
@@ -631,11 +851,10 @@ class MainWindow(QMainWindow):
         if not self._confirm_discard_unsaved():
             return
         self.scenario_editor.reset_to_default()
+        self._reset_history()
         self._refresh_scenario_explainer()
         self._current_path = None
-        self.results_widget.set_result(None)
-        self.mission_dashboard_widget.set_result(None)
-        self.mission_output_widget.clear()
+        self._clear_run_views()
         self._mark_clean()
         self.statusBar().showMessage("New scenario.")
         show_toast(self, "New scenario")
@@ -700,11 +919,10 @@ class MainWindow(QMainWindow):
         picking a path to write to.
         """
         self.scenario_editor.from_scenario(scenario)
+        self._reset_history()
         self._refresh_scenario_explainer()
         self._current_path = current_path
-        self.results_widget.set_result(None)
-        self.mission_dashboard_widget.set_result(None)
-        self.mission_output_widget.clear()
+        self._clear_run_views()
         self._mark_clean()
         label = str(current_path) if current_path is not None else scenario.name
         self.statusBar().showMessage(f"{verb} {label}")
@@ -1030,12 +1248,12 @@ class MainWindow(QMainWindow):
         anything to flush/save), ``kill()`` only if that doesn't work
         within the timeout.
 
-        Audit correction: this used to say waiting frees "the port it may
-        have bound" -- wrong. ``launch_vizard()`` only ever starts the
-        external Vizard GUI as a CLIENT process that dials OUT to
-        Basilisk's own ``vizInterface`` (the engine side, which is what
-        actually binds the port); see ``docs/source/Vizard/vizardAdvanced/
-        vizardLiveComm.rst``. Nothing this process does binds a port.
+        Waiting also frees the live-stream port. In Basilisk 2.12.0
+        ``vizInterface`` connects out to Vizard, so the Vizard process
+        started here is the one that listens on it (security analysis
+        S-06; the "binds" wording in ``docs/source/Vizard/vizardAdvanced/
+        vizardLiveComm.rst`` does not match the code). The tool itself
+        opens no port.
         """
         self._vizard_process.terminate()
         try:
@@ -1132,11 +1350,9 @@ class MainWindow(QMainWindow):
         # looks exactly like this run already has results before it
         # actually does -- part of the "running another simulation seems
         # to break a lot of things" feedback).
-        self.results_widget.set_result(None)
-        self.mission_dashboard_widget.set_result(None)
+        self._clear_run_views()
         if live:
             self.right_tabs.setCurrentWidget(self.results_widget)
-        self.mission_output_widget.clear()
         # Reset once per run -- see _on_run_progress's own comment for why
         # this exists: suppresses a dialog-per-chunk storm if something
         # about THIS run's own data keeps failing on every single update.
@@ -1150,6 +1366,8 @@ class MainWindow(QMainWindow):
         # needs to recompute a live link-budget breakdown.
         self._last_run_epoch_utc = scenario.epoch_utc
         self._last_run_scenario = scenario
+        save_file = getattr(self._vizard_request, "save_file", None)
+        self._last_run_vizard_file = str(vizard_playback_file(save_file)) if save_file else None
         self.results_widget.set_featured_series(featured_series(scenario))
         _join_finished_worker(self._run_worker)
         self._run_worker = RunWorker(scenario, vizard_request=self._vizard_request, live=live,
@@ -1226,6 +1444,9 @@ class MainWindow(QMainWindow):
             # whatever was shown before.
             self.results_widget.set_live_result(result, self._last_run_epoch_utc)
             self.mission_dashboard_widget.set_live_result(result, self._last_run_scenario)
+            self.event_timeline_widget.set_result(result, self._last_run_epoch_utc)
+            self._offer_vizard_playback()
+            self._keep_run(result, cancelled=False)
             self.lifetime_widget.set_last_run(self._last_run_scenario, result)
             self.budget_widget.set_last_run(self._last_run_scenario, result)
             if command_summary is not None:
@@ -1260,6 +1481,9 @@ class MainWindow(QMainWindow):
         try:
             self.results_widget.set_live_result(partial_result, self._last_run_epoch_utc)
             self.mission_dashboard_widget.set_live_result(partial_result, self._last_run_scenario)
+            self.event_timeline_widget.set_result(partial_result, self._last_run_epoch_utc)
+            self._offer_vizard_playback()
+            self._keep_run(partial_result, cancelled=True)
             if command_summary is not None:
                 self.mission_output_widget.set_command_summary(command_summary, partial_result)
                 self.right_tabs.setCurrentWidget(self.mission_output_widget)

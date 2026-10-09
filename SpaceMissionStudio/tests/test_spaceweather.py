@@ -308,8 +308,21 @@ class _FakeFetchResponse:
         return False
 
 
+def _celestrak_csv(days: int = 3, start: str = "2025-01-01", f107: float = 150.0) -> bytes:
+    """A small, valid CelesTrak CSV (observed days): what a real download
+    looks like to the parser, which now checks every download (UX step 2)."""
+    from datetime import date, timedelta
+
+    first = date.fromisoformat(start)
+    lines = ["DATE,AP1,AP2,AP3,AP4,AP5,AP6,AP7,AP8,AP_AVG,F10.7_OBS,F10.7_OBS_CENTER81,F10.7_DATA_TYPE"]
+    for k in range(days):
+        day = first + timedelta(days=k)
+        lines.append(f"{day.isoformat()},7,7,7,7,7,7,7,7,7,{f107:.1f},{f107:.1f},OBS")
+    return ("\n".join(lines) + "\n").encode("ascii")
+
+
 def test_fetch_downloads_and_caches(tmp_path, monkeypatch):
-    fake_csv = b"DATE,AP1,AP2,AP3,AP4,AP5,AP6,AP7,AP8,AP_AVG,F10.7_OBS,F10.7_OBS_CENTER81\n"
+    fake_csv = _celestrak_csv()
     monkeypatch.setattr(sw.urllib.request, "urlopen", lambda *a, **k: _FakeFetchResponse(fake_csv))
 
     path = sw.fetch(dataset="SW-All", cache_dir=tmp_path)
@@ -334,7 +347,7 @@ def test_fetch_is_a_cache_hit_without_force(tmp_path, monkeypatch):
 
 
 def test_fetch_force_redownloads_even_if_cached(tmp_path, monkeypatch):
-    fake_csv = b"DATE,AP1,AP2,AP3,AP4,AP5,AP6,AP7,AP8,AP_AVG,F10.7_OBS,F10.7_OBS_CENTER81\nfresh\n"
+    fake_csv = _celestrak_csv(days=5)
     monkeypatch.setattr(sw.urllib.request, "urlopen", lambda *a, **k: _FakeFetchResponse(fake_csv))
 
     dest = tmp_path / "SW-All.csv"
@@ -396,7 +409,7 @@ def test_cached_fetch_path_is_none_when_nothing_fetched(tmp_path):
 
 
 def test_cached_fetch_path_finds_a_real_fetch(tmp_path, monkeypatch):
-    monkeypatch.setattr(sw.urllib.request, "urlopen", lambda *a, **k: _FakeFetchResponse(b"data"))
+    monkeypatch.setattr(sw.urllib.request, "urlopen", lambda *a, **k: _FakeFetchResponse(_celestrak_csv()))
     fetched = sw.fetch(dataset="SW-All", cache_dir=tmp_path)
 
     assert sw.cached_fetch_path(cache_dir=tmp_path) == fetched
@@ -472,3 +485,51 @@ def test_a_refused_replace_of_an_incomplete_file_is_reported(tmp_path, monkeypat
     with pytest.raises(PermissionError):
         sw.resolve("bundled", *window, cache_dir=tmp_path)
     assert sorted(p.name for p in tmp_path.iterdir()) == [first.path.name]
+
+
+def test_a_download_that_is_not_celestrak_data_is_refused_and_keeps_the_old_file(tmp_path, monkeypatch):
+    """UX step 2: every download is checked before it replaces anything."""
+    dest = tmp_path / "SW-All.csv"
+    dest.write_bytes(_celestrak_csv())
+    monkeypatch.setattr(sw.urllib.request, "urlopen", lambda *a, **k: _FakeFetchResponse(b"<html>error</html>"))
+    with pytest.raises(sw.SpaceWeatherError, match="not a usable CelesTrak"):
+        sw.fetch(dataset="SW-All", cache_dir=tmp_path, force=True)
+    assert dest.read_bytes() == _celestrak_csv()
+    assert not list(tmp_path.glob("*.part"))
+
+
+def test_a_download_records_its_source_and_checksum_and_keeps_the_previous_file(tmp_path, monkeypatch):
+    """The manifest names the source, SHA-256 and dates; the replaced file is kept."""
+    import hashlib
+
+    first, second = _celestrak_csv(days=3), _celestrak_csv(days=6, f107=180.0)
+    monkeypatch.setattr(sw.urllib.request, "urlopen", lambda *a, **k: _FakeFetchResponse(first))
+    sw.fetch(dataset="SW-All", cache_dir=tmp_path, force=True)
+    monkeypatch.setattr(sw.urllib.request, "urlopen", lambda *a, **k: _FakeFetchResponse(second))
+    sw.fetch(dataset="SW-All", cache_dir=tmp_path, force=True)
+    record = sw.installed_record(cache_dir=tmp_path)
+    assert record["source"] == sw.CELESTRAK_URLS["SW-All"]
+    assert record["sha256"] == hashlib.sha256(second).hexdigest()
+    assert record["last_observed"] == "2025-01-06"
+    assert record["previous"]["last_observed"] == "2025-01-03"
+
+
+def test_rollback_restores_the_previous_file(tmp_path, monkeypatch):
+    first, second = _celestrak_csv(days=3), _celestrak_csv(days=6)
+    sw.import_file(_write(tmp_path / "a.csv", first), cache_dir=tmp_path / "cache")
+    sw.import_file(_write(tmp_path / "b.csv", second), cache_dir=tmp_path / "cache")
+    restored = sw.rollback(cache_dir=tmp_path / "cache")
+    assert restored.read_bytes() == first
+    assert sw.installed_record(cache_dir=tmp_path / "cache")["source"].endswith("a.csv")
+    with pytest.raises(sw.SpaceWeatherError, match="no previous"):
+        sw.rollback(cache_dir=tmp_path / "cache")
+
+
+def test_import_checks_the_file_like_a_download(tmp_path):
+    with pytest.raises(sw.SpaceWeatherError, match="not a usable CelesTrak"):
+        sw.import_file(_write(tmp_path / "bad.csv", b"not,a,celestrak,file\n"), cache_dir=tmp_path / "cache")
+
+
+def _write(path, data: bytes):
+    path.write_bytes(data)
+    return path

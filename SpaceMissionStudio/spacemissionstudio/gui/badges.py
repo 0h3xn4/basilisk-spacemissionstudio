@@ -35,13 +35,16 @@ from __future__ import annotations
 
 from .theme import PALETTE
 
-MUTED = (PALETTE["border_strong"], PALETTE["text"])
-SUCCESS = (PALETTE["success"], PALETTE["on_accent"])
-DANGER = (PALETTE["danger"], PALETTE["on_accent"])
-ACCENT = (PALETTE["accent"], PALETTE["on_accent"])
-WARNING = (PALETTE["warning"], PALETTE["on_accent"])
+# Carbon tags: a light fill with dark text of the same hue (gray, green,
+# red, blue tags; warning uses the warning notification colours, Carbon
+# having no yellow tag). Status colours keep their one meaning.
+MUTED = (PALETTE["selected"], PALETTE["text"])  # gray tag
+SUCCESS = ("#A7F0BA", "#0E6027")  # green tag
+DANGER = ("#FFD7D9", "#A2191F")  # red tag
+ACCENT = ("#D0E2FF", "#0043CE")  # blue tag
+WARNING = (PALETTE["warning_soft"], PALETTE["warning"])
 
 
 def badge_style(colors: tuple) -> str:
     bg, fg = colors
-    return f"background-color: {bg}; color: {fg}; border-radius: 4px; padding: 2px 10px; font-weight: 600;"
+    return f"background-color: {bg}; color: {fg}; border-radius: 10px; padding: 2px 10px;"

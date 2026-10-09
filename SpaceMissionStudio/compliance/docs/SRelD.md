@@ -91,14 +91,14 @@ SpaceMissionStudio". In summary:
 
 | # | Problem | Effect | Ref. |
 |---|---|---|---|
-| K-01 | The drag figures in the HISTORY entries for the 5-year run, the altitude trade and the budgets were measured before the F-07 correction | Those published numbers are out of date | HISTORY.md; to re-measure |
+| K-01 | Closed: the drag figures published before F-07 and F-09 (5-year runs, re-entry from 300 km, launch-delay sweep, altitude trade, disposal, templates 05 and 21) were re-measured on Basilisk 2.12.0. Station-keeping and trade figures fall 12-20 %; HISTORY, the template 05 and 21 descriptions, the template 21 claim test and the drag make-up docstring now give the new values. The bundled space weather has also changed since some were published, and the re-measurement does not separate the two; the disposal figures move both ways, not explained | – | `compliance/drag_remeasure.md`; HISTORY.md |
 | K-02 | The drag case of V-04 has an unexplained 1.6 % decay difference from GMAT (within tolerance) | Drag results carry it | `phase3_log.md` |
 | K-03 | The time argument is TDB, not TAI (F-05) | About 0.1 m/day in LEO | `phase3_log.md` |
 | K-04 | The field's GM and radius are the body's, not the field file's (F-03) | Centimetres per day | `phase3_log.md` |
 | K-05 | During a live stream Vizard, a separate program, listens on port 5556; the tool opens no port. Earlier issues of the security analysis wrongly said Basilisk binds 5556 and 5570 on all interfaces | Exposure depends on Vizard's own binding, not checked | security analysis S-06 (corrected, decision 17) |
 | K-06 | The Windows installer was not run in this audit | Unknown | SValP 9 |
 | K-07 | Closed (decision 19): SRS-P-09 and SRS-R-02 measured and met on the reference PC | – | SVR; `compliance/performance.md` |
-| K-10 | The test suite fails on Windows (34 tests) and macOS (10 tests) in CI. The failures are: the Vizard download tests, which assume the Linux layout (both); the template wizard and dialog width tests (Windows); a path-separator assertion (Windows); a cancel-timing test (Windows); the PNG export tests (macOS); a test-isolation error in `test_ccsds_odm` (macOS). The 400 km altitude-trade budget on Windows (1.45 kg; 7.26 kg on Linux) was a real defect, F-09 (K-11) | Windows and macOS results are not verified | SVR; CI run 20; `review_log.md` |
+| K-10 | Closed: the test suite failed on Windows (34 tests) and macOS (10 tests) in CI run 20. Four causes were tool defects (F-09 to F-12, fixed); the rest were tests that assumed Linux. Since commit `41b73b1c3` the suite passes on all three (2259 passed, 11 skipped, 0 failed; run 37854361784). The GUI has not been used by hand on Windows or macOS | – | SVR 4.6; `review_log.md` |
 | K-11 | F-09, fixed: parallel runs could read a half-written space-weather file. Altitude trades with more than one worker and Monte Carlo runs with NRLMSISE-00 drag, made before the fix, may have used wrong solar activity | Those results are to be re-run | `review_log.md` F-09 |
 | K-08 | Closed: the PNG/SVG export polled the page with overlapping asynchronous queries; a late timer tick read the cleared state (the CI tracebacks), and several answers could save the file twice. One query at a time now, late answers ignored (F-12) | – | `review_log.md` F-12 |
 | K-09 | 988 of 1488 unit and integration tests have no docstring | Weaker test documentation | `SUITP_test_cases.md` |
@@ -128,8 +128,8 @@ are not (decision 14, H08).
 
 Planned, in order:
 1. The human actions of RD4: reviews, PA organisation, signatures.
-2. A review and update of the whole tool: re-measure K-01, investigate
-   K-08.
+2. A review and update of the whole tool: done (K-01 re-measured, K-08
+   closed, unreached code analysed; `review_log.md`).
 3. The UX/UI guidelines (`PROGRESS.md`, decision 5).
 
 Dropping the two Basilisk workarounds also depends on Basilisk: they go

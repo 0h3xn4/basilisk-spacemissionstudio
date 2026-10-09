@@ -889,7 +889,11 @@ def oem_from_result(result, epoch_utc: str, central_body: str, spacecraft: Seque
                    "interpolation": interpolation, "interpolation_degree": 7,
                    "comments": ["Produced by a SpaceMissionStudio (Basilisk) simulation; EME2000 is SPICE J2000",
                                 "Planetary ephemeris DE430; positions in km, velocities in km/s, as recorded"]}
-        messages[name] = write_oem([segment], **kwargs)
+        header = dict(kwargs)
+        provenance = getattr(result, "provenance", None)
+        if provenance is not None and "comments" not in header:
+            header["comments"] = provenance.summary_lines()  # provenance on every output (UX/UI guidelines)
+        messages[name] = write_oem([segment], **header)
     return messages
 
 

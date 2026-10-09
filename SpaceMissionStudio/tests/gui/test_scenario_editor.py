@@ -283,6 +283,6 @@ def test_mission_sequence_report_lists_the_scenarios_series(qtbot):
     qtbot.addWidget(editor)
     editor.from_scenario(load_scenario(templates / "05_formation_flying_phasing.json"))
     names = editor.mission_sequence_editor._series_names()
-    assert len(names) == 40 and "follower-1.phasing_keeping.separation_error" in names
+    assert len(names) == 42 and "follower-1.phasing_keeping.separation_error" in names  # 40 + two eclipse series
     editor.name_edit.setText("")  # invalid scenario: the list must still come back
     assert editor.mission_sequence_editor._series_names() == names

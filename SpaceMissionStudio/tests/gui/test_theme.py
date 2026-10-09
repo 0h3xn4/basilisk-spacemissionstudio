@@ -81,7 +81,7 @@ def test_svg_asset_colors_match_the_palette():
         "chevron-down-disabled.svg": PALETTE["text_disabled"],
         "chevron-up-disabled.svg": PALETTE["text_disabled"],
         "check.svg": PALETTE["on_accent"],
-        "radio-dot.svg": PALETTE["on_accent"],
+        "radio-dot.svg": PALETTE["text"],  # Carbon: an icon-primary dot on white
         "tb-run.svg": PALETTE["on_accent"],
         "tb-abort.svg": PALETTE["danger"],
     }
@@ -101,3 +101,32 @@ def test_every_toolbar_action_has_an_icon(qtbot):
             if action.isSeparator():
                 continue
             assert not action.icon().isNull(), action.text()
+
+
+def test_ibm_plex_is_loaded_and_set_as_the_application_font(qapp):
+    """Carbon's typeface ships with the app (UX/UI guidelines, decision 1):
+    the bundled IBM Plex Sans and Mono load, and the UI uses Plex Sans at
+    Carbon's body size. CI runs this on Linux, Windows and macOS."""
+    from spacemissionstudio.gui.theme import FONTS_DIR, MONO_FONT_FAMILY, UI_FONT_FAMILY, apply_theme, load_fonts
+
+    assert sorted(p.name for p in FONTS_DIR.glob("*.woff")) == [
+        "IBMPlexMono-Regular.woff", "IBMPlexSans-Italic.woff", "IBMPlexSans-Regular.woff",
+        "IBMPlexSans-SemiBold.woff"]
+    assert (FONTS_DIR / "OFL.txt").read_text(encoding="utf-8").count("SIL OPEN FONT LICENSE") >= 1
+    families = load_fonts()
+    assert UI_FONT_FAMILY in families and MONO_FONT_FAMILY in families
+    apply_theme(qapp)
+    assert qapp.font().family() == UI_FONT_FAMILY
+    assert abs(qapp.font().pointSizeF() - 10.5) < 1e-6  # [pt] 14 px at 96 dpi
+
+
+def test_the_palette_carries_carbon_g10_tokens_and_the_charts_share_its_series_colours():
+    from spacemissionstudio.gui import event_timeline_widget, results_widget
+    from spacemissionstudio.gui.theme import PALETTE, SERIES_COLORS
+
+    carbon = {"bg": "#F4F4F4", "surface": "#FFFFFF", "text": "#161616", "text_muted": "#525252",
+              "accent": "#0F62FE", "danger": "#DA1E28", "success": "#24A148", "border": "#E0E0E0"}
+    assert {key: PALETTE[key] for key in carbon} == carbon
+    assert results_widget._SERIES_COLORS == SERIES_COLORS
+    assert list(event_timeline_widget.KIND_COLOURS.values()) == SERIES_COLORS[:5]
+    assert PALETTE["danger"] not in SERIES_COLORS and PALETTE["success"] not in SERIES_COLORS

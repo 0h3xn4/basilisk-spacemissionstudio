@@ -7858,3 +7858,177 @@ Details in `compliance/review_log.md`.
   overlapping asynchronous queries; a late timer tick raised the
   "'NoneType' object is not subscriptable" tracebacks seen in the CI logs,
   and several answers could save the file twice. One query at a time now.
+
+## Unreachable code; offline, plausibility checks, frames, help and provenance (UX/UI guidelines, step 1)
+
+**Unreachable code (ECSS-Q-ST-80C 6.2.3.6a).** Seven pieces of code nothing
+could reach were removed: six functions nobody called and an exception
+clause nothing could trigger. Constant-frame thrust was reachable but no
+test ran it; a test against the rocket and Gauss equations now does. The
+analysis is in `compliance/unreached_code.md` and `review_log.md` (F-13 to
+F-15). Coverage on Python 3.11 does not see the code Basilisk runs on its
+own thread, so the published coverage errs low (93.3 % of statements run
+when measured with Python 3.12's `sys.monitoring`).
+
+**Offline, tested (F-16, F-17).** A new test blocks every network lookup and
+connection while validating, exporting, running a template and starting the
+GUI; CI repeats it with no network interface at all. It found:
+
+* Basilisk 2.12.0 sends a request to github.com whenever its data fetcher is
+  imported, which every run does. The tool now keeps that request on the
+  computer (it is pointed at a closed local port while that module loads;
+  Basilisk itself is unchanged). To be reported to the Basilisk developers.
+* A run downloaded any support-data file missing from Basilisk's cache. Runs
+  now read only the cache (with checksums where Basilisk publishes them) and
+  say where to fetch a missing file: Kernel Status or
+  `spacemissionstudio kernels-status`.
+
+**While editing,** the Scenario Editor now warns under its validation line
+about a perigee below the surface or below 120 km, a Cartesian state inside
+Earth or escaping (often km and m mixed up), a drag run outside the
+space-weather data, and missing or out-of-span Earth orientation files.
+
+**Frames:** every position and vector input names its frame in its label
+(body frame B, EME2000, WGS-84), not only in a tooltip.
+
+**Help:** Help > User Manual (F1) shows the manual shipped with the app,
+offline; Help > Keyboard Shortcuts lists the shortcuts.
+
+**Provenance in every output:** PNG and SVG plots, OEM, OPM and OMM files,
+the Mission Output CSV, Monte Carlo archives and the budget copy now name
+the tool and Basilisk versions and the scenario's SHA-256; run outputs also
+list every reference data file with its SHA-256.
+
+The plan for the rest of the guidelines (Carbon restyle, data panel, event
+timeline, shared time cursor, run comparison, undo, command palette) is in
+`docs/ux_guidelines_gap.md`.
+
+## Drag figures re-measured after F-07 and F-09 (SRelD K-01)
+
+Every drag figure published before the F-07 (geodetic altitude in the
+atmosphere model) and F-09 (half-written space-weather file) corrections was
+run again on Basilisk 2.12.0 with the bundled real space weather
+(`compliance/tools/remeasure_drag.py`; every table, run time and memory peak
+in `compliance/drag_remeasure.md`). The station-keeping and trade figures
+fall by 12-20 %. The bundled space weather has also been updated since some
+of these were published, and this re-measurement does not separate that
+from the two corrections:
+
+| Figure | Published | Now |
+|---|---|---|
+| Five years from 2030, MSFC 50th percentile, Cd 2.2 [m/s] | 274.9 | 230.7 (-16 %) |
+| Five years from 2030, 95th, Cd 3.0, 5 kg tank | tank dry day 1595.8, re-entry day 1633.3 | tank dry day 1709.1, re-entry day 1745.4 |
+| Five years from 2033, 95th, Cd 3.0, 20 kg tank [m/s] | 1333.6 | 1144.7 (-14 %) |
+| Re-entry from 300 km, no station keeping [day] | 25.4 | 34.0 |
+| Launch-delay sweep, worst launch (2033), in-plane [m/s] | 1450.1 | 1249.2 (-14 %) |
+| Altitude trade, in-plane at 350/400/450/500/550 km [m/s] | 3213/1450/690/342/175 | 2733/1249/600/300/154 (-12 to -15 %) |
+| Altitude trade, disposal at 500/550 km [m/s] | 6.4/29.7 | 11.7/34.0 |
+| Lowest altitude that fits the 2.0 kg tank | none | 550 km (1.85 kg) |
+| Disposal from 550 km at 2035 (122 kg, 5 years) | perigee ~513 km, 6.8 m/s | perigee 519 km, 5.1 m/s |
+| Template 21, rods off: stored, rw-x | 2.02 N*m*s, -938 RPM | 1.72 N*m*s, -815 RPM |
+| Template 21, rods on: largest wheel [RPM] | 28.2 | 18.7 |
+| Template 05: phasing delta-V [m/s] | 0.0136 | 0.0135 |
+
+The 5 kg run spends the same 600.5 m/s because the tank sets it; it lasts
+113 days longer. The disposal figures move both ways (up at 500 and 550 km
+in the trade, down for the 550 km case from 2035); why is not worked out
+here.
+
+**Template 05 changed its story.** The separation still drifts to its 10 %
+band around day 20, but it now reaches the lower edge and crosses it briefly
+once per orbit (12 times, never more than 0.17 km, 0.28 days in all) until
+one correction turns it round within the day; it then stays within
+44.8-54.1 km. Before, it left the band and came back on day 23. Its
+description says so now; template 21's gives the new wheel figures, and its
+claim test checks them.
+
+**The drag make-up estimate** is still about 5 % low against the full
+Basilisk runs: -5.4 % over five years at the 50th percentile from 2030, and
+-4.9 % at the 95th from 2033 (-2 to -6 % per year from the second year;
+-19 % and -3 % over the first). The 2030 run at the 95th percentile ran dry
+in its fifth year and is not a fair comparison there.
+
+**A trap in the comparison:** the trade was published at 350-550 km, and the
+default altitude grid has since moved to 300-500 km. Compared column by
+column, the trade seemed to double; the script now runs both grids and pairs
+the values by altitude.
+
+## The Data tab: every reference file, consented downloads, import and rollback (UX/UI guidelines, step 2)
+
+The Kernel Status tab is replaced by **Data**: every reference data file
+(SPICE kernels, gravity field, magnetic model, space weather, the solar
+activity prediction, Earth orientation) with its status, the dates it
+covers, its source, SHA-256 and install time, read from local files only.
+Out-of-date files are marked. It is the only place the app downloads
+anything: a download asks first, naming the source, the files and their
+size (default No), runs off the GUI thread and then says what changed.
+Space-weather downloads are parsed before they are installed, keep the
+previous file and write a manifest; space-weather and Earth orientation
+files can be imported from local files (e.g. from removable media) and
+rolled back to the version they replaced.
+
+## Events timeline and one shared time cursor (UX/UI guidelines, step 3)
+
+**Events tab.** One event model (`engine/events.py`) reads a run's passes
+(with peak elevation), eclipses (umbra or penumbra), station-keeping, GEO
+and phasing burns (with the delta-V each added), thruster firings and mode
+changes. The tab draws them as a timeline over a sortable table; kinds can
+be hidden, the timeline zooms, and the table exports to CSV with the run's
+provenance. `spacemissionstudio run` writes the same `events.csv`.
+
+To have eclipses for every spacecraft, a run now records each spacecraft's
+sunlight (`{sc}.eclipse.illumination_factor`, from Basilisk's eclipse model)
+whenever the Sun is tracked, not only when power, station keeping, SRP or a
+thermal sensor needed it. Nothing else in the run changes. On template 06
+(550 km, Sun-synchronous) the eclipses come one orbital period apart and
+last 35 minutes, within the cylindrical-shadow bound.
+
+**Time cursor.** Click a plot or the Events timeline and every view moves to
+that moment: a line on the plot and the timeline, the events in progress,
+the Mission Dashboard's values at that time, and the last Mission Output
+report before it. A row on the Events tab or a report's column header sets
+it too; Run > Clear Time Cursor clears it. Vizard cannot follow it: its
+interface has no way for another program to set its playback time.
+
+## Run comparison, undo, command palette; Vizard from Results (UX/UI guidelines, step 4)
+
+**Run comparison.** The last five runs of a session are kept. On the Results
+tab, **Compare with** draws the same series from an earlier run, dashed, in
+the same colours, and **Input differences...** lists every scenario input
+that differs, by its path in the scenario file. Spacecraft, stations and
+devices are matched by name, so adding one does not mark all the others as
+changed.
+
+**Undo and redo.** Edit > Undo and Redo step through the scenario's edits,
+one step for each pause in typing, whether or not the scenario is valid yet
+(one being built from scratch is not, until it has a spacecraft). A text
+field being typed in still undoes its own text first.
+
+**Command palette.** Help > Command Palette (Ctrl+K) finds any menu
+command, tab, template or result series from a few letters of its name.
+
+**Vizard.** After a run that saved a playback file, Results offers **Open
+in Vizard**, which starts Vizard on that file (`-loadFile`). Vizard cannot
+follow the time cursor; its interface has no way for another program to set
+its playback time (reported upstream, H10).
+
+What remains of the UX/UI guidelines is the Carbon restyle
+(`docs/ux_guidelines_gap.md`).
+
+## The Carbon look (UX/UI guidelines, decision 1)
+
+The GUI now follows IBM's Carbon design system, rebuilt in Qt: Carbon's g10
+colours, IBM Plex Sans and Mono (bundled, unmodified, SIL Open Font
+License), square corners, filled fields with a bottom rule and a blue focus
+outline, line tabs, blue primary and outlined secondary buttons, grey table
+headers and selected rows, Carbon tags for badges and its notification style
+for toasts. Plots and the Events timeline use Carbon's data-visualisation
+hues, stepped and ordered so that neighbouring lines stay distinct for
+colour-blind readers; red and green are kept for errors and success.
+
+One deliberate difference from Carbon: input fields keep a light edge on
+every side, not only the bottom rule, because users could not tell editable
+values from labels without a box around them.
+
+All four steps of the UX/UI guidelines plan are now done
+(`docs/ux_guidelines_gap.md`).

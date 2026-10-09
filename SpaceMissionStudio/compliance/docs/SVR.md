@@ -142,22 +142,53 @@ made with `compliance/tools/measure_performance.py` on 2026-10-08):
 The reference PC is the audit's cloud container: 4 x86-64 cores, 15.7 GiB
 memory, Linux, Python 3.11, Basilisk 2.12.0.
 
-**Other platforms** (SRS-PO-01; CI run 20, commit `ddd15ab61`, the
-`platforms` job):
+**Other platforms** (SRS-PO-01). First run: CI run 20, commit
+`ddd15ab61`, the `platforms` job:
 
 | Platform | Passed | Failed | Skipped | Verdict |
 |---|---|---|---|---|
 | Linux (ubuntu-24.04) | all | 0 | 11 | Met |
-| Windows (windows-latest, Python 3.11) | 2209 | 34 | 11 | **Not met** |
-| macOS (macos-latest, arm64, Python 3.11) | 2234 | 10 | 11 | **Not met** |
+| Windows (windows-latest, Python 3.11) | 2209 | 34 | 11 | Not met |
+| macOS (macos-latest, arm64, Python 3.11) | 2234 | 10 | 11 | Not met |
 
-The failures are listed in SRelD K-10. Most are test portability or
-layout differences. One was a real defect: in the altitude trade the
-400 km case gave 1.45 kg of propellant on Windows, against 7.26 kg on
-Linux. The cause was a race between parallel processes writing the
-space-weather file (finding F-09, `review_log.md`), fixed.
+The failures (SRelD K-10, now closed): the Vizard download tests, which
+assumed the Linux layout (both); the template wizard and dialog width
+tests (Windows); a path-separator assertion (Windows); a cancel-timing
+test (Windows); the PNG export tests (macOS); a test-isolation error in
+`test_ccsds_odm` (macOS). Most were test portability or layout
+differences. Four were tool defects, F-09 to F-12 (`review_log.md`), all
+fixed. One of them changed results: in the
+altitude trade the 400 km case gave 1.45 kg of propellant on Windows,
+against 7.26 kg on Linux, because parallel processes raced writing the
+space-weather file (F-09).
 
-**Not done:** the Windows installer has not been run (manual test, H13).
+After the fixes: commit `41b73b1c3`, GitHub Actions run 37854361784 (the
+same commit's pull-request run, 37854357729, gave the same counts):
+
+| Platform | Passed | Failed | Skipped | Verdict |
+|---|---|---|---|---|
+| Linux (ubuntu-24.04, Python 3.11) | 2259 | 0 | 11 | Met |
+| Windows (windows-latest, Python 3.11, `offscreen` Qt platform) | 2259 | 0 | 11 | Met |
+| macOS (macos-latest, arm64, Python 3.11, `cocoa` Qt platform) | 2259 | 0 | 11 | Met |
+
+SRS-PO-01 is met by test for the tool installed from source with pip.
+Limits of this evidence: the Windows tests draw no window (`offscreen`);
+macOS uses its native window system. Nobody has used the GUI on Windows
+or macOS by hand. The macOS plot-page load stall of CI run 27 did not
+recur after the results-widget tests began showing their widget
+(commit `6e9cbacd7`).
+
+**Not done:** the Windows installer has not been run (SRS-DEL-01, manual
+test, H13; SRelD K-06).
+
+**Offline (SRS-S-01):** `tests/test_offline.py` blocks and records every
+name lookup and connection while validating, exporting, running a
+template with real space weather and its CSV, OEM and provenance exports,
+and starting the GUI with the download prompt declined: no attempt to
+reach another computer. CI repeats it in a network namespace with no
+interfaces. Two defects were found and treated on the way (review_log
+F-16: Basilisk's import-time request to github.com, contained; F-17: runs
+downloaded missing support data, fixed). Met by test on Linux.
 
 **Traceability:**
 - Validation specification → technical specification: SVS section 11.
@@ -167,7 +198,7 @@ space-weather file (finding F-09, `review_log.md`), fixed.
 
 | Requirement | Result |
 |---|---|
-| SRS-Q-01 statement coverage ≥ 90 %, branch coverage ≥ 80 % | 91.5 % and 81.7 %, met |
+| SRS-Q-01 statement coverage ≥ 90 %, branch coverage ≥ 80 % | Met, with a thin margin: 91.5 % and 81.7 % (2026-10-08); 90.1 % and 81.4 % in a local single-process run on 2026-10-09 after the 6.2.3.6a removals (cause of the 1.4-point drop not found; CI's gate passed on the same code). Both figures err low: coverage does not see code Basilisk runs on its own thread (review_log F-15); measured with `sys.monitoring` on Python 3.12, statement coverage is 93.3 % |
 | SRS-Q-02 zero static-analysis findings | 0, met |
 | SRS-Q-03 complexity ≤ 15 for new code | Met: no new function above 15 |
 | Q-ST-80C 6.2.6.1 verification of the quality requirements | As above; thresholds agreed with the customer (decision 15) |

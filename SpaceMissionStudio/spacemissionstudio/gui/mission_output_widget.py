@@ -54,6 +54,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from .. import output_provenance
 from ..engine.results import CommandSummary, ResultSet, TimeSeries
 from ..plot_categories import categorize, legacy_display
 from .theme import PALETTE
@@ -132,6 +133,8 @@ class MissionOutputWidget(QWidget):
         super().__init__(parent)
         self._summary: Optional[CommandSummary] = None
         self._result: Optional[ResultSet] = None
+        self._time_cursor = None  # gui.time_cursor.TimeCursor, set by set_time_cursor()
+        self.cursor_report_index: Optional[int] = None  # the report shown as "at the cursor"
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -167,6 +170,7 @@ class MissionOutputWidget(QWidget):
         self.table.setWordWrap(False)
         self.table.setTextElideMode(Qt.TextElideMode.ElideMiddle)
         self.table.setVisible(False)
+        self.table.horizontalHeader().sectionClicked.connect(self._on_header_clicked)
         layout.addWidget(self.table, stretch=1)
         layout.addStretch(0)
 
@@ -191,6 +195,33 @@ class MissionOutputWidget(QWidget):
         self._result = result
         self.export_button.setEnabled(bool(summary.reports))
         self._refresh_table()
+
+    def set_time_cursor(self, cursor) -> None:
+        """Mark the last report at or before ``cursor`` (a
+        :class:`gui.time_cursor.TimeCursor`); a click on a report's header sets it."""
+        self._time_cursor = cursor
+        cursor.changed.connect(lambda _t: self._mark_cursor_report())
+        self._mark_cursor_report()
+
+    def _on_header_clicked(self, column: int) -> None:
+        reports = self._summary.reports if self._summary is not None else []
+        if self._time_cursor is not None and 1 <= column <= len(reports):
+            self._time_cursor.set_time(reports[column - 1].t_s)
+
+    def _mark_cursor_report(self) -> None:
+        reports = self._summary.reports if self._summary is not None else []
+        time_s = None if self._time_cursor is None else self._time_cursor.time_s
+        at = [i for i, report in enumerate(reports) if time_s is not None and report.t_s <= time_s + 1e-9]
+        self.cursor_report_index = max(at, key=lambda i: reports[i].t_s) if at else None
+        for index in range(len(reports)):
+            item = self.table.horizontalHeaderItem(index + 1)
+            if item is None:
+                continue
+            font = item.font()
+            font.setBold(index == self.cursor_report_index)
+            item.setFont(font)
+            item.setToolTip("The last report at or before the time cursor." if index == self.cursor_report_index
+                            else "Click to move the time cursor to this report.")
 
     def table_text(self) -> str:
         """The visible table as tab-separated text (headers first) -- what
@@ -284,6 +315,7 @@ class MissionOutputWidget(QWidget):
             header.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
         table.setVisible(True)
         self._apply_filter(rows, reports, commands)
+        self._mark_cursor_report()
         table.setUpdatesEnabled(True)
 
     def _apply_filter(self, rows, reports, commands: str) -> None:
@@ -341,6 +373,9 @@ class MissionOutputWidget(QWidget):
             path = path.with_suffix(".csv")
         try:
             self._summary.export_csv(path)
+            provenance = getattr(self._result, "provenance", None)
+            if provenance is not None:  # provenance on every output (UX/UI guidelines)
+                output_provenance.write_sidecar(path, provenance.to_dict())
         except OSError as exc:
             QMessageBox.critical(self, "Export failed", str(exc))
             return

@@ -55,6 +55,8 @@ jobs:
           python compliance/tools/build_sdd_components.py
           python compliance/tools/build_test_specs.py
           git diff --exit-code -- compliance/docs
+      - name: Support data (SPICE kernels, gravity field, magnetic model), fetched once as the installers do
+        run: spacemissionstudio kernels-status
       - name: IERS-based Earth orientation files for the validation cases (SVS VP-1)
         run: spacemissionstudio earth-orientation --fetch
       - name: Tests with coverage (C-9, C-10)
@@ -62,6 +64,11 @@ jobs:
           python -m pytest tests -q -n auto -p no:cacheprovider
           --cov=spacemissionstudio --cov-branch --cov-report=json:coverage.json --cov-report=term
           --junitxml=test-report.xml
+      - name: Offline tests with no network at all (UX/UI guidelines; review_log F-16)
+        run: |
+          # unprivileged user namespaces are restricted by AppArmor on ubuntu-24.04
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          unshare -rn python -m pytest tests/test_offline.py -q -p no:cacheprovider
       - name: Metrics and statement coverage >= 90 % (C-7, C-10)
         if: always()
         run: python compliance/tools/metrics.py --coverage coverage.json --junit test-report.xml --fail-under 90 --fail-under-branch 80
@@ -112,6 +119,8 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install "bsk==2.12.0"
           python -m pip install -e ".[dev,gui]"
+      - name: Support data (SPICE kernels, gravity field, magnetic model), fetched once as the installers do
+        run: spacemissionstudio kernels-status
       - name: IERS-based Earth orientation files for the validation cases (SVS VP-1)
         run: spacemissionstudio earth-orientation --fetch
       - name: Tests

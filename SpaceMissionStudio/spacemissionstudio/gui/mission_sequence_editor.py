@@ -336,7 +336,7 @@ class _CommandEditorDialog(QDialog):
         row.addWidget(self.lambert_target_z_spin)
         row_widget = QWidget()
         row_widget.setLayout(row)
-        form.addRow("Target position [m] (inertial)", row_widget)
+        form.addRow("Target position [m] (EME2000, central body)", row_widget)
 
         self.lambert_tof_spin = PreciseDoubleSpinBox()
         self.lambert_tof_spin.setRange(1.0, 1.0e9)

@@ -122,6 +122,7 @@ import urllib.parse
 if hasattr(os, "geteuid") and os.geteuid() == 0:
     os.environ.setdefault("QTWEBENGINE_CHROMIUM_FLAGS", "--no-sandbox")
 
+import json
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -130,7 +131,7 @@ from typing import Optional
 import numpy as np
 
 import plotly.graph_objects as go
-from PySide6.QtCore import QElapsedTimer, Qt, QTimer, QUrl
+from PySide6.QtCore import QElapsedTimer, Qt, QTimer, QUrl, Signal
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import (
     QCompleter,
@@ -145,51 +146,33 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from .. import output_provenance
 from ..engine import time_system
 from ..engine.results import ResultSet, TimeSeries
 from ..plot_categories import categorize as _categorize
 from ..plot_categories import legacy_display as _legacy_display
 from ..plot_categories import parse_access_pair as _parse_access_pair
 from .flow_layout import FlowLayout
-from .theme import PALETTE
+from .theme import FONTS_DIR, PALETTE, SERIES_COLORS
 from .widgets import ComboBox
 
-# Categorical series colors -- the first three slots of an 8-hue
-# palette (Claude's dataviz skill, references/palette.md). Three is
-# also exactly this project's own common case -- every (x, y, z)
-# position/velocity/MRP series has three columns.
-#
-# Design-philosophy roadmap item M3 (docs/ux_roadmap.md) re-validated
-# this exact 8-hue list with the skill's own `scripts/validate_palette.js`
-# against this module's real chart surface (_SURFACE = "#FFFFFF") rather
-# than trusting the "clears the CVD target" claim this comment used to
-# make unchecked -- a one-time, documented check (the roadmap's own
-# explicitly offered alternative to a Node-dependent test, which this
-# otherwise-pure-Python project has no other reason to depend on): light
-# mode (`--mode light --surface "#FFFFFF"`) PASSES every check (CVD
-# worst-adjacent Delta E 9.1 protan / 5.8 tritan >= the 6-8 floor,
-# worst-pair normal-vision Delta E 19.6); this app has no dark theme at
-# all to validate against (`gui/theme.py` -- confirmed, see
-# docs/ux_audit.md's own Principle 4 finding), so dark mode is correctly
-# N/A here, NOT silently assumed to also pass -- re-running this same
-# command with `--mode dark` in fact FAILS the lightness-band check on 4
-# of the 8 hues, which the previous version of this comment incorrectly
-# claimed passed. The one WARN both runs share (three hues sit under
-# 3:1 contrast against the surface) is satisfied by this module's own
-# existing "relief" -- a legend is always shown for >1 column
-# (`showlegend=len(series.columns) > 1` below), so color is never the
-# only way to tell two lines apart.
-_SERIES_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"]
+# Categorical series colours: Carbon's data-visualisation hues, stepped and
+# ordered so they pass the dataviz validator on this white chart surface
+# (gui/theme.py's SERIES_COLORS has the numbers). The first three are the
+# common case: every (x, y, z) series. A legend is shown for more than one
+# line, so colour is never the only way to tell lines apart.
+_SERIES_COLORS = list(SERIES_COLORS)
 
-# Chart chrome, matching gui/theme.py's own light palette (_C dict) --
-# reused here rather than re-picked, so an embedded chart reads as part
-# of the same application, not a visually foreign inserted widget.
-_INK_PRIMARY = "#1F2530"  # theme.py's "text"
-_INK_MUTED = "#5B6472"  # theme.py's "text_muted"
-_GRID_COLOR = "#D8DCE3"  # theme.py's "border"
-_SURFACE = "#FFFFFF"  # theme.py's "surface"
-_EMPTY_STATE_TEXT = "#8A93A3"  # same color the previous matplotlib empty-state message used
-_FONT_FAMILY = "system-ui, -apple-system, 'Segoe UI', sans-serif"
+# Chart chrome from the theme's Carbon tokens, so a chart reads as part of
+# the application.
+_INK_PRIMARY = PALETTE["text"]  # text-primary
+_INK_MUTED = PALETTE["text_muted"]  # text-secondary
+_GRID_COLOR = PALETTE["border"]  # border-subtle
+_SURFACE = PALETTE["surface"]  # layer-01
+_EMPTY_STATE_TEXT = PALETTE["text_muted"]
+# IBM Plex Sans from the bundled file (an @font-face in _PAGE_STYLE): the
+# chart page cannot see fonts loaded into Qt.
+_FONT_FAMILY = "'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif"
 
 # A fixed id (rather than Plotly's own randomly-generated default) so
 # _on_save_plot_png's injected JS can reliably find the chart div to
@@ -239,6 +222,38 @@ _LIVE_REDRAW_MIN_INTERVAL_MS = 300
 # most this many points for display (min and max of every stretch kept, so
 # burns and peaks still show). Exports keep every sample.
 _MAX_PLOT_POINTS_PER_LINE = 10000
+
+
+# The shared time cursor (gui.time_cursor) on a plot: a click puts this
+# prefix, the clicked x value and a click counter in the page title, which
+# the view reports through titleChanged (there is no QWebChannel in this
+# app, and this needs no QWebEnginePage subclass). The cursor is drawn as
+# a layout shape of this name, updated with Plotly.relayout (no reload).
+_CURSOR_MESSAGE = "spacemissionstudio-cursor:"
+_CURSOR_SHAPE = "spacemissionstudio-cursor"
+_CLICK_SCRIPT = f"""<script>
+(function attach(attemptsLeft) {{
+    var gd = document.getElementById({_PLOT_DIV_ID!r});
+    if (!gd || !gd.on) {{
+        if (attemptsLeft > 0) {{ setTimeout(function() {{ attach(attemptsLeft - 1); }}, 50); }}
+        return;
+    }}
+    var clicks = 0;
+    gd.on('plotly_click', function(event) {{
+        if (event && event.points && event.points.length) {{
+            clicks += 1;
+            document.title = {_CURSOR_MESSAGE!r} + event.points[0].x + '|' + clicks;
+        }}
+    }});
+}})(40);
+</script>"""
+
+
+def _clicked_x(title: str) -> Optional[str]:
+    """The x value a plot click put in the page title, or None."""
+    if not title.startswith(_CURSOR_MESSAGE):
+        return None
+    return title[len(_CURSOR_MESSAGE):].rsplit("|", 1)[0]
 
 
 def _display_indices(values: np.ndarray, max_points: int = _MAX_PLOT_POINTS_PER_LINE) -> np.ndarray:
@@ -317,7 +332,12 @@ def _short_utc(timestamp: str) -> str:
 
 # Plotly's full page keeps the browser's default 8 px body margin under a
 # 100%-height plot, which put a scroll bar beside every plot.
-_PAGE_STYLE = "<style>html, body { margin: 0; height: 100%; overflow: hidden; }</style>"
+_CURSOR_COLOR = PALETTE["danger"]  # as on the Events timeline
+_PAGE_STYLE = ("<style>html, body { margin: 0; height: 100%; overflow: hidden; } "
+               "@font-face { font-family: 'IBM Plex Sans'; font-weight: 400; src: url('"
+               + QUrl.fromLocalFile(str(FONTS_DIR / "IBMPlexSans-Regular.woff")).toString() + "'); } "
+               "@font-face { font-family: 'IBM Plex Sans'; font-weight: 600; src: url('"
+               + QUrl.fromLocalFile(str(FONTS_DIR / "IBMPlexSans-SemiBold.woff")).toString() + "'); }</style>")
 
 
 def _plotlyjs_path() -> Path:
@@ -349,11 +369,15 @@ def _empty_state_html() -> str:
 
 
 class ResultsWidget(QWidget):
+    open_in_vizard = Signal(str)  # the last run's playback file
+
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
         self._result: ResultSet | None = None
         self._epoch_utc: Optional[str] = None
         self.figure: Optional[go.Figure] = None  # the currently-plotted go.Figure, or None (empty state)
+        self._time_cursor = None  # gui.time_cursor.TimeCursor, set by set_time_cursor()
+        self._x_is_epoch = False  # the shown figure's x axis is UTC (else elapsed hours)
         self._png_poll_state: Optional[dict] = None  # set by _on_save_plot_png, read by _poll_plot_png
         self._live_redraw_elapsed = QElapsedTimer()  # throttles set_live_result()'s own redraws -- see
         # _LIVE_REDRAW_MIN_INTERVAL_MS's own comment
@@ -510,7 +534,30 @@ class ResultsWidget(QWidget):
         self.save_svg_button.clicked.connect(self._on_save_plot_svg)
         self.save_svg_button.setEnabled(False)
         button_row.addWidget(self.save_svg_button)
+        # The last run's Vizard playback file (UX/UI guidelines, decision 3:
+        # open only -- Vizard has no interface to follow the time cursor).
+        self.vizard_button = QPushButton("Open in Vizard")
+        self.vizard_button.setToolTip("Opens the playback file this run wrote in Vizard. Vizard cannot follow "
+                                      "the time cursor.")
+        self.vizard_button.clicked.connect(lambda: self.open_in_vizard.emit(self._vizard_file or ""))
+        self.vizard_button.setVisible(False)
+        self._vizard_file: Optional[str] = None
+        button_row.addWidget(self.vizard_button)
         button_row.addStretch(1)
+        # Run comparison (UX/UI guidelines): the same series from an earlier
+        # run of this session, dashed, and the inputs that differ.
+        self._runs: list = []  # gui.run_history.RunRecord, oldest first
+        self._current_run = None  # the RunRecord shown, when it is one
+        self.compare_label = QLabel("Compare with:")
+        self.compare_combo = ComboBox()
+        self.compare_combo.setToolTip("Draws the same series from an earlier run of this session, dashed.")
+        self.compare_combo.currentIndexChanged.connect(self._redraw)
+        self.diff_button = QPushButton("Input differences...")
+        self.diff_button.setToolTip("Lists every scenario input that differs between the two runs.")
+        self.diff_button.clicked.connect(self.show_input_differences)
+        for widget in (self.compare_label, self.compare_combo, self.diff_button):
+            widget.setVisible(False)
+            button_row.addWidget(widget)
         button_row.addWidget(self.view_label)
         button_row.addWidget(self.view_combo)
         layout.addLayout(button_row)
@@ -563,6 +610,8 @@ class ResultsWidget(QWidget):
         layout.addWidget(self.warnings_label)
 
         self.web_view = QWebEngineView()
+        self.web_view.titleChanged.connect(self._on_page_title)
+        self.web_view.loadFinished.connect(lambda _ok: self.apply_cursor_line())
         # Plot pages are written here and loaded from file -- see
         # _MAX_PLOT_POINTS_PER_LINE for why setHtml() can't be used.
         self._page_dir = tempfile.TemporaryDirectory(prefix="spacemissionstudio-plot-")
@@ -770,6 +819,7 @@ class ResultsWidget(QWidget):
         display_data = series.data * display.factor
         x_values, x_label = self._x_axis_values(series.time_s)
         is_datetime_axis = self.x_axis_combo.currentData() == "epoch" and x_label == "Epoch (UTC)"
+        self._x_is_epoch = is_datetime_axis
 
         fig = go.Figure()
         column_labels = display.columns or {}
@@ -786,6 +836,7 @@ class ResultsWidget(QWidget):
                 name=column_labels.get(column, column),
                 line=dict(color=_SERIES_COLORS[i % len(_SERIES_COLORS)], width=2),
             ))
+        self._add_comparison_traces(fig, name, display)
 
         axis_common = dict(
             gridcolor=_GRID_COLOR, zerolinecolor=_GRID_COLOR, linecolor=_GRID_COLOR,
@@ -818,7 +869,8 @@ class ResultsWidget(QWidget):
             plot_bgcolor=_SURFACE,
             paper_bgcolor=_SURFACE,
             hovermode="x unified",
-            showlegend=len(series.columns) > 1,  # a single series names itself in the title -- no legend box needed
+            # a single series names itself in the title -- no legend box needed, unless compared
+            showlegend=len(series.columns) > 1 or self.comparison_run() is not None,
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(color=_INK_MUTED)),
             margin=dict(l=70, r=30, t=60, b=50),
         )
@@ -849,6 +901,7 @@ class ResultsWidget(QWidget):
         data just because the webview push itself was skipped.
         """
         self.figure = None
+        self._x_is_epoch = False
         if self._result is None:
             return
         if self.view_combo.currentData() == "access_timeline":
@@ -979,6 +1032,7 @@ class ResultsWidget(QWidget):
                 div_id=_PLOT_DIV_ID, config={"displaylogo": False, "responsive": True},
             )
             html = html.replace("<head>", "<head>" + _PAGE_STYLE, 1)
+            html = html.replace("</body>", _CLICK_SCRIPT + "</body>", 1)
             # Alternating file names, so a new page never overwrites one
             # that is still loading.
             self._page_counter += 1
@@ -1000,6 +1054,166 @@ class ResultsWidget(QWidget):
         if self._png_poll_state is None:
             self.save_png_button.setEnabled(self.figure is not None)
             self.save_svg_button.setEnabled(self.figure is not None)
+
+    def set_runs(self, runs: list, current=None) -> None:
+        """The session's runs (``gui.run_history.RunRecord``) and the one shown;
+        the others are offered under "Compare with"."""
+        chosen = self.compare_combo.currentData()
+        self._runs, self._current_run = list(runs), current
+        others = [r for r in self._runs if current is None or r.number != current.number]
+        self.compare_combo.blockSignals(True)
+        self.compare_combo.clear()
+        self.compare_combo.addItem("(no comparison)", None)
+        for record in reversed(others):
+            self.compare_combo.addItem(record.label, record.number)
+        index = self.compare_combo.findData(chosen) if chosen is not None else 0
+        self.compare_combo.setCurrentIndex(max(index, 0))
+        self.compare_combo.blockSignals(False)
+        for widget in (self.compare_label, self.compare_combo, self.diff_button):
+            widget.setVisible(bool(others) and current is not None)
+        self._redraw()
+
+    def comparison_run(self):
+        number = self.compare_combo.currentData()
+        return next((r for r in self._runs if r.number == number), None) if number is not None else None
+
+    def input_differences(self) -> list:
+        """``(input, shown run's value, compared run's value)`` rows."""
+        from ..engine import scenario_diff
+
+        other = self.comparison_run()
+        if other is None or self._current_run is None:
+            return []
+        return scenario_diff.diff(self._current_run.scenario, other.scenario)
+
+    def show_input_differences(self) -> None:
+        from PySide6.QtWidgets import QDialog, QDialogButtonBox, QTableWidget, QTableWidgetItem
+
+        from ..engine.scenario_diff import short
+
+        other = self.comparison_run()
+        rows = self.input_differences()
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Input differences")
+        dialog.resize(760, 420)  # [px]
+        table = QTableWidget(len(rows), 3, dialog)
+        table.setHorizontalHeaderLabels(["Input", f"Run {self._current_run.number} (shown)",
+                                         f"Run {other.number}" if other else "-"])
+        table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        table.verticalHeader().setVisible(False)
+        for row, (path, mine, theirs) in enumerate(rows):
+            for column, text in enumerate((path, short(mine), short(theirs))):
+                item = QTableWidgetItem(text)
+                item.setToolTip(str((path, mine, theirs)[column]))
+                table.setItem(row, column, item)
+        table.resizeColumnsToContents()
+        table.horizontalHeader().setStretchLastSection(True)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close, parent=dialog)
+        buttons.rejected.connect(dialog.reject)
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(QLabel(f"{len(rows)} input(s) differ." if rows else "The inputs are the same."))
+        layout.addWidget(table)
+        layout.addWidget(buttons)
+        dialog.exec()
+
+    def _add_comparison_traces(self, fig: go.Figure, name: str, display) -> None:
+        """The compared run's copy of ``name``, dashed, in the same colours."""
+        other = self.comparison_run()
+        series = other.result.series.get(name) if other is not None else None
+        if series is None or series.data.shape[0] == 0:
+            return
+        if self._x_is_epoch and other.epoch_utc:
+            try:
+                x_values = np.asarray(list(time_system.elapsed_to_utc(other.epoch_utc, series.time_s)), dtype=object)
+            except ValueError:
+                return
+        else:
+            x_values = series.time_s / 3600.0  # [h]
+        data = series.data * display.factor
+        labels = display.columns or {}
+        for i, column in enumerate(series.columns):
+            if display.wrap_period:  # broken at the 0/360 wraps, as the shown run
+                keep = _wrapping_display_indices(len(data))
+                x_shown, y_shown = _break_at_wraps(x_values[keep], data[keep, i], display.wrap_period)
+            else:
+                keep = _display_indices(data[:, i])
+                x_shown, y_shown = x_values[keep], data[keep, i]
+            fig.add_trace(go.Scatter(
+                x=list(x_shown) if x_values.dtype == object else x_shown, y=y_shown, mode="lines",
+                name=f"{labels.get(column, column)} (Run {other.number})", opacity=0.75,
+                line=dict(color=_SERIES_COLORS[i % len(_SERIES_COLORS)], width=2, dash="dash"),
+            ))
+
+    def set_vizard_file(self, path: Optional[str]) -> None:
+        """Offer "Open in Vizard" for ``path`` (the run's playback file), or hide it."""
+        self._vizard_file = path
+        self.vizard_button.setVisible(bool(path))
+
+    # -- the shared time cursor -------------------------------------------
+
+    def set_time_cursor(self, cursor) -> None:
+        """Follow ``cursor`` (a :class:`gui.time_cursor.TimeCursor`) and set it on a plot click."""
+        self._time_cursor = cursor
+        cursor.changed.connect(lambda _t: self.apply_cursor_line())
+        self.apply_cursor_line()
+
+    def plot_x_to_elapsed_s(self, x: str) -> Optional[float]:
+        """Elapsed (TDB) seconds of a clicked x value: hours, or UTC text on an epoch axis."""
+        try:
+            if not self._x_is_epoch:
+                return float(x) * 3600.0  # [s]
+            clicked = datetime.fromisoformat(x.strip().replace("T", " "))
+            epoch = datetime.fromisoformat(self._epoch_utc.replace("Z", "").replace("T", " "))
+        except (TypeError, ValueError, AttributeError):
+            return None
+        first_guess = (clicked - epoch).total_seconds()  # [s]
+        try:  # one correction for the TDB - UTC change since the epoch (time_system.elapsed_to_utc)
+            back = time_system.elapsed_to_utc(self._epoch_utc, [first_guess])[0]
+        except ValueError:
+            return first_guess
+        return first_guess + (clicked - back).total_seconds()  # [s]
+
+    def _on_page_title(self, title: str) -> None:
+        x = _clicked_x(title)
+        if x is not None:
+            self._on_plot_clicked(x)
+
+    def _on_plot_clicked(self, x: str) -> None:
+        time_s = self.plot_x_to_elapsed_s(x)
+        if time_s is not None and self._time_cursor is not None:
+            self._time_cursor.set_time(time_s)
+
+    def cursor_x_literal(self) -> str:
+        """The cursor as a JavaScript x value for the shown figure, or ``null``."""
+        time_s = None if self._time_cursor is None else self._time_cursor.time_s
+        if time_s is None or self.figure is None:
+            return "null"
+        if self._x_is_epoch:
+            try:
+                moment = time_system.elapsed_to_utc(self._epoch_utc, [time_s])[0]
+            except ValueError:
+                return "null"
+            return json.dumps(moment.isoformat(sep=" "))
+        return repr(time_s / 3600.0)  # [h]
+
+    def apply_cursor_line(self) -> None:
+        """Draw (or remove) the cursor line on the loaded plot, without a reload."""
+        if self.figure is None:
+            return
+        script = f"""
+        (function() {{
+            var gd = document.getElementById({_PLOT_DIV_ID!r});
+            if (typeof Plotly === 'undefined' || !gd || !gd.layout) {{ return; }}
+            var x = {self.cursor_x_literal()};
+            var shapes = (gd.layout.shapes || []).filter(function(s) {{ return s.name !== {_CURSOR_SHAPE!r}; }});
+            if (x !== null) {{
+                shapes.push({{type: 'line', name: {_CURSOR_SHAPE!r}, xref: 'x', yref: 'paper', x0: x, x1: x,
+                              y0: 0, y1: 1, line: {{color: {_CURSOR_COLOR!r}, width: 2}}}});
+            }}
+            Plotly.relayout(gd, {{shapes: shapes}});
+        }})();
+        """
+        self.web_view.page().runJavaScript(script)
 
     def _redraw(self) -> None:
         self._update_figure()
@@ -1229,6 +1443,10 @@ class ResultsWidget(QWidget):
                 return
             try:
                 svg_text = urllib.parse.unquote(data_url[len(prefix):])
+                provenance = self._result.provenance if self._result is not None else None
+                if provenance is not None:  # provenance on every output (UX/UI guidelines)
+                    svg_text = output_provenance.svg_with_provenance(svg_text, provenance.summary_lines(),
+                                                                     provenance.to_dict())
                 Path(path).write_text(svg_text, encoding="utf-8")
             except OSError as exc:
                 QMessageBox.critical(self, "Save failed", str(exc))
@@ -1241,6 +1459,9 @@ class ResultsWidget(QWidget):
             return
         try:
             png_bytes = base64.b64decode(data_url[len(prefix):])
+            provenance = self._result.provenance if self._result is not None else None
+            if provenance is not None:  # provenance on every output (UX/UI guidelines)
+                png_bytes = output_provenance.png_with_provenance(png_bytes, provenance.to_dict())
             Path(path).write_bytes(png_bytes)
         except (OSError, ValueError) as exc:
             QMessageBox.critical(self, "Save failed", str(exc))

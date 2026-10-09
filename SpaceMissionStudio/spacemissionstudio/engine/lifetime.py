@@ -433,13 +433,14 @@ def drag_makeup(scenario, spacecraft, start_utc: datetime, years: float, forecas
     fixed. Drag coefficient: ``drag_coeff``, else the spacecraft's (the
     facets' tumbling average when set).
 
-    Against full five-year Basilisk station-keeping runs (template 18,
-    2030-2035) this comes out ~5% low (-5.0% at MSFC's 50th percentile and
-    Cd 2.2, -4.9% at the 95th and Cd 3.0, from the third year on; -16%
-    and -10% over the first year). The simulated controller spends more
-    than the drag it replaces; why exactly is not pinned down. Ratios of
-    it (one launch date against another) carry over better than its
-    absolute value."""
+    Against full five-year Basilisk station-keeping runs (template 18)
+    this comes out ~5% low: -5.4% over five years from 2030 at MSFC's 50th
+    percentile and Cd 2.2, -4.9% from 2033 at the 95th and Cd 3.0 (-2 to
+    -6% per year from the second year; -19% and -3% over the first;
+    compliance/drag_remeasure.md, re-measured after F-07 and F-09). The
+    simulated controller spends more than the drag it replaces; why
+    exactly is not pinned down. Ratios of it (one launch date against
+    another) carry over better than its absolute value."""
     if scenario.gravity.central_body != "earth":
         raise LifetimeError("drag make-up is only estimated around Earth")
     orbit = held_orbit(spacecraft)

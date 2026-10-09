@@ -159,7 +159,8 @@ All plans are updated at each release (SDP 5.5.2).
   - failure modes FM-01 to FM-12, with their safeguards;
   - the 6.2.3 measures for critical software.
 - **Open:**
-  - the unreachable-code analysis (6.2.3.6a);
+  - confirming the interpretation on defensive checks in the
+    unreachable-code analysis (6.2.3.6a);
   - independent verification of the measures (H06).
 
 ### 6.4 Security (B.2.1<6.4>)

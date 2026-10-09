@@ -1414,7 +1414,7 @@ class _WizardFieldPage(QFrame):
         super().__init__(parent)
         self.setObjectName("wizardSection")
         self.setStyleSheet(f"QFrame#wizardSection {{ background: {PALETTE['surface']}; "
-                           f"border: 1px solid {PALETTE['border']}; border-radius: 6px; }}")
+                           f"border: 1px solid {PALETTE['border']}; border-radius: 0px; }}")  # Carbon tile
         self._title = page_spec.title
         self._scenario = scenario
         self._fields = page_spec.fields
@@ -1520,9 +1520,6 @@ class _WizardFieldPage(QFrame):
 
     def title(self) -> str:
         return self._title
-
-    def content_size_hint(self):
-        return self.sizeHint()
 
     def filter(self, text: str) -> int:
         """Show only fields whose label or device group (or the section

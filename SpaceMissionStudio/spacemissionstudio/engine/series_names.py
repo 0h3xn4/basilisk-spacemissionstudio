@@ -82,6 +82,9 @@ def _spacecraft_series(scenario: Scenario, sc) -> List[str]:
         elif sensor.kind in ("star_tracker", "coarse_sun_sensor", "magnetometer", "thermal"):
             names.append(series)
 
+    tracked = {gravity.central_body, *gravity.third_body_perturbers}
+    if "sun" in tracked and gravity.central_body != "sun":  # engine.service records every eclipse then
+        names.append(f"{name}.eclipse.illumination_factor")
     if sc.power is not None:
         names += [f"{name}.battery_charge", f"{name}.battery_net_power"]
     if sc.station_keeping is not None:

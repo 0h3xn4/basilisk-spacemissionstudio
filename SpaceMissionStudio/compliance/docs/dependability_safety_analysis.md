@@ -76,7 +76,7 @@ customer and supplier.
 | 6.2.3.3a: verify the measures | Each safeguard has a test or a validation case (column "Safeguards"); verified by the suite (SVR 4.6) | Verified by the supplier only (no independent verification, H06) |
 | 6.2.3.4a: regression testing after platform or tool changes | The full suite runs in CI on every change. A new Basilisk version requires requalification, with the suite and the validation (SMP 8). Dependency versions are recorded per run. | Applied; changes of Python, Qt or OS versions are covered by CI only for the CI's versions |
 | 6.2.3.5a: analyse the need for more V&V after platform changes | Part of the requalification step (SMP 8) | Procedure defined; not yet exercised |
-| 6.2.3.6a: remove identified unreachable code | No systematic unreachable-code analysis has been done. The uncovered branches (18.3 %, `metrics.md`) are the candidate list. A few duplicate-name checks are known to be unreachable in practice; they are kept as defensive checks (Q-ST-80C 3.2.9, note). | **Open: analyse the uncovered branches** |
+| 6.2.3.6a: remove identified unreachable code | Analysis 2026-10-09 (`compliance/unreached_code.md`, `review_log.md` F-13 to F-15). Candidates: every statement the suite does not execute, measured so that code Basilisk runs on its own thread counts (Python 3.12, `sys.monitoring`; 1065 of 15947 statements), and a dead-code search (vulture). Every function is entered by some test. Reviewed: all guards (an `if` ending in `raise`/`return`), all exception handlers, and the untaken blocks of entered functions (255 blocks, 449 statements); about 250 single statements in `elif` chains and after early exits were not reviewed one by one. Found unreachable (Q-ST-80C 3.2.34) and removed: six functions and one exception clause (F-13); re-verified by the suite, no re-validation needed. Kept: input checks a user or a file can trigger, optional-dependency fallbacks, and a few defensive checks that earlier validation makes unreachable through normal use (for example the condition evaluator's second whitelist check, and the atmosphere-model `else` behind schema validation). Treating defensive checks as not unreachable is an interpretation: the standard's note that defensive code is not *deactivated* code (3.2.9) does not speak about unreachable code. | Done by the supplier; the interpretation on defensive checks to be confirmed by the customer; not independently verified (H06) |
 | 6.2.3.8a: validation on non-instrumented code | The validation cases ran without coverage instrumentation in the Phase 4 run (2239 passed). CI runs them with coverage. | Applied in the local run; CI's run is instrumented |
 
 ## 5 Reporting and updates (6.2.2.5a, 6.2.2.6a)
@@ -91,7 +91,8 @@ customer and supplier.
 
 ## 6 Open items
 
-- **Unreachable-code analysis** of the uncovered branches (6.2.3.6a).
+- **Defensive checks (6.2.3.6a):** confirm that defensive checks made
+  unreachable by earlier validation may stay (section 4).
 - **Warning for leap seconds** missing from the tables (FM-03): a
   candidate improvement.
 - **Independent verification** of the measures (H06).

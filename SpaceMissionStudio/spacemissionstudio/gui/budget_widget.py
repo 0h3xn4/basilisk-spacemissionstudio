@@ -50,6 +50,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from .. import output_provenance
 from ..schema.scenario import SUPPORTED_DISPOSALS, PropellantBudgetConfig
 from .theme import PALETTE
 from .widgets import ComboBox, PreciseDoubleSpinBox
@@ -433,12 +434,6 @@ class BudgetWidget(QWidget):
     def compute(self) -> None:
         self._start("budget")
 
-    def compute_sweep(self) -> None:
-        self._start("sweep")
-
-    def compute_trade(self) -> None:
-        self._start("trade")
-
     def _sweep_clicked(self) -> None:
         self._start_or_cancel("sweep")
 
@@ -570,4 +565,6 @@ class BudgetWidget(QWidget):
             lines.append(",".join(f'"{v}"' for v in (entry.phase, entry.contributor, dv,
                                                       f"{entry.propellant_kg:.4f}", entry.margin, entry.source)))
         lines.append(f'"Total","",{self._budget.total_delta_v_m_s:.3f},{self._budget.total_propellant_kg:.4f},"",""')
+        if self._scenario is not None:  # provenance on every output (UX/UI guidelines)
+            lines += [f'"{line}"' for line in output_provenance.scenario_lines(self._scenario)]
         QApplication.clipboard().setText("\n".join(lines))

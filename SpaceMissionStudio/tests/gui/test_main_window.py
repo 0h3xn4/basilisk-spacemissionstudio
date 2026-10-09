@@ -470,7 +470,7 @@ def test_run_with_live_plot_clears_previous_result_and_shows_results_tab(window,
     stale = ResultSet(scenario_name="stale")
     stale.add(TimeSeries("sat-1.position_N", [0.0], ("x", "y", "z"), [[0.0, 0.0, 0.0]], units="m"))
     window.results_widget.set_result(stale)
-    window.right_tabs.setCurrentWidget(window.kernel_status_widget)
+    window.right_tabs.setCurrentWidget(window.data_panel_widget)
 
     window.live_plot_action.setChecked(True)
     window.on_run()
@@ -957,7 +957,7 @@ def test_run_finished_with_command_summary_shows_mission_output_tab(window):
 def test_run_finished_without_command_summary_shows_results_tab(window):
     from spacemissionstudio.engine.results import ResultSet
 
-    window.right_tabs.setCurrentWidget(window.kernel_status_widget)
+    window.right_tabs.setCurrentWidget(window.data_panel_widget)
     window._on_run_finished(ResultSet(scenario_name="test", series={}))
     assert window.right_tabs.currentWidget() is window.results_widget
 
@@ -1915,3 +1915,51 @@ def test_a_run_hands_the_scenarios_featured_series_to_the_results_tab(window, mo
     window.on_run()
     assert window.results_widget._featured == featured_series(load_scenario(path))
     assert len(window.results_widget._featured) == 5
+
+
+def test_results_offer_the_last_runs_vizard_file_and_open_it(window, monkeypatch, tmp_path):
+    """After a run that wrote a playback file, Results shows "Open in
+    Vizard", which starts Vizard with -loadFile on that file; a new run
+    hides it again."""
+    from pathlib import Path
+
+    from spacemissionstudio.gui import main_window
+
+    playback = tmp_path / "run.bin"
+    playback.write_bytes(b"\x00")
+    window._last_run_vizard_file = str(playback)
+    window._offer_vizard_playback()
+    assert window.results_widget.vizard_button.isVisibleTo(window.results_widget)
+    calls = []
+    monkeypatch.setattr(main_window, "find_vizard_executable", lambda: Path("/fake/Vizard"))
+    monkeypatch.setattr(main_window, "launch_vizard",
+                        lambda path, load_file=None: calls.append((path, load_file)) or _FakeVizardProcess())
+    window.results_widget.vizard_button.click()
+    assert calls == [(Path("/fake/Vizard"), playback)]
+    window._clear_run_views()
+    assert not window.results_widget.vizard_button.isVisibleTo(window.results_widget)
+
+
+def test_no_vizard_button_when_the_run_wrote_no_file(window, tmp_path):
+    window._last_run_vizard_file = str(tmp_path / "missing.bin")
+    window._offer_vizard_playback()
+    assert not window.results_widget.vizard_button.isVisibleTo(window.results_widget)
+
+
+def test_finished_runs_are_kept_for_comparison(window):
+    """Each finished or cancelled run joins the session's history, and the
+    Results tab offers the earlier ones (UX/UI guidelines, run comparison)."""
+    import numpy as np
+
+    from spacemissionstudio.engine.results import ResultSet, TimeSeries
+
+    window._last_run_scenario = window.scenario_editor.draft_scenario()
+    window._last_run_epoch_utc = window._last_run_scenario.epoch_utc
+    for _ in range(2):
+        result = ResultSet("r")
+        result.add(TimeSeries("sat-1.position_N", np.arange(3.0), ("x", "y", "z"), np.zeros((3, 3)), units="m"))
+        window._keep_run(result, cancelled=False)
+    assert [r.number for r in window.run_history.runs] == [1, 2]
+    assert window.results_widget.compare_combo.findData(1) >= 0
+    window._clear_run_views()
+    assert not window.results_widget.compare_combo.isVisibleTo(window.results_widget)

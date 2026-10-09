@@ -88,10 +88,12 @@ _SETTINGS_KEY = "vizard/executable_path"
 
 # engine.vizard/SimulationService never overrides vizInterface's own
 # reqComProtocol="tcp"/reqComAddress="0.0.0.0"/reqPortNumber="5556"
-# defaults (see docs/source/Vizard/vizardAdvanced/vizardLiveComm.rst) --
-# "0.0.0.0" binds to all interfaces but is reachable locally via
-# "localhost", so this is the address a live-stream run's Vizard
-# instance actually needs to connect to. Passed to :func:`launch_vizard`
+# defaults. In Basilisk 2.12.0 vizInterface *connects* to that address
+# (it opens no port of its own outside broadcast mode; the "binds" wording
+# in docs/source/Vizard/vizardAdvanced/vizardLiveComm.rst does not match
+# the code -- security analysis S-06), so Vizard is the side that listens,
+# here on the local machine. This is that address. Passed to
+# :func:`launch_vizard`
 # as its ``-directComm`` command-line argument (see
 # docs/source/Vizard/vizardAdvanced/vizardCommandLine.rst) so Vizard
 # connects automatically instead of sitting on its own manual "Load Data
@@ -359,7 +361,8 @@ def remember_vizard_executable(path: Path, settings: Optional[QSettings] = None)
     settings.setValue(_SETTINGS_KEY, str(path))
 
 
-def launch_vizard(executable_path: Path, direct_comm_address: Optional[str] = None) -> "subprocess.Popen[bytes]":
+def launch_vizard(executable_path: Path, direct_comm_address: Optional[str] = None,
+                  load_file: Optional[Path] = None) -> "subprocess.Popen[bytes]":
     """Starts Vizard as a background process and returns the
     :class:`subprocess.Popen` handle so the caller can poll whether it's
     still running (``.poll() is None``). On macOS this resolves an
@@ -380,6 +383,9 @@ def launch_vizard(executable_path: Path, direct_comm_address: Optional[str] = No
             own ``DEFAULT_LIVE_STREAM_ADDRESS`` comment for why. ``None``
             (the default) launches Vizard with no arguments, exactly as
             before.
+        load_file: a playback file Vizard opens at start (its ``-loadFile``
+            argument, ``vizardCommandLine.rst``): the Results tab's "Open in
+            Vizard" for the last run's file.
     """
     if sys.platform == "darwin" and executable_path.suffix == ".app":
         macos_dir = executable_path / "Contents" / "MacOS"
@@ -393,6 +399,8 @@ def launch_vizard(executable_path: Path, direct_comm_address: Optional[str] = No
     args = [str(executable_path)]
     if direct_comm_address:
         args += ["-directComm", direct_comm_address]
+    if load_file is not None:
+        args += ["-loadFile", str(load_file)]
     return subprocess.Popen(args)  # noqa: S603 -- argument list, no shell; the user's chosen Vizard executable
 
 

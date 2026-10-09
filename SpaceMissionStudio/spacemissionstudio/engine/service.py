@@ -150,8 +150,6 @@ installed version happens to add.
 from __future__ import annotations
 
 import dataclasses
-import hashlib
-import json
 import logging
 import math
 import os
@@ -165,10 +163,10 @@ import numpy as np
 import Basilisk
 from Basilisk.simulation import spacecraft, svIntegrators
 from Basilisk.utilities import SimulationBaseClass, macros, orbitalMotion, simHelpers, simIncludeGravBody
-from Basilisk.utilities.supportDataTools.dataFetcher import DataFile, get_path
+from Basilisk.utilities.supportDataTools.dataFetcher import DataFile
 
 from .. import __version__ as _SPACEMISSIONSTUDIO_VERSION
-from .. import dependencies
+from .. import dependencies, output_provenance
 from ..schema.scenario import OrbitIC, Scenario
 from . import (earth_orientation, environment_models, frames, fsw, geodesy, geodetic_atmosphere, kernels,
                link_budget, long_run, orbit_maintenance, planet_rotation, time_system, tle, vizard)
@@ -542,6 +540,7 @@ class _SpacecraftHandle:
     station_keeping_controller: Optional[object] = None  # Phase 4: only set if sc_config.station_keeping was configured
     geo_station_keeping_controller: Optional[object] = None  # only set if sc_config.geo_station_keeping is
     eclipse_out_msg: Optional[object] = None  # Phase 4: only set if power or station_keeping was configured
+    eclipse_recorder: Optional[object] = None  # set with eclipse_out_msg (the Events tab's eclipses)
     phasing_keeping_controller: Optional[object] = None  # Phase 4: only set if sc_config.phasing_keeping was configured
     constant_thrust_controller: Optional[object] = None  # Phase 5: only set if sc_config.constant_thrust was configured
     # comms_pointing (schema.scenario.CommsPointingConfig): the two
@@ -612,6 +611,7 @@ class SimulationService:
         self._ground_station_latitudes: Dict[str, tuple] = {}  # name -> (geocentric, geodetic) [rad]
         self._access_out_msgs: Dict[tuple, object] = {}  # (ground_station_name, spacecraft_name) -> accessOutMsg, for engine.vizard
         self._eclipse_object = None  # Phase 4: only built if some spacecraft has power or station_keeping configured
+        self._record_eclipses = False  # built anyway when the Sun is tracked: every spacecraft's eclipses are recorded
         # Phase 4: retains the vizInterface module enable_vizard() returns,
         # and (separately -- see that function's own docstring for why a
         # SWIG VizInterface proxy can't just carry this as one of its own
@@ -672,8 +672,7 @@ class SimulationService:
         # docstring for why this matters).
         self._run_started_utc = datetime.now(timezone.utc).isoformat()
         self._dependency_versions = dependencies.dependency_versions()
-        self._scenario_sha256 = hashlib.sha256(
-            json.dumps(self.scenario.to_dict(), sort_keys=True).encode("utf-8")).hexdigest()
+        self._scenario_sha256 = output_provenance.scenario_sha256(self.scenario)
         version_note = dependencies.basilisk_check(Basilisk.__version__)
         if version_note:
             _logger.warning("%s", version_note)
@@ -726,7 +725,7 @@ class SimulationService:
                     "gravity.central_body_degree == 0 (point-mass) until engine.service is extended "
                     "with that body's gravity-field file."
                 )
-            gravity_file = get_path(DataFile.LocalGravData.GGM03S)
+            gravity_file = kernels.cached_path(DataFile.LocalGravData.GGM03S)
             central_body.useSphericalHarmonicsGravityModel(str(gravity_file), gravity.central_body_degree)
             self._data_files["gravity_field"] = dependencies.file_record(gravity_file)
         mu = central_body.mu
@@ -754,7 +753,7 @@ class SimulationService:
 
         spice_time_string = time_system.utc_iso_to_spice_string(scenario.epoch_utc)
         self.spice_object = kernels.build_spice_interface(grav_factory, spice_time_string, epoch_in_msg=True)
-        for status in kernels.ensure_kernels(kernels.DEFAULT_KERNELS):
+        for status in kernels.cached_statuses(kernels.DEFAULT_KERNELS):
             self._data_files[f"spice:{status.filename}"] = dependencies.file_record(status.path)
         # Earth-fixed frame: ITRF93 from the IERS-based NAIF Earth PCKs when
         # installed (engine.earth_orientation, ECSS-E-ST-10-09C 5.4.9f),
@@ -860,7 +859,7 @@ class SimulationService:
             self._mag_field_model = fsw.build_magnetic_field_wmm(
                 self.scSim, dyn_task_name, central_body_state_out_msg, central_body.radEquator
             )
-            self._data_files["magnetic_field"] = dependencies.file_record(get_path(DataFile.MagneticFieldData.WMM))
+            self._data_files["magnetic_field"] = dependencies.file_record(kernels.cached_path(DataFile.MagneticFieldData.WMM))
 
         # Phase 4: power budget (schema.scenario.PowerConfig),
         # station-keeping's eclipse-gated reboost burn
@@ -876,7 +875,12 @@ class SimulationService:
             or any(sensor.kind == "thermal" for sensor in sc.sensors)
             for sc in scenario.spacecraft
         )
-        if needs_eclipse:
+        # Events tab (UX/UI guidelines): every spacecraft's eclipses are
+        # recorded whenever the Sun is tracked, even when nothing above
+        # needs them. The eclipse model only writes messages; adding a
+        # spacecraft to it changes no dynamics.
+        self._record_eclipses = self._sun_state_out_msg is not None and gravity.central_body != "sun"
+        if needs_eclipse or self._record_eclipses:
             if self._sun_state_out_msg is None:
                 raise SimulationServiceError(
                     "a spacecraft has a power budget, station-keeping, SRP (enable_srp), or a 'thermal' sensor "
@@ -988,7 +992,7 @@ class SimulationService:
         sc_objects_in_order: List = []
         rw_effectors_in_order: List = []
         thr_effectors_in_order: List = []
-        eclipse_index = 0  # only incremented for spacecraft that actually have power/station_keeping/enable_srp
+        eclipse_index = 0  # only incremented for spacecraft added to the eclipse model (all of them when the Sun is tracked)
         drag_index = 0  # only incremented for spacecraft that actually have enable_drag
 
         for sc_config in scenario.spacecraft:
@@ -1049,11 +1053,13 @@ class SimulationService:
                 sc_config.power is not None or sc_config.station_keeping is not None or sc_config.enable_srp
                 or any(sensor.kind == "thermal" for sensor in sc_config.sensors)
             )
-            if needs_eclipse_for_this_sc:
+            if needs_eclipse_for_this_sc or self._record_eclipses:
                 self._eclipse_object.addSpacecraftToModel(sc_object.scStateOutMsg)
                 sc_eclipse_out_msg = self._eclipse_object.eclipseOutMsgs[eclipse_index]
                 eclipse_index += 1
                 handle.eclipse_out_msg = sc_eclipse_out_msg
+                handle.eclipse_recorder = self._record(sc_eclipse_out_msg)
+                self.scSim.AddModelToTask(dyn_task_name, handle.eclipse_recorder)
 
             # -- Phase 2: sensors are independent of fsw_mode (they read
             # truth spacecraft state / SPICE / the magnetic-field model
@@ -2074,6 +2080,15 @@ class SimulationService:
                 rwt_t_s = rw_thermal_recorder.times() * macros.NANO2SEC
                 result.add(TimeSeries(f"{name}.actuator.{actuator_name}.motor_temperature", rwt_t_s,
                                        ("temperature",), rw_thermal_recorder.temperature, units="C"))
+
+            if handle.eclipse_recorder is not None:
+                recorder = handle.eclipse_recorder
+                # 1 in full Sun, 0 in umbra; the older field name on builds without
+                # illuminationFactor (see orbit_maintenance._eclipse_illumination_fraction)
+                sunlight = getattr(recorder, "illuminationFactor", None)
+                result.add(TimeSeries(f"{name}.eclipse.illumination_factor", recorder.times() * macros.NANO2SEC,
+                                       ("illumination_factor",),
+                                       recorder.shadowFactor if sunlight is None else sunlight, units="-"))
 
             if handle.battery_recorder is not None:
                 battery_t_s = handle.battery_recorder.times() * macros.NANO2SEC

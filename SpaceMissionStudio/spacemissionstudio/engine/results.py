@@ -106,6 +106,22 @@ class RunProvenance:
     def to_dict(self) -> dict:
         return asdict(self)
 
+    def summary_lines(self) -> List[str]:
+        """Short ASCII lines to embed in an output (a CCSDS COMMENT, a plot's
+        metadata, a report footer): what produced it, from what input and
+        reference data (UX/UI guidelines, "provenance on every output").
+        The full record is :meth:`to_dict`."""
+        qualified = "qualified" if self.basilisk_qualified else f"NOT the qualified {self.qualified_basilisk_version}"
+        lines = [f"SpaceMissionStudio {self.spacemissionstudio_version}, Basilisk {self.basilisk_version} "
+                 f"({qualified})",
+                 f"Run {self.run_started_utc}, {self.integrator}, step {self.dynamics_task_rate_s:g} s",
+                 f"Scenario SHA-256 {self.scenario_sha256 or 'not recorded'}"]
+        for key, record in sorted(self.data_files.items()):
+            name = Path(str(record.get("path", key))).name
+            digest = record.get("sha256")
+            lines.append(f"Data {name}: " + (f"SHA-256 {digest}" if digest else f"{record.get('size_bytes', '?')} bytes"))
+        return [line.encode("ascii", "replace").decode("ascii") for line in lines]
+
 
 @dataclass
 class TimeSeries:

@@ -77,12 +77,6 @@ class Ellipsoid:
     def semi_minor_axis_m(self) -> float:
         return self.semi_major_axis_m * (1.0 - self.flattening)
 
-    def describe(self) -> str:
-        """Short label, e.g. "WGS-84 (a = 6378137.0 m, 1/f = 298.257223563)"."""
-        if self.inverse_flattening:
-            return f"{self.name} (a = {self.semi_major_axis_m:.1f} m, 1/f = {self.inverse_flattening})"
-        return f"{self.name} (R = {self.semi_major_axis_m:.1f} m)"
-
 
 WGS84 = Ellipsoid("WGS-84", WGS84_SEMI_MAJOR_AXIS_M, WGS84_INVERSE_FLATTENING)
 

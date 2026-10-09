@@ -103,7 +103,13 @@ Result: **2055 passed, 11 skipped, 0 failed** (245 s, 3 workers). Every later ph
     macOS (SRelD K-10), one a possible wrong altitude-trade result on
     Windows, which turned out to be finding F-09 (`review_log.md`). The
     one-day run's warning about NOAA's monthly F10.7 forecast is the
-    designed order of the real data, not a defect.
+    designed order of the real data, not a defect. After the fixes
+    (F-09 to F-12, test portability) the suite passes in CI on Linux,
+    Windows and macOS: 2259 passed, 11 skipped, 0 failed each, commit
+    `41b73b1c3`, run 37854361784. SRS-PO-01 is met by test (SVR 4.6);
+    the Windows installer is still to be run by hand. The macOS plot-page
+    load stall of CI run 27 did not recur after the results-widget tests
+    began showing their widget (commit `6e9cbacd7`).
 
 ## Phase 1 test run
 
@@ -120,6 +126,14 @@ the table below.
 | After Phase 4 (R14, R15) | 2239 | 11 | 0 (30 new tests; changed expectations: the script-block tests pass consent, the condition hint text; listed in the R15 commit) |
 | After H09 (decision 15) | 2243 | 11 | 0 (4 new tests of the branch coverage gate; no changed expectations) |
 | After the K-10 fixes (F-09 to F-12) | 2256 | 11 | 0 (13 new tests; changed expectations: the wizard sizing and hint tests, three width limits in character widths, the kernel path tooltip; listed in the commits) |
+| CI, Linux/Windows/macOS, `41b73b1c3` | 2259 | 11 | 0 (3 new tests in the K-10 follow-ups; no changed expectations) |
+| After the 6.2.3.6a removals (F-13), Python 3.11 | 2259 | 11 | 0 (no difference: the removed code had no tests) |
+| After F-13 and F-14, Python 3.12 with `sys.monitoring` coverage | 2261 | 11 | 0 (2 new tests, constant thrust; no changed expectations) |
+| CI run 48, `5c2805085` (UX step 1, F-16, F-17) | 2286 | 11 | Linux and Windows 0; macOS 1: the F1 test, as Qt's HelpContents key is Ctrl+? there. F1 is now set on every platform (`3214f1855`) |
+| After UX steps 2 and 3 and K-01, Python 3.11, `1d937c70b` | 2317 | 10 | 0 (new tests: the Data tab, the event model, the Events tab, the cursor on plots, dashboard and output, a real-run eclipse check; changed expectations: template 05's series count 40 -> 42 (eclipse series), template 21's claim figures (K-01). One skip fewer: the Kernel Status tests went with that tab, and one of them only ran without Basilisk) |
+| After UX step 4 and Open in Vizard, Python 3.11 | 2338 | 10 | 0 (21 new tests: Vizard playback naming and launch, command palette, undo history, run comparison, input diff; no changed expectations) |
+| CI run 51, `baa17580b` | 2336 | 11 | Windows and macOS 0; Linux 1: a race in the new Data tab download test (review_log, test defects), fixed in the test |
+| After the Carbon restyle, Python 3.11 | 2340 | 10 | 0 (2 new theme tests: IBM Plex loads, Carbon tokens and shared series colours; changed expectations: radio-dot.svg is now icon-primary, the Events table opens earliest first) |
 
 ## Resuming
 
