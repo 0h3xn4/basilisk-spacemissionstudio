@@ -199,3 +199,25 @@ def test_the_cli_runs_sil_writes_the_report_and_gates_on_the_error(built_07, tmp
                      str(_program(built_07, "fsw_adapter_host")), "--max-error", "1"]) == 2
     assert "never written" in capsys.readouterr().err
 
+
+@pytest.mark.requires_gui
+def test_the_gui_worker_reports_the_comparison_then_the_result(built_07, qapp):
+    """RunWorker with a SIL request: sil_report (the comparison) before
+    finished_ok (the normal results); a refused program gives sil_report
+    with the reason, then failed."""
+    from spacemissionstudio.gui.run_worker import RunWorker
+    from spacemissionstudio.sil.runner import SilOptions
+
+    events = []
+    worker = RunWorker(_template("07", 1), sil=("sat-1", SilOptions(str(_program(built_07, "fsw_host")))))
+    worker.sil_report.connect(lambda report, failure: events.append(("report", report.steps, failure)))
+    worker.finished_ok.connect(lambda result, summary: events.append(("finished", len(result.series) > 0)))
+    worker.failed.connect(lambda message: events.append(("failed", message)))
+    worker.run()  # on this thread: the signals are delivered at once
+    assert events == [("report", 61, ""), ("finished", True)]
+    events.clear()
+    worker = RunWorker(_template("13", 1), sil=("sat-1", SilOptions(str(_program(built_07, "fsw_host")))))
+    worker.sil_report.connect(lambda report, failure: events.append(("report", failure)))
+    worker.failed.connect(lambda message: events.append(("failed", message)))
+    worker.run()
+    assert [e[0] for e in events] == ["report", "failed"] and "does not match" in events[1][1]

@@ -81,11 +81,15 @@ class RunWorker(QThread):
     failed = Signal(str)
     progress = Signal(object, float)  # engine.results.ResultSet (partial), fraction_complete in [0, 1]
     cancelled = Signal(object, object)  # engine.results.ResultSet (partial), Optional[engine.results.CommandSummary]
+    sil_report = Signal(object, str)  # sil.report.SilReport, and the failure message ("" when it ran to the end)
 
     def __init__(self, scenario: Scenario, vizard_request: Optional[object] = None, live: bool = False,
-                 parent=None, allow_scripts: bool = False):
+                 parent=None, allow_scripts: bool = False, sil: Optional[tuple] = None):
         super().__init__(parent)
         self.scenario = scenario
+        # (spacecraft name, sil.runner.SilOptions): run that spacecraft's
+        # flight software as an external program in the loop (sil.runner).
+        self.sil = sil
         # True only after the user confirmed the scenario's script_block
         # code (MainWindow.on_run; SRS-S-03).
         self.allow_scripts = allow_scripts
@@ -122,8 +126,11 @@ class RunWorker(QThread):
             )
             return
         try:
-            service = SimulationService(self.scenario, vizard_request=self.vizard_request)
             command_summary = None
+            if self.sil is not None:
+                self._run_sil()
+                return
+            service = SimulationService(self.scenario, vizard_request=self.vizard_request)
             if self.scenario.mission_sequence:
                 from ..engine.mission_engine import MissionEngine, MissionEngineCancelled
 
@@ -155,6 +162,33 @@ class RunWorker(QThread):
             self.failed.emit(str(exc))
             return
         self.finished_ok.emit(result, command_summary)
+
+    def _run_sil(self) -> None:
+        from ..sil.contract import SilError
+        from ..sil.runner import SilCancelled, SilRunError, run_sil
+
+        def on_progress(partial, fraction):
+            if self.live:
+                self.progress.emit(partial, fraction)
+
+        name, options = self.sil
+        try:
+            result, report = run_sil(self.scenario, name, options, vizard_request=self.vizard_request,
+                                     on_progress=on_progress, should_cancel=self._should_cancel)
+        except SilCancelled as exc:
+            self.sil_report.emit(exc.report, "")
+            self.cancelled.emit(exc.partial_result, None)
+            return
+        except SilRunError as exc:
+            if exc.report is not None:
+                self.sil_report.emit(exc.report, str(exc))
+            self.failed.emit(f"SIL run failed: {exc}")
+            return
+        except SilError as exc:
+            self.failed.emit(f"SIL run failed: {exc}")
+            return
+        self.sil_report.emit(report, "")
+        self.finished_ok.emit(result, None)
 
 
 class MonteCarloWorker(QThread):

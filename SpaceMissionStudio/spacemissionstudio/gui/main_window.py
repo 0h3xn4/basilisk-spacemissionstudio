@@ -212,6 +212,7 @@ class MainWindow(QMainWindow):
         self.budget_widget = BudgetWidget()
         self.flight_software_widget = FlightSoftwareWidget()
         self.flight_software_widget.exports_changed.connect(self.scenario_editor.set_fsw_exports)
+        self.flight_software_widget.sil_requested.connect(self.on_run_sil)
 
         self.right_tabs = TabWidget()
         self.right_tabs.addTab(self.results_widget, "Results")
@@ -1327,12 +1328,24 @@ class MainWindow(QMainWindow):
         return box.exec() == QMessageBox.StandardButton.Yes
 
     def on_run(self) -> None:
+        self._launch_run()
+
+    def on_run_sil(self, spacecraft_name: str, options) -> None:
+        """Flight Software tab, Run SIL...: the scenario with that
+        spacecraft's flight software in the program ``options.binary``
+        (sil.runner); the user confirmed the program in SilRunDialog."""
+        if self._run_worker is not None and self._run_worker.isRunning():
+            QMessageBox.information(self, "A run is in progress", "Wait for the current run to finish.")
+            return
+        self._launch_run(sil=(spacecraft_name, options))
+
+    def _launch_run(self, sil=None) -> None:
         try:
             scenario = self.scenario_editor.to_scenario()
         except ScenarioValidationError as exc:
             QMessageBox.critical(self, "Cannot run invalid scenario", str(exc))
             return
-        blocks = script_blocks(scenario.mission_sequence)
+        blocks = [] if sil is not None else script_blocks(scenario.mission_sequence)  # SIL leaves the sequence out
         if blocks and not self._confirm_script_blocks(blocks):
             return
 
@@ -1388,8 +1401,9 @@ class MainWindow(QMainWindow):
         # mission_sequence is non-empty) has no run_live() equivalent --
         # see RunWorker.run()'s docstring -- so live plotting only applies
         # when there's no mission sequence to execute instead.
-        live = self.live_plot_action.isChecked() and not scenario.mission_sequence
-        self._start_busy(f"Running {scenario.name}...", determinate=live)
+        live = self.live_plot_action.isChecked() and (sil is not None or not scenario.mission_sequence)
+        self._start_busy(f"Running {scenario.name}" + (f" with {sil[0]}'s flight software in the loop..."
+                                                        if sil is not None else "..."), determinate=live)
         # Always clear the PREVIOUS run's results before this one starts --
         # not just when live (a real gap: a non-live run, or a scenario
         # with a mission_sequence, used to leave whatever the last run
@@ -1418,7 +1432,11 @@ class MainWindow(QMainWindow):
         self.results_widget.set_featured_series(featured_series(scenario))
         _join_finished_worker(self._run_worker)
         self._run_worker = RunWorker(scenario, vizard_request=self._vizard_request, live=live,
-                                     allow_scripts=bool(blocks))
+                                     allow_scripts=bool(blocks), sil=sil)
+        self._last_run_sil = sil is not None
+        if sil is not None:
+            self.flight_software_widget.set_sil_running(sil[0])
+            self._run_worker.sil_report.connect(self.flight_software_widget.show_sil_report)
         self._run_worker.progress.connect(self._on_run_progress)
         self._run_worker.finished_ok.connect(self._on_run_finished)
         self._run_worker.failed.connect(self._on_run_failed)
@@ -1499,6 +1517,8 @@ class MainWindow(QMainWindow):
             if command_summary is not None:
                 self.mission_output_widget.set_command_summary(command_summary, result)
                 self.right_tabs.setCurrentWidget(self.mission_output_widget)
+            elif getattr(self, "_last_run_sil", False):
+                self.right_tabs.setCurrentWidget(self.flight_software_widget)
             else:
                 self.right_tabs.setCurrentWidget(self.results_widget)
         except Exception as exc:  # noqa: BLE001 -- the run itself DID succeed; never hide that behind a GUI bug
@@ -1514,6 +1534,9 @@ class MainWindow(QMainWindow):
 
     def _on_run_failed(self, message: str) -> None:
         self._stop_busy("Run failed.")
+        if getattr(self, "_last_run_sil", False):
+            self.flight_software_widget.set_sil_running(None)
+            self.right_tabs.setCurrentWidget(self.flight_software_widget)
         QMessageBox.critical(self, "Simulation failed", _with_log_file_hint(message))
 
     def _on_run_cancelled(self, partial_result, command_summary=None) -> None:
