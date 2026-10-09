@@ -824,6 +824,10 @@ class ResultsWidget(QWidget):
         fig = go.Figure()
         column_labels = display.columns or {}
         x_array = np.asarray(x_values, dtype=object if isinstance(x_values, list) else None)
+        # A Monte Carlo batch's per-run series (columns run_0, run_1, ...):
+        # the runs are interchangeable, so one thin, translucent colour and
+        # one legend entry rather than a colour (and legend row) each.
+        ensemble = len(series.columns) > 1 and all(str(c).startswith("run_") for c in series.columns)
         for i, column in enumerate(series.columns):
             if display.wrap_period:
                 keep = _wrapping_display_indices(len(display_data))
@@ -833,8 +837,11 @@ class ResultsWidget(QWidget):
                 x_shown, y_shown = x_array[keep], display_data[keep, i]
             fig.add_trace(go.Scatter(
                 x=list(x_shown) if x_array.dtype == object else x_shown, y=y_shown, mode="lines",
-                name=column_labels.get(column, column),
-                line=dict(color=_SERIES_COLORS[i % len(_SERIES_COLORS)], width=2),
+                name=(f"Each run ({len(series.columns)})" if ensemble else column_labels.get(column, column)),
+                line=(dict(color=_SERIES_COLORS[0], width=1) if ensemble
+                      else dict(color=_SERIES_COLORS[i % len(_SERIES_COLORS)], width=2)),
+                **(dict(opacity=0.45, legendgroup="runs", showlegend=i == 0,
+                        hovertemplate=f"Run {str(column)[4:]}: %{{y:.4g}}<extra></extra>") if ensemble else {}),
             ))
         self._add_comparison_traces(fig, name, display)
 
@@ -874,6 +881,8 @@ class ResultsWidget(QWidget):
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(color=_INK_MUTED)),
             margin=dict(l=70, r=30, t=60, b=50),
         )
+        if ensemble:  # one hover row per run would list them all; show the run under the pointer
+            fig.update_layout(hovermode="closest")
         return fig
 
     def _on_view_changed(self) -> None:

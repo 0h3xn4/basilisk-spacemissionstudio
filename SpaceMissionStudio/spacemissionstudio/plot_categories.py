@@ -236,6 +236,27 @@ def _comms_and_thermal_display(name: str) -> Optional[SeriesDisplay]:
     return None
 
 
+_MONTE_CARLO_OFFSETS = {"radial": "Radial", "along_track": "Along-track", "cross_track": "Cross-track"}
+
+
+def _monte_carlo_display(name: str) -> Optional[SeriesDisplay]:
+    """A Monte Carlo batch's series (``engine.monte_carlo_results.to_result_set``),
+    one column per run (``run_N``) except the spread. Shown in km."""
+    if ".monte_carlo." not in name:
+        return None
+    field = name.rsplit(".monte_carlo.", 1)[1]
+    if field == "altitude":
+        return SeriesDisplay("Monte Carlo: Altitude, Every Run", "Altitude", "km", 0.001)
+    if field == "spread":
+        return SeriesDisplay("Monte Carlo: Spread from the Batch Mean (1-sigma)", "1-sigma offset", "km", 0.001,
+                             dict(_MONTE_CARLO_OFFSETS))
+    component = field.removesuffix("_offset")
+    if component in _MONTE_CARLO_OFFSETS:
+        return SeriesDisplay(f"Monte Carlo: {_MONTE_CARLO_OFFSETS[component]} Offset from the Batch Mean",
+                             "Offset", "km", 0.001)
+    return None
+
+
 def parse_access_pair(name: str) -> Optional[tuple]:
     """Recovers ``(gs, sc, field)`` from a ``"{gs}.access_to_{sc}.<field>"``
     series name (``engine.service``'s access-analysis loop, plus
@@ -323,7 +344,7 @@ def categorize(name: str, series: TimeSeries) -> Optional[SeriesDisplay]:
     this feature existed -- rather than erroring or looking unfinished.
     """
     for fn in (_vector_display, _orbit_element_display, _controller_display, _comms_and_thermal_display,
-               _access_pair_display):
+               _access_pair_display, _monte_carlo_display):
         result = fn(name)
         if result is not None:
             return result

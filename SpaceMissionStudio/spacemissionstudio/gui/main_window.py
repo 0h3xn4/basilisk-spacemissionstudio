@@ -64,6 +64,7 @@ from .event_timeline_widget import EventTimelineWidget
 from .load_scenario_widget import LoadScenarioWidget
 from .mission_dashboard_widget import MissionDashboardWidget
 from .mission_output_widget import MissionOutputWidget
+from .monte_carlo_results_widget import MonteCarloResultsWidget
 from .results_widget import ResultsWidget
 from .run_worker import MonteCarloWorker, RunWorker
 from .scenario_editor import ScenarioEditorWidget
@@ -148,6 +149,7 @@ class MainWindow(QMainWindow):
         self._dirty = False
         self._run_worker: RunWorker | None = None
         self._mc_worker: MonteCarloWorker | None = None
+        self._mc_archive_dir: Path | None = None  # where the running or last batch saves (on_run_monte_carlo)
         self._progress_error_shown = False  # see _on_run_progress's own comment
         self._vizard_request = None  # engine.vizard.VizardRequest, or None -- set via the Run menu's "Vizard Configuration..." action
         self._vizard_process = None  # subprocess.Popen, or None -- set via the Run menu's "Launch Vizard" action
@@ -213,6 +215,8 @@ class MainWindow(QMainWindow):
         self.right_tabs.addTab(self.mission_dashboard_widget, "Mission Dashboard")
         self.right_tabs.addTab(self.mission_output_widget, "Mission Output")
         self.right_tabs.addTab(self.event_timeline_widget, "Events")
+        self.monte_carlo_results_widget = MonteCarloResultsWidget()
+        self.right_tabs.addTab(self.monte_carlo_results_widget, "Monte Carlo")
         self.right_tabs.addTab(self.data_panel_widget, "Data")
         self.right_tabs.addTab(self.scenario_explainer_widget, "Explain")
         self.right_tabs.addTab(self.lifetime_widget, "End of Life")
@@ -470,6 +474,11 @@ class MainWindow(QMainWindow):
         monte_carlo_action.triggered.connect(self.on_run_monte_carlo)
         run_menu.addAction(monte_carlo_action)
         self.monte_carlo_action = monte_carlo_action
+        open_mc_action = QAction("Open Monte Carlo &Results...", self)
+        open_mc_action.setToolTip("Show the batch an earlier Run Monte Carlo... saved in a folder")
+        open_mc_action.triggered.connect(self.on_open_monte_carlo_results)
+        run_menu.addAction(open_mc_action)
+        self.open_monte_carlo_results_action = open_mc_action
         run_menu.addSeparator()
         clear_cursor_action = QAction("Clear &Time Cursor", self)
         clear_cursor_action.setToolTip("Clears the shared time cursor; the views show the end of the run again.")
@@ -665,6 +674,29 @@ class MainWindow(QMainWindow):
         count = self.scenario_explainer_widget.warning_count
         self.right_tabs.setTabText(self.right_tabs.indexOf(self.scenario_explainer_widget),
                                    f"Explain ({count} to check)" if count else "Explain")
+        self._update_monte_carlo_tab(scenario)
+
+    def _update_monte_carlo_tab(self, scenario=None) -> None:
+        """The Monte Carlo tab is shown while it has something to show or
+        the scenario has Monte Carlo on: nine tabs no longer fit a
+        typical window, and most scenarios never use it."""
+        wanted = (self.monte_carlo_results_widget.batch is not None
+                  or (scenario is not None and scenario.monte_carlo.enabled))
+        self.right_tabs.setTabVisible(self.right_tabs.indexOf(self.monte_carlo_results_widget), wanted)
+
+    def _show_monte_carlo_tab(self) -> None:
+        self._update_monte_carlo_tab()
+        self.right_tabs.setTabVisible(self.right_tabs.indexOf(self.monte_carlo_results_widget), True)
+        self.right_tabs.setCurrentWidget(self.monte_carlo_results_widget)
+
+    def on_open_monte_carlo_results(self) -> None:
+        folder = QFileDialog.getExistingDirectory(self, "Open Monte Carlo results")
+        if not folder:
+            return
+        if self.monte_carlo_results_widget.load_folder(folder):
+            self._show_monte_carlo_tab()
+        else:
+            QMessageBox.warning(self, "No Monte Carlo results", self.monte_carlo_results_widget.hint_label.text())
 
     def _mark_clean(self) -> None:
         self._dirty = False
@@ -1515,6 +1547,7 @@ class MainWindow(QMainWindow):
 
         self._start_busy(f"Running {scenario.monte_carlo.num_runs} Monte Carlo case(s)...")
         _join_finished_worker(self._mc_worker)
+        self._mc_archive_dir = archive_dir
         self._mc_worker = MonteCarloWorker(scenario, scenario.monte_carlo, archive_dir)
         self._mc_worker.finished_ok.connect(self._on_monte_carlo_finished)
         self._mc_worker.failed.connect(self._on_monte_carlo_failed)
@@ -1537,6 +1570,8 @@ class MainWindow(QMainWindow):
                 # single-run sibling _on_run_finished's own toast, found
                 # while checking this tab's feedback for consistency.
                 show_toast(self, "Monte Carlo complete -- all runs succeeded")
+            if self.monte_carlo_results_widget.load_folder(self._mc_archive_dir):
+                self._show_monte_carlo_tab()
         except Exception:  # noqa: BLE001 -- the batch itself DID finish; never hide that behind a GUI bug
             _logger.exception("Monte Carlo batch finished, but reporting its outcome failed")
 
