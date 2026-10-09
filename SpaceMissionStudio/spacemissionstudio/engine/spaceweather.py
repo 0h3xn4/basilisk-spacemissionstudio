@@ -347,9 +347,6 @@ class CelestrakData:
     def last_date(self):
         return max(self.days)
 
-    def kinds_between(self, start, end) -> set:
-        return {rec.kind for day, rec in self.days.items() if start <= day <= end}
-
 
 # CSSI text format, FORMAT(I4,I3,I3,I5,I3,8I3,I4,8I4,I4,F4.1,I2,I4,F6.1,I2,5F6.1)
 # (https://celestrak.org/SpaceData/SpaceWx-format.php): column slices.

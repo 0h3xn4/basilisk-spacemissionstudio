@@ -433,12 +433,6 @@ class BudgetWidget(QWidget):
     def compute(self) -> None:
         self._start("budget")
 
-    def compute_sweep(self) -> None:
-        self._start("sweep")
-
-    def compute_trade(self) -> None:
-        self._start("trade")
-
     def _sweep_clicked(self) -> None:
         self._start_or_cancel("sweep")
 

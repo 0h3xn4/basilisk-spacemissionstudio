@@ -1521,9 +1521,6 @@ class _WizardFieldPage(QFrame):
     def title(self) -> str:
         return self._title
 
-    def content_size_hint(self):
-        return self.sizeHint()
-
     def filter(self, text: str) -> int:
         """Show only fields whose label or device group (or the section
         title) contains ``text``; returns how many are shown."""

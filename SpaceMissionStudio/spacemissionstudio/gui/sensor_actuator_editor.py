@@ -389,10 +389,6 @@ _CONDITIONAL_ACTUATOR_NOTES = {
 }
 
 
-def _template_params(kind: str) -> dict:
-    return {spec.key: spec.example for spec in _KIND_PARAM_SPECS.get(kind, [])}
-
-
 def _missing_required_keys(kind: str, params: dict) -> list[str]:
     return [spec.key for spec in _KIND_PARAM_SPECS.get(kind, []) if spec.required and spec.key not in params]
 
