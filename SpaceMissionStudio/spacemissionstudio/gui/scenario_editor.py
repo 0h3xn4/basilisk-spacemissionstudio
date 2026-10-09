@@ -313,6 +313,10 @@ class ScenarioEditorWidget(QWidget):
         scenario.validate()
         return scenario
 
+    def draft_scenario(self) -> Scenario:
+        """The scenario as currently edited, NOT validated (undo history)."""
+        return self._draft_scenario()
+
     def _draft_scenario(self) -> Scenario:
         """The scenario as currently edited, NOT validated."""
         return Scenario(

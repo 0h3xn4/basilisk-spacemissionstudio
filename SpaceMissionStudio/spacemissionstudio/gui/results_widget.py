@@ -562,6 +562,20 @@ class ResultsWidget(QWidget):
         self._vizard_file: Optional[str] = None
         button_row.addWidget(self.vizard_button)
         button_row.addStretch(1)
+        # Run comparison (UX/UI guidelines): the same series from an earlier
+        # run of this session, dashed, and the inputs that differ.
+        self._runs: list = []  # gui.run_history.RunRecord, oldest first
+        self._current_run = None  # the RunRecord shown, when it is one
+        self.compare_label = QLabel("Compare with:")
+        self.compare_combo = ComboBox()
+        self.compare_combo.setToolTip("Draws the same series from an earlier run of this session, dashed.")
+        self.compare_combo.currentIndexChanged.connect(self._redraw)
+        self.diff_button = QPushButton("Input differences...")
+        self.diff_button.setToolTip("Lists every scenario input that differs between the two runs.")
+        self.diff_button.clicked.connect(self.show_input_differences)
+        for widget in (self.compare_label, self.compare_combo, self.diff_button):
+            widget.setVisible(False)
+            button_row.addWidget(widget)
         button_row.addWidget(self.view_label)
         button_row.addWidget(self.view_combo)
         layout.addLayout(button_row)
@@ -842,6 +856,7 @@ class ResultsWidget(QWidget):
                 name=column_labels.get(column, column),
                 line=dict(color=_SERIES_COLORS[i % len(_SERIES_COLORS)], width=2),
             ))
+        self._add_comparison_traces(fig, name, display)
 
         axis_common = dict(
             gridcolor=_GRID_COLOR, zerolinecolor=_GRID_COLOR, linecolor=_GRID_COLOR,
@@ -874,7 +889,8 @@ class ResultsWidget(QWidget):
             plot_bgcolor=_SURFACE,
             paper_bgcolor=_SURFACE,
             hovermode="x unified",
-            showlegend=len(series.columns) > 1,  # a single series names itself in the title -- no legend box needed
+            # a single series names itself in the title -- no legend box needed, unless compared
+            showlegend=len(series.columns) > 1 or self.comparison_run() is not None,
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(color=_INK_MUTED)),
             margin=dict(l=70, r=30, t=60, b=50),
         )
@@ -1058,6 +1074,95 @@ class ResultsWidget(QWidget):
         if self._png_poll_state is None:
             self.save_png_button.setEnabled(self.figure is not None)
             self.save_svg_button.setEnabled(self.figure is not None)
+
+    def set_runs(self, runs: list, current=None) -> None:
+        """The session's runs (``gui.run_history.RunRecord``) and the one shown;
+        the others are offered under "Compare with"."""
+        chosen = self.compare_combo.currentData()
+        self._runs, self._current_run = list(runs), current
+        others = [r for r in self._runs if current is None or r.number != current.number]
+        self.compare_combo.blockSignals(True)
+        self.compare_combo.clear()
+        self.compare_combo.addItem("(no comparison)", None)
+        for record in reversed(others):
+            self.compare_combo.addItem(record.label, record.number)
+        index = self.compare_combo.findData(chosen) if chosen is not None else 0
+        self.compare_combo.setCurrentIndex(max(index, 0))
+        self.compare_combo.blockSignals(False)
+        for widget in (self.compare_label, self.compare_combo, self.diff_button):
+            widget.setVisible(bool(others) and current is not None)
+        self._redraw()
+
+    def comparison_run(self):
+        number = self.compare_combo.currentData()
+        return next((r for r in self._runs if r.number == number), None) if number is not None else None
+
+    def input_differences(self) -> list:
+        """``(input, shown run's value, compared run's value)`` rows."""
+        from ..engine import scenario_diff
+
+        other = self.comparison_run()
+        if other is None or self._current_run is None:
+            return []
+        return scenario_diff.diff(self._current_run.scenario, other.scenario)
+
+    def show_input_differences(self) -> None:
+        from PySide6.QtWidgets import QDialog, QDialogButtonBox, QTableWidget, QTableWidgetItem
+
+        from ..engine.scenario_diff import short
+
+        other = self.comparison_run()
+        rows = self.input_differences()
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Input differences")
+        dialog.resize(760, 420)  # [px]
+        table = QTableWidget(len(rows), 3, dialog)
+        table.setHorizontalHeaderLabels(["Input", f"Run {self._current_run.number} (shown)",
+                                         f"Run {other.number}" if other else "-"])
+        table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        table.verticalHeader().setVisible(False)
+        for row, (path, mine, theirs) in enumerate(rows):
+            for column, text in enumerate((path, short(mine), short(theirs))):
+                item = QTableWidgetItem(text)
+                item.setToolTip(str((path, mine, theirs)[column]))
+                table.setItem(row, column, item)
+        table.resizeColumnsToContents()
+        table.horizontalHeader().setStretchLastSection(True)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close, parent=dialog)
+        buttons.rejected.connect(dialog.reject)
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(QLabel(f"{len(rows)} input(s) differ." if rows else "The inputs are the same."))
+        layout.addWidget(table)
+        layout.addWidget(buttons)
+        dialog.exec()
+
+    def _add_comparison_traces(self, fig: go.Figure, name: str, display) -> None:
+        """The compared run's copy of ``name``, dashed, in the same colours."""
+        other = self.comparison_run()
+        series = other.result.series.get(name) if other is not None else None
+        if series is None or series.data.shape[0] == 0:
+            return
+        if self._x_is_epoch and other.epoch_utc:
+            try:
+                x_values = np.asarray(list(time_system.elapsed_to_utc(other.epoch_utc, series.time_s)), dtype=object)
+            except ValueError:
+                return
+        else:
+            x_values = series.time_s / 3600.0  # [h]
+        data = series.data * display.factor
+        labels = display.columns or {}
+        for i, column in enumerate(series.columns):
+            if display.wrap_period:  # broken at the 0/360 wraps, as the shown run
+                keep = _wrapping_display_indices(len(data))
+                x_shown, y_shown = _break_at_wraps(x_values[keep], data[keep, i], display.wrap_period)
+            else:
+                keep = _display_indices(data[:, i])
+                x_shown, y_shown = x_values[keep], data[keep, i]
+            fig.add_trace(go.Scatter(
+                x=list(x_shown) if x_values.dtype == object else x_shown, y=y_shown, mode="lines",
+                name=f"{labels.get(column, column)} (Run {other.number})", opacity=0.75,
+                line=dict(color=_SERIES_COLORS[i % len(_SERIES_COLORS)], width=2, dash="dash"),
+            ))
 
     def set_vizard_file(self, path: Optional[str]) -> None:
         """Offer "Open in Vizard" for ``path`` (the run's playback file), or hide it."""

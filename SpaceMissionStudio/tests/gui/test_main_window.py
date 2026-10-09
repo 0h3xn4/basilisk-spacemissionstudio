@@ -1944,3 +1944,22 @@ def test_no_vizard_button_when_the_run_wrote_no_file(window, tmp_path):
     window._last_run_vizard_file = str(tmp_path / "missing.bin")
     window._offer_vizard_playback()
     assert not window.results_widget.vizard_button.isVisibleTo(window.results_widget)
+
+
+def test_finished_runs_are_kept_for_comparison(window):
+    """Each finished or cancelled run joins the session's history, and the
+    Results tab offers the earlier ones (UX/UI guidelines, run comparison)."""
+    import numpy as np
+
+    from spacemissionstudio.engine.results import ResultSet, TimeSeries
+
+    window._last_run_scenario = window.scenario_editor.draft_scenario()
+    window._last_run_epoch_utc = window._last_run_scenario.epoch_utc
+    for _ in range(2):
+        result = ResultSet("r")
+        result.add(TimeSeries("sat-1.position_N", np.arange(3.0), ("x", "y", "z"), np.zeros((3, 3)), units="m"))
+        window._keep_run(result, cancelled=False)
+    assert [r.number for r in window.run_history.runs] == [1, 2]
+    assert window.results_widget.compare_combo.findData(1) >= 0
+    window._clear_run_views()
+    assert not window.results_widget.compare_combo.isVisibleTo(window.results_widget)

@@ -7989,3 +7989,28 @@ the Mission Dashboard's values at that time, and the last Mission Output
 report before it. A row on the Events tab or a report's column header sets
 it too; Run > Clear Time Cursor clears it. Vizard cannot follow it: its
 interface has no way for another program to set its playback time.
+
+## Run comparison, undo, command palette; Vizard from Results (UX/UI guidelines, step 4)
+
+**Run comparison.** The last five runs of a session are kept. On the Results
+tab, **Compare with** draws the same series from an earlier run, dashed, in
+the same colours, and **Input differences...** lists every scenario input
+that differs, by its path in the scenario file. Spacecraft, stations and
+devices are matched by name, so adding one does not mark all the others as
+changed.
+
+**Undo and redo.** Edit > Undo and Redo step through the scenario's edits,
+one step for each pause in typing, whether or not the scenario is valid yet
+(one being built from scratch is not, until it has a spacecraft). A text
+field being typed in still undoes its own text first.
+
+**Command palette.** Help > Command Palette (Ctrl+K) finds any menu
+command, tab, template or result series from a few letters of its name.
+
+**Vizard.** After a run that saved a playback file, Results offers **Open
+in Vizard**, which starts Vizard on that file (`-loadFile`). Vizard cannot
+follow the time cursor; its interface has no way for another program to set
+its playback time (reported upstream, H10).
+
+What remains of the UX/UI guidelines is the Carbon restyle
+(`docs/ux_guidelines_gap.md`).

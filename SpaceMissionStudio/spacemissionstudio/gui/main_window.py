@@ -72,6 +72,8 @@ from .lifetime_widget import LifetimeWidget
 from .scenario_explainer_widget import ScenarioExplainerWidget
 from .startup_fetch_dialog import maybe_run_startup_fetch
 from .time_cursor import TimeCursor, describe as describe_time
+from .undo_history import ScenarioHistory
+from .run_history import RunHistory
 from .vizard_dialog import VizardDialog
 from .vizard_launcher import (
     DEFAULT_LIVE_STREAM_ADDRESS,
@@ -84,6 +86,7 @@ from .widgets import TabWidget
 from ..engine.vizard import playback_file as vizard_playback_file
 
 _FILE_FILTER = "SpaceMissionStudio scenario (*.json)"
+_HISTORY_SETTLE_MS = 400  # [ms] an edit is recorded for undo once typing pauses this long
 
 # [ms] Design-philosophy roadmap item M4 (docs/ux_roadmap.md) -- how
 # often _on_autosave_tick() writes a crash-recovery copy of the
@@ -167,12 +170,22 @@ class MainWindow(QMainWindow):
         self._vizard_live_stream_hint_shown = False
         self._last_run_epoch_utc: str | None = None  # set in on_run(); see its own comment
         self._last_run_vizard_file: str | None = None  # the playback file the last run writes, if any
+        self.run_history = RunHistory()  # this session's runs, for comparison
         self._last_run_scenario: Scenario | None = None  # set in on_run(); fed to mission_dashboard_widget
 
         self.scenario_editor = ScenarioEditorWidget()
         self.scenario_editor.reset_to_default()
         self.scenario_editor.changed.connect(self._mark_dirty)
         self.scenario_editor.changed.connect(self._refresh_scenario_explainer)
+        # Undo and redo (gui.undo_history): one snapshot per settled edit.
+        self._history = ScenarioHistory()
+        self._restoring_history = False
+        self._history_timer = QTimer(self)
+        self._history_timer.setSingleShot(True)
+        self._history_timer.setInterval(_HISTORY_SETTLE_MS)
+        self._history_timer.timeout.connect(self._record_history)
+        self.scenario_editor.changed.connect(self._schedule_history)
+        self._history.reset(self._editor_state())
 
         self.load_scenario_widget = LoadScenarioWidget()
         self.load_scenario_widget.path_chosen.connect(self._on_load_scenario_path_chosen)
@@ -371,6 +384,19 @@ class MainWindow(QMainWindow):
         quit_action.triggered.connect(self.close)
         file_menu.addAction(quit_action)
 
+        edit_menu = self.menuBar().addMenu("&Edit")
+        self.undo_action = QAction("&Undo", self)
+        self.undo_action.setShortcut(QKeySequence.StandardKey.Undo)
+        self.undo_action.setToolTip("Undo the last scenario edit. A field being typed in undoes its own text first.")
+        self.undo_action.triggered.connect(self.on_undo)
+        edit_menu.addAction(self.undo_action)
+        self.redo_action = QAction("&Redo", self)
+        self.redo_action.setShortcut(QKeySequence.StandardKey.Redo)
+        self.redo_action.setToolTip("Redo the scenario edit just undone.")
+        self.redo_action.triggered.connect(self.on_redo)
+        edit_menu.addAction(self.redo_action)
+        self._update_undo_actions()
+
         run_menu = self.menuBar().addMenu("&Run")
         run_action = QAction(toolbar_icon("run"), "&Run Simulation", self)
         run_action.setShortcut("Ctrl+R")
@@ -471,6 +497,12 @@ class MainWindow(QMainWindow):
         shortcuts_action.setToolTip("Lists the keyboard shortcuts.")
         shortcuts_action.triggered.connect(self.on_keyboard_shortcuts)
         help_menu.addAction(shortcuts_action)
+        palette_action = QAction("&Command Palette...", self)
+        palette_action.setShortcut(QKeySequence("Ctrl+K"))
+        palette_action.setToolTip("Find any command or tab by typing part of its name (Ctrl+K).")
+        palette_action.triggered.connect(self.on_command_palette)
+        help_menu.addAction(palette_action)
+        self.palette_action = palette_action
         help_menu.addSeparator()
         about_action = QAction("&About SpaceMissionStudio", self)
         about_action.setToolTip("Shows the installed version and licensing information.")
@@ -490,6 +522,36 @@ class MainWindow(QMainWindow):
         dialog.setModal(False)
         dialog.show()
         self._manual_dialog = dialog  # keep it alive while it is open
+
+    def palette_entries(self):
+        """For the command palette: every menu command, every tab, every
+        template, and every series of the result shown."""
+        from .command_palette import PaletteEntry, menu_entries
+
+        entries = [e for e in menu_entries(self.menuBar()) if not e.label.endswith("Command Palette...")]
+        for tabs in (self.left_tabs, self.right_tabs):
+            for index in range(tabs.count()):
+                name = tabs.tabText(index).replace("&", "")
+                entries.append(PaletteEntry(f"Go to tab > {name}",
+                                            lambda tabs=tabs, index=index: tabs.setCurrentIndex(index)))
+        from .load_scenario_widget import TEMPLATES_DIR
+
+        for path in sorted(TEMPLATES_DIR.glob("*.json")):
+            entries.append(PaletteEntry(f"Open template > {path.stem.replace('_', ' ')}",
+                                        lambda path=path: self._on_load_scenario_path_chosen(path)))
+        result = self.results_widget._result
+        for name in sorted(result.series) if result is not None else []:
+            entries.append(PaletteEntry(f"Show series > {name}", lambda name=name: self._show_series(name)))
+        return entries
+
+    def _show_series(self, name: str) -> None:
+        self.results_widget.show_series(name)
+        self.right_tabs.setCurrentWidget(self.results_widget)
+
+    def on_command_palette(self) -> None:
+        from .command_palette import CommandPalette
+
+        CommandPalette(self.palette_entries(), self).exec()
 
     def on_keyboard_shortcuts(self) -> None:
         from .help_dialog import ShortcutsDialog
@@ -659,6 +721,7 @@ class MainWindow(QMainWindow):
             autosave.clear_recovery_file()
             return
         self.scenario_editor.from_scenario(info.scenario)
+        self._reset_history()
         self._refresh_scenario_explainer()
         self._current_path = info.original_path
         self._clear_run_views()
@@ -667,6 +730,63 @@ class MainWindow(QMainWindow):
         show_toast(self, "Restored autosaved changes")
         self.left_tabs.setCurrentWidget(self.scenario_editor)
 
+    # -- undo and redo ----------------------------------------------------
+
+    def _editor_state(self):
+        """The edited scenario as a dict, valid or not (a scenario being built
+        from scratch is invalid until it has a spacecraft); None if the form
+        cannot be read at all."""
+        try:
+            return self.scenario_editor.draft_scenario().to_dict()
+        except Exception:  # noqa: BLE001 -- a half-edited form must never break undo
+            _logger.debug("Undo: the edited scenario could not be read", exc_info=True)
+            return None
+
+    def _reset_history(self) -> None:
+        self._history_timer.stop()
+        self._history.reset(self._editor_state())
+        self._update_undo_actions()
+
+    def _schedule_history(self) -> None:
+        if not self._restoring_history:
+            self._history_timer.start()
+
+    def _record_history(self) -> None:
+        state = self._editor_state()
+        if state is not None and self._history.record(state):
+            self._update_undo_actions()
+
+    def _update_undo_actions(self) -> None:
+        if hasattr(self, "undo_action"):
+            self.undo_action.setEnabled(self._history.can_undo())
+            self.redo_action.setEnabled(self._history.can_redo())
+
+    def on_undo(self) -> None:
+        if self._history_timer.isActive():  # the edit just made counts first
+            self._history_timer.stop()
+            self._record_history()
+        self._restore_history(self._history.undo(), "Undone.")
+
+    def on_redo(self) -> None:
+        self._restore_history(self._history.redo(), "Redone.")
+
+    def _restore_history(self, state, message: str) -> None:
+        if state is None:
+            return
+        self._restoring_history = True
+        try:
+            self.scenario_editor.from_scenario(Scenario.from_dict(state))
+        finally:
+            self._restoring_history = False
+        self._history_timer.stop()
+        current = self._editor_state()
+        if current is not None:
+            self._history.replace_current(current)
+        self._refresh_scenario_explainer()
+        self._mark_dirty()
+        self._update_undo_actions()
+        self.statusBar().showMessage(message)
+
     def _clear_run_views(self) -> None:
         """Clear every view of the previous run, and the time cursor."""
         self.results_widget.set_result(None)
@@ -674,7 +794,16 @@ class MainWindow(QMainWindow):
         self.mission_output_widget.clear()
         self.event_timeline_widget.set_result(None)
         self.results_widget.set_vizard_file(None)
+        self.results_widget.set_runs(self.run_history.runs, None)
         self.time_cursor.clear()
+
+    def _keep_run(self, result, cancelled: bool) -> None:
+        """Keep the run for comparison (gui.run_history) and offer the earlier ones."""
+        if self._last_run_scenario is None:
+            return
+        record = self.run_history.add(self._last_run_scenario.to_dict(), result, self._last_run_epoch_utc or "",
+                                      cancelled=cancelled)
+        self.results_widget.set_runs(self.run_history.runs, record)
 
     def _offer_vizard_playback(self) -> None:
         """Show "Open in Vizard" on Results when the run wrote a playback file."""
@@ -721,6 +850,7 @@ class MainWindow(QMainWindow):
         if not self._confirm_discard_unsaved():
             return
         self.scenario_editor.reset_to_default()
+        self._reset_history()
         self._refresh_scenario_explainer()
         self._current_path = None
         self._clear_run_views()
@@ -788,6 +918,7 @@ class MainWindow(QMainWindow):
         picking a path to write to.
         """
         self.scenario_editor.from_scenario(scenario)
+        self._reset_history()
         self._refresh_scenario_explainer()
         self._current_path = current_path
         self._clear_run_views()
@@ -1314,6 +1445,7 @@ class MainWindow(QMainWindow):
             self.mission_dashboard_widget.set_live_result(result, self._last_run_scenario)
             self.event_timeline_widget.set_result(result, self._last_run_epoch_utc)
             self._offer_vizard_playback()
+            self._keep_run(result, cancelled=False)
             self.lifetime_widget.set_last_run(self._last_run_scenario, result)
             self.budget_widget.set_last_run(self._last_run_scenario, result)
             if command_summary is not None:
@@ -1350,6 +1482,7 @@ class MainWindow(QMainWindow):
             self.mission_dashboard_widget.set_live_result(partial_result, self._last_run_scenario)
             self.event_timeline_widget.set_result(partial_result, self._last_run_epoch_utc)
             self._offer_vizard_playback()
+            self._keep_run(partial_result, cancelled=True)
             if command_summary is not None:
                 self.mission_output_widget.set_command_summary(command_summary, partial_result)
                 self.right_tabs.setCurrentWidget(self.mission_output_widget)

@@ -238,6 +238,11 @@ After a run finishes, the **Results** tab shows one plot at a time:
 * **View** -- only shown when the scenario has ground stations:
   "Access timeline" shows every station's passes over every spacecraft
   in one chart.
+* **Compare with** -- after a second run in the same session: draws the
+  same series from an earlier run, dashed, in the same colours (the last
+  five runs are kept until the app closes). **Input differences...**
+  lists every scenario input that differs between the two runs, e.g.
+  `spacecraft[sat-1].orbit.semi_major_axis_km`.
 
 A line under the buttons names what produced the result (versions,
 integrator and step, run time). If an orbit-only run's energy or angular
@@ -330,6 +335,16 @@ If you started from a template or its customize wizard, **use Save
 As...** to give your edited copy its own name/location -- the original
 template file is never overwritten automatically, so you can always
 start over from a clean copy.
+
+**Edit > Undo** (Ctrl+Z) and **Redo** (Ctrl+Shift+Z, or Ctrl+Y on
+Windows) step through your scenario edits, one step for each edit once
+you pause typing. While the cursor is in a text field, Ctrl+Z first
+undoes that field's own typing; the menu always undoes the last
+scenario edit. New, Open and loading a template start a fresh history.
+
+**Help > Command Palette** (Ctrl+K) finds any menu command, tab,
+template or result series by a few letters of its name ("save as",
+"events", "05 formation", "velocity"). Arrows choose, Enter runs it.
 
 ## 9. 3D visualization with Vizard
 
