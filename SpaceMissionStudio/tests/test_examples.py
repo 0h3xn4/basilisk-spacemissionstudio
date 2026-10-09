@@ -101,12 +101,15 @@ def test_altitude_lifetime_sweep_finds_a_lower_orbit_comes_down_sooner():
 
 @pytest.mark.requires_basilisk
 def test_monte_carlo_spread_runs_a_batch_and_reads_it_back(tmp_path):
-    """Two short runs of template 25: the archive reads back, the runs
+    """Two short runs of template 25: the summary reads back, the runs
     drew different drag coefficients, and they have spread apart."""
+    from spacemissionstudio.engine import monte_carlo_results as mcr
+
     module = _example("monte_carlo_spread")
     spread = module.main(["--runs", "2", "--days", "0.2", "--archive", str(tmp_path)])
     assert list(spread) == [0.2]
-    assert spread[0.2] > 0.0 and math.isfinite(spread[0.2])  # [km]
-    drag = {next(v for k, v in run.items() if k.endswith("dragCoeff")) for run in module.drawn_values(tmp_path)}
+    radial, along, cross = spread[0.2]  # [km]
+    assert along > 0.0 and all(math.isfinite(value) for value in (radial, along, cross))
+    drag = {drawn["sat-1 drag coefficient [-]"] for drawn in mcr.load(tmp_path).drawn}
     assert len(drag) == 2
     assert module.main(["--read", str(tmp_path)]) == spread  # reading back gives the same numbers

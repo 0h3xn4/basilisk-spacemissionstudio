@@ -8214,3 +8214,81 @@ orbit is faster); drag between 2.2 and 3.0 alone separates them by
 
 Template 09's file gained the two new, empty `DispersionConfig` fields on
 regeneration; nothing else in the existing templates changed.
+
+## Monte Carlo results in the app (SRS-F-13, SRS-F-15, S-04)
+
+A Monte Carlo batch used to end with a toast: its results sat in the
+archive folder as Basilisk's gzipped pickles, which only a script could
+read and which the tool, by security analysis S-04, never loads.
+
+**A pickle-free summary.** `engine/monte_carlo_results.py` defines it:
+`batch_results.npz` (each successful run's position and velocity on a
+shared time grid, strided to at most 2000 samples) and
+`batch_results.json` (scenario, epoch, runs, failed runs and the values
+each run drew). At the end of `run_monte_carlo`, `collect_batch` reads
+back the run files that same call has just had the Controller write
+(the only pickle load in the tool) and saves the summary; a problem
+there is logged and does not fail the batch. Everything that shows a
+batch reads only the summary, with `numpy.load(allow_pickle=False)`.
+S-04 is updated to say so.
+
+**Readable drawn values.** The Controller names parameters like
+`get_spacecraft_sat_1().hub.r_CN_NInit`. The summary turns them into
+"sat-1 semi-major axis [km]", "drag coefficient [-]", "Ixx [kg m^2]",
+"rate x [deg/s]" and so on; a dispersed orbit is shown as the elements
+it varied, from the drawn position and velocity, with angles kept within
+180 deg of the nominal (a true anomaly drawn around 0 reads -0.1, not
+359.9). Dry mass excludes the station-keeping propellant the service adds.
+
+**The spread is measured along the orbit.** The first version measured
+each run's offset from the mean position in a straight-line frame. On
+template 25 that reported a 16.6 km radial spread at the end; the true
+figure is 0.8 km. The rest was the orbit curving away from the chord
+between runs 450 km apart (s^2 / 2R = 15 km). The offsets are now
+curvilinear: radial is the distance from the central body minus the
+runs' mean, along-track and cross-track are arcs at that mean distance,
+in and out of the mean orbit's plane. A test puts runs 450 km apart on
+one circle and requires a radial spread under 1 m.
+
+**The Monte Carlo tab.**
+* Tiles: runs, failed runs, the 1-sigma spread at the end along, across
+  and out of the orbit, and the final altitude range.
+* An embedded Results view of each run's altitude and offsets and of the
+  spread over time. Per-run series (columns `run_N`) are drawn as one
+  family: one colour, thin translucent lines, one legend entry and a
+  hover on the run under the pointer, not a cycled palette and a 20-row
+  hover box.
+* A sortable table of what each run drew and where it ended, with CSV
+  export.
+* **Run > Open Monte Carlo Results...** opens a batch saved earlier.
+* With nine tabs, the right-hand bar no longer fit a 1400 px window
+  (54 px short, with 16 px scroll arrows). The Monte Carlo tab is
+  therefore shown only while the scenario has Monte Carlo on or a batch
+  is open.
+
+`spacemissionstudio monte-carlo` prints the same summary, and
+`examples/monte_carlo_spread.py` now reads it instead of unpickling the
+archive. Template 25, measured on the summary: 1-sigma 150, 299 and 448
+km along track after 1, 2 and 3 days, 0.8 km radial and 2.0 km
+cross-track at the end. Template 09's spread is exactly zero (two-body
+motion ignores mass); spreads under a millimetre now read "0 km" rather
+than "4.14e-28 km".
+
+The README's limitations still said Monte Carlo covered two quantities
+(out of date since the dispersions above) and that `thread_count > 1`
+was unverified; three-thread batches have run here repeatedly, and both
+entries are corrected.
+
+On CI the macOS test worker crashed (a segmentation fault, Linux and
+Windows passing) when the wheel test, which selects every tab of the main
+window in turn, reached the new tab. The first suspect was a second
+QWebEngineView the tab carried from start-up, idle in every window; its
+plot view is now built only when a batch is first shown, so a new window
+again holds one web view, as before this change. The crash stayed, so
+that was not the cause. What remained new was the tab itself being hidden
+(`setTabVisible(False)`) while the test selected it by index; nothing
+else in the main window hides a tab. The tab is now inserted when it is
+wanted and removed otherwise, so the main window never holds a hidden
+tab, and its test checks that every tab there is visible. The crash could
+not be reproduced on Linux; the macOS CI run on this change is the
+check.

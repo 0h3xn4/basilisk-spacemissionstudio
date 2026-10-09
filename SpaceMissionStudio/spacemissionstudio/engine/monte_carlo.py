@@ -159,9 +159,13 @@ guessed.
 from __future__ import annotations
 
 import functools
+import gzip
+import json
+import logging
+import pickle  # noqa: S403 -- reads back only the archive this same call wrote (security analysis S-04)
 import re
 from pathlib import Path
-from typing import List
+from typing import Dict, List
 
 import math
 
@@ -181,7 +185,10 @@ from Basilisk.utilities.MonteCarlo.Dispersions import (
 from Basilisk.utilities.MonteCarlo.RetentionPolicy import RetentionPolicy
 
 from ..schema.scenario import DispersionConfig, MonteCarloConfig, Scenario, SimSettings
+from . import monte_carlo_results
 from .service import SimulationService, _orbit_ic_to_rv
+
+_logger = logging.getLogger(__name__)
 
 # spacecraft.name -> attribute path suffix on that spacecraft's sc_object,
 # rooted after the "get_spacecraft_<name>()." accessor -- see module
@@ -451,6 +458,12 @@ def run_monte_carlo(scenario: Scenario, mc_config: MonteCarloConfig, archive_dir
     of FAILED run indices, exactly as ``Controller.executeSimulations()``
     does (empty list == every run succeeded).
 
+    Afterwards it reads those run files back (:func:`collect_batch`) and
+    writes the pickle-free summary of ``engine.monte_carlo_results``
+    (``batch_results.npz``/``.json``) next to them, which the GUI's Monte
+    Carlo tab and ``spacemissionstudio monte-carlo`` show. A failure there
+    is logged and does not fail the batch.
+
     ``scenario`` must already be valid (``scenario.validate()`` -- this
     function does not re-validate it, since :func:`SimulationService.build`
     inside each run's creation function does, and a validation failure
@@ -489,6 +502,115 @@ def run_monte_carlo(scenario: Scenario, mc_config: MonteCarloConfig, archive_dir
     controller.addRetentionPolicy(_default_retention_policy(scenario))
 
     try:
-        return controller.executeSimulations()
+        failures = controller.executeSimulations()
     except Exception as exc:  # noqa: BLE001 -- report ANY batch-level failure with a specific message
         raise MonteCarloError(f"Monte Carlo batch execution failed: {exc}") from exc
+    try:
+        batch = collect_batch(scenario, archive_dir, mc_config.num_runs, failures)
+        if batch.runs:
+            monte_carlo_results.save(batch, archive_dir)
+    except Exception:  # noqa: BLE001 -- the batch itself ran; a summary problem must not lose that
+        _logger.exception("Monte Carlo batch finished, but its summary could not be written")
+    return failures
+
+
+# Readable labels for the drawn values of each dispersed quantity, by the
+# last part of the Controller's parameter name (see _QUANTITY_PATHS).
+_ELEMENT_LABELS = {
+    "semi_major_axis_km": "semi-major axis [km]",
+    "eccentricity": "eccentricity [-]",
+    "inclination_deg": "inclination [deg]",
+    "raan_deg": "RAAN [deg]",
+    "arg_periapsis_deg": "argument of periapsis [deg]",
+    "true_anomaly_deg": "true anomaly [deg]",
+}
+
+
+def _elements_deg(oe) -> Dict[str, float]:
+    """Basilisk ``ClassicElements`` in the element_spread keys' units."""
+    return {"semi_major_axis_km": oe.a / 1e3, "eccentricity": oe.e,
+            "inclination_deg": math.degrees(oe.i), "raan_deg": math.degrees(oe.Omega),
+            "arg_periapsis_deg": math.degrees(oe.omega), "true_anomaly_deg": math.degrees(oe.f)}
+
+
+def _drawn_values(params: Dict[str, str], scenario: Scenario, mu: float) -> Dict[str, float]:
+    """One run's drawn values (``runN.json``: Controller parameter name ->
+    value as text), keyed by readable labels."""
+    by_accessor = {_accessor_name(sc.name): sc for sc in scenario.spacecraft}
+    spread_keys = {d.spacecraft: list(d.element_spread or {}) for d in scenario.monte_carlo.dispersions
+                   if d.quantity == "orbit_elements"}
+    drawn: Dict[str, float] = {}
+    for key, text in params.items():
+        accessor, _, path = key.partition("().")
+        for prefix in _EFFECTOR_ACCESSORS.values():
+            if accessor.startswith(prefix):
+                accessor = accessor.replace(prefix, "get_spacecraft_", 1)
+        sc = by_accessor.get(accessor)
+        if sc is None:
+            continue  # e.g. the RNG seeds
+        value = np.asarray(json.loads(text), dtype=float)
+        if path == "hub.mHub":
+            drawn[f"{sc.name} dry mass [kg]"] = float(value) - _propellant_offset_kg(sc)
+        elif path == "coreParams.dragCoeff":
+            drawn[f"{sc.name} drag coefficient [-]"] = float(value)
+        elif path == "coefficientReflection":
+            drawn[f"{sc.name} SRP coefficient [-]"] = float(value)
+        elif path == "hub.IHubPntBc_B":
+            for axis, inertia in zip(("xx", "yy", "zz"), np.diag(value.reshape(3, 3))):
+                drawn[f"{sc.name} I{axis} [kg m^2]"] = float(inertia)
+        elif path == "hub.omega_BN_BInit":
+            for axis, rate in zip("xyz", value.ravel()):
+                drawn[f"{sc.name} rate {axis} [deg/s]"] = math.degrees(float(rate))
+        elif path == "hub.sigma_BNInit":
+            for index, component in enumerate(value.ravel(), start=1):
+                drawn[f"{sc.name} attitude MRP {index} [-]"] = float(component)
+        elif path == "hub.r_CN_NInit":
+            velocity = params.get(key.replace("r_CN_NInit", "v_CN_NInit"))
+            if velocity is None:
+                continue
+            elements = _elements_deg(orbitalMotion.rv2elem(
+                mu, value.ravel(), np.asarray(json.loads(velocity), dtype=float).ravel()))
+            nominal = _elements_deg(nominal_elements(scenario, sc))
+            for element in spread_keys.get(sc.name) or list(elements):
+                drawn_value = elements[element]
+                if element.endswith("_deg"):  # within 180 deg of the nominal, so 0 +/- 0.1 is not 359.9
+                    drawn_value = nominal[element] + (drawn_value - nominal[element] + 180.0) % 360.0 - 180.0
+                drawn[f"{sc.name} {_ELEMENT_LABELS[element]}"] = float(drawn_value)
+    return drawn
+
+
+def collect_batch(scenario: Scenario, archive_dir: "str | Path", num_runs: int,
+                  failures: List[int]) -> monte_carlo_results.MonteCarloBatch:
+    """Every successful run's retained position and velocity, on a shared,
+    strided time grid, and the values it drew -- read back from the files
+    :func:`run_monte_carlo` has just had the Controller write into
+    ``archive_dir``. Only ever called on that call's own output: the run
+    files are pickles (security analysis S-04)."""
+    archive_dir = Path(archive_dir)
+    mu = _central_body_mu(scenario)
+    names = [sc.name for sc in scenario.spacecraft]
+    runs, raw, drawn = [], [], []
+    for run in range(num_runs):
+        data_path = archive_dir / f"run{run}.data"
+        if run in failures or not data_path.is_file():
+            continue
+        with gzip.open(data_path) as handle:
+            messages = pickle.load(handle)["messages"]  # noqa: S301 -- written by this call (see docstring)
+        raw.append({name: (np.asarray(messages[f"{name}.scState.r_BN_N"], dtype=float),
+                           np.asarray(messages[f"{name}.scState.v_BN_N"], dtype=float)) for name in names})
+        params_path = archive_dir / f"run{run}.json"
+        params = json.loads(params_path.read_text()) if params_path.is_file() else {}
+        drawn.append(_drawn_values(params, scenario, mu))
+        runs.append(run)
+    failed = sorted(set(failures) | {run for run in range(num_runs) if run not in runs})
+    if not runs:
+        return monte_carlo_results.MonteCarloBatch(scenario.name, scenario.gravity.central_body, np.zeros(0),
+                                                   [], failed, {}, {}, [])
+    samples = min(rv[0].shape[0] for run_data in raw for rv in run_data.values())
+    stride = monte_carlo_results.stride_for(samples)
+    rows = slice(0, samples, stride)
+    time_s = raw[0][names[0]][0][rows, 0] / 1e9  # [s] Basilisk records nanoseconds
+    positions = {name: np.stack([run_data[name][0][rows, 1:4] for run_data in raw]) for name in names}
+    velocities = {name: np.stack([run_data[name][1][rows, 1:4] for run_data in raw]) for name in names}
+    return monte_carlo_results.MonteCarloBatch(scenario.name, scenario.gravity.central_body, time_s, runs,
+                                               failed, positions, velocities, drawn, scenario.epoch_utc)

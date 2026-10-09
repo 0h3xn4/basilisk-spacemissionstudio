@@ -16,34 +16,35 @@
 #  OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 #
 
-"""Run a Monte Carlo batch, then read its archive back (needs Basilisk).
+"""Run a Monte Carlo batch, then read its results back (the batch needs Basilisk).
 
 Run Monte Carlo... (GUI) and ``spacemissionstudio monte-carlo`` (CLI) save
-each run to an archive folder: ``runN.json`` with the values that run
-drew, and Basilisk's own record of every spacecraft's position and
-velocity. This script runs template 25 (or reads a folder you already
-have) and prints how far apart the runs end up along the orbit, day by
-day.
+each run to the folder you choose. Next to Basilisk's own archive (pickles,
+which only the batch that wrote them reads), the tool writes a summary
+anyone can read safely: ``batch_results.npz`` (every run's position and
+velocity) and ``batch_results.json`` (the values each run drew). The GUI's
+Monte Carlo tab shows it; this script reads it with
+``spacemissionstudio.engine.monte_carlo_results`` and prints how far apart
+the runs end up, day by day.
 
 Run it from the SpaceMissionStudio folder::
 
     python3 examples/monte_carlo_spread.py --runs 20 --archive mc_out
-    python3 examples/monte_carlo_spread.py --read mc_out        # an existing archive
+    python3 examples/monte_carlo_spread.py --read mc_out        # results you already have
 """
 
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 
 import numpy as np
 
+from spacemissionstudio.engine import monte_carlo_results as mcr
 from spacemissionstudio.schema import load_scenario
 
 TEMPLATE = (Path(__file__).resolve().parent.parent / "spacemissionstudio" / "scenarios" / "templates"
             / "25_monte_carlo_orbit_and_drag_dispersions.json")
-_NS_PER_S = 1e9  # Basilisk records time in nanoseconds
 
 
 def run_batch(archive: Path, runs: int, days: float, threads: int) -> None:
@@ -60,54 +61,38 @@ def run_batch(archive: Path, runs: int, days: float, threads: int) -> None:
         raise SystemExit(f"runs {failed} failed; see the log")
 
 
-def along_track_spread(archive: Path, spacecraft: str = "sat-1") -> dict:
-    """{day: 1-sigma along-track spread [km]} across every run in ``archive``,
-    once a day and at the end."""
-    from Basilisk.utilities.MonteCarlo.Controller import Controller
-
-    controller = Controller.load(str(archive))
-    run_count = len(list(archive.glob("run*.json")))
-    positions, velocities = [], []
-    for index in range(run_count):
-        messages = controller.getRetainedData(index)["messages"]
-        positions.append(messages[f"{spacecraft}.scState.r_BN_N"])  # rows: [time ns, x, y, z] [m]
-        velocities.append(messages[f"{spacecraft}.scState.v_BN_N"])  # [m/s]
-    time_s = positions[0][:, 0] / _NS_PER_S
-    end_day = time_s[-1] / 86400.0  # [day]
+def daily_spread(batch: mcr.MonteCarloBatch, spacecraft: str = "sat-1") -> dict:
+    """{day: (radial, along-track, cross-track) 1-sigma spread [km]}, once a
+    day and at the end, measured along the orbit from the mean of the runs."""
+    rel = mcr.offsets(batch.positions[spacecraft], batch.velocities[spacecraft])  # [m]
+    end_day = float(batch.time_s[-1]) / 86400.0  # [day]
     spread = {}
     for day in [*np.arange(1.0, end_day, 1.0), end_day]:
-        row = int(np.searchsorted(time_s, day * 86400.0 - 1.0))
-        r = np.array([p[min(row, len(p) - 1), 1:4] for p in positions])  # [m]
-        v = np.array([w[min(row, len(w) - 1), 1:4] for w in velocities])  # [m/s]
-        along = v.mean(axis=0) / np.linalg.norm(v.mean(axis=0))  # the mean direction of flight
-        spread[round(float(day), 3)] = float(((r - r.mean(axis=0)) @ along).std()) / 1e3  # [km]
+        row = min(int(np.searchsorted(batch.time_s, day * 86400.0 - 1.0)), batch.time_s.size - 1)
+        spread[round(float(day), 3)] = tuple(float(s) / 1e3 for s in rel[:, row, :].std(axis=0))
     return spread
-
-
-def drawn_values(archive: Path) -> list:
-    """Each run's drawn values, from its ``runN.json``."""
-    return [json.loads(path.read_text()) for path in sorted(archive.glob("run*.json"),
-                                                            key=lambda p: int(p.stem[3:]))]
 
 
 def main(argv=None) -> dict:
     parser = argparse.ArgumentParser(description="Run template 25's Monte Carlo batch and print its spread.")
-    parser.add_argument("--archive", type=Path, default=Path("mc_out"), help="archive folder to write")
-    parser.add_argument("--read", type=Path, help="only read this existing archive folder")
+    parser.add_argument("--archive", type=Path, default=Path("mc_out"), help="folder the batch saves to")
+    parser.add_argument("--read", type=Path, help="only read the results already in this folder")
     parser.add_argument("--runs", type=int, default=20, help="number of runs (default: 20)")
     parser.add_argument("--days", type=float, default=3.0, help="length of each run [day] (default: 3)")
     parser.add_argument("--threads", type=int, default=1, help="runs in parallel (default: 1)")
     args = parser.parse_args(argv)
 
-    archive = args.read or args.archive
+    folder = args.read or args.archive
     if args.read is None:
-        run_batch(archive, args.runs, args.days, args.threads)
-    cd = [float(next(v for k, v in run.items() if k.endswith("dragCoeff"))) for run in drawn_values(archive)]
+        run_batch(folder, args.runs, args.days, args.threads)
+    batch = mcr.load(folder)
+    cd = [drawn["sat-1 drag coefficient [-]"] for drawn in batch.drawn if "sat-1 drag coefficient [-]" in drawn]
     if cd:
-        print(f"{len(cd)} runs; drag coefficients drawn between {min(cd):.2f} and {max(cd):.2f}")
-    spread = along_track_spread(archive)
-    for day, km in spread.items():
-        print(f"day {day:5.2f}: runs spread {km:7.1f} km along track (1-sigma)")
+        print(f"{len(batch.runs)} runs; drag coefficients drawn between {min(cd):.2f} and {max(cd):.2f}")
+    spread = daily_spread(batch)
+    for day, (radial, along, cross) in spread.items():
+        print(f"day {day:5.2f}: 1-sigma {along:7.1f} km along track, {radial:5.2f} km radial, "
+              f"{cross:5.2f} km cross-track")
     return spread
 
 

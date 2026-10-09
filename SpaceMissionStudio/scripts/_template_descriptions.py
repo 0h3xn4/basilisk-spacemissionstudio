@@ -160,7 +160,7 @@ Template 01's circular orbit as a 20-run Monte Carlo batch: each run's dry mass 
 distribution, 500 kg +/- 25 kg.
 
 What to look at:
-- Run it with Run Monte Carlo... and compare final positions across runs.
+- Run it with Run Monte Carlo...: the Monte Carlo tab shows every run and their spread.
 - Mass barely matters here: with no drag, radiation pressure or burns, mass doesn't change the trajectory.
 
 Try changing:
@@ -411,9 +411,9 @@ different orbit (1-sigma: 1 km in semi-major axis, 0.02 deg in inclination, 0.1 
 with a drag coefficient between 2.2 and 3.0. Three days at 400 km, with real space weather.
 
 What to look at:
-- Run Monte Carlo... saves each run (its drawn values and its trajectory) to the folder you pick.
-- examples/monte_carlo_spread.py (in the repository) reads that folder back.
+- Run it with Run Monte Carlo...: the Monte Carlo tab opens on the runs' spread.
 - The runs start ~10 km apart along track (1-sigma) and spread ~150 km a day: a lower orbit is faster.
+- The Runs table: sort by semi-major axis to see the lowest orbits pull ahead.
 - Drag alone (spreads set to 0) separates them by only ~10 km in three days.
 
 Try changing:
