@@ -574,9 +574,14 @@ class SimulationService:
     ``SimBaseClass``, which is not designed to be reset and rebuilt).
     """
 
-    def __init__(self, scenario: Scenario, vizard_request: Optional[VizardRequest] = None):
+    def __init__(self, scenario: Scenario, vizard_request: Optional[VizardRequest] = None,
+                 simulation_class: Optional[type] = None):
         self.scenario = scenario
         self.vizard_request = vizard_request
+        # A SimBaseClass subclass to build with instead (sil.runner adds its
+        # bridge right after the spacecraft's last flight-software module
+        # this way); None: SimBaseClass itself.
+        self._simulation_class = simulation_class
         self.scSim: Optional[SimulationBaseClass.SimBaseClass] = None
         self.mu: Optional[float] = None
         # (spacecraft name, t [s]) once a spacecraft with drag re-entered;
@@ -710,7 +715,7 @@ class SimulationService:
         # orientation instead (two-body at 10 s: < 1 mm per day against
         # Kepler); the planet positions need no correction because zeroBase
         # puts the central body at the origin.
-        self.scSim = SimulationBaseClass.SimBaseClass()
+        self.scSim = (self._simulation_class or SimulationBaseClass.SimBaseClass)()
         dyn_process = self.scSim.CreateNewProcess("dynProcess", priority=100)
         dyn_task_name = "dynTask"
         dyn_process.addTask(

@@ -302,3 +302,23 @@ def test_a_program_that_never_connects_or_exits_first_is_reported():
     finally:
         listener.close()
 
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX executable bit")
+def test_a_program_changed_after_consent_is_refused(tmp_path):
+    """The runner hashes the program again just before starting it: one
+    replaced after the user confirmed its SHA-256 is never started, and a
+    file that is not executable is refused (security analysis S-15)."""
+    from spacemissionstudio.sil.runner import SilOptions, file_sha256, run_sil
+
+    program = tmp_path / "fsw_host"
+    marker = tmp_path / "started"
+    program.write_text(f"#!/bin/sh\ntouch {marker}\n")
+    program.chmod(0o755)
+    confirmed = file_sha256(program)
+    program.write_text(f"#!/bin/sh\ntouch {marker}\necho swapped\n")
+    with pytest.raises(c.SilError, match="changed after you confirmed it"):
+        run_sil(None, "sat-1", SilOptions(str(program), expected_sha256=confirmed))
+    program.chmod(0o644)
+    with pytest.raises(c.SilError, match="not executable"):
+        run_sil(None, "sat-1", SilOptions(str(program)))
+    assert not marker.exists()

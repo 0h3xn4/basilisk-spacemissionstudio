@@ -60,6 +60,7 @@ import copy
 import ctypes
 import platform
 import sys
+from dataclasses import dataclass
 from typing import Dict, List, Tuple
 
 from .. import __version__ as _tool_version
@@ -158,15 +159,9 @@ def _parameter_value(messaging, module, field: cdecl.Field):
     return value
 
 
-def capture(scenario, spacecraft_name: str, steps: int = DEFAULT_STEPS) -> FswCapture:
-    """Reads ``spacecraft_name``'s flight software and records ``steps``
-    flight-software steps. Raises :class:`CaptureError` with the reason
-    when it cannot be exported."""
-    from Basilisk.architecture import messaging, sysModel
-    from Basilisk.utilities import macros
-
-    from ..engine.service import SimulationService
-
+def check_exportable(scenario, spacecraft_name: str):
+    """The spacecraft's configuration, or :class:`CaptureError` when its
+    flight software is not one the export (and the SIL runner) can take."""
     spacecraft = next((sc for sc in scenario.spacecraft if sc.name == spacecraft_name), None)
     if spacecraft is None:
         raise CaptureError(f"no spacecraft named {spacecraft_name!r} in this scenario")
@@ -176,6 +171,46 @@ def capture(scenario, spacecraft_name: str, steps: int = DEFAULT_STEPS) -> FswCa
                            "export the attitude chain.")
     if scenario.simulation_mode == "orbit_only" or spacecraft.fsw_mode is None:
         raise CaptureError(f"{spacecraft_name} has no attitude flight software (fsw_mode is not set)")
+    return spacecraft
+
+
+@dataclass
+class FswGraph:
+    """The spacecraft's flight software as it sits in a built simulation:
+    what :func:`capture` records and what the SIL bridge drives."""
+    rate_ns: int
+    fsw_models: list  # the Basilisk modules, in execution order
+    names: Dict[int, str]  # id(module) -> its name in the export
+    modules: List[ModuleInstance]
+    message_types: Dict[str, MessageType]
+    inputs: List[Port]
+    outputs: List[Port]
+    telemetry: List[Port]
+    constants: Dict[int, Constant]  # payload address -> constant
+    reads: List[Tuple[str, int, int]]  # ("<module>.<field>", local payload address, size)
+    input_source: Dict[str, Tuple[int, int]]  # port -> (the producer's payload address, size)
+    input_read_from: Dict[str, Tuple[int, int]]  # port -> (first consumer's local copy address, size)
+    input_container: Dict[str, tuple]  # port -> (first consumer's input container, source address, size)
+    output_sizes: Dict[str, Tuple[int, int]]  # "<module>.<field>" -> (payload address, size)
+    output_container: Dict[str, object]  # "<module>.<field>" -> the output container
+    not_exported: List[str]
+    priming: List[str]
+
+    @property
+    def last_tag(self) -> str:
+        return str(self.fsw_models[-1].ModelTag)
+
+
+def capture(scenario, spacecraft_name: str, steps: int = DEFAULT_STEPS) -> FswCapture:
+    """Reads ``spacecraft_name``'s flight software and records ``steps``
+    flight-software steps. Raises :class:`CaptureError` with the reason
+    when it cannot be exported."""
+    from Basilisk.architecture import sysModel
+    from Basilisk.utilities import macros
+
+    from ..engine.service import SimulationService
+
+    check_exportable(scenario, spacecraft_name)
     if steps < 2:
         raise CaptureError("record at least 2 steps")
 
@@ -187,21 +222,32 @@ def capture(scenario, spacecraft_name: str, steps: int = DEFAULT_STEPS) -> FswCa
     run.sim_settings.record_interval_s = 0.0  # [s]
     service = SimulationService(run)
     service.build(initialize=False)
+    graph = read_graph(service, spacecraft_name)
+    return _record(scenario, spacecraft_name, service, graph, steps, dt_s, sysModel, macros)
+
+
+def read_graph(service, spacecraft_name: str) -> FswGraph:
+    """Reads the flight software out of ``service``, built with
+    ``initialize=False``. Raises :class:`CaptureError` when it cannot run
+    outside the simulation with the same values (module docstring)."""
+    from Basilisk.architecture import messaging
+
+    prefix = f"{spacecraft_name}_"
     task = next(t for t in service.scSim.TaskList if t.Name == service.dyn_task_name)
     rate_ns = int(task.TaskData.TaskPeriod)
     ordered = _execution_order(task)
     position = {id(m): i for i, m in enumerate(ordered)}
-    prefix = f"{spacecraft_name}_"
 
     fsw_models = [m for m in ordered if type(m).__module__.startswith("Basilisk.fswAlgorithms.")
                   and str(getattr(m, "ModelTag", "")).startswith(prefix)]
+    sil_models = [m for m in ordered if str(getattr(m, "ModelTag", "")).startswith("silBridge")]
     if not fsw_models:
         raise CaptureError(f"{spacecraft_name}: no Basilisk flight-software modules were built")
     unknown = sorted({type(m).__module__.rsplit(".", 1)[1] for m in fsw_models} - set(MODULES))
     if unknown:
         raise CaptureError(f"{spacecraft_name}: these modules cannot be exported yet: {', '.join(unknown)}")
     fsw_ids = {id(m) for m in fsw_models}
-    sim_models = [m for m in ordered if id(m) not in fsw_ids]
+    sim_models = [m for m in ordered if id(m) not in fsw_ids and not any(m is s for s in sil_models)]
     not_exported = sorted({f"{NOT_EXPORTED[type(m).__name__]} -- {getattr(m, 'ModelTag', '')}"
                            for m in sim_models if type(m).__name__ in NOT_EXPORTED
                            and spacecraft_name in str(getattr(m, "ModelTag", ""))})
@@ -247,6 +293,7 @@ def capture(scenario, spacecraft_name: str, steps: int = DEFAULT_STEPS) -> FswCa
     modules: List[ModuleInstance] = []
     inputs: Dict[int, Port] = {}
     input_read_from: Dict[str, Tuple[int, int]] = {}  # port -> (consumer local payload address, size)
+    input_source: Dict[str, Tuple[int, int]] = {}  # port -> (producer payload address, size)
     input_container: Dict[str, object] = {}  # port -> its first consumer's input container
     constants: Dict[int, Constant] = {}
     reads: List[Tuple[str, int, int]] = []  # ("<module>.<field>", local payload address, size)
@@ -283,6 +330,7 @@ def capture(scenario, spacecraft_name: str, steps: int = DEFAULT_STEPS) -> FswCa
                                     f.message_type, f"{tag}.{label} ({type(producer).__name__})")
                         inputs[address] = port
                         input_read_from[port.name] = (local, mtype.size)
+                        input_source[port.name] = (address, mtype.size)
                         input_container[port.name] = (container, address, mtype.size)
                     port.consumers.append(f"{instance.name}.{f.name}")
                     instance.inputs.append(InputLink(f.name, f.message_type, "input", port.name))
@@ -343,13 +391,21 @@ def capture(scenario, spacecraft_name: str, steps: int = DEFAULT_STEPS) -> FswCa
     telemetry = [Port(_identifier(f"{names[id(p)]}_{fname}"), mtype, f"{names[id(p)]}.{fname}")
                  for p, fname, mtype in output_at.values() if f"{names[id(p)]}.{fname}" not in outputs]
     priming = [names[id(m)] for m in service._desat_controls if id(m) in fsw_ids]
-
-    # Record the run.
     output_sizes = {f"{names[id(p)]}.{fname}": (address, message_types[mtype].size)
                     for address, (p, fname, mtype) in output_at.items()}
+    output_container = {f"{names[id(p)]}.{fname}": getattr(p, fname) for p, fname, _ in output_at.values()}
+    return FswGraph(rate_ns, fsw_models, names, modules, message_types, list(inputs.values()), list(outputs.values()),
+                    telemetry, constants, reads, input_source, input_read_from, input_container, output_sizes,
+                    output_container, not_exported, priming)
+
+
+def _record(scenario, spacecraft_name, service, graph: FswGraph, steps, dt_s, sysModel, macros) -> FswCapture:
+    """Adds the recorder, runs ``steps`` steps and returns the capture."""
+    constants, reads = graph.constants, graph.reads
+    input_read_from, input_container = graph.input_read_from, graph.input_container
+    output_sizes, output_container = graph.output_sizes, graph.output_container
     recorded = {"times": [], "inputs": [], "outputs": [], "constants_changed": set(), "step0": {},
                 "reset_inputs": {}, "reset_outputs": {}}
-    output_container = {f"{names[id(p)]}.{fname}": getattr(p, fname) for p, fname, _ in output_at.values()}
     constant_bytes = {address: bytes.fromhex(c.value_hex) for address, c in constants.items()}
 
     class _Recorder(sysModel.SysModel):
@@ -386,10 +442,10 @@ def capture(scenario, spacecraft_name: str, steps: int = DEFAULT_STEPS) -> FswCa
 
     return FswCapture(
         spacecraft=spacecraft_name, scenario_name=scenario.name, basilisk_version=BASILISK_VERSION,
-        basilisk_revision=BASILISK_REVISION, rate_ns=rate_ns, modules=modules, message_types=message_types,
-        inputs=list(inputs.values()), outputs=list(outputs.values()), telemetry=telemetry,
-        constants=list(constants.values()), priming_resets=priming,
-        priming_time_ns=int(macros.sec2nano(dt_s)) if priming else 0, not_exported=not_exported,
+        basilisk_revision=BASILISK_REVISION, rate_ns=graph.rate_ns, modules=graph.modules,
+        message_types=graph.message_types, inputs=graph.inputs, outputs=graph.outputs, telemetry=graph.telemetry,
+        constants=list(constants.values()), priming_resets=graph.priming,
+        priming_time_ns=int(macros.sec2nano(dt_s)) if graph.priming else 0, not_exported=graph.not_exported,
         config_digest=fsw_config_digest(scenario, spacecraft_name),
         times_ns=recorded["times"], input_trace=recorded["inputs"], output_trace=recorded["outputs"],
         step0_reads=recorded["step0"], reset_inputs=recorded["reset_inputs"],

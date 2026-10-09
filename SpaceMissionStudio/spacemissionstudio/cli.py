@@ -636,6 +636,44 @@ def cmd_fsw_status(args: argparse.Namespace) -> int:
     return worst
 
 
+def cmd_sil(args: argparse.Namespace) -> int:
+    """Run a spacecraft's flight software as an external program, in the loop."""
+    from .sil.contract import SilError
+    from .sil.runner import SilOptions, SilRunError, run_sil
+    from .sil.session import Timeouts
+
+    try:
+        scenario = load_scenario(args.scenario)
+    except ScenarioValidationError as exc:
+        print(f"INVALID: {exc}", file=sys.stderr)
+        return 1
+    timeouts = Timeouts(handshake_s=args.handshake_timeout, step_s=args.step_timeout,
+                        deadline_s=args.deadline_ms * 1e-3 if args.deadline_ms else None)
+    try:
+        _, report = run_sil(scenario, args.spacecraft, SilOptions(str(args.binary), timeouts, args.transport))
+    except SilRunError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        if exc.report is not None and exc.report.log_tail.strip():
+            print("--- the program's last output ---", file=sys.stderr)
+            print(exc.report.log_tail.rstrip(), file=sys.stderr)
+        return 1
+    except SilError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+    print("\n".join(report.summary_lines()))
+    if args.report:
+        args.report.write_text(report.to_json() + "\n")
+        print(f"  report: {args.report}")
+    if args.residuals_csv:
+        report.write_residuals_csv(args.residuals_csv)
+        print(f"  residuals: {args.residuals_csv}")
+    if args.max_error is not None and (report.max_abs_error > args.max_error or report.signals_missing):
+        print(f"FAIL: largest residual {report.max_abs_error:.6g} is over {args.max_error:g}"
+              if report.max_abs_error > args.max_error else "FAIL: some outputs were never written", file=sys.stderr)
+        return 2
+    return 0
+
+
 def cmd_spaceweather_resolve(args: argparse.Namespace) -> int:
     try:
         scenario = load_scenario(args.scenario)
@@ -897,6 +935,24 @@ def build_parser() -> argparse.ArgumentParser:
                                          help="check the scenario's recorded flight-software exports (stale or not)")
     p_fsw_status.add_argument("scenario", type=Path)
     p_fsw_status.set_defaults(func=cmd_fsw_status)
+
+    p_sil = subparsers.add_parser("sil", help="run a spacecraft's flight software as an external program in the "
+                                              "loop and compare it with the simulation's own (needs Basilisk)")
+    p_sil.add_argument("scenario", type=Path)
+    p_sil.add_argument("--spacecraft", required=True)
+    p_sil.add_argument("--binary", type=Path, required=True,
+                       help="the program: an export's fsw_host or fsw_adapter_host, or any program following "
+                            "SIL_CONTRACT.md; it is run as <binary> sil <address>")
+    p_sil.add_argument("--transport", choices=("auto", "unix", "tcp"), default="auto")
+    p_sil.add_argument("--deadline-ms", type=float, default=None,
+                       help="an answer later than this counts as a dropped step (default: none, pure lock-step)")
+    p_sil.add_argument("--step-timeout", type=float, default=10.0, help="seconds without any answer before failing")
+    p_sil.add_argument("--handshake-timeout", type=float, default=30.0, help="seconds to connect and say HELLO")
+    p_sil.add_argument("--report", type=Path, help="write the full report (JSON) here")
+    p_sil.add_argument("--residuals-csv", type=Path, help="write the sampled residuals (CSV) here")
+    p_sil.add_argument("--max-error", type=float, default=None,
+                       help="exit with status 2 if any residual is larger, or an output was never written")
+    p_sil.set_defaults(func=cmd_sil)
 
     p_sw = subparsers.add_parser("spaceweather-resolve",
                                   help="resolve space weather for a scenario without running it (no Basilisk needed)")
