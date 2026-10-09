@@ -1,0 +1,427 @@
+{
+  "name": "26 - Earth observation: data and its downlink",
+  "epoch_utc": "2030-01-01T08:30:00",
+  "simulation_mode": "full_attitude",
+  "gravity": {
+    "central_body": "earth",
+    "central_body_degree": 10,
+    "third_body_perturbers": [
+      "sun",
+      "moon"
+    ]
+  },
+  "spacecraft": [
+    {
+      "name": "eo-sat",
+      "orbit": {
+        "type": "classical_elements",
+        "semi_major_axis_km": 6928.0,
+        "eccentricity": 0.0,
+        "inclination_deg": 97.59,
+        "raan_deg": 259.42,
+        "arg_periapsis_deg": 0.0,
+        "anomaly_type": "true",
+        "true_anomaly_deg": 0.0,
+        "mean_anomaly_deg": null,
+        "position_km": null,
+        "velocity_km_s": null,
+        "tle_line1": null,
+        "tle_line2": null
+      },
+      "dry_mass_kg": 150.0,
+      "inertia_kg_m2": [
+        20.5,
+        0.0,
+        0.0,
+        0.0,
+        20.5,
+        0.0,
+        0.0,
+        0.0,
+        16.0
+      ],
+      "sigma_bn_init": [
+        0.1,
+        0.2,
+        -0.15
+      ],
+      "omega_bn_b_init_rad_s": [
+        0.001,
+        -0.001,
+        0.0005
+      ],
+      "enable_drag": true,
+      "drag_coeff": 2.2,
+      "drag_area_m2": 0.8,
+      "enable_srp": true,
+      "srp_coeff": 1.3,
+      "srp_area_m2": 1.5,
+      "facets": [
+        {
+          "name": "bus +x",
+          "area_m2": 0.8,
+          "normal_b": [
+            1.0,
+            0.0,
+            0.0
+          ],
+          "location_b": [
+            0.4,
+            0.0,
+            0.0
+          ],
+          "drag_coeff": 3.0,
+          "specular_coeff": 0.336,
+          "diffuse_coeff": 0.139
+        },
+        {
+          "name": "bus -x",
+          "area_m2": 0.8,
+          "normal_b": [
+            -1.0,
+            0.0,
+            0.0
+          ],
+          "location_b": [
+            -0.4,
+            0.0,
+            0.0
+          ],
+          "drag_coeff": 3.0,
+          "specular_coeff": 0.336,
+          "diffuse_coeff": 0.139
+        },
+        {
+          "name": "bus +y",
+          "area_m2": 0.8,
+          "normal_b": [
+            0.0,
+            1.0,
+            0.0
+          ],
+          "location_b": [
+            0.0,
+            0.4,
+            0.0
+          ],
+          "drag_coeff": 3.0,
+          "specular_coeff": 0.336,
+          "diffuse_coeff": 0.139
+        },
+        {
+          "name": "bus -y",
+          "area_m2": 0.8,
+          "normal_b": [
+            0.0,
+            -1.0,
+            0.0
+          ],
+          "location_b": [
+            0.0,
+            -0.4,
+            0.0
+          ],
+          "drag_coeff": 3.0,
+          "specular_coeff": 0.336,
+          "diffuse_coeff": 0.139
+        },
+        {
+          "name": "bus +z",
+          "area_m2": 0.64,
+          "normal_b": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "location_b": [
+            0.0,
+            0.0,
+            0.5
+          ],
+          "drag_coeff": 3.0,
+          "specular_coeff": 0.336,
+          "diffuse_coeff": 0.139
+        },
+        {
+          "name": "bus -z",
+          "area_m2": 0.64,
+          "normal_b": [
+            0.0,
+            0.0,
+            -1.0
+          ],
+          "location_b": [
+            0.0,
+            0.0,
+            -0.5
+          ],
+          "drag_coeff": 3.0,
+          "specular_coeff": 0.336,
+          "diffuse_coeff": 0.139
+        },
+        {
+          "name": "array front",
+          "area_m2": 1.0,
+          "normal_b": [
+            1.0,
+            0.0,
+            0.0
+          ],
+          "location_b": [
+            0.0,
+            0.0,
+            0.5
+          ],
+          "drag_coeff": 3.0,
+          "specular_coeff": 0.16,
+          "diffuse_coeff": 0.16
+        },
+        {
+          "name": "array back",
+          "area_m2": 1.0,
+          "normal_b": [
+            -1.0,
+            -0.0,
+            -0.0
+          ],
+          "location_b": [
+            0.0,
+            0.0,
+            0.5
+          ],
+          "drag_coeff": 3.0,
+          "specular_coeff": 0.0,
+          "diffuse_coeff": 0.56
+        }
+      ],
+      "enable_gravity_gradient": false,
+      "sensors": [
+        {
+          "kind": "star_tracker",
+          "name": "st-1",
+          "params": {
+            "noise_arcsec": 5.0
+          }
+        },
+        {
+          "kind": "imu",
+          "name": "imu-1",
+          "params": {
+            "gyro_noise_rad_s": 1e-05
+          }
+        },
+        {
+          "kind": "coarse_sun_sensor",
+          "name": "css-1",
+          "params": {
+            "nHat_B": [
+              0.0,
+              0.0,
+              1.0
+            ]
+          }
+        }
+      ],
+      "actuators": [
+        {
+          "kind": "reaction_wheel",
+          "name": "rw-x",
+          "params": {
+            "gsHat_B": [
+              1.0,
+              0.0,
+              0.0
+            ],
+            "rw_type": "custom",
+            "maxMomentum": 6.0,
+            "Omega_max": 6000.0,
+            "u_max": 0.05
+          }
+        },
+        {
+          "kind": "reaction_wheel",
+          "name": "rw-y",
+          "params": {
+            "gsHat_B": [
+              0.0,
+              1.0,
+              0.0
+            ],
+            "rw_type": "custom",
+            "maxMomentum": 6.0,
+            "Omega_max": 6000.0,
+            "u_max": 0.05
+          }
+        },
+        {
+          "kind": "reaction_wheel",
+          "name": "rw-z",
+          "params": {
+            "gsHat_B": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "rw_type": "custom",
+            "maxMomentum": 6.0,
+            "Omega_max": 6000.0,
+            "u_max": 0.05
+          }
+        },
+        {
+          "kind": "magnetic_torque_rod",
+          "name": "mtb-x",
+          "params": {
+            "gtHat_B": [
+              1.0,
+              0.0,
+              0.0
+            ],
+            "max_dipole_a_m2": 15.0
+          }
+        },
+        {
+          "kind": "magnetic_torque_rod",
+          "name": "mtb-y",
+          "params": {
+            "gtHat_B": [
+              0.0,
+              1.0,
+              0.0
+            ],
+            "max_dipole_a_m2": 15.0
+          }
+        },
+        {
+          "kind": "magnetic_torque_rod",
+          "name": "mtb-z",
+          "params": {
+            "gtHat_B": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "max_dipole_a_m2": 15.0
+          }
+        }
+      ],
+      "fsw_mode": "hillPoint",
+      "fsw_params": {},
+      "control_params": {},
+      "power": {
+        "panel_area_m2": 1.0,
+        "panel_efficiency": 0.29,
+        "panel_normal_b": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "bus_idle_power_w": 60.0,
+        "battery_capacity_wh": 300.0,
+        "battery_initial_soc": 0.9
+      },
+      "rf_link": {
+        "tx_power_w": 2.0,
+        "frequency_hz": 2200000000.0,
+        "data_rate_bps": 5000000.0,
+        "tx_antenna_gain_dbi": 6.0,
+        "implementation_loss_db": 2.0,
+        "required_ebno_db": 10.0,
+        "antenna_beamwidth_deg": null,
+        "antenna_pattern": "cosine",
+        "antenna_gain_table": [],
+        "antenna_front_to_back_db": 15.0,
+        "antenna_boresight_b": [
+          -1.0,
+          0.0,
+          0.0
+        ]
+      },
+      "comms_pointing": null,
+      "data_handling": {
+        "storage_capacity_gbit": 3.0,
+        "instruments": [
+          {
+            "name": "camera",
+            "data_rate_bps": 80000.0,
+            "power_w": 15.0,
+            "initial_data_gbit": 0.0
+          },
+          {
+            "name": "housekeeping",
+            "data_rate_bps": 4000.0,
+            "power_w": 0.0,
+            "initial_data_gbit": 0.0
+          }
+        ],
+        "transmitter_power_w": 12.0
+      },
+      "station_keeping": null,
+      "geo_station_keeping": null,
+      "phasing_keeping": null,
+      "constant_thrust": null,
+      "momentum_dumping": null,
+      "magnetic_momentum_management": {
+        "wheel_speed_biases_rad_s": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "c_gain": 0.003
+      },
+      "fuel_tank": null,
+      "propellant_budget": null,
+      "vizard_model_path": null,
+      "vizard_model_offset_m": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "vizard_model_rotation_deg": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "vizard_model_scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    }
+  ],
+  "ground_stations": [
+    {
+      "name": "berlin-gs",
+      "latitude_deg": 52.52,
+      "longitude_deg": 13.405,
+      "altitude_m": 34.0,
+      "min_elevation_deg": 10.0,
+      "rx_antenna_gain_dbi": 35.0,
+      "system_noise_temp_k": 150.0
+    }
+  ],
+  "space_weather": {
+    "source": "bundled",
+    "local_file_path": null,
+    "cache_dir": null,
+    "atmosphere_model": "nrlmsise00",
+    "forecast_percentile": 50.0,
+    "msfc_file_path": null
+  },
+  "sim_settings": {
+    "duration_days": 2.0,
+    "dynamics_task_rate_s": 1.0,
+    "integrator": "rkf78",
+    "record_interval_s": 10.0
+  },
+  "monte_carlo": {
+    "enabled": false,
+    "num_runs": 10,
+    "thread_count": 1,
+    "verbose": false,
+    "dispersions": []
+  },
+  "mission_sequence": [],
+  "description": "An Earth-observation microsatellite and its data: a camera (80 kbit/s, orbit average) and housekeeping write into a 3 Gbit onboard memory, and an S-band patch antenna on the nadir face sends it to Berlin at 5 Mbit/s whenever the link closes. Two days, pointing at nadir.\n\nBerlin sees the satellite in two groups of passes a day, 9 to 11 h apart. Between them the camera fills the memory, and what no longer fits is lost.\n\nWhat to look at:\n- eo-sat.data_handling.stored: filling between passes, emptying in them, full in the long gaps.\n- eo-sat.data_handling.data_lost: 0.9 Gbit of the 14.5 Gbit generated; the memory is first full 12 h in.\n- berlin-gs.access_to_eo-sat.link_margin_db: 16 dB at the best pass, 3.7 dB at the 10 deg edge, where Berlin is 65 deg off the patch's boresight (.antenna_off_boresight).\n- The Events tab: each downlink and how much it sent.\n\nTry changing:\n- Memory capacity 8 Gbit (Data handling, Power/propulsion tab): nothing is lost.\n- Add a ground station on Svalbard (78.23 N, 15.39 E): everything generated is downlinked.\n- Data rate 10 Mbit/s: the edge margin falls to 0.6 dB.\n- Antenna pattern: a gain table from your patch's datasheet. The cos^n model is broader than most real patches.",
+  "schema_version": 4
+}

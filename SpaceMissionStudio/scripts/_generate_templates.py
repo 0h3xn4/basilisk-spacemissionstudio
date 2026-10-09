@@ -46,11 +46,13 @@ from spacemissionstudio.engine.orbit_design import (
 )
 from spacemissionstudio.schema.scenario import (
     CommsPointingConfig,
+    DataHandlingConfig,
     DispersionConfig,
     FuelTankConfig,
     GeoStationKeepingConfig,
     GravityConfig,
     GroundStationConfig,
+    InstrumentConfig,
     MagneticMomentumManagementConfig,
     MomentumDumpingConfig,
     MonteCarloConfig,
@@ -1400,6 +1402,50 @@ def build_25_monte_carlo_orbit_and_drag_dispersions() -> Scenario:
     )
 
 
+def build_26_earth_observation_data_downlink() -> Scenario:
+    # The microsatellite preset turned to nadir (hillPoint: body x up, so
+    # the camera and the S-band patch antenna sit on the -x face), with a
+    # camera and housekeeping filling a 3 Gbit memory that Berlin's passes
+    # empty at 5 Mbit/s whenever the patch's link closes.
+    from spacemissionstudio.engine.spacecraft_templates import SPACECRAFT_TEMPLATES
+
+    preset = next(t for t in SPACECRAFT_TEMPLATES if t.name == "Microsatellite (150 kg)")
+    spacecraft = preset.build()
+    spacecraft.name = "eo-sat"
+    spacecraft.orbit = _starter_orbit()
+    spacecraft.fsw_mode = "hillPoint"
+    spacecraft.fsw_params = {}
+    spacecraft.sigma_bn_init = [0.1, 0.2, -0.15]  # [-] MRP
+    spacecraft.omega_bn_b_init_rad_s = [0.001, -0.001, 0.0005]  # [rad/s]
+    spacecraft.power.panel_normal_b = [1.0, 0.0, 0.0]  # zenith-facing array
+    spacecraft.facets = box_facets(_MICROSAT_SIZE_M, spacecraft.power.panel_area_m2,
+                                   spacecraft.power.panel_normal_b, drag_coeff=OPERATIONS_DRAG_COEFF)
+    spacecraft.rf_link = RFLinkConfig(
+        tx_power_w=2.0, frequency_hz=2.2e9, data_rate_bps=5.0e6,  # [W] RF out, [Hz], [bit/s]
+        tx_antenna_gain_dbi=6.0, required_ebno_db=10.0,  # [dBi], [dB]
+        antenna_pattern="cosine", antenna_front_to_back_db=15.0,  # [dB]
+        antenna_boresight_b=[-1.0, 0.0, 0.0],  # nadir under hillPoint
+    )
+    spacecraft.data_handling = DataHandlingConfig(
+        storage_capacity_gbit=3.0,  # [Gbit]
+        instruments=[InstrumentConfig("camera", data_rate_bps=8.0e4, power_w=15.0),  # [bit/s] orbit average, [W]
+                     InstrumentConfig("housekeeping", data_rate_bps=4.0e3)],  # [bit/s]
+        transmitter_power_w=12.0,  # [W] DC while sending
+    )
+    return Scenario(
+        name="26 - Earth observation: data and its downlink",
+        description=DESCRIPTIONS["26"],
+        epoch_utc=_STARTER_EPOCH_UTC,
+        simulation_mode="full_attitude",
+        gravity=GravityConfig(central_body="earth", central_body_degree=10, third_body_perturbers=["sun", "moon"]),
+        sim_settings=SimSettings(duration_days=2.0, dynamics_task_rate_s=1.0, integrator="rkf78",
+                                 record_interval_s=10.0),  # [day], [s], [s]
+        space_weather=_real_space_weather(),
+        ground_stations=[_berlin_ground_station(rx_antenna_gain_dbi=35.0, system_noise_temp_k=150.0)],
+        spacecraft=[spacecraft],
+    )
+
+
 def main() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     _save(build_01_two_body_circular_orbit(), "01_two_body_circular_orbit.json")
@@ -1428,6 +1474,7 @@ def main() -> None:
     _save(build_23_starter_complete_small_satellite(), "23_starter_complete_small_satellite.json")
     _save(build_24_formation_mean_element_control(), "24_formation_mean_element_control.json")
     _save(build_25_monte_carlo_orbit_and_drag_dispersions(), "25_monte_carlo_orbit_and_drag_dispersions.json")
+    _save(build_26_earth_observation_data_downlink(), "26_earth_observation_data_downlink.json")
 
 
 if __name__ == "__main__":
