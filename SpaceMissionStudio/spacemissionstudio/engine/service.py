@@ -544,6 +544,8 @@ class _SpacecraftHandle:
     eclipse_recorder: Optional[object] = None  # set with eclipse_out_msg (the Events tab's eclipses)
     phasing_keeping_controller: Optional[object] = None  # Phase 4: only set if sc_config.phasing_keeping was configured
     constant_thrust_controller: Optional[object] = None  # Phase 5: only set if sc_config.constant_thrust was configured
+    drag_effector: Optional[object] = None  # only set if sc_config.enable_drag
+    srp_effector: Optional[object] = None  # only set if sc_config.enable_srp
     # comms_pointing (schema.scenario.CommsPointingConfig): the two
     # guidance chains + power sink are built in the main per-spacecraft
     # loop, but the arbitrator itself (needs accessOutMsg, which doesn't
@@ -1179,6 +1181,7 @@ class SimulationService:
                     drag_effector.coreParams.dragCoeff = sc_config.drag_coeff  # [-]
                 drag_effector.ModelTag = f"{sc_config.name}Drag"
                 sc_object.addDynamicEffector(drag_effector)
+                handle.drag_effector = drag_effector  # engine.monte_carlo disperses its coefficient
                 # Density at the WGS-84 geodetic altitude and latitude (engine.geodetic_atmosphere);
                 # the wind and the drag force use the real state.
                 proxy = geodetic_atmosphere.attach(self.scSim, dyn_task_name, sc_config.name, sc_object.scStateOutMsg,
@@ -1220,6 +1223,7 @@ class SimulationService:
                     srp_effector.sunEphmInMsg.subscribeTo(self._sun_state_out_msg)
                 srp_effector.ModelTag = f"{sc_config.name}Srp"
                 sc_object.addDynamicEffector(srp_effector)
+                handle.srp_effector = srp_effector  # engine.monte_carlo disperses its coefficient
                 srp_effector.sunEclipseInMsg.subscribeTo(sc_eclipse_out_msg)
                 self.scSim.AddModelToTask(dyn_task_name, srp_effector, 100)
 

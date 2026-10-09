@@ -116,3 +116,110 @@ def test_build_dispersion_unknown_spacecraft_raises_clear_error():
 
     with pytest.raises(MonteCarloError, match="does-not-exist"):
         _build_dispersion(dispersion, scenario)
+
+
+# -- The orbit, inertia, body-rate and coefficient dispersions -----------------
+
+_TEMPLATE_07 = "07_attitude_pointing_with_adcs_hardware.json"
+
+
+def _template_07_with(dispersions, num_runs=3, duration_s=120.0):
+    """Template 07 (full attitude, sphere drag and SRP), shortened."""
+    import json
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[1] / "spacemissionstudio" / "scenarios" / "templates" / _TEMPLATE_07
+    data = json.loads(path.read_text(encoding="utf-8"))
+    name = data["spacecraft"][0]["name"]
+    data["sim_settings"]["duration_days"] = duration_s / 86400.0
+    data["monte_carlo"].update(enabled=True, num_runs=num_runs,
+                               dispersions=[dict(d, spacecraft=name) for d in dispersions])
+    scenario = Scenario.from_dict(data)
+    scenario.validate()
+    return scenario
+
+
+def _draw(dispersion, scenario):
+    """One draw of ``dispersion``, as the Controller makes it: {path: value}."""
+    import ast
+
+    from spacemissionstudio.engine.monte_carlo import _build_dispersion, _create_sim
+
+    sim = _create_sim(scenario)
+    disp = _build_dispersion(dispersion, scenario)
+    try:
+        return {disp.getName(): ast.literal_eval(disp.generateString(sim))}
+    except TypeError:  # OrbitalElementDispersion: two co-dependent paths
+        disp.generate()
+        return {disp.getName(i): ast.literal_eval(disp.generateString(i, sim)) for i in (1, 2)}
+
+
+def test_an_orbit_dispersion_moves_only_the_elements_it_spreads():
+    """OrbitalElementDispersion around the nominal orbit: a 1 km spread on the
+    semi-major axis changes a, while inclination and RAAN stay nominal (the
+    Basilisk class would set an element with no entry to zero)."""
+    import numpy as np
+    from Basilisk.utilities import orbitalMotion
+
+    from spacemissionstudio.engine.monte_carlo import _central_body_mu, nominal_elements
+
+    scenario = _template_07_with([{"quantity": "orbit_elements", "kind": "uniform",
+                                   "element_spread": {"semi_major_axis_km": 1.0}}])
+    nominal = nominal_elements(scenario, scenario.spacecraft[0])
+    values = list(_draw(scenario.monte_carlo.dispersions[0], scenario).values())
+    oe = orbitalMotion.rv2elem(_central_body_mu(scenario), np.array(values[0]), np.array(values[1]))
+    assert 0.0 < abs(oe.a - nominal.a) <= 1000.0 + 1e-6  # [m]
+    assert oe.i == pytest.approx(nominal.i, abs=1e-12)
+    assert oe.Omega == pytest.approx(nominal.Omega, abs=1e-12)
+
+
+def test_the_body_rate_spread_is_added_to_the_nominal_rate():
+    """The vector Cartesian classes draw an absolute vector; the rate is
+    dispersed around template 07's own nominal rate instead (deg/s spread)."""
+    import math
+
+    import numpy as np
+
+    scenario = _template_07_with([{"quantity": "angular_rate_bn_b", "kind": "uniform", "bounds": [-0.1, 0.1]}])
+    nominal = np.array(scenario.spacecraft[0].omega_bn_b_init_rad_s)  # [rad/s]
+    for _ in range(5):
+        (rate,) = _draw(scenario.monte_carlo.dispersions[0], scenario).values()
+        assert np.all(np.abs(np.array(rate) - nominal) <= math.radians(0.1) + 1e-12)
+
+
+def test_an_inertia_dispersion_is_not_clipped_to_one_kg_m2_by_default():
+    """InertiaTensorDispersion clips each diagonal offset to [-1, 1] kg*m^2
+    unless given bounds; with no bounds set here, a 5 kg*m^2 spread is kept."""
+    import numpy as np
+
+    scenario = _template_07_with([{"quantity": "inertia_kg_m2", "kind": "normal", "std_deviation": 5.0}])
+    nominal = np.array(scenario.spacecraft[0].inertia_kg_m2).reshape(3, 3)
+    offsets = []
+    for _ in range(10):
+        (inertia,) = _draw(scenario.monte_carlo.dispersions[0], scenario).values()
+        offsets += list(np.diag(np.array(inertia) - nominal))
+    assert max(abs(o) for o in offsets) > 1.0  # [kg*m^2]
+
+
+def test_a_batch_disperses_every_new_quantity_in_every_run(tmp_path):
+    """Three runs through Basilisk's Controller: each run's archived
+    parameters hold its own orbit, inertia, rate, Cd and Cr, within bounds."""
+    import json
+
+    scenario = _template_07_with([
+        {"quantity": "orbit_elements", "kind": "normal", "element_spread": {"semi_major_axis_km": 0.5}},
+        {"quantity": "inertia_kg_m2", "kind": "normal", "std_deviation": 0.5, "angle_std_deg": 1.0},
+        {"quantity": "angular_rate_bn_b", "kind": "normal", "std_deviation": 0.05},
+        {"quantity": "drag_coeff", "kind": "uniform", "bounds": [2.0, 3.0]},
+        {"quantity": "srp_coeff", "kind": "uniform", "bounds": [1.2, 1.5]},
+    ])
+    from spacemissionstudio.engine.monte_carlo import run_monte_carlo
+
+    assert run_monte_carlo(scenario, scenario.monte_carlo, tmp_path) == []
+    runs = [json.loads((tmp_path / f"run{i}.json").read_text()) for i in range(3)]
+    drag = [float(next(v for k, v in run.items() if k.endswith("dragCoeff"))) for run in runs]
+    srp = [float(next(v for k, v in run.items() if k.endswith("coefficientReflection"))) for run in runs]
+    assert len(set(drag)) == 3 and all(2.0 <= cd <= 3.0 for cd in drag)
+    assert all(1.2 <= cr <= 1.5 for cr in srp)
+    for suffix in ("r_CN_NInit", "v_CN_NInit", "IHubPntBc_B", "omega_BN_BInit"):
+        assert len({next(v for k, v in run.items() if k.endswith(suffix)) for run in runs}) == 3, suffix
