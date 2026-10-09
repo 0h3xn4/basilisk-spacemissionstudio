@@ -134,6 +134,7 @@ the table below.
 | After UX step 4 and Open in Vizard, Python 3.11 | 2338 | 10 | 0 (21 new tests: Vizard playback naming and launch, command palette, undo history, run comparison, input diff; no changed expectations) |
 | CI run 51, `baa17580b` | 2336 | 11 | Windows and macOS 0; Linux 1: a race in the new Data tab download test (review_log, test defects), fixed in the test |
 | After the Carbon restyle, Python 3.11 | 2340 | 10 | 0 (2 new theme tests: IBM Plex loads, Carbon tokens and shared series colours; changed expectations: radio-dot.svg is now icon-primary, the Events table opens earliest first) |
+| After Basilisk's formation-flying laws (SRS-F-10), Python 3.11, `be0d6368f` | 2365 | 10 | 0 (25 new tests: `tests/test_formation_control.py` (19, 9 of them real Basilisk runs), the editor round trip and field visibility, the formation dialog, generator and CLI law choice, the Explain badge; no changed expectations) |
 
 ## Resuming
 

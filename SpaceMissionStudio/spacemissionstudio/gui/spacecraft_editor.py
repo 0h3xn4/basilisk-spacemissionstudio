@@ -924,7 +924,8 @@ class SpacecraftEditorDialog(QDialog):
         self.pk_control_law_combo.setToolTip(
             "Drift orbit: a few planned burns when the separation leaves its tolerance.\n"
             "Mean orbital elements: continuous feedback on all six mean elements; holds the "
-            "separation to tens of metres for a few cm/s a day (Earth with J2 only).\n"
+            "separation to tens of metres, for far more delta-V (template 05: 3.3 m/s in 90 days "
+            "against 0.014 m/s for the drift orbit). Earth with J2 only.\n"
             "Hill-frame PD: holds a fixed point next to the chief; for close formations "
             "(about a kilometre) with enough thrust -- it fires all the time and can diverge "
             "if the thruster saturates.\n"

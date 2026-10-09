@@ -227,13 +227,17 @@ thruster and tank, and none fires in eclipse.
 | Law | How it works | Good for |
 |---|---|---|
 | Drift orbit (default) | When the separation leaves its tolerance, a burn lowers or raises the orbit slightly, the follower drifts back, and a second burn stops it. | Long missions; the fewest firings. |
-| Mean orbital elements | Basilisk's `meanOEFeedback`: continuous feedback on all six mean orbital elements. | Holding a separation to tens of metres. Earth with J2 (gravity degree 2 or more) only. |
+| Mean orbital elements | Basilisk's `meanOEFeedback`: continuous feedback on all six mean orbital elements. | Holding a separation to tens of metres, at a much higher delta-V. Earth with J2 (gravity degree 2 or more) only. |
 | Hill-frame PD | Basilisk's `hillFrameRelativeControl`: holds a fixed point next to the chief. | Close formations, about a kilometre, for short phases. |
 
-Measured on template 05's orbit (550 km, 405 kg, 0.05 N thruster):
+Measured on template 05 (550 km, 405 kg, 0.05 N thruster; 90 days with
+degree-10 gravity, Sun, Moon and drag):
 
-* Mean orbital elements pulls a 5 km error in within a day for 2.6 m/s,
-  then holds 50 km for a few cm/s a day.
+* Drift orbit kept the follower within 5 km of 50 km (2.3 km RMS) for
+  0.014 m/s.
+* Mean orbital elements kept it within 65 m (26 m RMS) for 3.3 m/s, about
+  230 times as much. Started 5 km off, it closes the gap within a day for
+  2.6 m/s.
 * Hill-frame PD holds 1 km for about 0.9 m/s a day. It fights every
   natural relative motion, J2's included.
 * Hill-frame PD cannot hold template 05's 50 km. Its straight-line

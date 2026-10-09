@@ -8032,3 +8032,60 @@ values from labels without a box around them.
 
 All four steps of the UX/UI guidelines plan are now done
 (`docs/ux_guidelines_gap.md`).
+
+## Basilisk's formation-flying flight software as phasing-keeping laws (SRS-F-10)
+
+Phasing keeping can now use Basilisk's own `fswAlgorithms/formationFlying`
+modules instead of the tool's drift-orbit controller. `phasing_keeping`
+gets a `control_law` (`drift_orbit`, the default and unchanged; `mean_oe`;
+`hill_pd`) and the gains of the two Basilisk laws, in the spacecraft
+editor, the formation generator (dialog and `--control-law`) and the
+scenario file. Older files load unchanged and keep the drift orbit.
+
+* `mean_oe` runs `meanOEFeedback`: Lyapunov feedback on mean equinoctial
+  elements (non-singular at e = 0), target zero except the mean longitude.
+  Earth with J2 in the dynamics only (validation). Its gain is per kg of
+  spacecraft, since the module outputs a force.
+* `hill_pd` runs `hillFrameRelativeControl`: PD on the Hill-frame offset
+  with feedforward of the linearised relative dynamics. The reference is
+  the point the target arc ahead on the chief's circular orbit.
+
+Both modules run as shipped in bsk 2.12.0. `engine/formation_control.py`
+applies their force request through the follower's station-keeping
+thruster and tank: cut to its thrust (direction kept), the minimum
+on-time (requests under half an impulse bit are not fired), no thrust in
+eclipse, propellant by the rocket equation. The follower's own station
+keeping no longer fires: the law follows the chief's reboosts itself.
+Results gain `{follower}.phasing_keeping.force` (commanded and applied);
+firings show as "formation control firing" in the Events tab.
+
+**Template 05 over 90 days** (degree-10 gravity, Sun, Moon, drag):
+
+| Law | Largest error after day 1 | RMS | Delta-V |
+|---|---|---|---|
+| drift_orbit | 5.0 km | 2.3 km | 0.014 m/s |
+| mean_oe (default gain) | 0.065 km | 0.026 km | 3.27 m/s |
+
+The Basilisk law holds the formation about 80 times tighter for about 230
+times the delta-V. The drift orbit stays the default.
+
+**`hill_pd` is for close formations only.** Prototype runs on template
+05's orbit: with unlimited thrust it holds 50 km, but spends 104 m/s a
+day, because its feedforward (3 n^2 x at the reference) assumes straight-
+line relative motion. Template 05's thruster gives 1.2e-4 m/s^2 of the
+6.5e-4 needed. It held 1 km to metres for about 0.9 m/s a day (it fights
+every natural relative motion, J2's included) and 5 km for 4.7 m/s a day.
+Started 5 km off with a 1 N thruster it saturated and diverged. The Explain
+tab now warns when the thruster cannot hold the separation or the law
+would saturate at the start.
+
+Gain choice for `mean_oe` (5-day prototype runs, 5 km initial error,
+405 kg): 1e4 N*m/s let the error grow, 1e5 closed it slowly for 4.5 m/s,
+1e6 closed it within a day for 2.6 m/s and then held it, 1e7 held as
+tightly but cost about ten times as much to hold. The default is 1e6 for
+405 kg, 2500 m^2/s^3 per kg.
+
+Tests: `tests/test_formation_control.py` (19, including real Basilisk
+runs of both laws, the thrust cut, the minimum on-time, eclipse and empty
+tank), plus the editor, dialog, generator, CLI and Explain tab. Suite:
+2365 passed, 10 skipped, 0 failed.
