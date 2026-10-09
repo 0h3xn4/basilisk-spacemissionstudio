@@ -25,149 +25,46 @@ bug found and fixed, the full crash-investigation writeups) -- nothing
 was deleted, it just moved out of the way of a README someone installing
 this for the first time should actually be able to read.
 
-**New to SpaceMissionStudio?** This README is the technical reference (install,
-architecture, verification status). For a beginner-friendly, step-by-step
-walkthrough of actually *using* the app -- no programming background
-assumed -- see [`USER_MANUAL.md`](USER_MANUAL.md).
+## Start here
+
+| You want to | Read |
+|---|---|
+| Install it and run a first simulation | [`GETTING_STARTED.md`](GETTING_STARTED.md): installers, one-command script or `pip`, step by step for Linux and Windows, plus troubleshooting |
+| Learn to use the app (no programming or spacecraft background needed) | [`USER_MANUAL.md`](USER_MANUAL.md), also in the app under **Help > User Manual** (`F1`) |
+| Learn by example | The 25 [template missions](spacemissionstudio/scenarios/templates/README.md), from a single circular orbit to complete missions, with a suggested order |
+| Start your own mission | Templates **22** (a realistic satellite, orbit only) and **23** (a complete small satellite with hardware, radio link and Mission Sequence) |
+| Script it from Python | [`examples/`](examples/README.md): build a scenario, run templates, a Mission Sequence, a parameter sweep, a Monte Carlo archive |
+| Know what is verified, and how | "Verification status" below, and [`compliance/`](compliance/) |
+| Know why something is the way it is | [`HISTORY.md`](HISTORY.md), the development log |
 
 ## Getting started
 
-**Just want to use the app, not develop it?** There's a real installer
-for that -- no terminal, no typed `pip`/`venv` commands:
-
-* **Linux:** `packaging/build_deb.sh` produces `spacemissionstudio_2.0.0_all.deb`
-  -- install it with `sudo apt install ./spacemissionstudio_2.0.0_all.deb`
-  (or double-click it in a file manager with package-install support) and
-  get a normal application-menu entry. The build itself (this exact
-  version string included) was re-run in this project's own development
-  sandbox for the 2.0.0 release and produces a valid `.deb` with
-  `dpkg-deb`; the full real-Basilisk end-to-end install (venv creation,
-  `bsk[all]` from PyPI, a real `printBuildInfo()`) was confirmed at
-  1.0.0 against the same install logic, which 2.0.0 carries forward
-  unchanged (just under the renamed package/launcher -- see "Version
-  2.0.0" below) -- see `packaging/README.md`'s "The real installers"
-  section for exactly what that confirmed and when.
-* **Windows:** `packaging/windows/spacemissionstudio.iss` (built with
-  [Inno Setup](https://jrsoftware.org/isinfo.php)) produces
-  `spacemissionstudio-2.0.0-setup.exe` -- a normal installer wizard, ending in
-  a Start Menu entry. New for 1.0.0; written carefully but still not run
-  on a real Windows machine (this development sandbox has none) -- see
-  `packaging/README.md` for the same honesty-first verification status
-  this project applies everywhere else.
-
-Either way, the installer still needs internet access the first time (to
-download Basilisk from PyPI) -- there's no getting around that without
-bundling a multi-hundred-MB Basilisk wheel directly into the installer,
-which neither one does yet (see `packaging/README.md`'s "vendoring
-decision" section).
-
-**Developing SpaceMissionStudio, or want full control over the install?**
-Everything below was actually run, not just written and assumed to work
--- including step 2, which for most of this project's history looked
-like it would need a from-source Basilisk build (fragile, and blocked in
-this project's own sandbox). It turned out Basilisk now publishes a
-prebuilt wheel to PyPI, and installing it that way genuinely works.
-
-**1. Prerequisites**
-
-* Linux or Windows 11, Python 3.9+. Basilisk's own prebuilt-wheel support
-  matrix (`../docs/source/Install.rst`) explicitly covers both: "Windows:
-  Windows 10/11 (x86_64)" and "Linux: Manylinux 2.24+ (x86_64, aarch64)"
-  -- macOS is also listed there but not a target for SpaceMissionStudio's own
-  install scripts below (nothing prevents `pip install` from working on
-  it too, just not independently verified for this project).
-* `python -m venv` (or your preferred environment tool) -- everything
-  below assumes a virtualenv so it doesn't touch your system Python.
-  (Linux commands below use `python3`/`pip3`-equivalent `python`/`pip`
-  once the venv is active, matching what actually ran in this project's
-  own Linux development sandbox; on Windows, use the `python`/`pip`
-  installed by the official python.org or Microsoft Store installer.)
-
-**2. Install Basilisk**
-
-Linux/macOS:
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install "bsk[all]"
-```
-
-Windows (PowerShell):
-```powershell
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-pip install "bsk[all]"
-```
-
-This is Basilisk's own recommended install path (see `../docs/source/Install.rst`
-in this checkout) -- a prebuilt wheel from PyPI, no compiler or Conan
-required, published for both platforms above. The Linux command was
-genuinely run in this project's development sandbox: the wheel downloads
-and installs cleanly, and every Basilisk module/class this app's code
-imports (across every phase) was confirmed present. The Windows command
-was not independently run in this project (this development sandbox is
-Linux-only) -- it follows Basilisk's own documented Windows install path
-exactly, but is flagged here rather than claimed as verified end-to-end;
-please report any issues. Building from source is still possible and
-documented (`../docs/source/Build.rst`) if you need an unpublished
-feature or a locally-modified Basilisk, but it's no longer the first
-thing to reach for on either platform.
-
-**3. Install SpaceMissionStudio**
+Quick version, from a checkout, on Linux (Windows: the same commands in
+PowerShell, with `.venv\Scripts\Activate.ps1`):
 
 ```bash
 cd SpaceMissionStudio
-pip install -e ".[dev,gui]"
+python3 -m venv .venv && source .venv/bin/activate
+pip install "bsk[all]==2.12.0"          # Basilisk, the verified version, as a prebuilt wheel
+pip install -e ".[gui]"                 # SpaceMissionStudio and its GUI (".[dev,gui]" adds the test tools)
+spacemissionstudio kernels-status       # fetches the reference data once (~116 MB) and checks it
+spacemissionstudio gui                  # opens on the Load Scenario tab: pick 22, Open Template, Ctrl+R
 ```
 
-(Same command on Windows, once the venv above is active.)
+There are also installers that need no typing: a `.deb` for Linux
+(`packaging/build_deb.sh`) and an Inno Setup `-setup.exe` for Windows
+(`packaging/windows/spacemissionstudio.iss`), and one-command install
+scripts (`packaging/install.sh`, `packaging/install.ps1`).
+[`GETTING_STARTED.md`](GETTING_STARTED.md) covers all of them, how to check
+the installation, and what to do when something fails.
 
-(Or skip steps 2-3 and run `packaging/install.sh --basilisk-wheel "bsk[all]"`
-on Linux, or `packaging/install.ps1 -BasiliskWheel "bsk[all]"` on Windows,
-instead -- either does both in one shot into its own private venv and
-adds a launcher (a desktop entry on Linux, a Start Menu shortcut on
-Windows) -- see `packaging/README.md` for exactly what's verified on
-each platform. The Linux script and its `--basilisk-wheel` flag
-genuinely work, for the same reason step 2 does; the Windows script is
-new for the 1.0.0 release and carries the same not-independently-run
-caveat as the Windows command above.)
-
-**4. Check it's working**
-
-```bash
-spacemissionstudio kernels-status
-```
-
-The first time you run anything that touches SPICE (this command, `run`,
-or the GUI's Run menu), Basilisk downloads a handful of standard SPICE
-kernels (leap-seconds, planetary ephemeris, ~100 MB total) from NAIF and
-caches them locally -- this needs working internet access to
-`naif.jpl.nasa.gov` once. `kernels-status` reports exactly which kernels
-are missing/cached and why, rather than failing silently deep inside a
-run.
-
-**5. Run something**
-
-```bash
-spacemissionstudio validate spacemissionstudio/scenarios/two_body_validation.json
-spacemissionstudio run spacemissionstudio/scenarios/two_body_validation.json --out-dir results/
-```
-
-or launch the GUI:
-
-```bash
-spacemissionstudio gui
-```
-
-File > Open the same scenario, or build one from scratch (spacecraft,
-sensors, actuators, FSW mode, ground stations, Monte Carlo dispersions --
-all editable live with validation feedback), then Run > Run Simulation.
-
-**If something doesn't work**, "Verification status" right below says
-exactly what has and hasn't been confirmed against a real Basilisk
-build (short version: everything has, including a real multi-day run)
--- read it before assuming a failure is a bug rather than a local
-environment issue.
+What has been run where: the Linux `.deb`, `install.sh` and the `pip`
+path above were run end to end on Linux with a real Basilisk build
+(`packaging/README.md` says exactly what and when). The Windows
+installer, `install.ps1` and the PowerShell commands follow Basilisk's
+own documented Windows install path but have not been run on a real
+Windows machine; please report anything that goes wrong. macOS has
+Basilisk wheels too, but SpaceMissionStudio has not been tried there.
 
 ## Verification status
 
@@ -177,8 +74,9 @@ environment issue.
   `engine/propellant_bookkeeping.py`, `engine/time_system.py`,
   `engine/orbit_design.py`, `engine/scenario_explainer.py`, `engine/scenario_checks.py`, `cli.py`, and
   the entire `spacemissionstudio/gui/` package) has no Basilisk import
-  and is fully exercised either way -- `pytest tests/` runs and passes
-  1305 tests without Basilisk installed (see "Running the tests" below).
+  and is fully exercised either way -- `pytest tests/` runs every test
+  not marked `requires_basilisk` without Basilisk installed (see
+  "Running the tests" below).
   That includes the PySide6 GUI: built, run headless, and driven with
   `pytest-qt` for real -- every form field, every menu action, every
   dialog -- not asserted about in the abstract.
@@ -374,9 +272,10 @@ it.
 **Reusable starting points** -- four spacecraft "bus" templates
 (100 kg ESPA-class, 150 kg microsatellite, 300 kg and 500 kg small
 satellites) and
-twenty-one complete example scenarios, nineteen covering one major
-concept each in isolation plus two integrated demonstrations (see "Template
-missions" below).
+twenty-five complete example scenarios: most cover one concept each,
+two integrate several, and four are starting points for your own mission
+(see "Template missions" below). Five Python scripts in `examples/` use
+the same layer from code.
 
 **Safe cancellation** -- **Abort Simulation** cooperatively cancels an
 in-progress run (or Monte Carlo batch, or Mission Sequence) between
@@ -426,8 +325,11 @@ updates live during a run with no extra plumbing.
 ```
 SpaceMissionStudio/
   README.md                          -- this file
+  GETTING_STARTED.md                 -- install, check and first run, step by step, with troubleshooting
   HISTORY.md                         -- the full phase-by-phase development log
   USER_MANUAL.md                     -- end-user walkthrough of the GUI (screenshots in docs/images/)
+  examples/                          -- Python scripts using the schema/engine layer (README.md lists them;
+                                        tests/test_examples.py runs each)
   LICENSE                            -- ISC license (bundled IBM Plex fonts: SIL OFL 1.1,
                                         spacemissionstudio/gui/assets/fonts/OFL.txt)
   pyproject.toml                     -- packaging metadata, pytest config, CLI entry point
@@ -524,8 +426,15 @@ SpaceMissionStudio/
         18_leo_station_keeping.json
         19_sun_pointing_comms_link.json
         20_thermal_simulation.json
+        21_disturbance_torques.json
+        22_starter_first_leo_satellite.json        -- starting points for your own mission (22-23)
+        23_starter_complete_small_satellite.json
+        24_formation_mean_element_control.json     -- 05 under Basilisk's meanOEFeedback
+        25_monte_carlo_orbit_and_drag_dispersions.json
   scripts/
     _generate_templates.py            -- regenerates scenarios/templates/*.json from schema dataclasses (not installed/imported elsewhere)
+    _template_descriptions.py         -- the templates' user-facing descriptions
+    sync_help.py                      -- copies USER_MANUAL.md and its images into the package for Help > User Manual
   packaging/                          -- build_wheel.sh/.ps1, install.sh/.ps1, .desktop entry (Linux) -- see packaging/README.md
     build_deb.sh                     -- builds the real, double-click Linux .deb installer
     build_wheel.sh / build_wheel.ps1 -- build a plain, platform-independent wheel (Linux/Windows)
@@ -552,6 +461,8 @@ SpaceMissionStudio/
     test_propellant_bookkeeping.py   -- shared per-tick mass/propellant delta math, no Basilisk needed
     test_constellation.py            -- Phase 4
     test_scenario_templates.py       -- load/validate/round-trip every scenarios/templates/*.json
+    test_template_claims.py          -- runs templates for real and checks their descriptions' claims, requires_basilisk
+    test_examples.py                 -- runs every examples/*.py script (most require_basilisk)
     test_cli.py
     test_two_body_validation.py      -- requires_basilisk
     test_mission_engine.py           -- Phase 6, requires_basilisk
@@ -631,16 +542,15 @@ python3 -m pip install -e ".[dev,gui]"
 python3 -m pytest tests/ -v
 ```
 
-The suite has 2015 tests. Without Basilisk on `PYTHONPATH`, 1749 of
-them run and pass (schema, space weather, results, link budget,
-constellation generation, CLI, and the full PySide6 GUI, run headless),
-and the 266 that need a real Basilisk build (marked `requires_basilisk`,
-or skipped on a Basilisk-availability check, per `tests/conftest.py`)
-are skipped.
+The suite has 2499 tests. Without Basilisk, the 344 marked
+`requires_basilisk` (and a few that check for Basilisk themselves, per
+`tests/conftest.py`) are skipped; the rest -- schema, space weather,
+results, link budget, constellation generation, CLI, the Basilisk-free
+examples and the full PySide6 GUI, run headless -- run and pass.
 
-With Basilisk installed (`pip install "bsk[all]"` -- see "Getting
-started" above), those tests run for real: 2004 pass and 11 skip (the
-ones whose premise is specifically "Basilisk is unavailable"). The
+With Basilisk 2.12.0 installed (see "Getting started" above), those
+tests run for real: 2489 pass and 10 skip (the ones whose premise is
+specifically "Basilisk is unavailable"; Python 3.11, Linux). The
 first run needs internet access once, so Basilisk can download its
 SPICE ephemeris kernels; without them, the ~45 kernel-dependent tests
 fail with `KernelError`.
@@ -774,7 +684,7 @@ spacemissionstudio gui
 ```
 
 The GUI opens on its **Load Scenario** tab (left pane) -- pick one of the
-twenty-one built-in template missions (see "Template missions" below) or
+twenty-five built-in template missions (see "Template missions" below) or
 browse for any other scenario file; either one switches you to the
 **Scenario Editor** tab next to it with that scenario loaded and ready to
 edit. Every row of the template list carries its own **Customize...**
@@ -810,68 +720,56 @@ clear error (not a crash) if Basilisk isn't installed/built.
 
 ## Template missions for learning and for starting your own
 
-`spacemissionstudio/scenarios/templates/` has twenty-one ready-to-run scenario
-files, each demonstrating one SpaceMissionStudio concept in isolation (except
-the last two, which deliberately integrate several) --
-two-body orbits, J2/third-body perturbations, GEO station-keeping,
-a generated Walker constellation, formation-flying phasing control,
-attitude pointing (idealized, then with real ADCS hardware), a Mission
-Sequence-based impulsive orbit raise, a Monte Carlo dispersion
-analysis, uncontrolled gravity-gradient torque, thruster-only attitude
-control, reaction-wheel momentum management via thrusters or via
-magnetic torque rods, real sun-heading estimation from coarse sun
-sensor hardware, direct celestial-body pointing, a Lambert-solver
-point-to-point transfer, real propellant depletion via a fuel tank,
-drag-driven LEO station-keeping (the direct LEO counterpart to
-GEO station-keeping above), an integrated Sun-pointing/ground
--station-pointing spacecraft with a live power budget and RF link
-margin, automatically switching attitude based on real, geometry
--driven ground-station access, and a thermal sensor/reaction-wheel
-motor-thermal model layered onto a full ADCS hardware suite.
-See that directory's own `README.md` for the full catalog and
-what each one teaches -- every file also carries its own extensive
-`description` field (visible in the GUI's scenario form, or by opening
-the `.json` directly) explaining what to look at after running it and
-what to try changing.
+`spacemissionstudio/scenarios/templates/` has twenty-five ready-to-run
+scenario files. Its [`README.md`](spacemissionstudio/scenarios/templates/README.md)
+lists them with what each teaches and a suggested learning order; in the
+GUI, the Load Scenario tab lists them by name with their descriptions.
 
-They're built through `schema.scenario`'s own dataclasses and
-`Scenario.validate()` (via `scripts/_generate_templates.py`, kept in the
-repository as the regeneration source of truth), not hand-written JSON,
-and every one is covered by `tests/test_scenario_templates.py`
-(schema-level load/validate/round-trip, Basilisk-free),
-`tests/gui/test_scenario_templates_gui.py` (confirms each one also
-round-trips through the actual `ScenarioEditorWidget` form),
-`tests/gui/test_load_scenario_widget.py` (the in-GUI picker described
-below), and `tests/gui/test_template_wizard.py` (the "Customize:
-\<template name\>..." wizard spec registry -- see "Running the GUI"
-below) -- 216 tests total across those four files, all passing. What's
-NOT yet verified: an actual Basilisk run of any of them (this sandbox has
-none), so treat the physical numbers (propellant use, drift rates,
-orbital periods) as reasonable back-of-the-envelope choices, not
-independently confirmed results against a real Basilisk build for this
-specific scenario file -- see "Verification status" above for what has
-and hasn't been run for real.
+* **01-18, 21: one concept each** -- two-body orbits, J2 and third-body
+  perturbations, GEO and LEO station keeping, a Walker constellation,
+  formation flying, attitude pointing (ideal, then with real ADCS
+  hardware), a Mission Sequence orbit raise, Monte Carlo, gravity-gradient
+  torque, thruster attitude control, momentum management with thrusters or
+  torque rods, sun-heading estimation, celestial-body pointing, a Lambert
+  transfer, fuel-tank depletion, and disturbance torques from a facet model.
+* **19, 20: integrated** -- Sun pointing with an automatic ground-station
+  link (power and link budget follow), and thermal models on full ADCS
+  hardware.
+* **22-25: starting points** -- 22 a realistic satellite with its
+  environment and a ground station (orbit only), 23 a complete small
+  satellite (hardware, power, radio link, a Mission Sequence stopping on a
+  ground pass), 24 template 05's formation under Basilisk's mean-element
+  control law, and 25 a Monte Carlo batch over orbit insertion and drag.
 
-**Built into the GUI itself** (not just files you'd have to know the path
-to): the GUI's **Load Scenario** tab (`gui/load_scenario_widget.py`,
-see "Running the GUI" above) lists all twenty-one by name with their
-description shown on selection, no file-browsing needed -- "Open
-Template" or a double-click loads one and switches straight to the
-Scenario Editor tab. The same tab's "Browse for a file..." button covers
-everything else, via the same `MainWindow.open_path()` File > Open
-already uses. From the CLI:
+Each file's `description` says what to look at after running it and what
+to try changing, and every row has a **Customize...** dialog over all its
+settings (see "Running the GUI" above). The files are generated by
+`scripts/_generate_templates.py` through `schema.scenario`'s dataclasses
+and `Scenario.validate()`, never written by hand; their descriptions live
+in `scripts/_template_descriptions.py`.
+
+How they are checked:
+
+* `tests/test_scenario_templates.py` (Basilisk-free): every template loads,
+  validates, round-trips through save/load and keeps a short, structured
+  description, plus each template's own structural claims.
+* `tests/gui/test_scenario_templates_gui.py`, `test_load_scenario_widget.py`
+  and `test_template_wizard.py`: each one round-trips through the editor
+  form, the Load Scenario tab and its Customize dialog.
+* `tests/test_template_claims.py` (Basilisk): templates 03, 07, 08, 10-14,
+  16, 17 and 19-24 run for real and their descriptions' headline numbers
+  are checked; 25 runs in `tests/test_examples.py`. The numbers in the
+  other descriptions come from real runs but are not re-checked by a test.
 
 ```bash
-spacemissionstudio validate spacemissionstudio/scenarios/templates/01_two_body_circular_orbit.json  # no Basilisk needed
-spacemissionstudio run spacemissionstudio/scenarios/templates/01_two_body_circular_orbit.json --out-dir out
+spacemissionstudio validate spacemissionstudio/scenarios/templates/22_starter_first_leo_satellite.json  # no Basilisk needed
+spacemissionstudio run spacemissionstudio/scenarios/templates/22_starter_first_leo_satellite.json --out-dir out
 ```
 
 To use one as a starting point for your own mission: **Save As...** under
-a new name before editing (so the original template stays intact for
-next time), then layer in whatever additional concepts you need --
-templates/README.md's own closing section has concrete suggestions for
-combining them (e.g. a comms-relay constellation might start from '04'
-and add '07''s ADCS hardware plus a ground station and RF link).
+a new name before editing (the original stays intact), then add what you
+need step by step (User Manual section 6, "Building your own scenario,
+step by step").
 
 ## Vendoring vs. building Basilisk from source
 
