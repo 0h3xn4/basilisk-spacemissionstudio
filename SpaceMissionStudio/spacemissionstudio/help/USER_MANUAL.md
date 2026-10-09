@@ -255,6 +255,29 @@ With exactly two reports (e.g. "Before burn" / "After burn") a
 to a report or a quantity; **Export CSV...** always writes every report
 in SI units. Without a Mission Sequence you can ignore this tab.
 
+**Events** lists what happened during the run: ground-station passes
+(with each one's highest elevation), eclipses (umbra or penumbra),
+station-keeping, GEO and phasing burns (with the delta-V each added),
+thruster firings and mode changes (Sun or ground-station pointing,
+phasing drift). They are drawn as a timeline, one row per spacecraft and
+kind, above a table you can sort by any column. Untick a kind to hide it;
+hover a bar for its details; the mouse wheel zooms the timeline and
+**Fit** shows the whole run again. **Export CSV...** writes the events
+shown, in seconds and UTC, with a `.provenance.json` file beside them.
+A kind the run could not produce is named with the reason, e.g. no
+eclipses when the Sun is not one of the third-body perturbers.
+
+**The time cursor** is shared by every view of a run. Click a plot on
+the Results tab, or click or drag on the Events timeline, to set it: a
+red line marks it on the plot and the timeline, the Events tab says
+which events are in progress, Mission Dashboard shows the values at
+that moment instead of the end of the run, and Mission Output marks the
+last report before it (click a report's column header to jump there). A
+table row on the Events tab moves the cursor to that event's start. The
+status bar shows the cursor's time; **Run > Clear Time Cursor** (or Esc
+on the Events tab) clears it. A saved PNG or SVG includes the line if
+it is showing.
+
 **Data** lists every reference data file the app uses (SPICE kernels,
 gravity field, magnetic model, space weather, Earth orientation) with
 its status, the dates it covers, where it came from and its SHA-256.
@@ -267,7 +290,7 @@ back the version the last download or import replaced. See
 [Section 11](#11-common-questions-and-problems) if Run ever says a file
 is missing.
 
-**Explain** is different from the other four tabs: it doesn't need a
+**Explain** is different from the other tabs: it doesn't need a
 run at all, and it updates live as you edit the Scenario Editor. It's a
 short, at-a-glance recipe of what the CURRENT scenario is actually
 configured to do -- a handful of stat tiles (spacecraft count,

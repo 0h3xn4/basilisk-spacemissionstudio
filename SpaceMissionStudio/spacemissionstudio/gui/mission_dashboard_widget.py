@@ -48,6 +48,8 @@ from __future__ import annotations
 import math
 from typing import Optional
 
+import numpy as np
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QFormLayout,
@@ -115,11 +117,18 @@ def _find_ground_station(result: ResultSet, spacecraft_name: str,
     return None
 
 
-def _latest(result: ResultSet, series_name: str) -> Optional[float]:
+def _sample_index(series, at_s: Optional[float]) -> int:
+    """The last sample at or before ``at_s`` [s] (the time cursor), else the last one."""
+    if at_s is None:
+        return series.data.shape[0] - 1
+    return max(int(np.searchsorted(series.time_s, at_s, side="right")) - 1, 0)
+
+
+def _latest(result: ResultSet, series_name: str, at_s: Optional[float] = None) -> Optional[float]:
     series = result.series.get(series_name)
     if series is None or series.data.shape[0] == 0:
         return None
-    return float(series.data[-1, 0])
+    return float(series.data[_sample_index(series, at_s), 0])
 
 
 def _card_form(box: QGroupBox) -> QFormLayout:
@@ -138,6 +147,7 @@ class MissionDashboardWidget(QWidget):
         super().__init__(parent)
         self._result: Optional[ResultSet] = None
         self._scenario: Optional[Scenario] = None
+        self._cursor_s: Optional[float] = None  # [s] the shared time cursor, or None (the latest sample)
 
         layout = QVBoxLayout(self)
 
@@ -272,6 +282,15 @@ class MissionDashboardWidget(QWidget):
         self._rf_box.setVisible(visible)
         self._placeholder.setVisible(not visible)
 
+    def set_time_cursor(self, cursor) -> None:
+        """Show the values at ``cursor`` (a :class:`gui.time_cursor.TimeCursor`) instead of the latest."""
+        cursor.changed.connect(self._on_cursor_changed)
+        self._on_cursor_changed(cursor.time_s)
+
+    def _on_cursor_changed(self, time_s: Optional[float]) -> None:
+        self._cursor_s = time_s
+        self._refresh()
+
     def set_result(self, result: Optional[ResultSet], scenario: Optional[Scenario] = None) -> None:
         self._result = result
         self._scenario = scenario
@@ -302,11 +321,13 @@ class MissionDashboardWidget(QWidget):
 
         # -- Operating state --------------------------------------------
         active_mode_series = result.series.get(f"{sc_name}.comms_pointing.active_mode")
-        sim_time_s = float(active_mode_series.time_s[-1]) if active_mode_series is not None and \
-            active_mode_series.time_s.shape[0] > 0 else None
-        self.sim_time_label.setText(f"{sim_time_s:,.1f} s" if sim_time_s is not None else "--")
+        at_s = self._cursor_s  # the shared time cursor; None: the end of the run
+        sim_time_s = float(active_mode_series.time_s[_sample_index(active_mode_series, at_s)]) \
+            if active_mode_series is not None and active_mode_series.time_s.shape[0] > 0 else None
+        self.sim_time_label.setText((f"{sim_time_s:,.1f} s" + (" (time cursor)" if at_s is not None else ""))
+                                    if sim_time_s is not None else "--")
 
-        active_mode = _latest(result, f"{sc_name}.comms_pointing.active_mode")
+        active_mode = _latest(result, f"{sc_name}.comms_pointing.active_mode", at_s)
         is_comms_mode = bool(active_mode is not None and active_mode > 0.5)
         if active_mode is None:
             self.mode_badge.setText("Unknown")
@@ -324,9 +345,9 @@ class MissionDashboardWidget(QWidget):
         has_access = None
         slant_range_m = None
         if gs_name is not None:
-            has_access_val = _latest(result, f"{gs_name}.access_to_{sc_name}.has_access")
+            has_access_val = _latest(result, f"{gs_name}.access_to_{sc_name}.has_access", at_s)
             has_access = bool(has_access_val is not None and has_access_val > 0.5)
-            slant_range_m = _latest(result, f"{gs_name}.access_to_{sc_name}.slant_range")
+            slant_range_m = _latest(result, f"{gs_name}.access_to_{sc_name}.slant_range", at_s)
         if has_access is None:
             self.visibility_badge.setText("Unknown")
             self.visibility_badge.setStyleSheet(_badge_style(_MUTED_BADGE))
@@ -338,7 +359,7 @@ class MissionDashboardWidget(QWidget):
             self.visibility_badge.setStyleSheet(_badge_style(_MUTED_BADGE))
 
         # -- Attitude -----------------------------------------------------
-        pointing_error_deg = _latest(result, f"{sc_name}.comms_pointing.pointing_error_deg")
+        pointing_error_deg = _latest(result, f"{sc_name}.comms_pointing.pointing_error_deg", at_s)
         self.pointing_error_label.setText(
             f"{pointing_error_deg:.2f} deg" if pointing_error_deg is not None else "--"
         )
@@ -353,8 +374,8 @@ class MissionDashboardWidget(QWidget):
             self.tracking_badge.setStyleSheet(_badge_style(_ACCENT_BADGE))
 
         # -- Power ----------------------------------------------------------
-        battery_charge_wh = _latest(result, f"{sc_name}.battery_charge")
-        net_power_w = _latest(result, f"{sc_name}.battery_net_power")
+        battery_charge_wh = _latest(result, f"{sc_name}.battery_charge", at_s)
+        net_power_w = _latest(result, f"{sc_name}.battery_net_power", at_s)
         self.battery_charge_label.setText(f"{battery_charge_wh:.2f} W*hr" if battery_charge_wh is not None else "--")
         battery_capacity_wh = sc_config.power.battery_capacity_wh if sc_config is not None and \
             sc_config.power is not None else None

@@ -122,6 +122,7 @@ import urllib.parse
 if hasattr(os, "geteuid") and os.geteuid() == 0:
     os.environ.setdefault("QTWEBENGINE_CHROMIUM_FLAGS", "--no-sandbox")
 
+import json
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -130,7 +131,8 @@ from typing import Optional
 import numpy as np
 
 import plotly.graph_objects as go
-from PySide6.QtCore import QElapsedTimer, Qt, QTimer, QUrl
+from PySide6.QtCore import QElapsedTimer, Qt, QTimer, QUrl, Signal
+from PySide6.QtWebEngineCore import QWebEnginePage
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import (
     QCompleter,
@@ -242,6 +244,40 @@ _LIVE_REDRAW_MIN_INTERVAL_MS = 300
 _MAX_PLOT_POINTS_PER_LINE = 10000
 
 
+# The shared time cursor (gui.time_cursor) on a plot: a click logs this
+# prefix and the clicked x value to the page console, which _PlotPage
+# reads (there is no QWebChannel in this app); the cursor is drawn as a
+# layout shape of this name, updated with Plotly.relayout (no reload).
+_CURSOR_MESSAGE = "spacemissionstudio-cursor:"
+_CURSOR_SHAPE = "spacemissionstudio-cursor"
+_CLICK_SCRIPT = f"""<script>
+(function attach(attemptsLeft) {{
+    var gd = document.getElementById({_PLOT_DIV_ID!r});
+    if (!gd || !gd.on) {{
+        if (attemptsLeft > 0) {{ setTimeout(function() {{ attach(attemptsLeft - 1); }}, 50); }}
+        return;
+    }}
+    gd.on('plotly_click', function(event) {{
+        if (event && event.points && event.points.length) {{
+            console.log({_CURSOR_MESSAGE!r} + event.points[0].x);
+        }}
+    }});
+}})(40);
+</script>"""
+
+
+class _PlotPage(QWebEnginePage):
+    """The plot page: passes on the plot clicks the page logs."""
+
+    clicked_x = Signal(str)
+
+    def javaScriptConsoleMessage(self, level, message, line, source):  # noqa: N802 -- Qt API name
+        if message.startswith(_CURSOR_MESSAGE):
+            self.clicked_x.emit(message[len(_CURSOR_MESSAGE):])
+            return
+        super().javaScriptConsoleMessage(level, message, line, source)
+
+
 def _display_indices(values: np.ndarray, max_points: int = _MAX_PLOT_POINTS_PER_LINE) -> np.ndarray:
     """Indices of ``values`` to draw: all of them when there are few
     enough, otherwise the first, last, and the minimum and maximum of each
@@ -318,6 +354,7 @@ def _short_utc(timestamp: str) -> str:
 
 # Plotly's full page keeps the browser's default 8 px body margin under a
 # 100%-height plot, which put a scroll bar beside every plot.
+_CURSOR_COLOR = "#C0392B"  # theme PALETTE["danger"], as on the Events timeline
 _PAGE_STYLE = "<style>html, body { margin: 0; height: 100%; overflow: hidden; }</style>"
 
 
@@ -355,6 +392,8 @@ class ResultsWidget(QWidget):
         self._result: ResultSet | None = None
         self._epoch_utc: Optional[str] = None
         self.figure: Optional[go.Figure] = None  # the currently-plotted go.Figure, or None (empty state)
+        self._time_cursor = None  # gui.time_cursor.TimeCursor, set by set_time_cursor()
+        self._x_is_epoch = False  # the shown figure's x axis is UTC (else elapsed hours)
         self._png_poll_state: Optional[dict] = None  # set by _on_save_plot_png, read by _poll_plot_png
         self._live_redraw_elapsed = QElapsedTimer()  # throttles set_live_result()'s own redraws -- see
         # _LIVE_REDRAW_MIN_INTERVAL_MS's own comment
@@ -564,6 +603,10 @@ class ResultsWidget(QWidget):
         layout.addWidget(self.warnings_label)
 
         self.web_view = QWebEngineView()
+        self._plot_page = _PlotPage(self.web_view)
+        self.web_view.setPage(self._plot_page)
+        self._plot_page.clicked_x.connect(self._on_plot_clicked)
+        self.web_view.loadFinished.connect(lambda _ok: self.apply_cursor_line())
         # Plot pages are written here and loaded from file -- see
         # _MAX_PLOT_POINTS_PER_LINE for why setHtml() can't be used.
         self._page_dir = tempfile.TemporaryDirectory(prefix="spacemissionstudio-plot-")
@@ -771,6 +814,7 @@ class ResultsWidget(QWidget):
         display_data = series.data * display.factor
         x_values, x_label = self._x_axis_values(series.time_s)
         is_datetime_axis = self.x_axis_combo.currentData() == "epoch" and x_label == "Epoch (UTC)"
+        self._x_is_epoch = is_datetime_axis
 
         fig = go.Figure()
         column_labels = display.columns or {}
@@ -850,6 +894,7 @@ class ResultsWidget(QWidget):
         data just because the webview push itself was skipped.
         """
         self.figure = None
+        self._x_is_epoch = False
         if self._result is None:
             return
         if self.view_combo.currentData() == "access_timeline":
@@ -980,6 +1025,7 @@ class ResultsWidget(QWidget):
                 div_id=_PLOT_DIV_ID, config={"displaylogo": False, "responsive": True},
             )
             html = html.replace("<head>", "<head>" + _PAGE_STYLE, 1)
+            html = html.replace("</body>", _CLICK_SCRIPT + "</body>", 1)
             # Alternating file names, so a new page never overwrites one
             # that is still loading.
             self._page_counter += 1
@@ -1001,6 +1047,67 @@ class ResultsWidget(QWidget):
         if self._png_poll_state is None:
             self.save_png_button.setEnabled(self.figure is not None)
             self.save_svg_button.setEnabled(self.figure is not None)
+
+    # -- the shared time cursor -------------------------------------------
+
+    def set_time_cursor(self, cursor) -> None:
+        """Follow ``cursor`` (a :class:`gui.time_cursor.TimeCursor`) and set it on a plot click."""
+        self._time_cursor = cursor
+        cursor.changed.connect(lambda _t: self.apply_cursor_line())
+        self.apply_cursor_line()
+
+    def plot_x_to_elapsed_s(self, x: str) -> Optional[float]:
+        """Elapsed (TDB) seconds of a clicked x value: hours, or UTC text on an epoch axis."""
+        try:
+            if not self._x_is_epoch:
+                return float(x) * 3600.0  # [s]
+            clicked = datetime.fromisoformat(x.strip().replace("T", " "))
+            epoch = datetime.fromisoformat(self._epoch_utc.replace("Z", "").replace("T", " "))
+        except (TypeError, ValueError, AttributeError):
+            return None
+        first_guess = (clicked - epoch).total_seconds()  # [s]
+        try:  # one correction for the TDB - UTC change since the epoch (time_system.elapsed_to_utc)
+            back = time_system.elapsed_to_utc(self._epoch_utc, [first_guess])[0]
+        except ValueError:
+            return first_guess
+        return first_guess + (clicked - back).total_seconds()  # [s]
+
+    def _on_plot_clicked(self, x: str) -> None:
+        time_s = self.plot_x_to_elapsed_s(x)
+        if time_s is not None and self._time_cursor is not None:
+            self._time_cursor.set_time(time_s)
+
+    def cursor_x_literal(self) -> str:
+        """The cursor as a JavaScript x value for the shown figure, or ``null``."""
+        time_s = None if self._time_cursor is None else self._time_cursor.time_s
+        if time_s is None or self.figure is None:
+            return "null"
+        if self._x_is_epoch:
+            try:
+                moment = time_system.elapsed_to_utc(self._epoch_utc, [time_s])[0]
+            except ValueError:
+                return "null"
+            return json.dumps(moment.isoformat(sep=" "))
+        return repr(time_s / 3600.0)  # [h]
+
+    def apply_cursor_line(self) -> None:
+        """Draw (or remove) the cursor line on the loaded plot, without a reload."""
+        if self.figure is None:
+            return
+        script = f"""
+        (function() {{
+            var gd = document.getElementById({_PLOT_DIV_ID!r});
+            if (typeof Plotly === 'undefined' || !gd || !gd.layout) {{ return; }}
+            var x = {self.cursor_x_literal()};
+            var shapes = (gd.layout.shapes || []).filter(function(s) {{ return s.name !== {_CURSOR_SHAPE!r}; }});
+            if (x !== null) {{
+                shapes.push({{type: 'line', name: {_CURSOR_SHAPE!r}, xref: 'x', yref: 'paper', x0: x, x1: x,
+                              y0: 0, y1: 1, line: {{color: {_CURSOR_COLOR!r}, width: 2}}}});
+            }}
+            Plotly.relayout(gd, {{shapes: shapes}});
+        }})();
+        """
+        self.web_view.page().runJavaScript(script)
 
     def _redraw(self) -> None:
         self._update_figure()

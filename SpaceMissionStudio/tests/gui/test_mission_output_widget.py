@@ -275,3 +275,22 @@ def test_export_with_no_summary_is_a_no_op(qtbot, monkeypatch):
     monkeypatch.setattr(QFileDialog, "getSaveFileName", staticmethod(lambda *a, **k: calls.append(1) or ("", "")))
     widget._on_export()  # self._summary is None
     assert calls == []
+
+
+def test_the_report_at_the_time_cursor_is_marked_and_a_header_click_moves_the_cursor(qtbot):
+    """UX/UI guidelines, "one shared time cursor across views": the last
+    report at or before the cursor is marked; a report header sets it."""
+    from spacemissionstudio.gui.time_cursor import TimeCursor
+
+    widget = _widget(qtbot, _apogee_perigee())
+    cursor = TimeCursor()
+    widget.set_time_cursor(cursor)
+    assert widget.cursor_report_index is None
+    cursor.set_time(150.0)  # [s] between the reports
+    assert widget.cursor_report_index == 0
+    assert widget.table.horizontalHeaderItem(1).font().bold()
+    assert not widget.table.horizontalHeaderItem(2).font().bold()
+    widget.table.horizontalHeader().sectionClicked.emit(2)
+    assert cursor.time_s == 200.0 and widget.cursor_report_index == 1
+    widget.table.horizontalHeader().sectionClicked.emit(0)  # the quantity column: no change
+    assert cursor.time_s == 200.0

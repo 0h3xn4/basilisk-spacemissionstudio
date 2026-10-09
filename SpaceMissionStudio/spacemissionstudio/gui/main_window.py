@@ -60,6 +60,7 @@ from . import autosave
 from .feedback import show_toast
 from .icons import toolbar_icon
 from .data_panel_widget import DataPanelWidget
+from .event_timeline_widget import EventTimelineWidget
 from .load_scenario_widget import LoadScenarioWidget
 from .mission_dashboard_widget import MissionDashboardWidget
 from .mission_output_widget import MissionOutputWidget
@@ -70,6 +71,7 @@ from .budget_widget import BudgetWidget
 from .lifetime_widget import LifetimeWidget
 from .scenario_explainer_widget import ScenarioExplainerWidget
 from .startup_fetch_dialog import maybe_run_startup_fetch
+from .time_cursor import TimeCursor, describe as describe_time
 from .vizard_dialog import VizardDialog
 from .vizard_launcher import (
     DEFAULT_LIVE_STREAM_ADDRESS,
@@ -178,6 +180,13 @@ class MainWindow(QMainWindow):
         self.mission_dashboard_widget = MissionDashboardWidget()
         self.mission_output_widget = MissionOutputWidget()
         self.data_panel_widget = DataPanelWidget()
+        self.event_timeline_widget = EventTimelineWidget()
+        # One time cursor for every view of a run (UX/UI guidelines).
+        self.time_cursor = TimeCursor(self)
+        self.event_timeline_widget.set_time_cursor(self.time_cursor)
+        self.results_widget.set_time_cursor(self.time_cursor)
+        self.mission_dashboard_widget.set_time_cursor(self.time_cursor)
+        self.mission_output_widget.set_time_cursor(self.time_cursor)
         self.scenario_explainer_widget = ScenarioExplainerWidget()
         self.lifetime_widget = LifetimeWidget()
         self.budget_widget = BudgetWidget()
@@ -186,6 +195,7 @@ class MainWindow(QMainWindow):
         self.right_tabs.addTab(self.results_widget, "Results")
         self.right_tabs.addTab(self.mission_dashboard_widget, "Mission Dashboard")
         self.right_tabs.addTab(self.mission_output_widget, "Mission Output")
+        self.right_tabs.addTab(self.event_timeline_widget, "Events")
         self.right_tabs.addTab(self.data_panel_widget, "Data")
         self.right_tabs.addTab(self.scenario_explainer_widget, "Explain")
         self.right_tabs.addTab(self.lifetime_widget, "End of Life")
@@ -252,6 +262,12 @@ class MainWindow(QMainWindow):
             self.basilisk_version_label.setToolTip(version_note)
             self.basilisk_version_label.setStyleSheet("color: #b8860b;")
         self.statusBar().addPermanentWidget(self.basilisk_version_label)
+        self.time_cursor_label = QLabel()
+        self.time_cursor_label.setToolTip("The shared time cursor. Click a plot or the Events timeline to move it; "
+                                          "Run > Clear Time Cursor clears it.")
+        self.time_cursor_label.setVisible(False)
+        self.statusBar().addPermanentWidget(self.time_cursor_label)
+        self.time_cursor.changed.connect(self._on_time_cursor_changed)
 
         # Design-philosophy roadmap item M4 (docs/ux_roadmap.md):
         # autosave/crash-recovery for scenario edits -- see
@@ -424,6 +440,12 @@ class MainWindow(QMainWindow):
         monte_carlo_action.triggered.connect(self.on_run_monte_carlo)
         run_menu.addAction(monte_carlo_action)
         self.monte_carlo_action = monte_carlo_action
+        run_menu.addSeparator()
+        clear_cursor_action = QAction("Clear &Time Cursor", self)
+        clear_cursor_action.setToolTip("Clears the shared time cursor; the views show the end of the run again.")
+        clear_cursor_action.triggered.connect(self.time_cursor.clear)
+        run_menu.addAction(clear_cursor_action)
+        self.clear_cursor_action = clear_cursor_action
 
         # Real gap, found while auditing the rest of the app for UX
         # issues: spacemissionstudio.__version__ already exists (this is a
@@ -636,13 +658,24 @@ class MainWindow(QMainWindow):
         self.scenario_editor.from_scenario(info.scenario)
         self._refresh_scenario_explainer()
         self._current_path = info.original_path
-        self.results_widget.set_result(None)
-        self.mission_dashboard_widget.set_result(None)
-        self.mission_output_widget.clear()
+        self._clear_run_views()
         self._mark_dirty()
         self.statusBar().showMessage("Restored autosaved changes.")
         show_toast(self, "Restored autosaved changes")
         self.left_tabs.setCurrentWidget(self.scenario_editor)
+
+    def _clear_run_views(self) -> None:
+        """Clear every view of the previous run, and the time cursor."""
+        self.results_widget.set_result(None)
+        self.mission_dashboard_widget.set_result(None)
+        self.mission_output_widget.clear()
+        self.event_timeline_widget.set_result(None)
+        self.time_cursor.clear()
+
+    def _on_time_cursor_changed(self, time_s) -> None:
+        self.time_cursor_label.setVisible(time_s is not None)
+        if time_s is not None:
+            self.time_cursor_label.setText("Cursor " + describe_time(time_s, self._last_run_epoch_utc))
 
     def _confirm_discard_unsaved(self) -> bool:
         """Returns True if it's OK to proceed (no unsaved changes, or the
@@ -665,9 +698,7 @@ class MainWindow(QMainWindow):
         self.scenario_editor.reset_to_default()
         self._refresh_scenario_explainer()
         self._current_path = None
-        self.results_widget.set_result(None)
-        self.mission_dashboard_widget.set_result(None)
-        self.mission_output_widget.clear()
+        self._clear_run_views()
         self._mark_clean()
         self.statusBar().showMessage("New scenario.")
         show_toast(self, "New scenario")
@@ -734,9 +765,7 @@ class MainWindow(QMainWindow):
         self.scenario_editor.from_scenario(scenario)
         self._refresh_scenario_explainer()
         self._current_path = current_path
-        self.results_widget.set_result(None)
-        self.mission_dashboard_widget.set_result(None)
-        self.mission_output_widget.clear()
+        self._clear_run_views()
         self._mark_clean()
         label = str(current_path) if current_path is not None else scenario.name
         self.statusBar().showMessage(f"{verb} {label}")
@@ -1164,11 +1193,9 @@ class MainWindow(QMainWindow):
         # looks exactly like this run already has results before it
         # actually does -- part of the "running another simulation seems
         # to break a lot of things" feedback).
-        self.results_widget.set_result(None)
-        self.mission_dashboard_widget.set_result(None)
+        self._clear_run_views()
         if live:
             self.right_tabs.setCurrentWidget(self.results_widget)
-        self.mission_output_widget.clear()
         # Reset once per run -- see _on_run_progress's own comment for why
         # this exists: suppresses a dialog-per-chunk storm if something
         # about THIS run's own data keeps failing on every single update.
@@ -1258,6 +1285,7 @@ class MainWindow(QMainWindow):
             # whatever was shown before.
             self.results_widget.set_live_result(result, self._last_run_epoch_utc)
             self.mission_dashboard_widget.set_live_result(result, self._last_run_scenario)
+            self.event_timeline_widget.set_result(result, self._last_run_epoch_utc)
             self.lifetime_widget.set_last_run(self._last_run_scenario, result)
             self.budget_widget.set_last_run(self._last_run_scenario, result)
             if command_summary is not None:
@@ -1292,6 +1320,7 @@ class MainWindow(QMainWindow):
         try:
             self.results_widget.set_live_result(partial_result, self._last_run_epoch_utc)
             self.mission_dashboard_widget.set_live_result(partial_result, self._last_run_scenario)
+            self.event_timeline_widget.set_result(partial_result, self._last_run_epoch_utc)
             if command_summary is not None:
                 self.mission_output_widget.set_command_summary(command_summary, partial_result)
                 self.right_tabs.setCurrentWidget(self.mission_output_widget)
