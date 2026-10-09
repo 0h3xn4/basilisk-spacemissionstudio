@@ -189,8 +189,11 @@ class _TemplateRow(QWidget):
         self.set_selected(False)
 
     def set_selected(self, selected: bool) -> None:
-        color = PALETTE["on_accent"] if selected else PALETTE["text"]
-        self.title_label.setStyleSheet(f"color: {color};")
+        # Selected rows are Carbon's light layer-selected grey, not blue, so
+        # the title keeps the primary text colour (white on it was unreadable)
+        # and turns semibold.
+        weight = 600 if selected else 400
+        self.title_label.setStyleSheet(f"color: {PALETTE['text']}; font-weight: {weight};")
 
 
 class LoadScenarioWidget(QWidget):
