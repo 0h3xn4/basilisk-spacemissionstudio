@@ -174,7 +174,9 @@ same commit's pull-request run, 37854357729, gave the same counts):
 SRS-PO-01 is met by test for the tool installed from source with pip.
 Limits of this evidence: the Windows tests draw no window (`offscreen`);
 macOS uses its native window system. Nobody has used the GUI on Windows
-or macOS by hand.
+or macOS by hand. The macOS plot-page load stall of CI run 27 did not
+recur after the results-widget tests began showing their widget
+(commit `6e9cbacd7`).
 
 **Not done:** the Windows installer has not been run (SRS-DEL-01, manual
 test, H13; SRelD K-06).

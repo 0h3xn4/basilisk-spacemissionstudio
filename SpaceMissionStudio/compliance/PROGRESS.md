@@ -107,7 +107,9 @@ Result: **2055 passed, 11 skipped, 0 failed** (245 s, 3 workers). Every later ph
     (F-09 to F-12, test portability) the suite passes in CI on Linux,
     Windows and macOS: 2259 passed, 11 skipped, 0 failed each, commit
     `41b73b1c3`, run 37854361784. SRS-PO-01 is met by test (SVR 4.6);
-    the Windows installer is still to be run by hand.
+    the Windows installer is still to be run by hand. The macOS plot-page
+    load stall of CI run 27 did not recur after the results-widget tests
+    began showing their widget (commit `6e9cbacd7`).
 
 ## Phase 1 test run
 
