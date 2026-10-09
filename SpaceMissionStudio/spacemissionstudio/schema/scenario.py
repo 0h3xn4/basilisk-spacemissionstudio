@@ -563,6 +563,12 @@ class ConstantThrustConfig:
         _require(self.propellant_kg >= 0, f"{spacecraft_name}: constant_thrust.propellant_kg must be >= 0")
 
 
+# PhasingKeepingConfig.control_law values: the drift-orbit controller
+# (engine.orbit_maintenance) or one of Basilisk's formationFlying laws
+# (engine.formation_control).
+PHASING_CONTROL_LAWS = ("drift_orbit", "mean_oe", "hill_pd")
+
+
 @dataclass
 class PhasingKeepingConfig:
     """Constellation-wide phasing maintenance: holds this (follower)
@@ -636,6 +642,18 @@ class PhasingKeepingConfig:
     correction_window_days: float = 3.0  # [day] target time to null a fresh phasing error
     max_drift_days: float = 90.0  # [day] safety cap on the drift coast phase
     max_delta_semi_major_axis_km: float = 3.0  # [km] safety clamp on the drift-orbit SMA offset
+    # Which flight-software law holds the separation (PHASING_CONTROL_LAWS;
+    # engine.formation_control). "drift_orbit" is the controller described
+    # above; "mean_oe" and "hill_pd" run Basilisk's own formationFlying
+    # modules (meanOEFeedback, hillFrameRelativeControl) unmodified, their
+    # force limited to this spacecraft's station_keeping thruster. The
+    # tolerance, window and drift fields above apply to "drift_orbit" only.
+    control_law: str = "drift_orbit"  # one of PHASING_CONTROL_LAWS: drift_orbit, mean_oe, hill_pd
+    # meanOEFeedback outputs a force, so its K is this per-kilogram gain
+    # times the follower's mass at the start of the run.
+    mean_oe_gain: float = 2500.0  # [m^2/s^3] "mean_oe": diagonal of K per kg of spacecraft
+    hill_position_gain: float = 2.0e-6  # [1/s^2] "hill_pd": diagonal of K
+    hill_velocity_gain: float = 2.0e-3  # [1/s] "hill_pd": diagonal of P
 
     def validate(self, spacecraft_name: str) -> None:
         _require(bool(self.chief_spacecraft),
@@ -658,6 +676,13 @@ class PhasingKeepingConfig:
                   f"{spacecraft_name}: phasing_keeping.max_drift_days must be > 0")
         _require(self.max_delta_semi_major_axis_km > 0,
                   f"{spacecraft_name}: phasing_keeping.max_delta_semi_major_axis_km must be > 0")
+        _require(self.control_law in PHASING_CONTROL_LAWS,
+                  f"{spacecraft_name}: phasing_keeping.control_law {self.control_law!r} must be one of "
+                  f"{PHASING_CONTROL_LAWS}")
+        for field_name in ("mean_oe_gain", "hill_position_gain", "hill_velocity_gain"):
+            value = getattr(self, field_name)
+            _require(isinstance(value, (int, float)) and math.isfinite(value) and value > 0,
+                      f"{spacecraft_name}: phasing_keeping.{field_name} must be a finite number > 0")
 
 
 @dataclass
@@ -1720,6 +1745,14 @@ class Scenario:
                 _require(sc.phasing_keeping.chief_spacecraft in names,
                           f"{sc.name}: phasing_keeping.chief_spacecraft {sc.phasing_keeping.chief_spacecraft!r} "
                           f"is not one of this scenario's spacecraft {names}")
+                # meanOEFeedback maps osculating to mean elements with
+                # Earth's J2; with point-mass gravity there is no J2 motion
+                # for that mapping to remove, and it would add a false one.
+                if sc.phasing_keeping.control_law == "mean_oe":
+                    _require(self.gravity.central_body == "earth" and self.gravity.central_body_degree >= 2,
+                              f"{sc.name}: phasing_keeping.control_law 'mean_oe' needs Earth's J2 in the "
+                              "dynamics -- set gravity.central_body to 'earth' and central_body_degree to 2 "
+                              "or more, or choose 'drift_orbit' or 'hill_pd'")
         # Past one Basilisk run's limit the run is split into segments
         # (engine/long_run.py); these two cannot be split.
         single_run_days = SimSettings._MAX_SINGLE_RUN_DAYS

@@ -168,8 +168,9 @@ from Basilisk.utilities.supportDataTools.dataFetcher import DataFile
 from .. import __version__ as _SPACEMISSIONSTUDIO_VERSION
 from .. import dependencies, output_provenance
 from ..schema.scenario import OrbitIC, Scenario
-from . import (earth_orientation, environment_models, frames, fsw, geodesy, geodetic_atmosphere, kernels,
-               link_budget, long_run, orbit_maintenance, planet_rotation, time_system, tle, vizard)
+from . import (earth_orientation, environment_models, formation_control, frames, fsw, geodesy,
+               geodetic_atmosphere, kernels, link_budget, long_run, orbit_maintenance, planet_rotation,
+               time_system, tle, vizard)
 from .results import ResultSet, RunProvenance, TimeSeries, conservation_drift_warnings
 from .vizard import VizardRequest
 
@@ -1549,15 +1550,28 @@ class SimulationService:
                 )
             follower_handle = self._handles[sc_config.name]
             chief_handle = self._handles[chief_config.name]
-            follower_handle.phasing_keeping_controller = orbit_maintenance.build_phasing_keeping(
-                self.scSim, dyn_task_name, sc_config.name, mu,
-                chief_sc_object=chief_handle.sc_object, follower_sc_object=follower_handle.sc_object,
-                follower_station_keeping_controller=follower_handle.station_keeping_controller,
-                follower_eclipse_out_msg=follower_handle.eclipse_out_msg,
-                chief_semi_major_axis_km=chief_config.orbit.semi_major_axis_km,
-                config=sc_config.phasing_keeping,
-                chief_station_keeping_controller=chief_handle.station_keeping_controller,
-            )
+            if sc_config.phasing_keeping.control_law == "drift_orbit":
+                follower_handle.phasing_keeping_controller = orbit_maintenance.build_phasing_keeping(
+                    self.scSim, dyn_task_name, sc_config.name, mu,
+                    chief_sc_object=chief_handle.sc_object, follower_sc_object=follower_handle.sc_object,
+                    follower_station_keeping_controller=follower_handle.station_keeping_controller,
+                    follower_eclipse_out_msg=follower_handle.eclipse_out_msg,
+                    chief_semi_major_axis_km=chief_config.orbit.semi_major_axis_km,
+                    config=sc_config.phasing_keeping,
+                    chief_station_keeping_controller=chief_handle.station_keeping_controller,
+                )
+            else:
+                # Basilisk's own formationFlying laws (engine.formation_control);
+                # Scenario.validate() limits "mean_oe" to Earth with J2.
+                follower_handle.phasing_keeping_controller = formation_control.build_formation_control(
+                    self.scSim, dyn_task_name, sc_config.name, mu,
+                    chief_sc_object=chief_handle.sc_object, follower_sc_object=follower_handle.sc_object,
+                    follower_station_keeping_controller=follower_handle.station_keeping_controller,
+                    follower_eclipse_out_msg=follower_handle.eclipse_out_msg,
+                    chief_semi_major_axis_km=chief_config.orbit.semi_major_axis_km,
+                    config=sc_config.phasing_keeping, central_radius_m=self.central_radius_m,
+                    j2=self.mean_elements_j2,
+                )
 
         # Phase 3: access analysis -- every ground station sees every
         # spacecraft, now that all spacecraft exist (see fsw.add_access_analysis).
@@ -2153,6 +2167,10 @@ class SimulationService:
                 result.add(TimeSeries(f"{name}.phasing_keeping.relative_semi_major_axis", pk_t_s,
                                        ("relative_semi_major_axis",),
                                        np.asarray(phase_controller.relativeSmaLog), units="m"))
+                if hasattr(phase_controller, "commandedForceLog"):  # a Basilisk formation law
+                    result.add(TimeSeries(f"{name}.phasing_keeping.force", pk_t_s, ("commanded", "applied"),
+                                           np.column_stack([phase_controller.commandedForceLog,
+                                                            phase_controller.appliedForceLog]), units="N"))
 
             if handle.constant_thrust_controller is not None:
                 ct_controller = handle.constant_thrust_controller
@@ -2261,7 +2279,7 @@ class SimulationService:
 
                 phase_controller = handle.phasing_keeping_controller
                 if phase_controller is not None and phase_controller.tLog:
-                    state_names = {0: "IDLE", 1: "BURN_OUT", 2: "DRIFT", 3: "BURN_RESTORE"}
+                    state_names = {0: "IDLE", 1: "BURN_OUT", 2: "DRIFT", 3: "BURN_RESTORE", 4: "FIRING"}
                     _logger.error(
                         "%s: phasing_keeping last tick -- t=%.3f s, error=%.4f deg, state=%s, propellant=%.4f kg, "
                         "cumulative_dv=%.4f m/s",
