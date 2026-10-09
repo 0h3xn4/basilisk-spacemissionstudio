@@ -49,6 +49,7 @@ already-proven approach is used instead, extended (not replaced) below.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Optional
 
@@ -60,6 +61,64 @@ from .results import ResultSet, ResultsError, TimeSeries
 _C_LIGHT_M_S = 299792458.0  # [m/s]
 _K_BOLTZMANN_DBW_HZ = -228.6  # [dBW/K/Hz] 10*log10(1.380649e-23)
 _MAX_POINTING_LOSS_DB = 30.0  # [dB] clamp -- the parabolic approximation below is only valid near boresight
+
+
+def needs_link_gate(sc_config) -> bool:
+    """True when a spacecraft's downlink is evaluated live, from its
+    simulated attitude (``engine.data_handling``'s link gate): an RF link
+    with a data-handling chain, or with an antenna pattern."""
+    rf_link = sc_config.rf_link
+    return rf_link is not None and (sc_config.data_handling is not None or rf_link.antenna_pattern != "fixed")
+
+
+def cosine_exponent(peak_gain_dbi: float) -> float:
+    """The exponent ``n`` of a ``cos^n(theta)`` power pattern with this
+    peak gain: such a pattern, confined to the forward hemisphere, has
+    directivity ``D0 = 2 (n + 1)`` (Balanis, *Antenna Theory*, ch. 2,
+    directivity of ``U = cos^n(theta)``), taken here as the gain. A 6 dBi
+    patch gives n = 1.0, a 9 dBi one n = 3.0."""
+    return max(0.0, 10.0 ** (peak_gain_dbi / 10.0) / 2.0 - 1.0)
+
+
+def half_power_beamwidth_deg(rf_link: RFLinkConfig) -> Optional[float]:
+    """Full angle [deg] within which the gain stays within 3 dB of the
+    peak, for the "cosine" and "table" patterns (None for "fixed")."""
+    if rf_link.antenna_pattern == "cosine":
+        n = cosine_exponent(rf_link.tx_antenna_gain_dbi)
+        return 180.0 if n == 0.0 else 2.0 * math.degrees(math.acos(0.5 ** (1.0 / n)))
+    if rf_link.antenna_pattern == "table":
+        angles = np.linspace(0.0, 180.0, 3601)  # [deg]
+        below = angles[antenna_gain_dbi(rf_link, angles) < peak_gain_dbi(rf_link) - 3.0]
+        return 2.0 * float(below[0]) if below.size else 360.0
+    return None
+
+
+def peak_gain_dbi(rf_link: RFLinkConfig) -> float:
+    """Boresight gain [dBi]: ``tx_antenna_gain_dbi``, or the table's first row."""
+    if rf_link.antenna_pattern == "table":
+        return float(rf_link.antenna_gain_table[0][1])
+    return rf_link.tx_antenna_gain_dbi
+
+
+def antenna_gain_dbi(rf_link: RFLinkConfig, off_boresight_deg):
+    """Spacecraft antenna gain [dBi] at ``off_boresight_deg`` (a number or
+    an array) for the "cosine" and "table" patterns; "fixed" returns the
+    peak gain everywhere (its pointing loss is applied separately)."""
+    theta = np.abs(np.asarray(off_boresight_deg, dtype=float))  # [deg]
+    peak = peak_gain_dbi(rf_link)
+    if rf_link.antenna_pattern == "cosine":
+        n = cosine_exponent(peak)
+        floor = peak - rf_link.antenna_front_to_back_db
+        cos_theta = np.cos(np.radians(np.minimum(theta, 90.0)))
+        with np.errstate(divide="ignore"):
+            front = peak + 10.0 * n * np.log10(cos_theta) if n > 0 else np.full_like(theta, peak)
+        gain = np.where(theta < 90.0, np.maximum(front, floor), floor)
+    elif rf_link.antenna_pattern == "table":
+        angles, gains = np.asarray(rf_link.antenna_gain_table, dtype=float).T
+        gain = np.interp(theta, angles, gains)  # holds the last gain beyond the last angle
+    else:
+        gain = np.full_like(theta, peak)
+    return float(gain) if gain.ndim == 0 else gain
 
 
 @dataclass
@@ -100,23 +159,37 @@ def link_budget_breakdown(range_m: float, rf_link: RFLinkConfig, ground_station:
     meaningful within a few beamwidths of boresight, not an indication
     the link still "almost" closes far off-axis).
     """
-    eirp_dbw = 10.0 * np.log10(rf_link.tx_power_w) + rf_link.tx_antenna_gain_dbi - rf_link.implementation_loss_db
+    eirp_dbw = 10.0 * np.log10(rf_link.tx_power_w) + peak_gain_dbi(rf_link) - rf_link.implementation_loss_db
     fspl_db = 20.0 * np.log10(4.0 * np.pi * range_m * rf_link.frequency_hz / _C_LIGHT_M_S)
-    pointing_loss_db = 0.0
-    if rf_link.antenna_beamwidth_deg is not None and pointing_error_deg != 0.0:
-        pointing_loss_db = min(
-            _MAX_POINTING_LOSS_DB, 12.0 * (pointing_error_deg / rf_link.antenna_beamwidth_deg) ** 2
-        )
-    received_dbw = eirp_dbw - fspl_db - pointing_loss_db + ground_station.rx_antenna_gain_dbi
+    pointing_loss = pointing_loss_db(rf_link, pointing_error_deg)
+    received_dbw = eirp_dbw - fspl_db - pointing_loss + ground_station.rx_antenna_gain_dbi
     n0_dbw_hz = _K_BOLTZMANN_DBW_HZ + 10.0 * np.log10(ground_station.system_noise_temp_k)
     cn0_db_hz = received_dbw - n0_dbw_hz
     ebno_db = cn0_db_hz - 10.0 * np.log10(rf_link.data_rate_bps)
     margin_db = ebno_db - rf_link.required_ebno_db
     return LinkBudgetBreakdown(
-        eirp_dbw=float(eirp_dbw), fspl_db=float(fspl_db), pointing_loss_db=float(pointing_loss_db),
+        eirp_dbw=float(eirp_dbw), fspl_db=float(fspl_db), pointing_loss_db=float(pointing_loss),
         received_dbw=float(received_dbw), n0_dbw_hz=float(n0_dbw_hz), cn0_db_hz=float(cn0_db_hz),
         ebno_db=float(ebno_db), margin_db=float(margin_db),
     )
+
+
+def margin_at_one_metre_db(rf_link: RFLinkConfig, ground_station: GroundStationConfig) -> float:
+    """Every range- and pointing-independent term of the margin [dB]:
+    ``link_margin_db(r, ..., angle) == margin_at_one_metre_db(...)
+    - 20 log10(r) - pointing loss``. For callers evaluating the margin
+    every simulation step (``engine.data_handling``)."""
+    return link_budget_breakdown(1.0, rf_link, ground_station, 0.0).margin_db
+
+
+def pointing_loss_db(rf_link: RFLinkConfig, off_boresight_deg: float) -> float:
+    """The gain toward the station below the peak [dB], as
+    :func:`link_budget_breakdown` applies it."""
+    if rf_link.antenna_pattern != "fixed":
+        return peak_gain_dbi(rf_link) - antenna_gain_dbi(rf_link, off_boresight_deg)
+    if rf_link.antenna_beamwidth_deg is not None and off_boresight_deg != 0.0:
+        return min(_MAX_POINTING_LOSS_DB, 12.0 * (off_boresight_deg / rf_link.antenna_beamwidth_deg) ** 2)
+    return 0.0
 
 
 def link_margin_db(range_m: float, rf_link: RFLinkConfig, ground_station: GroundStationConfig,

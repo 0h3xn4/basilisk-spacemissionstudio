@@ -65,6 +65,16 @@ Continuous (always-on), constant-magnitude thrust with a fixed DIRECTION IN A RO
 | `isp_s` | float | `1500.0` | [s] |
 | `propellant_kg` | float | `2.0` | [kg] initial propellant mass available |
 
+## DataHandlingConfig
+
+Onboard data generation, storage and downlink (``engine.data_handling``), built from Basilisk's ``simpleInstrument``, ``partitionedStorageUnit`` (one partition per instrument) and ``spaceToGroundTransmitter``.
+
+| Field | Type | Default | Unit / note |
+|---|---|---|---|
+| `storage_capacity_gbit` | float | `required` | [Gbit] 8 Gbit = 1 GB |
+| `instruments` | list | `[]` | InstrumentConfig |
+| `transmitter_power_w` | float | `0.0` | [W] DC draw while transmitting; needs SpacecraftConfig.power when > 0 |
+
 ## DispersionConfig
 
 One dispersed quantity for one spacecraft in a Monte Carlo batch -- see :data:`DISPERSION_QUANTITIES`/:data:`DISPERSION_KINDS_BY_QUANTITY` for what's supported and ``engine/monte_carlo.py`` for how each pairing maps onto a ``Basilisk.utilities.MonteCarlo.Dispersions`` class.
@@ -140,6 +150,17 @@ A ground station. Coordinates are geodetic on the WGS-84 ellipsoid for Earth (pl
 | `min_elevation_deg` | float | `10.0` |  |
 | `rx_antenna_gain_dbi` | float | `0.0` | [dBi] ground station receive antenna gain |
 | `system_noise_temp_k` | float | `290.0` | [K] ground receiver system noise temperature |
+
+## InstrumentConfig
+
+One source of onboard data -- a payload instrument, or the platform's housekeeping telemetry -- as Basilisk's ``simpleInstrument``: a constant data rate, so give the instrument's orbit-average rate if it does not run all the time.
+
+| Field | Type | Default | Unit / note |
+|---|---|---|---|
+| `name` | str | `required` |  |
+| `data_rate_bps` | float | `required` | [bit/s] |
+| `power_w` | float | `0.0` | [W] constant electrical draw; needs SpacecraftConfig.power when > 0 |
+| `initial_data_gbit` | float | `0.0` | [Gbit] already in the instrument's memory partition at the start |
 
 ## MagneticMomentumManagementConfig
 
@@ -270,6 +291,10 @@ A spacecraft's downlink transmitter, for a reported link-margin ESTIMATE only (`
 | `implementation_loss_db` | float | `2.0` | [dB] combined pointing/polarization/implementation loss |
 | `required_ebno_db` | float | `6.0` | [dB] required Eb/N0 for the assumed modulation/coding |
 | `antenna_beamwidth_deg` | Optional[float] | `None` |  |
+| `antenna_pattern` | str | `'fixed'` |  |
+| `antenna_gain_table` | list | `[]` |  |
+| `antenna_front_to_back_db` | float | `15.0` | [dB] "cosine" only: gain behind the ground plane, below the peak |
+| `antenna_boresight_b` | Optional[list] | `None` |  |
 
 ## SensorConfig
 
@@ -333,6 +358,7 @@ See engine/spaceweather.py and engine/service.py. Real data only (user requireme
 | `power` | Optional[PowerConfig] | `None` |  |
 | `rf_link` | Optional[RFLinkConfig] | `None` |  |
 | `comms_pointing` | Optional[CommsPointingConfig] | `None` |  |
+| `data_handling` | Optional[DataHandlingConfig] | `None` |  |
 | `station_keeping` | Optional[StationKeepingConfig] | `None` |  |
 | `geo_station_keeping` | Optional[GeoStationKeepingConfig] | `None` |  |
 | `phasing_keeping` | Optional[PhasingKeepingConfig] | `None` |  |

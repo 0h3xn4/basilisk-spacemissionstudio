@@ -63,6 +63,7 @@
       "power": null,
       "rf_link": null,
       "comms_pointing": null,
+      "data_handling": null,
       "station_keeping": null,
       "geo_station_keeping": null,
       "phasing_keeping": null,

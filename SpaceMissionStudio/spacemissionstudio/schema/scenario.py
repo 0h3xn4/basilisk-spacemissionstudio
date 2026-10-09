@@ -130,6 +130,8 @@ NAMED_RW_MAX_MOMENTUM_OPTIONS = {
 # losses/friction generate real heat, independent of whether this
 # spacecraft has any "thermal" sensor configured at all.
 SUPPORTED_FSW_MODES = ("inertial3D", "hillPoint", "velocityPoint", "sunSafePoint", "locationPointing")
+SUPPORTED_ANTENNA_PATTERNS = ("fixed", "cosine", "table")
+_MIN_COSINE_GAIN_DBI = 10.0 * math.log10(2.0) - 1e-9  # [dBi] cos^0 over a hemisphere, the least a "cosine" pattern can have
 
 # Phase 3: Monte Carlo dispersion quantities engine.monte_carlo actually
 # builds a Basilisk.utilities.MonteCarlo.Dispersions class for, and which
@@ -377,6 +379,25 @@ class RFLinkConfig:
     # antenna_beamwidth_deg)^2, the standard textbook falloff for a
     # Gaussian/parabolic-reflector main lobe).
     antenna_beamwidth_deg: Optional[float] = None
+    # How the spacecraft antenna's gain falls off away from boresight, used
+    # wherever the downlink is evaluated live (engine.data_handling's link
+    # gate: a DataHandlingConfig, or any pattern other than "fixed"):
+    #   "fixed"  -- tx_antenna_gain_dbi in every direction (minus the
+    #               antenna_beamwidth_deg pointing loss above, if set);
+    #   "cosine" -- a patch antenna: gain G0*cos^n(theta) in front of the
+    #               ground plane, n from the peak gain (engine.link_budget.
+    #               cosine_exponent), antenna_front_to_back_db below the
+    #               peak behind it;
+    #   "table"  -- antenna_gain_table, read off the antenna's datasheet.
+    antenna_pattern: str = "fixed"
+    # [off-boresight angle deg, gain dBi] pairs, angles rising from 0;
+    # linear in dB between them, the last gain beyond the last angle.
+    antenna_gain_table: list = field(default_factory=list)
+    antenna_front_to_back_db: float = 15.0  # [dB] "cosine" only: gain behind the ground plane, below the peak
+    # Body-frame boresight of the downlink antenna. None falls back to
+    # comms_pointing.antenna_boresight_b; "cosine" and "table" need one of
+    # the two, since the gain then depends on the real attitude.
+    antenna_boresight_b: Optional[list] = None
 
     def validate(self, spacecraft_name: str) -> None:
         # Generous plausibility ceiling (docs/ux_audit.md, "units
@@ -393,6 +414,30 @@ class RFLinkConfig:
                   f"{spacecraft_name}: rf_link.implementation_loss_db must be >= 0")
         _require(self.antenna_beamwidth_deg is None or self.antenna_beamwidth_deg > 0,
                   f"{spacecraft_name}: rf_link.antenna_beamwidth_deg must be None or > 0")
+        _require(self.antenna_pattern in SUPPORTED_ANTENNA_PATTERNS,
+                  f"{spacecraft_name}: rf_link.antenna_pattern must be one of {SUPPORTED_ANTENNA_PATTERNS}")
+        if self.antenna_pattern == "cosine":
+            # cos^n over the forward hemisphere has directivity 2(n + 1):
+            # n >= 0 needs a peak gain of at least 2 (3.01 dBi).
+            _require(self.tx_antenna_gain_dbi >= _MIN_COSINE_GAIN_DBI,
+                      f"{spacecraft_name}: rf_link.tx_antenna_gain_dbi must be >= 3.01 dBi for a \"cosine\" "
+                      "(patch) pattern -- a lower peak gain is not a patch; use \"fixed\" or a gain table")
+            _require(_is_finite_number(self.antenna_front_to_back_db) and self.antenna_front_to_back_db >= 0,
+                      f"{spacecraft_name}: rf_link.antenna_front_to_back_db must be >= 0")
+        if self.antenna_pattern == "table":
+            table = self.antenna_gain_table
+            _require(isinstance(table, list) and len(table) >= 2
+                      and all(isinstance(row, (list, tuple)) and len(row) == 2
+                              and all(_is_finite_number(v) for v in row) for row in table),
+                      f"{spacecraft_name}: rf_link.antenna_gain_table needs at least two "
+                      "[off-boresight angle deg, gain dBi] pairs")
+            angles = [row[0] for row in table]
+            _require(angles[0] == 0 and all(b > a for a, b in zip(angles, angles[1:])) and angles[-1] <= 180,
+                      f"{spacecraft_name}: rf_link.antenna_gain_table angles must start at 0 deg and rise "
+                      "to at most 180 deg")
+        _require(self.antenna_boresight_b is None or _is_direction_vector(self.antenna_boresight_b),
+                  f"{spacecraft_name}: rf_link.antenna_boresight_b must be None or a non-zero, finite "
+                  "3-element [x, y, z] list")
 
 
 @dataclass
@@ -450,6 +495,72 @@ class CommsPointingConfig:
                   f"{spacecraft_name}: comms_pointing.sun_pointing_axis_b must be None or a non-zero, finite "
                   "3-element [x, y, z] list")
         _require(self.comms_power_w >= 0, f"{spacecraft_name}: comms_pointing.comms_power_w must be >= 0")
+
+
+MAX_DATA_NAME_CHARS = 127  # Basilisk's DataNodeUsageMsgPayload.dataName is char[128]
+
+
+@dataclass
+class InstrumentConfig:
+    """One source of onboard data -- a payload instrument, or the
+    platform's housekeeping telemetry -- as Basilisk's
+    ``simpleInstrument``: a constant data rate, so give the instrument's
+    orbit-average rate if it does not run all the time."""
+
+    name: str
+    data_rate_bps: float  # [bit/s]
+    power_w: float = 0.0  # [W] constant electrical draw; needs SpacecraftConfig.power when > 0
+    initial_data_gbit: float = 0.0  # [Gbit] already in the instrument's memory partition at the start
+
+    def validate(self, spacecraft_name: str) -> None:
+        label = f"{spacecraft_name}: data_handling instrument {self.name!r}"
+        _require(bool(self.name) and len(self.name) <= MAX_DATA_NAME_CHARS,
+                  f"{spacecraft_name}: every data_handling instrument needs a name of 1 to "
+                  f"{MAX_DATA_NAME_CHARS} characters")
+        _require(_is_finite_number(self.data_rate_bps) and 0.0 < self.data_rate_bps <= 1.0e11,
+                  f"{label}: data_rate_bps must be in (0, 1e11] bit/s")
+        _require(_is_finite_number(self.power_w) and self.power_w >= 0, f"{label}: power_w must be >= 0")
+        _require(_is_finite_number(self.initial_data_gbit) and self.initial_data_gbit >= 0,
+                  f"{label}: initial_data_gbit must be >= 0")
+
+
+@dataclass
+class DataHandlingConfig:
+    """Onboard data generation, storage and downlink (``engine.data_handling``),
+    built from Basilisk's ``simpleInstrument``, ``partitionedStorageUnit``
+    (one partition per instrument) and ``spaceToGroundTransmitter``.
+
+    Data a full memory cannot take is lost. With ``SpacecraftConfig.rf_link``
+    set, the transmitter downlinks at ``rf_link.data_rate_bps`` to any
+    ground station whose link closes: in access, and with a non-negative
+    Eb/N0 margin for the real slant range and the antenna's gain toward the
+    station (``rf_link.antenna_pattern``). Without ``rf_link`` nothing is
+    downlinked and the memory only fills.
+    """
+
+    storage_capacity_gbit: float  # [Gbit] 8 Gbit = 1 GB
+    instruments: list = field(default_factory=list)  # InstrumentConfig
+    transmitter_power_w: float = 0.0  # [W] DC draw while transmitting; needs SpacecraftConfig.power when > 0
+
+    def validate(self, spacecraft_name: str) -> None:
+        _require(_is_finite_number(self.storage_capacity_gbit) and 0.0 < self.storage_capacity_gbit <= 1.0e6,
+                  f"{spacecraft_name}: data_handling.storage_capacity_gbit must be in (0, 1e6] Gbit")
+        _require(len(self.instruments) > 0,
+                  f"{spacecraft_name}: data_handling needs at least one instrument (housekeeping counts)")
+        for instrument in self.instruments:
+            instrument.validate(spacecraft_name)
+        names = [instrument.name for instrument in self.instruments]
+        _require(len(set(names)) == len(names), f"{spacecraft_name}: data_handling instrument names must be unique")
+        initial = sum(instrument.initial_data_gbit for instrument in self.instruments)
+        _require(initial <= self.storage_capacity_gbit,
+                  f"{spacecraft_name}: data_handling instruments start with {initial:g} Gbit, more than the "
+                  f"{self.storage_capacity_gbit:g} Gbit storage capacity")
+        _require(_is_finite_number(self.transmitter_power_w) and self.transmitter_power_w >= 0,
+                  f"{spacecraft_name}: data_handling.transmitter_power_w must be >= 0")
+
+    @property
+    def needs_power(self) -> bool:
+        return self.transmitter_power_w > 0 or any(i.power_w > 0 for i in self.instruments)
 
 
 @dataclass
@@ -1017,6 +1128,7 @@ class SpacecraftConfig:
     power: Optional[PowerConfig] = None
     rf_link: Optional[RFLinkConfig] = None
     comms_pointing: Optional[CommsPointingConfig] = None
+    data_handling: Optional[DataHandlingConfig] = None
     station_keeping: Optional[StationKeepingConfig] = None
     geo_station_keeping: Optional[GeoStationKeepingConfig] = None
     phasing_keeping: Optional[PhasingKeepingConfig] = None
@@ -1351,6 +1463,16 @@ class SpacecraftConfig:
             self.power.validate(self.name)
         if self.rf_link is not None:
             self.rf_link.validate(self.name)
+        if self.rf_link is not None and self.rf_link.antenna_pattern != "fixed":
+            _require(self.rf_link.antenna_boresight_b is not None or self.comms_pointing is not None,
+                      f"{self.name}: rf_link.antenna_pattern {self.rf_link.antenna_pattern!r} needs "
+                      "rf_link.antenna_boresight_b (or comms_pointing's): the gain toward the station depends "
+                      "on where the antenna points")
+        if self.data_handling is not None:
+            self.data_handling.validate(self.name)
+            _require(self.power is not None or not self.data_handling.needs_power,
+                      f"{self.name}: data_handling draws power (an instrument's power_w or transmitter_power_w "
+                      "> 0) but this spacecraft has no power budget -- add one, or set those to 0")
         if self.comms_pointing is not None:
             self.comms_pointing.validate(self.name)
             _require(self.power is not None or self.comms_pointing.comms_power_w == 0.0,
@@ -1768,6 +1890,10 @@ class Scenario:
                           f"{sc.name}: power is set but scenario.simulation_mode is 'orbit_only' -- a real solar"
                           "-panel power budget needs the simulated attitude 'full_attitude' mode provides, or "
                           "remove power from this spacecraft")
+                _require(sc.rf_link is None or sc.rf_link.antenna_pattern == "fixed",
+                          f"{sc.name}: rf_link.antenna_pattern {getattr(sc.rf_link, 'antenna_pattern', '')!r} "
+                          "needs the simulated attitude 'full_attitude' mode provides -- use \"fixed\" in "
+                          "'orbit_only' mode")
         gs_names = [gs.name for gs in self.ground_stations]
         _require(len(gs_names) == len(set(gs_names)), f"ground_station names must be unique, got {gs_names}")
         for gs in self.ground_stations:
@@ -1945,6 +2071,12 @@ class Scenario:
             rf_link = RFLinkConfig(**rf_link_data) if rf_link_data is not None else None
             comms_pointing_data = sc.pop("comms_pointing", None)
             comms_pointing = CommsPointingConfig(**comms_pointing_data) if comms_pointing_data is not None else None
+            data_handling_data = sc.pop("data_handling", None)
+            data_handling = None
+            if data_handling_data is not None:
+                data_handling_data = dict(data_handling_data)
+                instruments = [InstrumentConfig(**i) for i in data_handling_data.pop("instruments", [])]
+                data_handling = DataHandlingConfig(instruments=instruments, **data_handling_data)
             station_keeping_data = sc.pop("station_keeping", None)
             station_keeping = StationKeepingConfig(**station_keeping_data) if station_keeping_data is not None else None
             geo_data = sc.pop("geo_station_keeping", None)
@@ -1968,6 +2100,7 @@ class Scenario:
             propellant_budget = PropellantBudgetConfig(**budget_data) if budget_data is not None else None
             spacecraft.append(SpacecraftConfig(propellant_budget=propellant_budget, orbit=orbit, sensors=sensors, actuators=actuators,
                                                 power=power, rf_link=rf_link, comms_pointing=comms_pointing,
+                                                data_handling=data_handling,
                                                 station_keeping=station_keeping,
                                                 geo_station_keeping=geo_station_keeping,
                                                 phasing_keeping=phasing_keeping, constant_thrust=constant_thrust,
