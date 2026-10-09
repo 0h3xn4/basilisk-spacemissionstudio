@@ -249,7 +249,7 @@ The security assurance level is low (UD-4, D8).
 
 | ID | Requirement |
 |---|---|
-| SRS-PO-01 | Linux and Windows. macOS where Basilisk and PySide6 install (not tested). |
+| SRS-PO-01 | Linux and Windows. macOS where Basilisk and PySide6 install. |
 
 ### 5.10 Software quality requirements (D.2.1<5.10>)
 

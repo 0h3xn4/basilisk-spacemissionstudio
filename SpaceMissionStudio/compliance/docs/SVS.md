@@ -87,7 +87,7 @@ are the components named there. Criteria are in 5.4.
 | Item | Justification | Method proposed |
 |---|---|---|
 | SRS-P-09 run time, SRS-R-02 memory | Depend on the reference PC (decision 19: the audit's cloud container) | Analysis: `compliance/tools/measure_performance.py` runs the one-day and one-year cases and reports wall time and peak memory |
-| SRS-PO-01 Windows and macOS | Not available | Test on those platforms (human action) |
+| SRS-PO-01 Windows and macOS | Not available in the validation environment (Linux) | Test in CI on Windows and macOS (decision 19); results in the SVR |
 | SRS-H-01 to H-03 human factors | Usability is a judgement | Review with users |
 | SRS-S-03 script blocks | Partly a design property | Review of the security analysis (`security_analysis.md`), plus tests |
 

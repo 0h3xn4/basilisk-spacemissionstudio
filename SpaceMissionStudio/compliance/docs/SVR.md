@@ -142,22 +142,42 @@ made with `compliance/tools/measure_performance.py` on 2026-10-08):
 The reference PC is the audit's cloud container: 4 x86-64 cores, 15.7 GiB
 memory, Linux, Python 3.11, Basilisk 2.12.0.
 
-**Other platforms** (SRS-PO-01; CI run 20, commit `ddd15ab61`, the
-`platforms` job):
+**Other platforms** (SRS-PO-01). First run: CI run 20, commit
+`ddd15ab61`, the `platforms` job:
 
 | Platform | Passed | Failed | Skipped | Verdict |
 |---|---|---|---|---|
 | Linux (ubuntu-24.04) | all | 0 | 11 | Met |
-| Windows (windows-latest, Python 3.11) | 2209 | 34 | 11 | **Not met** |
-| macOS (macos-latest, arm64, Python 3.11) | 2234 | 10 | 11 | **Not met** |
+| Windows (windows-latest, Python 3.11) | 2209 | 34 | 11 | Not met |
+| macOS (macos-latest, arm64, Python 3.11) | 2234 | 10 | 11 | Not met |
 
-The failures are listed in SRelD K-10. Most are test portability or
-layout differences. One was a real defect: in the altitude trade the
-400 km case gave 1.45 kg of propellant on Windows, against 7.26 kg on
-Linux. The cause was a race between parallel processes writing the
-space-weather file (finding F-09, `review_log.md`), fixed.
+The failures (SRelD K-10, now closed): the Vizard download tests, which
+assumed the Linux layout (both); the template wizard and dialog width
+tests (Windows); a path-separator assertion (Windows); a cancel-timing
+test (Windows); the PNG export tests (macOS); a test-isolation error in
+`test_ccsds_odm` (macOS). Most were test portability or layout
+differences. Four were tool defects, F-09 to F-12 (`review_log.md`), all
+fixed. One of them changed results: in the
+altitude trade the 400 km case gave 1.45 kg of propellant on Windows,
+against 7.26 kg on Linux, because parallel processes raced writing the
+space-weather file (F-09).
 
-**Not done:** the Windows installer has not been run (manual test, H13).
+After the fixes: commit `41b73b1c3`, GitHub Actions run 37854361784 (the
+same commit's pull-request run, 37854357729, gave the same counts):
+
+| Platform | Passed | Failed | Skipped | Verdict |
+|---|---|---|---|---|
+| Linux (ubuntu-24.04, Python 3.11) | 2259 | 0 | 11 | Met |
+| Windows (windows-latest, Python 3.11, `offscreen` Qt platform) | 2259 | 0 | 11 | Met |
+| macOS (macos-latest, arm64, Python 3.11, `cocoa` Qt platform) | 2259 | 0 | 11 | Met |
+
+SRS-PO-01 is met by test for the tool installed from source with pip.
+Limits of this evidence: the Windows tests draw no window (`offscreen`);
+macOS uses its native window system. Nobody has used the GUI on Windows
+or macOS by hand.
+
+**Not done:** the Windows installer has not been run (SRS-DEL-01, manual
+test, H13; SRelD K-06).
 
 **Traceability:**
 - Validation specification → technical specification: SVS section 11.

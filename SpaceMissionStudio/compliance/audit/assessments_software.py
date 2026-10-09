@@ -108,7 +108,7 @@ SOFTWARE_RULES = [
      "SUITP integration part; reports.", "S", "no", "R12,R14"),
     # 5.6 validation
     ("E-ST-40C", "5.6.2.1*", "P", "compliance/docs/SValP.md", "Validation plan drafted by the supplier; reviews waived (D-08).", "-", "M", "no", "R14"),
-    ("E-ST-40C", "5.6.3.*", "P", "compliance/docs/SValP.md, SVS.md, SVR.md; tests/validation (V-01, V-02, V-04 to V-08 within tolerance)", "Validation against the TS is specified, done and reported; not reviewed (CDR, H01); SRS-P-09/R-02 measured and met on the reference PC (decision 19); the suite fails on Windows and macOS (SRelD K-10).", "Fix the platform failures (K-10).", "M", "no", "R13,R14,H01,H13"),
+    ("E-ST-40C", "5.6.3.*", "P", "compliance/docs/SValP.md, SVS.md, SVR.md; tests/validation (V-01, V-02, V-04 to V-08 within tolerance)", "Validation against the TS is specified, done and reported; not reviewed (CDR, H01); SRS-P-09/R-02 measured and met on the reference PC (decision 19); the suite passes on Linux, Windows and macOS in CI (SVR 4.6, SRelD K-10 closed).", "Review (H01); run the Windows installer by hand (H13).", "M", "no", "R13,R14,H01,H13"),
     ("E-ST-40C", "5.6.3.4a", "N", "-", "No CDR.", _REVIEW_FIX, "S", "no", "H01,D-08"),
     ("E-ST-40C", "5.6.4.*", "N", "compliance/docs/SValP.md 4.1", "Validation against a requirements baseline is not possible: the baseline is waived (decision 9). Validation against the technical specification (5.6.3) is done.", "-", "M", "no", "H03,D-11"),
     ("E-ST-40C", "5.6.4.4a", "N", "-", "No QR.", _REVIEW_FIX, "S", "no", "H01,D-08"),

@@ -103,7 +103,11 @@ Result: **2055 passed, 11 skipped, 0 failed** (245 s, 3 workers). Every later ph
     macOS (SRelD K-10), one a possible wrong altitude-trade result on
     Windows, which turned out to be finding F-09 (`review_log.md`). The
     one-day run's warning about NOAA's monthly F10.7 forecast is the
-    designed order of the real data, not a defect.
+    designed order of the real data, not a defect. After the fixes
+    (F-09 to F-12, test portability) the suite passes in CI on Linux,
+    Windows and macOS: 2259 passed, 11 skipped, 0 failed each, commit
+    `41b73b1c3`, run 37854361784. SRS-PO-01 is met by test (SVR 4.6);
+    the Windows installer is still to be run by hand.
 
 ## Phase 1 test run
 
