@@ -25,6 +25,10 @@
  *       feeds a recorded input trace through the flight software, writes every
  *       output and telemetry port to <outputs.trace>, and with --expect compares
  *       them with a recorded run (exit status 1 if any value is out of tolerance)
+ *   fsw_host sil <address>
+ *       runs the flight software software-in-the-loop: connects to the simulation at
+ *       <address> (unix:<path> or tcp:127.0.0.1:<port>) and serves the SIL contract
+ *       (SIL_CONTRACT.md) with the session token from the SMS_SIL_TOKEN environment variable
  */
 
 #include <stdio.h>
@@ -33,7 +37,12 @@
 
 #include "fsw_ports.h"
 #include "fsw_scheduler.h"
+#include "fsw_sil.h"
 #include "fsw_trace.h"
+#include "fsw_transport.h"
+#ifdef FSW_HAVE_BSK_LOG
+#include "fsw_log.h"
+#endif
 
 #define MAX_PORTS 64
 
@@ -93,7 +102,6 @@ static int replay(const char *inputPath, const char *outputPath, const char *exp
         out[i] = i < fsw_output_port_count ? &fsw_output_ports[i] : &fsw_telemetry_ports[i - fsw_output_port_count];
         outData[i] = allocate(out[i]->size);
         expData[i] = allocate(out[i]->size);
-        outWritten[i] = 1;
     }
     if (fsw_trace_open(&inputs, inputPath, FSW_TRACE_INPUTS, in, nIn, error, sizeof error) != 0) {
         fprintf(stderr, "fsw_host: %s\n", error);
@@ -128,7 +136,7 @@ static int replay(const char *inputPath, const char *outputPath, const char *exp
         }
         fsw_step(timeNs);
         for (i = 0; i < nOut; i++) {
-            out[i]->read(outData[i]);
+            outWritten[i] = (uint8_t)(out[i]->read(outData[i]) ? 1 : 0);
         }
         fsw_trace_write(&outputs, timeNs, outWritten, (const void *const *)outData, out);
         if (expectPath != NULL) {
@@ -137,8 +145,14 @@ static int replay(const char *inputPath, const char *outputPath, const char *exp
                 return 2;
             }
             for (i = 0; i < nOut; i++) {
-                double maxError;
-                if (!fsw_payloads_match(out[i], outData[i], expData[i], rtol, atol, &maxError)) {
+                double maxError = 0.0;
+                if (!outWritten[i] && expWritten[i]) {
+                    if (failures < 20) {
+                        fprintf(stderr, "step %u (t = %.9g s): %s was not written\n", (unsigned)step,
+                                (double)timeNs * 1.0e-9, out[i]->name);
+                    }
+                    failures++;
+                } else if (!fsw_payloads_match(out[i], outData[i], expData[i], rtol, atol, &maxError)) {
                     if (failures < 20) {
                         fprintf(stderr, "step %u (t = %.9g s): %s differs, max |error| %.3g\n", (unsigned)step,
                                 (double)timeNs * 1.0e-9, out[i]->name, maxError);
@@ -170,6 +184,26 @@ static int replay(const char *inputPath, const char *outputPath, const char *exp
     return 0;
 }
 
+static int sil(const char *address)
+{
+    FswTransport transport;
+    char error[512];
+    int status;
+    if (fsw_transport_connect(&transport, address, error, sizeof error) != 0) {
+        fprintf(stderr, "fsw_host: %s\n", error);
+        return FSW_SIL_LINK_FAILED;
+    }
+#ifdef FSW_HAVE_BSK_LOG
+    fsw_set_error_handler(fsw_sil_report_error);
+#endif
+    status = fsw_sil_serve(&transport, getenv(FSW_SIL_TOKEN_ENV), error, sizeof error);
+    transport.close(&transport);
+    if (status != FSW_SIL_DONE) {
+        fprintf(stderr, "fsw_host: %s\n", error);
+    }
+    return status;
+}
+
 int main(int argc, char **argv)
 {
     const char *expect = NULL;
@@ -177,6 +211,9 @@ int main(int argc, char **argv)
     int i;
     if (argc >= 2 && strcmp(argv[1], "info") == 0) {
         return info();
+    }
+    if (argc == 3 && strcmp(argv[1], "sil") == 0) {
+        return sil(argv[2]);
     }
     if (argc >= 4 && strcmp(argv[1], "replay") == 0) {
         for (i = 4; i + 1 < argc; i += 2) {
@@ -195,6 +232,7 @@ int main(int argc, char **argv)
     }
     fprintf(stderr, "usage: fsw_host info\n"
                     "       fsw_host replay <inputs.trace> <outputs.trace> [--expect <expected.trace>]"
-                    " [--rtol R] [--atol A]\n");
+                    " [--rtol R] [--atol A]\n"
+                    "       fsw_host sil <unix:path | tcp:127.0.0.1:port>\n");
     return 2;
 }

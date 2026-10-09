@@ -28,7 +28,8 @@ Layout of an export::
     CMakeLists.txt  README.md  ICD.md  TRACEABILITY.md  manifest.json
     basilisk/         the Basilisk sources the modules need, unchanged, and Basilisk's LICENSE
     generated/        cMsgCInterface/, fsw_config.[ch], fsw_scheduler.c, fsw_ports.c, fsw_layout_check.c, ...
-    host/fsw_host.c   info and replay
+    host/fsw_host.c   info, replay and sil (the SIL harness, SIL_CONTRACT.md)
+    adapter/          the SIL adapter template for flight software of your own (ADAPTER_GUIDE.md)
     tests/            one unit test per module; data/ the recorded replay traces
 """
 
@@ -48,10 +49,12 @@ from . import cdecl, sources
 from .catalog import MODULES
 from .digest import EXPORT_FORMAT_VERSION
 from .model import FswCapture, Port, decode
+from .model import leaves as _leaves
 
 _TEMPLATES = Path(__file__).resolve().parent / "templates"
 _STATIC_GENERATED = ("fsw_log.c", "fsw_log.h", "fsw_ports.h", "fsw_compare.c", "fsw_trace.c", "fsw_trace.h",
-                     "fsw_scheduler.h")
+                     "fsw_scheduler.h", "fsw_sil.c", "fsw_sil.h", "fsw_transport.h", "fsw_transport_socket.c")
+_STATIC_DOCUMENTS = ("SIL_CONTRACT.md", "ADAPTER_GUIDE.md")
 _INCLUDE = re.compile(r'^\s*#\s*include\s+"([^"]+)"', re.M)
 _STANDARD_HEADERS = {"math.h", "string.h", "stdio.h", "stdlib.h", "stdint.h", "stddef.h", "float.h", "limits.h"}
 # The C-to-C half of Basilisk's C message interface template.
@@ -176,24 +179,6 @@ def _wrap(text: str, indent: str = "    ", width: int = 116) -> str:
             line = f"{line} {piece}" if line else piece
     lines.append(line)
     return "\n".join(lines)
-
-
-def _leaves(layout: dict, base: int = 0, prefix: str = "") -> List[Tuple[int, int, str, str]]:
-    """``(offset, count, kind, name)`` runs of scalars, nested structs flattened."""
-    out = []
-    for entry in layout["fields"]:
-        count = 1
-        for n in entry["shape"]:
-            count *= n
-        name = prefix + entry["name"]
-        if "struct" in entry:
-            size = entry["struct"]["itemsize"]
-            for i in range(count):
-                out += _leaves(entry["struct"], base + entry["offset"] + i * size,
-                               f"{name}[{i}]." if count > 1 or entry["shape"] else f"{name}.")
-        else:
-            out.append((base + entry["offset"], count, entry["kind"], name))
-    return out
 
 
 # ----------------------------------------------------------------------------- sources
@@ -454,25 +439,36 @@ def _generate_ports(ctx: _Context, types: List[str]) -> None:
          "#include <string.h>", "", '#include "fsw_config.h"', '#include "fsw_ports.h"', '#include "fsw_leaves.h"', "",
          f'const char fsw_config_digest[] = "{cap.config_digest}";',
          f'const char fsw_spacecraft_name[] = "{_c_string(cap.spacecraft)}";', ""]
-    leaves_h = [_isc_c(), "", "/* Each payload type's scalar runs, for comparing payloads. Generated. */", "",
-                "#ifndef FSW_LEAVES_H", "#define FSW_LEAVES_H", "", '#include "fsw_ports.h"', ""]
+    leaves_h = [_isc_c(), "", "/* Each payload type's scalar runs, for comparing payloads (fsw_leaves.c). Generated. */",
+                "", "#ifndef FSW_LEAVES_H", "#define FSW_LEAVES_H", "", '#include "fsw_ports.h"', ""]
+    leaves_c = [_isc_c(), "", "/* Each payload type's scalar runs, from the layouts the simulation recorded. Generated. */",
+                "", '#include "fsw_leaves.h"', ""]
     for t in types:
         layout = cap.message_types[t].layout
         runs = _leaves(layout)
         leaves_h += [f"extern const FswLeaf fsw_leaves_{t}[];", f"extern const uint32_t fsw_leaf_count_{t};"]
-        p.append(f"const FswLeaf fsw_leaves_{t}[] = {{")
-        p += [f'    {{{off}, {count}, {_LEAF_KINDS[kind]}, "{name}"}},' for off, count, kind, name in runs]
-        p += ["};", f"const uint32_t fsw_leaf_count_{t} = {len(runs)};", ""]
+        leaves_c.append(f"const FswLeaf fsw_leaves_{t}[] = {{")
+        leaves_c += [f'    {{{off}, {count}, {_LEAF_KINDS[kind]}, "{name}"}},' for off, count, kind, name in runs]
+        leaves_c += ["};", f"const uint32_t fsw_leaf_count_{t} = {len(runs)};", ""]
     leaves_h += ["", "#endif", ""]
     ctx.write("generated/fsw_leaves.h", "\n".join(leaves_h))
+    ctx.write("generated/fsw_leaves.c", "\n".join(leaves_c))
     for port in cap.inputs:
         p += [f"static void write_{port.name}(const void *payload, uint64_t timeNs)", "{",
               f"    {port.message_type}MsgPayload value;", "    memcpy(&value, payload, sizeof value);",
               f"    {port.message_type}Msg_C_write(&value, &fsw_inputs.{port.name}, 0, timeNs);", "}", ""]
     for port in cap.outputs + cap.telemetry:
-        p += [f"static void read_{port.name}(void *payload)", "{",
+        p += [f"static int read_{port.name}(void *payload)", "{",
               f"    memcpy(payload, FSW_OUTPUT_PAYLOAD({_output_container(port)}), sizeof({port.message_type}MsgPayload));",
-              "}", ""]
+              "    return 1;", "}", ""]
+
+    _port_tables(cap, p)
+    ctx.write("generated/fsw_ports.c", "\n".join(p))
+
+
+def _port_tables(cap: FswCapture, p: List[str]) -> None:
+    """The ``fsw_*_ports`` tables, with ``write_<port>``/``read_<port>`` glue
+    defined before them."""
 
     def table(name: str, ports: List[Port], is_input: bool) -> None:
         if not ports:
@@ -489,7 +485,97 @@ def _generate_ports(ctx: _Context, types: List[str]) -> None:
     table("fsw_input_ports", cap.inputs, True)
     table("fsw_output_ports", cap.outputs, False)
     table("fsw_telemetry_ports", cap.telemetry, False)
-    ctx.write("generated/fsw_ports.c", "\n".join(p))
+
+
+def _adapter_struct(name: str, ports: List[Port], doc: str, flags: bool) -> List[str]:
+    lines = [f"/*! @brief {doc} */", "typedef struct {"]
+    for port in ports:
+        lines.append(f"    uint8_t {port.name};" if flags else f"    {port.message_type}MsgPayload {port.name};")
+    if not ports:
+        lines.append("    int unused; /*!< no ports of this kind */")
+    return lines + [f"}} {name};", ""]
+
+
+def _generate_adapter(ctx: _Context) -> None:
+    """``adapter/``: the same ports as the export, backed by plain payload
+    structs, for flight software of your own (ADAPTER_GUIDE.md)."""
+    cap = ctx.capture
+    types = sorted({p.message_type for p in cap.inputs + cap.outputs + cap.telemetry}
+                   | {c.message_type for c in cap.constants})
+    h = [_isc_c(), "", f"/* SIL adapter for {_comment(cap.spacecraft)}'s ports: plain payload structs your flight software",
+         " * reads and writes (ADAPTER_GUIDE.md). Generated with the export; re-export rather than edit. */", "",
+         "#ifndef FSW_ADAPTER_H", "#define FSW_ADAPTER_H", "", "#include <stdint.h>", ""]
+    h += [f'#include "architecture/msgPayloadDefC/{t}MsgPayload.h"' for t in types] + [""]
+    h += _adapter_struct("FswAdapterInputs", cap.inputs, "The inputs, as last written by the simulation.", False)
+    h += _adapter_struct("FswAdapterInputFlags", cap.inputs, "1 for each input the simulation has written.", True)
+    h += _adapter_struct("FswAdapterOutputs", cap.outputs, "The actuator commands your flight software sets.", False)
+    h += _adapter_struct("FswAdapterOutputFlags", cap.outputs, "Set to 1 for each command you set.", True)
+    h += _adapter_struct("FswAdapterTelemetry", cap.telemetry,
+                         "Telemetry compared with the simulation's own modules (optional).", False)
+    h += _adapter_struct("FswAdapterTelemetryFlags", cap.telemetry, "Set to 1 for each telemetry value you set.", True)
+    h += ["extern FswAdapterInputs fsw_adapter_inputs;", "extern FswAdapterInputFlags fsw_adapter_inputs_written;",
+          "extern FswAdapterOutputs fsw_adapter_outputs;", "extern FswAdapterOutputFlags fsw_adapter_outputs_written;",
+          "extern FswAdapterTelemetry fsw_adapter_telemetry;",
+          "extern FswAdapterTelemetryFlags fsw_adapter_telemetry_written;", ""]
+    for const in cap.constants:
+        h += [f"/*! @brief {const.name}: the configuration the exported modules use (read by "
+              f"{_comment(', '.join(const.consumers))}). */",
+              f"extern const {const.message_type}MsgPayload fsw_adapter_constant_{const.name};"]
+    h += ["", "/*! @brief Zeroes every input, output and telemetry payload and flag. */",
+          "void fsw_adapter_clear(void);", "", "#endif", ""]
+    ctx.write("adapter/fsw_adapter.h", "\n".join(h))
+
+    c = [_isc_c(), "", f"/* SIL adapter port glue for {_comment(cap.spacecraft)} (fsw_adapter.h). Generated with the export. */",
+         "", "#include <string.h>", "", '#include "fsw_adapter.h"', '#include "fsw_leaves.h"', '#include "fsw_ports.h"', "",
+         "FswAdapterInputs fsw_adapter_inputs;", "FswAdapterInputFlags fsw_adapter_inputs_written;",
+         "FswAdapterOutputs fsw_adapter_outputs;", "FswAdapterOutputFlags fsw_adapter_outputs_written;",
+         "FswAdapterTelemetry fsw_adapter_telemetry;", "FswAdapterTelemetryFlags fsw_adapter_telemetry_written;", ""]
+    for const in cap.constants:
+        value = _payload_literal(cap, const.message_type, const.value_hex)
+        c.append(_wrap(f"const {const.message_type}MsgPayload fsw_adapter_constant_{const.name} = {value};"))
+    c += ["", "void fsw_adapter_clear(void)", "{"]
+    for name in ("inputs", "inputs_written", "outputs", "outputs_written", "telemetry", "telemetry_written"):
+        c.append(f"    memset(&fsw_adapter_{name}, 0, sizeof fsw_adapter_{name});")
+    c += ["}", ""]
+    for port in cap.inputs:
+        c += [f"static void write_{port.name}(const void *payload, uint64_t timeNs)", "{", "    (void)timeNs;",
+              f"    memcpy(&fsw_adapter_inputs.{port.name}, payload, sizeof fsw_adapter_inputs.{port.name});",
+              f"    fsw_adapter_inputs_written.{port.name} = 1;", "}", ""]
+    for group, ports in (("outputs", cap.outputs), ("telemetry", cap.telemetry)):
+        for port in ports:
+            c += [f"static int read_{port.name}(void *payload)", "{",
+                  f"    memcpy(payload, &fsw_adapter_{group}.{port.name}, sizeof fsw_adapter_{group}.{port.name});",
+                  f"    return fsw_adapter_{group}_written.{port.name} ? 1 : 0;", "}", ""]
+    _port_tables(cap, c)
+    ctx.write("adapter/fsw_adapter_ports.c", "\n".join(c))
+
+    def listing(ports: List[Port]) -> List[str]:
+        return [f" *     {p.name:<44} {p.message_type}MsgPayload" for p in ports] or [" *     (none)"]
+
+    a = [_isc_c(), "",
+         f"/* SIL adapter template for {_comment(cap.spacecraft)}: put your own flight software behind the same ports as",
+         " * the export, then build fsw_adapter_host and run it from SpaceMissionStudio (Flight Software tab, Run SIL)",
+         " * or with `fsw_adapter_host replay ...`. ADAPTER_GUIDE.md walks through it. As generated it builds and runs,",
+         " * but sets no command: the simulation then holds the actuators at zero and reports the outputs missing.",
+         " *",
+         " * Inputs (fsw_adapter_inputs.<name>; fsw_adapter_inputs_written.<name> is 1 once written):", *listing(cap.inputs),
+         " * Outputs (set fsw_adapter_outputs.<name> and fsw_adapter_outputs_written.<name> = 1):", *listing(cap.outputs),
+         " * Telemetry (optional, same pattern with fsw_adapter_telemetry):", *listing(cap.telemetry), " */", "",
+         "#include <string.h>", "", '#include "fsw_adapter.h"', '#include "fsw_ports.h"', '#include "fsw_scheduler.h"', "",
+         "/* Your flight software's name, as the simulation shows it. */",
+         'const char fsw_spacecraft_name[] = "adapter template";',
+         "/* 64 zeros: this flight software was not exported from a SpaceMissionStudio scenario. */",
+         f'const char fsw_config_digest[] = "{"0" * 64}";',
+         "/* The step your flight software runs at; the simulation refuses a different one. */",
+         f"const uint64_t fsw_rate_ns = {cap.rate_ns}ULL;", "",
+         "void fsw_init(void)", "{", "    fsw_adapter_clear();", "    /* Initialise your flight software here. */", "}", "",
+         "void fsw_reset(uint64_t timeNs)", "{", "    (void)timeNs;",
+         "    /* Reset your flight software; fsw_adapter_inputs holds the inputs written at reset. */", "}", "",
+         "void fsw_step(uint64_t timeNs)", "{", "    (void)timeNs;",
+         "    /* 1. Read this step's inputs from fsw_adapter_inputs.",
+         "     * 2. Run one step of your flight software.",
+         "     * 3. Set each command in fsw_adapter_outputs and its flag in fsw_adapter_outputs_written. */", "}", ""]
+    ctx.write("adapter/fsw_adapter.c", "\n".join(a))
 
 
 def _struct_header(type_name: str) -> Optional[str]:
@@ -633,16 +719,32 @@ def _generate_cmake(ctx: _Context, basilisk_sources: List[str], types: List[str]
     lib = ["    " + f"basilisk/{p}" for p in basilisk_sources if p.endswith(".c")]
     lib += [f"    generated/cMsgCInterface/{t}Msg_C.c" for t in types]
     lib += [f"    generated/{name}" for name in ("fsw_config.c", "fsw_scheduler.c", "fsw_ports.c", "fsw_layout_check.c",
-                                                   "fsw_log.c", "fsw_compare.c", "fsw_trace.c")]
+                                                   "fsw_log.c")]
     cm = [f"# Flight software of {_comment(cap.spacecraft)}, exported by SpaceMissionStudio (see README.md).",
           "cmake_minimum_required(VERSION 3.16)", f"project({project} C)", "",
           "# Basilisk's C modules use M_PI: C99 with the compiler's extensions (gnu99 for GCC and Clang).",
           "set(CMAKE_C_STANDARD 99)", "set(CMAKE_C_STANDARD_REQUIRED ON)", "set(CMAKE_C_EXTENSIONS ON)", "",
+          "# Comparing payloads, trace files and the SIL link: shared by the exported flight software and the adapter.",
+          "add_library(fsw_support STATIC generated/fsw_compare.c generated/fsw_trace.c generated/fsw_leaves.c",
+          "    generated/fsw_transport_socket.c)",
+          "target_include_directories(fsw_support PUBLIC basilisk generated)",
+          "if(MSVC)", "    target_compile_definitions(fsw_support PUBLIC _USE_MATH_DEFINES _CRT_SECURE_NO_WARNINGS)",
+          "else()", "    target_link_libraries(fsw_support PUBLIC m)", "endif()",
+          "if(WIN32)", "    target_link_libraries(fsw_support PUBLIC ws2_32)", "endif()", "",
           "add_library(fsw STATIC", *lib, ")",
-          "target_include_directories(fsw PUBLIC basilisk generated)",
-          "if(MSVC)", "    target_compile_definitions(fsw PUBLIC _USE_MATH_DEFINES _CRT_SECURE_NO_WARNINGS)",
-          "else()", "    target_link_libraries(fsw PUBLIC m)", "endif()", "",
-          "add_executable(fsw_host host/fsw_host.c)", "target_link_libraries(fsw_host PRIVATE fsw)", "",
+          "target_link_libraries(fsw PUBLIC fsw_support)", "",
+          "# info, replay and sil (SIL_CONTRACT.md).",
+          "add_executable(fsw_host host/fsw_host.c generated/fsw_sil.c)", "target_link_libraries(fsw_host PRIVATE fsw)",
+          "target_compile_definitions(fsw_host PRIVATE FSW_HAVE_BSK_LOG)", "",
+          "# The SIL adapter for flight software of your own (ADAPTER_GUIDE.md).",
+          'option(FSW_BUILD_ADAPTER "Build the SIL adapter in adapter/" ON)',
+          "if(FSW_BUILD_ADAPTER)",
+          "    add_library(fsw_adapter STATIC adapter/fsw_adapter.c adapter/fsw_adapter_ports.c)",
+          "    target_include_directories(fsw_adapter PUBLIC adapter)",
+          "    target_link_libraries(fsw_adapter PUBLIC fsw_support)",
+          "    add_executable(fsw_adapter_host host/fsw_host.c generated/fsw_sil.c)",
+          "    target_link_libraries(fsw_adapter_host PRIVATE fsw_adapter)",
+          "endif()", "",
           "enable_testing()"]
     for name in tests:
         cm += [f"add_executable(test_{name} tests/test_{name}.c)",
@@ -650,7 +752,8 @@ def _generate_cmake(ctx: _Context, basilisk_sources: List[str], types: List[str]
     cm += ["add_test(NAME replay COMMAND fsw_host replay",
            "         ${CMAKE_CURRENT_SOURCE_DIR}/tests/data/replay_inputs.trace",
            "         ${CMAKE_CURRENT_BINARY_DIR}/replay_outputs.trace",
-           "         --expect ${CMAKE_CURRENT_SOURCE_DIR}/tests/data/replay_expected.trace)", ""]
+           "         --expect ${CMAKE_CURRENT_SOURCE_DIR}/tests/data/replay_expected.trace)",
+           "if(FSW_BUILD_ADAPTER)", "    add_test(NAME adapter_ports COMMAND fsw_adapter_host info)", "endif()", ""]
     ctx.write("CMakeLists.txt", "\n".join(cm))
 
 
@@ -701,10 +804,13 @@ def generate(capture: FswCapture, out_dir, overwrite: bool = False) -> ExportRes
     for name in _STATIC_GENERATED:
         ctx.write(f"generated/{name}", (_TEMPLATES / name).read_text())
     ctx.write("host/fsw_host.c", (_TEMPLATES / "fsw_host.c").read_text())
+    for name in _STATIC_DOCUMENTS:
+        ctx.write(name, (_TEMPLATES / name).read_text())
     _generate_config(ctx, [MODULES[n].header for n in module_names])
     _generate_scheduler(ctx)
     _generate_ports(ctx, types)
     _generate_layout_check(ctx, types)
+    _generate_adapter(ctx)
     tests = _generate_unit_tests(ctx)
     _generate_traces(ctx)
     _generate_cmake(ctx, basilisk_files, types, tests)

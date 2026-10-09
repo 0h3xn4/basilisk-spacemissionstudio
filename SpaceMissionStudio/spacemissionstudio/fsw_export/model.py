@@ -29,7 +29,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import asdict, dataclass, field
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -64,6 +64,26 @@ def layout_hash(message_type: str, layout: dict) -> str:
     (the SIL contract compares these before the first step)."""
     text = json.dumps({"type": message_type, "layout": layout}, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(text.encode()).hexdigest()[:16]
+
+
+def leaves(layout: dict, base: int = 0, prefix: str = "") -> List[Tuple[int, int, str, str]]:
+    """``(offset, count, kind, name)`` runs of scalars, nested structs
+    flattened; padding is in no run. The generated ``fsw_leaves.c`` and the
+    SIL comparison both read payloads this way."""
+    out = []
+    for entry in layout["fields"]:
+        count = 1
+        for n in entry["shape"]:
+            count *= n
+        name = prefix + entry["name"]
+        if "struct" in entry:
+            size = entry["struct"]["itemsize"]
+            for i in range(count):
+                out += leaves(entry["struct"], base + entry["offset"] + i * size,
+                              f"{name}[{i}]." if count > 1 or entry["shape"] else f"{name}.")
+        else:
+            out.append((base + entry["offset"], count, entry["kind"], name))
+    return out
 
 
 def decode(layout: dict, data: bytes):

@@ -163,7 +163,7 @@ def test_every_attitude_template_exports_builds_and_reproduces_the_simulation(tm
     built = _cmake("--build", str(build), "--config", "Release", "-j", "4")
     assert built.returncode == 0, built.stdout + built.stderr
     ours = [line for line in (built.stdout + built.stderr).splitlines()
-            if "warning" in line and re.search(r"[/\\](generated|host|tests)[/\\]", line)]
+            if "warning" in line and re.search(r"[/\\](generated|host|tests|adapter)[/\\]", line)]
     assert not ours, "\n".join(ours)
     ctest = shutil.which("ctest")
     tested = subprocess.run([ctest, "--test-dir", str(build), "-C", "Release", "--output-on-failure"],  # noqa: S603

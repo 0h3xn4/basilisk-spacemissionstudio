@@ -160,7 +160,10 @@ def icd_markdown(cap: FswCapture) -> str:
               "every output and telemetry port must equal the simulation's, to a relative 1e-9 and an absolute "
               "1e-12.",
               "- `generated/fsw_layout_check.c`: the build stops if any payload's size or field offsets differ from "
-              "the simulation's.", "",
+              "the simulation's.",
+              "- Software in the loop (`fsw_host sil`, `SIL_CONTRACT.md`): SpaceMissionStudio flies the spacecraft "
+              "with this software, step by step, and compares every output and telemetry port with its own modules; "
+              "before the first step it checks each port's name, size and layout hash.", "",
               "Not covered: timing on target hardware, real sensors (the inputs are the simulation's navigation "
               "messages), and modes or settings the scenario does not use.", "",
               "## 7 Assumptions and limits", "",
@@ -223,6 +226,11 @@ def readme_markdown(cap: FswCapture) -> str:
         "}", "```", "",
         "`ICD.md` lists every port, its payload, units, producer and consumers; `TRACEABILITY.md` where each "
         "parameter comes from.", "",
+        "## In the loop", "",
+        "`fsw_host sil <address>` serves the SIL transport contract (`SIL_CONTRACT.md`): SpaceMissionStudio "
+        "starts it (Flight Software tab, Run SIL...) and flies the spacecraft with its commands, comparing them "
+        "with its own modules. To put flight software of your own behind the same ports, edit "
+        "`adapter/fsw_adapter.c` and build `fsw_adapter_host` (`ADAPTER_GUIDE.md`).", "",
         "## Contents", "",
         "| Path | What |", "|---|---|",
         f"| `basilisk/` | Basilisk {cap.basilisk_version} sources (revision `{cap.basilisk_revision[:9]}`), unchanged, "
@@ -233,7 +241,10 @@ def readme_markdown(cap: FswCapture) -> str:
         "| `generated/fsw_ports.c` | The port tables (`fsw_ports.h`) |",
         "| `generated/fsw_log.c` | Basilisk's C logging API, without Basilisk |",
         "| `generated/fsw_layout_check.c` | Compile-time payload layout checks |",
-        "| `host/fsw_host.c` | `info` and `replay` |",
+        "| `generated/fsw_sil.c`, `fsw_transport*` | The SIL harness and its socket link |",
+        "| `host/fsw_host.c` | `info`, `replay` and `sil` |",
+        "| `adapter/` | The SIL adapter template for flight software of your own |",
+        "| `SIL_CONTRACT.md`, `ADAPTER_GUIDE.md` | The SIL transport contract, and how to use the adapter |",
         "| `tests/` | Unit tests and the recorded replay traces |",
         "| `capture.json` | Everything recorded from the simulation (used by SpaceMissionStudio) |",
         "| `manifest.json` | Configuration digest, provenance and a SHA-256 of every file |", "",

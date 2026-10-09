@@ -69,8 +69,8 @@ typedef struct {
     uint32_t leafCount;
     /*! Writes an input port's payload (inputs only, NULL otherwise). */
     void (*write)(const void *payload, uint64_t timeNs);
-    /*! Copies the current payload out (outputs and telemetry). */
-    void (*read)(void *payload);
+    /*! Copies the current payload out (outputs and telemetry); returns 1 when it has been written, else 0. */
+    int (*read)(void *payload);
 } FswPort;
 
 extern const FswPort fsw_input_ports[];
