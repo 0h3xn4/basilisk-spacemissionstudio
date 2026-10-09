@@ -434,12 +434,38 @@ class MainWindow(QMainWindow):
         # even state which version they were running from inside the
         # app itself.
         help_menu = self.menuBar().addMenu("&Help")
+        manual_action = QAction("&User Manual", self)
+        manual_action.setShortcut(QKeySequence.StandardKey.HelpContents)
+        manual_action.setToolTip("Opens the user manual shipped with the app (works offline).")
+        manual_action.triggered.connect(self.on_user_manual)
+        help_menu.addAction(manual_action)
+        self.manual_action = manual_action
+        shortcuts_action = QAction("&Keyboard Shortcuts", self)
+        shortcuts_action.setToolTip("Lists the keyboard shortcuts.")
+        shortcuts_action.triggered.connect(self.on_keyboard_shortcuts)
+        help_menu.addAction(shortcuts_action)
+        help_menu.addSeparator()
         about_action = QAction("&About SpaceMissionStudio", self)
         about_action.setToolTip("Shows the installed version and licensing information.")
         about_action.triggered.connect(self.on_about)
         help_menu.addAction(about_action)
 
         self._build_toolbar()
+
+    def on_user_manual(self) -> None:
+        from .help_dialog import ManualDialog
+
+        dialog = ManualDialog(self)
+        dialog.setModal(False)
+        dialog.show()
+        self._manual_dialog = dialog  # keep it alive while it is open
+
+    def on_keyboard_shortcuts(self) -> None:
+        from .help_dialog import ShortcutsDialog
+
+        actions = [action for menu_action in self.menuBar().actions() if menu_action.menu() is not None
+                   for action in menu_action.menu().actions()]
+        ShortcutsDialog(actions, self).exec()
 
     def on_about(self) -> None:
         import importlib.util

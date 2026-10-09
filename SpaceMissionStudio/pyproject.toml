@@ -72,7 +72,7 @@ include = ["spacemissionstudio*"]
 [tool.setuptools.package-data]
 spacemissionstudio = ["scenarios/*.json", "scenarios/templates/*.json", "scenarios/templates/README.md",
                       "gui/assets/*.svg", "data/spaceweather/SW-All.txt", "data/spaceweather/oct2026f10-prd.txt",
-                      "data/spaceweather/README.md"]
+                      "data/spaceweather/README.md", "help/USER_MANUAL.md", "help/docs/images/*.png"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
