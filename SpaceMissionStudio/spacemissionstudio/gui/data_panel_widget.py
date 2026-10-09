@@ -154,6 +154,7 @@ class DataPanelWidget(QWidget):
 
     def _menu_button(self, text: str, tooltip: str, items) -> QToolButton:
         button = QToolButton()
+        button.setProperty("tertiary", True)  # styled as a Carbon tertiary button (gui/theme.py)
         button.setText(text)
         button.setToolTip(tooltip)
         button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)

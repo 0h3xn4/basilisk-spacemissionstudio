@@ -28,6 +28,16 @@ Findings of the whole-tool review that followed the human actions
 - `test_path_cell_carries_the_full_path_as_a_tooltip` expected `/` on Windows.
 - Three width tests had pixel limits measured at the Linux CI's font; they
   are now in average character widths (the same limits on Linux).
+- `test_an_accepted_download_runs_and_reports_what_changed` (the Data tab,
+  UX step 2) waited for `QThread.finished` after starting a worker whose
+  stub task ends at once, so the signal could come first (CI run 51,
+  Linux). It now waits for the buttons the result slot enables again.
+- Observed, not a tool defect: run on their own in this sandbox, the test
+  files that open a Results plot (`QWebEngineView`) end in a segmentation
+  fault after every test has passed, while Qt WebEngine shuts down
+  ("Release of profile requested but WebEnginePage still not deleted").
+  It happens on `5c2805085` too, before the event, cursor and comparison
+  work, and not in the parallel suite runs that CI uses.
 - macOS: the plot tests ran Qt WebEngine on the offscreen plugin, which does
   not work there (page loads never finished, a worker crashed); the macOS
   job now uses Qt's cocoa plugin.

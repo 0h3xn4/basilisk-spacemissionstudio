@@ -132,6 +132,8 @@ the table below.
 | CI run 48, `5c2805085` (UX step 1, F-16, F-17) | 2286 | 11 | Linux and Windows 0; macOS 1: the F1 test, as Qt's HelpContents key is Ctrl+? there. F1 is now set on every platform (`3214f1855`) |
 | After UX steps 2 and 3 and K-01, Python 3.11, `1d937c70b` | 2317 | 10 | 0 (new tests: the Data tab, the event model, the Events tab, the cursor on plots, dashboard and output, a real-run eclipse check; changed expectations: template 05's series count 40 -> 42 (eclipse series), template 21's claim figures (K-01). One skip fewer: the Kernel Status tests went with that tab, and one of them only ran without Basilisk) |
 | After UX step 4 and Open in Vizard, Python 3.11 | 2338 | 10 | 0 (21 new tests: Vizard playback naming and launch, command palette, undo history, run comparison, input diff; no changed expectations) |
+| CI run 51, `baa17580b` | 2336 | 11 | Windows and macOS 0; Linux 1: a race in the new Data tab download test (review_log, test defects), fixed in the test |
+| After the Carbon restyle, Python 3.11 | 2340 | 10 | 0 (2 new theme tests: IBM Plex loads, Carbon tokens and shared series colours; changed expectations: radio-dot.svg is now icon-primary, the Events table opens earliest first) |
 
 ## Resuming
 

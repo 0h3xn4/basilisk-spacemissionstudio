@@ -428,7 +428,8 @@ SpaceMissionStudio/
   README.md                          -- this file
   HISTORY.md                         -- the full phase-by-phase development log
   USER_MANUAL.md                     -- end-user walkthrough of the GUI (screenshots in docs/images/)
-  LICENSE                            -- ISC license
+  LICENSE                            -- ISC license (bundled IBM Plex fonts: SIL OFL 1.1,
+                                        spacemissionstudio/gui/assets/fonts/OFL.txt)
   pyproject.toml                     -- packaging metadata, pytest config, CLI entry point
   docs/
     images/                          -- USER_MANUAL.md's own screenshots

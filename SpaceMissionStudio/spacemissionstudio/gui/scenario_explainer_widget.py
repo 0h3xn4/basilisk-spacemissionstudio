@@ -85,7 +85,7 @@ def _stat_tile(label: str, value: str) -> QFrame:
     # tile's own value and caption labels.
     frame.setStyleSheet(
         f"QFrame#statTile {{ background-color: {PALETTE['surface']}; border: 1px solid {PALETTE['border']}; "
-        "border-radius: 6px; }"
+        "border-radius: 0px; }"  # Carbon tile
     )
     layout = QVBoxLayout(frame)
     layout.setContentsMargins(10, 6, 10, 6)

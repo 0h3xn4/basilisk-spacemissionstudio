@@ -41,15 +41,22 @@ from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QFileDialog, QHBoxL
 from .. import output_provenance
 from ..engine import events as event_model
 from ..engine.results import ResultSet
-from .theme import PALETTE
+from .theme import PALETTE, SERIES_COLORS
 from .time_cursor import TimeCursor, describe
 
 # Fixed categorical order, one colour per kind (the Results tab's series colours).
-KIND_COLOURS: Dict[str, str] = dict(zip(event_model.KINDS, ["#2a78d6", "#4a3aa7", "#eb6834", "#eda100", "#1baf7a"]))
+KIND_COLOURS: Dict[str, str] = dict(zip(event_model.KINDS, SERIES_COLORS))
 _COLUMNS = ["Start", "End", "Duration", "Kind", "Spacecraft", "Event", "Detail"]
 _ROW_HEIGHT = 22  # [px]
 _AXIS_HEIGHT = 26  # [px]
 _MIN_BAR_PX = 2  # [px] a short event on a long run stays visible
+
+
+def _plural(kind: str, count: int) -> str:
+    """"1 pass", "2 passes", "1 thruster firing", "3 thruster firings"."""
+    if count == 1:
+        return f"1 {kind}"
+    return f"{count} {kind}{'es' if kind.endswith('ss') else 's'}"
 
 
 def _duration_text(seconds: float) -> str:
@@ -228,7 +235,7 @@ class EventTimelineWidget(QWidget):
         controls = QHBoxLayout()
         self.kind_boxes: Dict[str, QCheckBox] = {}
         for kind in event_model.KINDS:
-            box = QCheckBox(kind.capitalize() + ("es" if kind == "pass" else "s"))
+            box = QCheckBox(_plural(kind, 2)[2:].capitalize())
             box.setChecked(True)
             box.setStyleSheet(f"QCheckBox {{ border-left: 10px solid {KIND_COLOURS[kind]}; padding-left: 4px; }}")
             box.toggled.connect(self._apply_filter)
@@ -264,6 +271,8 @@ class EventTimelineWidget(QWidget):
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(_COLUMNS.index("Detail"), QHeaderView.ResizeMode.Stretch)
         self.table.cellClicked.connect(self._on_row_clicked)
+        self._sorted_by_user = False
+        self.table.horizontalHeader().sectionClicked.connect(lambda _c: setattr(self, "_sorted_by_user", True))
         splitter.addWidget(self.table)
         splitter.setSizes([220, 300])
         layout.addWidget(splitter, 1)
@@ -286,9 +295,9 @@ class EventTimelineWidget(QWidget):
         if result is None:
             self.summary_label.setText("Run a scenario to see its passes, eclipses, burns and mode changes.")
         else:
-            text = ", ".join(f"{n} {kind}{'es' if kind == 'pass' else 's'}" for kind, n in counts.items() if n)
+            text = ", ".join(_plural(kind, n) for kind, n in counts.items() if n)
             self.summary_label.setText((text or "No events") + "." + "".join(
-                f" No {kind}{'es' if kind == 'pass' else 's'}: {why}." for kind, why in missing.items()))
+                f" No {_plural(kind, 2)[2:]}: {why}." for kind, why in missing.items()))
         self.export_button.setEnabled(bool(self.events))
         self._apply_filter()
 
@@ -324,9 +333,12 @@ class EventTimelineWidget(QWidget):
                      QTableWidgetItem(event.label), QTableWidgetItem(event.detail)]
             cells[0].setData(Qt.ItemDataRole.UserRole, event.start_s)
             cells[0].setToolTip(f"T+{event.start_s:.1f} s")
+            cells[-1].setToolTip(event.detail)
             for column, item in enumerate(cells):
                 self.table.setItem(row, column, item)
         self.table.setSortingEnabled(True)
+        if self.table.horizontalHeader().sortIndicatorSection() == 0 and not self._sorted_by_user:
+            self.table.sortItems(0, Qt.SortOrder.AscendingOrder)  # earliest first until the user sorts
 
     # -- cursor -----------------------------------------------------------
 

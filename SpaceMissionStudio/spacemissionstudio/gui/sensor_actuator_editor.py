@@ -495,7 +495,7 @@ class _ItemEditorDialog(QDialog):
 
         self.hint_label = QLabel()
         self.hint_label.setWordWrap(True)
-        self.hint_label.setStyleSheet(f"background: {PALETTE['accent_soft']}; border-radius: 4px; padding: 6px;")
+        self.hint_label.setStyleSheet(f"background: {PALETTE['info_soft']}; border-left: 3px solid {PALETTE['accent']}; padding: 6px 8px;")
         layout.addWidget(self.hint_label)
 
         body = QHBoxLayout()
@@ -527,7 +527,7 @@ class _ItemEditorDialog(QDialog):
         card = QFrame()
         card.setObjectName("deviceCard")
         card.setStyleSheet(f"QFrame#deviceCard {{ background: {PALETTE['surface']}; "
-                           f"border: 1px solid {PALETTE['border']}; border-radius: 6px; }}")
+                           f"border: 1px solid {PALETTE['border']}; border-radius: 0px; }}")  # Carbon tile
         card_layout = QVBoxLayout(card)
         card_layout.setContentsMargins(0, 0, 0, 0)
         card_layout.addWidget(self.catalog_info_label)

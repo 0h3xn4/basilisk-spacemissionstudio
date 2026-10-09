@@ -60,10 +60,12 @@ from shiboken6 import isValid
 
 from .theme import PALETTE
 
+# Carbon toast notifications (low contrast): the status background, a 3 px
+# status-colour rule on the left, primary text. (background, rule) per kind.
 _TOAST_KIND_COLORS = {
-    "success": (PALETTE["success"], PALETTE["on_accent"]),
-    "error": (PALETTE["danger"], PALETTE["on_accent"]),
-    "info": (PALETTE["text"], PALETTE["surface"]),
+    "success": (PALETTE["success_soft"], PALETTE["success"]),
+    "error": (PALETTE["danger_soft"], PALETTE["danger"]),
+    "info": (PALETTE["info_soft"], "#0043CE"),  # support-info
 }
 _TOAST_MARGIN_PX = 16
 _TOAST_GAP_PX = 8
@@ -75,10 +77,10 @@ class _Toast(QLabel):
 
     def __init__(self, parent: QWidget, message: str, kind: str) -> None:
         super().__init__(message, parent)
-        bg, fg = _TOAST_KIND_COLORS.get(kind, _TOAST_KIND_COLORS["info"])
+        bg, rule = _TOAST_KIND_COLORS.get(kind, _TOAST_KIND_COLORS["info"])
         self.setStyleSheet(
-            f"background-color: {bg}; color: {fg}; border-radius: 6px; "
-            f"padding: 8px 14px; font-weight: 600;"
+            f"background-color: {bg}; color: {PALETTE['text']}; border: none; border-left: 3px solid {rule}; "
+            f"border-radius: 0px; padding: 10px 16px; font-weight: 600;"
         )
         self.setWordWrap(True)
         self.setMaximumWidth(360)

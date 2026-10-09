@@ -62,6 +62,9 @@ def test_the_table_lists_every_event_and_sorts_by_time_not_text(qtbot):
     assert widget.table.rowCount() == 3
     assert "2 passes, 1 eclipse" in widget.summary_label.text()
     assert "No burns" in widget.summary_label.text()
+    starts = [widget.table.item(r, 0).data(Qt.ItemDataRole.UserRole) for r in range(3)]
+    assert starts == sorted(starts)  # earliest first until the user sorts
+    assert widget.table.item(0, 6).toolTip() == widget.table.item(0, 6).text()  # the full detail on hover
     widget.table.sortItems(2, Qt.SortOrder.DescendingOrder)  # duration
     assert widget.table.item(0, 3).text() == "eclipse"  # 19 min sorts above 9 min and 4 min
     assert set(widget.gantt.rows) == {"sat eclipse", "gs - sat"}

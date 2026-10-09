@@ -72,6 +72,7 @@ from .lifetime_widget import LifetimeWidget
 from .scenario_explainer_widget import ScenarioExplainerWidget
 from .startup_fetch_dialog import maybe_run_startup_fetch
 from .time_cursor import TimeCursor, describe as describe_time
+from .theme import PALETTE
 from .undo_history import ScenarioHistory
 from .run_history import RunHistory
 from .vizard_dialog import VizardDialog
@@ -276,7 +277,7 @@ class MainWindow(QMainWindow):
         if version_note is not None:
             self.basilisk_version_label.setText("Basilisk version not qualified")
             self.basilisk_version_label.setToolTip(version_note)
-            self.basilisk_version_label.setStyleSheet("color: #b8860b;")
+            self.basilisk_version_label.setStyleSheet(f"color: {PALETTE['warning']};")
         self.statusBar().addPermanentWidget(self.basilisk_version_label)
         self.time_cursor_label = QLabel()
         self.time_cursor_label.setToolTip("The shared time cursor. Click a plot or the Events timeline to move it; "

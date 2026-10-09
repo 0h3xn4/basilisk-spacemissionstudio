@@ -8014,3 +8014,21 @@ its playback time (reported upstream, H10).
 
 What remains of the UX/UI guidelines is the Carbon restyle
 (`docs/ux_guidelines_gap.md`).
+
+## The Carbon look (UX/UI guidelines, decision 1)
+
+The GUI now follows IBM's Carbon design system, rebuilt in Qt: Carbon's g10
+colours, IBM Plex Sans and Mono (bundled, unmodified, SIL Open Font
+License), square corners, filled fields with a bottom rule and a blue focus
+outline, line tabs, blue primary and outlined secondary buttons, grey table
+headers and selected rows, Carbon tags for badges and its notification style
+for toasts. Plots and the Events timeline use Carbon's data-visualisation
+hues, stepped and ordered so that neighbouring lines stay distinct for
+colour-blind readers; red and green are kept for errors and success.
+
+One deliberate difference from Carbon: input fields keep a light edge on
+every side, not only the bottom rule, because users could not tell editable
+values from labels without a box around them.
+
+All four steps of the UX/UI guidelines plan are now done
+(`docs/ux_guidelines_gap.md`).

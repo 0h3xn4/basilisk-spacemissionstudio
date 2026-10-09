@@ -132,7 +132,6 @@ import numpy as np
 
 import plotly.graph_objects as go
 from PySide6.QtCore import QElapsedTimer, Qt, QTimer, QUrl, Signal
-from PySide6.QtWebEngineCore import QWebEnginePage
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import (
     QCompleter,
@@ -154,45 +153,26 @@ from ..plot_categories import categorize as _categorize
 from ..plot_categories import legacy_display as _legacy_display
 from ..plot_categories import parse_access_pair as _parse_access_pair
 from .flow_layout import FlowLayout
-from .theme import PALETTE
+from .theme import FONTS_DIR, PALETTE, SERIES_COLORS
 from .widgets import ComboBox
 
-# Categorical series colors -- the first three slots of an 8-hue
-# palette (Claude's dataviz skill, references/palette.md). Three is
-# also exactly this project's own common case -- every (x, y, z)
-# position/velocity/MRP series has three columns.
-#
-# Design-philosophy roadmap item M3 (docs/ux_roadmap.md) re-validated
-# this exact 8-hue list with the skill's own `scripts/validate_palette.js`
-# against this module's real chart surface (_SURFACE = "#FFFFFF") rather
-# than trusting the "clears the CVD target" claim this comment used to
-# make unchecked -- a one-time, documented check (the roadmap's own
-# explicitly offered alternative to a Node-dependent test, which this
-# otherwise-pure-Python project has no other reason to depend on): light
-# mode (`--mode light --surface "#FFFFFF"`) PASSES every check (CVD
-# worst-adjacent Delta E 9.1 protan / 5.8 tritan >= the 6-8 floor,
-# worst-pair normal-vision Delta E 19.6); this app has no dark theme at
-# all to validate against (`gui/theme.py` -- confirmed, see
-# docs/ux_audit.md's own Principle 4 finding), so dark mode is correctly
-# N/A here, NOT silently assumed to also pass -- re-running this same
-# command with `--mode dark` in fact FAILS the lightness-band check on 4
-# of the 8 hues, which the previous version of this comment incorrectly
-# claimed passed. The one WARN both runs share (three hues sit under
-# 3:1 contrast against the surface) is satisfied by this module's own
-# existing "relief" -- a legend is always shown for >1 column
-# (`showlegend=len(series.columns) > 1` below), so color is never the
-# only way to tell two lines apart.
-_SERIES_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"]
+# Categorical series colours: Carbon's data-visualisation hues, stepped and
+# ordered so they pass the dataviz validator on this white chart surface
+# (gui/theme.py's SERIES_COLORS has the numbers). The first three are the
+# common case: every (x, y, z) series. A legend is shown for more than one
+# line, so colour is never the only way to tell lines apart.
+_SERIES_COLORS = list(SERIES_COLORS)
 
-# Chart chrome, matching gui/theme.py's own light palette (_C dict) --
-# reused here rather than re-picked, so an embedded chart reads as part
-# of the same application, not a visually foreign inserted widget.
-_INK_PRIMARY = "#1F2530"  # theme.py's "text"
-_INK_MUTED = "#5B6472"  # theme.py's "text_muted"
-_GRID_COLOR = "#D8DCE3"  # theme.py's "border"
-_SURFACE = "#FFFFFF"  # theme.py's "surface"
-_EMPTY_STATE_TEXT = "#8A93A3"  # same color the previous matplotlib empty-state message used
-_FONT_FAMILY = "system-ui, -apple-system, 'Segoe UI', sans-serif"
+# Chart chrome from the theme's Carbon tokens, so a chart reads as part of
+# the application.
+_INK_PRIMARY = PALETTE["text"]  # text-primary
+_INK_MUTED = PALETTE["text_muted"]  # text-secondary
+_GRID_COLOR = PALETTE["border"]  # border-subtle
+_SURFACE = PALETTE["surface"]  # layer-01
+_EMPTY_STATE_TEXT = PALETTE["text_muted"]
+# IBM Plex Sans from the bundled file (an @font-face in _PAGE_STYLE): the
+# chart page cannot see fonts loaded into Qt.
+_FONT_FAMILY = "'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif"
 
 # A fixed id (rather than Plotly's own randomly-generated default) so
 # _on_save_plot_png's injected JS can reliably find the chart div to
@@ -244,10 +224,11 @@ _LIVE_REDRAW_MIN_INTERVAL_MS = 300
 _MAX_PLOT_POINTS_PER_LINE = 10000
 
 
-# The shared time cursor (gui.time_cursor) on a plot: a click logs this
-# prefix and the clicked x value to the page console, which _PlotPage
-# reads (there is no QWebChannel in this app); the cursor is drawn as a
-# layout shape of this name, updated with Plotly.relayout (no reload).
+# The shared time cursor (gui.time_cursor) on a plot: a click puts this
+# prefix, the clicked x value and a click counter in the page title, which
+# the view reports through titleChanged (there is no QWebChannel in this
+# app, and this needs no QWebEnginePage subclass). The cursor is drawn as
+# a layout shape of this name, updated with Plotly.relayout (no reload).
 _CURSOR_MESSAGE = "spacemissionstudio-cursor:"
 _CURSOR_SHAPE = "spacemissionstudio-cursor"
 _CLICK_SCRIPT = f"""<script>
@@ -257,25 +238,22 @@ _CLICK_SCRIPT = f"""<script>
         if (attemptsLeft > 0) {{ setTimeout(function() {{ attach(attemptsLeft - 1); }}, 50); }}
         return;
     }}
+    var clicks = 0;
     gd.on('plotly_click', function(event) {{
         if (event && event.points && event.points.length) {{
-            console.log({_CURSOR_MESSAGE!r} + event.points[0].x);
+            clicks += 1;
+            document.title = {_CURSOR_MESSAGE!r} + event.points[0].x + '|' + clicks;
         }}
     }});
 }})(40);
 </script>"""
 
 
-class _PlotPage(QWebEnginePage):
-    """The plot page: passes on the plot clicks the page logs."""
-
-    clicked_x = Signal(str)
-
-    def javaScriptConsoleMessage(self, level, message, line, source):  # noqa: N802 -- Qt API name
-        if message.startswith(_CURSOR_MESSAGE):
-            self.clicked_x.emit(message[len(_CURSOR_MESSAGE):])
-            return
-        super().javaScriptConsoleMessage(level, message, line, source)
+def _clicked_x(title: str) -> Optional[str]:
+    """The x value a plot click put in the page title, or None."""
+    if not title.startswith(_CURSOR_MESSAGE):
+        return None
+    return title[len(_CURSOR_MESSAGE):].rsplit("|", 1)[0]
 
 
 def _display_indices(values: np.ndarray, max_points: int = _MAX_PLOT_POINTS_PER_LINE) -> np.ndarray:
@@ -354,8 +332,12 @@ def _short_utc(timestamp: str) -> str:
 
 # Plotly's full page keeps the browser's default 8 px body margin under a
 # 100%-height plot, which put a scroll bar beside every plot.
-_CURSOR_COLOR = "#C0392B"  # theme PALETTE["danger"], as on the Events timeline
-_PAGE_STYLE = "<style>html, body { margin: 0; height: 100%; overflow: hidden; }</style>"
+_CURSOR_COLOR = PALETTE["danger"]  # as on the Events timeline
+_PAGE_STYLE = ("<style>html, body { margin: 0; height: 100%; overflow: hidden; } "
+               "@font-face { font-family: 'IBM Plex Sans'; font-weight: 400; src: url('"
+               + QUrl.fromLocalFile(str(FONTS_DIR / "IBMPlexSans-Regular.woff")).toString() + "'); } "
+               "@font-face { font-family: 'IBM Plex Sans'; font-weight: 600; src: url('"
+               + QUrl.fromLocalFile(str(FONTS_DIR / "IBMPlexSans-SemiBold.woff")).toString() + "'); }</style>")
 
 
 def _plotlyjs_path() -> Path:
@@ -628,9 +610,7 @@ class ResultsWidget(QWidget):
         layout.addWidget(self.warnings_label)
 
         self.web_view = QWebEngineView()
-        self._plot_page = _PlotPage(self.web_view)
-        self.web_view.setPage(self._plot_page)
-        self._plot_page.clicked_x.connect(self._on_plot_clicked)
+        self.web_view.titleChanged.connect(self._on_page_title)
         self.web_view.loadFinished.connect(lambda _ok: self.apply_cursor_line())
         # Plot pages are written here and loaded from file -- see
         # _MAX_PLOT_POINTS_PER_LINE for why setHtml() can't be used.
@@ -1192,6 +1172,11 @@ class ResultsWidget(QWidget):
         except ValueError:
             return first_guess
         return first_guess + (clicked - back).total_seconds()  # [s]
+
+    def _on_page_title(self, title: str) -> None:
+        x = _clicked_x(title)
+        if x is not None:
+            self._on_plot_clicked(x)
 
     def _on_plot_clicked(self, x: str) -> None:
         time_s = self.plot_x_to_elapsed_s(x)
