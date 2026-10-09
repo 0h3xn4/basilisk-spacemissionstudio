@@ -346,4 +346,78 @@ Try changing:
 
 Limitations:
 - Facets are fixed to the body: the array does not rotate to track the Sun.""",
+
+    "22": """\
+Start here for your own mission: one 150 kg satellite in a 550 km Sun-synchronous orbit with the \
+environment every LEO mission needs -- detailed gravity, Sun and Moon, drag from real space weather and \
+solar pressure -- and the Berlin ground station. No attitude, so a day runs in seconds.
+
+What to look at:
+- The Events tab: four Berlin passes (the first 10-18 min in) and 15 eclipses of about 35 min.
+- my-sat.orbit_elements_mean.raan: the orbit plane turns about 1 deg a day, in step with the Sun.
+- The Explain tab: everything this scenario switches on, in one view.
+
+Make it your own (Save As first):
+- Spacecraft > Edit: your mass, drag area and orbit (a TLE works too).
+- Ground stations: add yours.
+- Propagation setup: the duration and solar activity.
+
+Try changing:
+- Altitude 400 km and 30 days: drag lowers the mean semi-major axis ~1.8 km (at 550 km only ~0.1 km).
+- Spacecraft > New from template, for a satellite with hardware (see 23).""",
+
+    "23": """\
+A complete small-satellite mission to copy and edit: the 150 kg microsatellite preset (star tracker, IMU, \
+sun sensor, wheels unloaded by torque rods, solar array, battery) in Sun-safe pointing, with a radio link \
+to Berlin.
+
+A Mission Sequence stops at the start and end of the first pass (about 10 and 18 min in), reports both, \
+then coasts on for an hour.
+
+What to look at:
+- The Mission Output tab: the two reports.
+- berlin-gs.access_to_smallsat-1.link_margin_db: 11 dB at the 10 deg edge of the pass, 21 dB at its peak.
+- smallsat-1.rw_speeds: up to ~300 RPM while turning to the Sun, then the torque rods bring them back \
+near zero.
+- smallsat-1.battery_charge: full in sunlight, about 35 Wh used in the 35 min eclipse.
+
+Try changing:
+- Pointing mode locationPointing at berlin-gs, to aim at the station.
+- The transmitter power or data rate (Power/propulsion tab).
+- Add a station-keeping thruster (template 18 shows how).""",
+
+    "24": """\
+Template 05's formation, held by Basilisk's mean-element feedback (meanOEFeedback) instead of the \
+drift-orbit controller: continuous small burns on all six mean orbital elements. Same spacecraft, orbits \
+and thruster, so you can compare the two runs.
+
+What to look at:
+- follower-1.phasing_keeping.separation_error: within ~0.0005 deg (65 m) after the first day, against \
+kilometres in 05.
+- follower-1.phasing_keeping.force: requests of a few mN; applied drops to 0 in each eclipse, when nothing fires.
+- follower-1.phasing_keeping.delta_v: about 0.46 m/s in 14 days, against 0.014 m/s for 05's 90 days.
+
+Try changing:
+- Control law back to Drift orbit, or Hill-frame PD (needs a closer formation, about 1 km).
+- Mean-element gain: higher holds tighter and spends more.
+- Target separation: start off target and watch it close the gap within a day.
+
+Note:
+- The law needs Earth gravity of degree 2 or more (J2).""",
+
+    "25": """\
+A 20-run Monte Carlo batch with the uncertainty a real launch leaves: each run starts on a slightly \
+different orbit (1-sigma: 1 km in semi-major axis, 0.02 deg in inclination, 0.1 deg along track) and flies \
+with a drag coefficient between 2.2 and 3.0. Three days at 400 km, with real space weather.
+
+What to look at:
+- Run Monte Carlo... saves each run (its drawn values and its trajectory) to the folder you pick.
+- examples/monte_carlo_spread.py (in the repository) reads that folder back.
+- The runs start ~10 km apart along track (1-sigma) and spread ~150 km a day: a lower orbit is faster.
+- Drag alone (spreads set to 0) separates them by only ~10 km in three days.
+
+Try changing:
+- Number of runs, for smoother statistics.
+- The element spreads, for a better or worse launcher.
+- Add a dry-mass dispersion: with drag on, mass matters (compare template 09).""",
 }

@@ -1256,6 +1256,150 @@ def build_21_disturbance_torques() -> Scenario:
     )
 
 
+
+# -- Starter templates (22-25): starting points for your own missions -----
+# 22 and 23 are meant to be copied (File > Save As) and edited into a new
+# mission; 24 and 25 revisit 05 and 09 with the newer features (Basilisk's
+# mean-element formation law, orbit and drag dispersions) so the pair can
+# be compared directly.
+
+# The same pass geometry as template 19 (550 km Sun-synchronous orbit,
+# 10:30 LTAN, 08:30 UTC epoch): Berlin's first pass comes ~10 min in.
+_STARTER_EPOCH_UTC = _COMMS_EPOCH_UTC
+_STARTER_SMA_KM = 6928.0  # [km] 550 km altitude
+
+
+def _starter_orbit(semi_major_axis_km: float = _STARTER_SMA_KM, epoch_utc: str = _STARTER_EPOCH_UTC) -> OrbitIC:
+    """A circular Sun-synchronous orbit (10:30 LTAN) of ``semi_major_axis_km``."""
+    return OrbitIC(type="classical_elements", semi_major_axis_km=semi_major_axis_km, eccentricity=0.0,
+                   inclination_deg=sun_synchronous_inclination_deg(semi_major_axis_km),
+                   raan_deg=raan_for_ltan_deg(epoch_utc), arg_periapsis_deg=0.0, true_anomaly_deg=0.0)
+
+
+def build_22_starter_first_leo_satellite() -> Scenario:
+    # The smallest scenario that is still realistic: one spacecraft, the
+    # environment every LEO mission needs (degree-10 gravity, Sun and Moon,
+    # drag from real space weather, solar pressure) and one ground station.
+    # No attitude, so it runs in seconds; 23 adds the rest.
+    return Scenario(
+        name="22 - Starter: your first LEO satellite",
+        description=DESCRIPTIONS["22"],
+        epoch_utc=_STARTER_EPOCH_UTC,
+        simulation_mode="orbit_only",
+        gravity=GravityConfig(central_body="earth", central_body_degree=10, third_body_perturbers=["sun", "moon"]),
+        sim_settings=SimSettings(duration_days=1.0, dynamics_task_rate_s=30.0, integrator="rkf78"),
+        space_weather=_real_space_weather(),
+        ground_stations=[_berlin_ground_station()],
+        spacecraft=[
+            SpacecraftConfig(
+                name="my-sat",
+                orbit=_starter_orbit(),
+                dry_mass_kg=_MICROSAT_MASS_KG,
+                inertia_kg_m2=_box_inertia(_MICROSAT_MASS_KG, _MICROSAT_SIZE_M),
+                enable_drag=True, drag_coeff=OPERATIONS_DRAG_COEFF, drag_area_m2=0.8,  # [-], [m^2]
+                enable_srp=True, srp_coeff=1.3, srp_area_m2=1.5,  # [-], [m^2]
+            ),
+        ],
+    )
+
+
+def build_23_starter_complete_small_satellite() -> Scenario:
+    # The GUI's "Microsatellite (150 kg)" spacecraft preset
+    # (engine.spacecraft_templates), flown as a whole mission: Sun-safe
+    # pointing with star tracker, IMU, sun sensor, wheels unloaded by torque
+    # rods, facets, power and a downlink, plus a Mission Sequence that stops
+    # at the start and end of the first Berlin pass and reports both.
+    from spacemissionstudio.engine.spacecraft_templates import SPACECRAFT_TEMPLATES
+    from spacemissionstudio.schema.command import Command
+
+    preset = next(t for t in SPACECRAFT_TEMPLATES if t.name == "Microsatellite (150 kg)")
+    spacecraft = preset.build()
+    spacecraft.name = "smallsat-1"
+    spacecraft.orbit = _starter_orbit()
+    spacecraft.sigma_bn_init = [0.1, 0.2, -0.15]  # [-] MRP, tipped away from the Sun
+    spacecraft.omega_bn_b_init_rad_s = [0.001, -0.001, 0.0005]  # [rad/s]
+    # Cd 3.0 on every facet (ESA AD10's operations value), like the other templates.
+    spacecraft.facets = box_facets(_MICROSAT_SIZE_M, spacecraft.power.panel_area_m2,
+                                   spacecraft.power.panel_normal_b, drag_coeff=OPERATIONS_DRAG_COEFF)
+    spacecraft.rf_link = RFLinkConfig(tx_power_w=5.0, frequency_hz=2.2e9, data_rate_bps=5.0e6,  # [W], [Hz], [bit/s]
+                                      tx_antenna_gain_dbi=6.0, required_ebno_db=10.0)  # [dBi], [dB]
+    return Scenario(
+        name="23 - Starter: complete small-satellite mission",
+        description=DESCRIPTIONS["23"],
+        epoch_utc=_STARTER_EPOCH_UTC,
+        simulation_mode="full_attitude",
+        gravity=GravityConfig(central_body="earth", central_body_degree=10, third_body_perturbers=["sun", "moon"]),
+        sim_settings=SimSettings(duration_days=0.1, dynamics_task_rate_s=1.0, integrator="rkf78"),
+        space_weather=_real_space_weather(),
+        ground_stations=[_berlin_ground_station(rx_antenna_gain_dbi=35.0, system_noise_temp_k=150.0)],
+        spacecraft=[spacecraft],
+        mission_sequence=[
+            Command(kind="propagate", label="Coast to the first Berlin pass",
+                    params={"stop_condition": "event", "event_kind": "pass_start",
+                            "spacecraft": "smallsat-1", "ground_station": "berlin-gs"}),
+            Command(kind="report", label="Pass start", params={"series": []}),
+            Command(kind="propagate", label="Fly the pass",
+                    params={"stop_condition": "event", "event_kind": "pass_end",
+                            "spacecraft": "smallsat-1", "ground_station": "berlin-gs"}),
+            Command(kind="report", label="Pass end", params={"series": []}),
+            Command(kind="propagate", label="Coast on", params={"duration_days": 0.04}),  # [day] about an hour
+        ],
+    )
+
+
+def build_24_formation_mean_element_control() -> Scenario:
+    # Template 05's formation, held by Basilisk's meanOEFeedback instead of
+    # the drift-orbit controller (User Manual, "Formation control laws"):
+    # same spacecraft, orbits, thruster and tank, so the two runs compare
+    # directly. 14 days rather than 90: the law acts continuously, so the
+    # pattern shows within a day and a run stays short.
+    scenario = build_05_formation_flying_phasing()
+    scenario.name = "24 - Formation flying with Basilisk's mean-element control"
+    scenario.description = DESCRIPTIONS["24"]
+    scenario.sim_settings.duration_days = 14.0  # [day]
+    follower = next(sc for sc in scenario.spacecraft if sc.name == "follower-1")
+    follower.phasing_keeping.control_law = "mean_oe"
+    return scenario
+
+
+def build_25_monte_carlo_orbit_and_drag_dispersions() -> Scenario:
+    # Launch-injection and drag uncertainty for one 150 kg LEO satellite:
+    # each run starts on a slightly different orbit (a 1-sigma of 1 km in
+    # semi-major axis, 0.02 deg in inclination, 0.1 deg along track) and
+    # flies with a different drag coefficient. 400 km, so three days of
+    # drag already separate the runs.
+    semi_major_axis_km = 6378.0 + 400.0  # [km]
+    return Scenario(
+        name="25 - Monte Carlo: orbit-injection and drag uncertainty",
+        description=DESCRIPTIONS["25"],
+        epoch_utc="2030-01-01T00:00:00",
+        simulation_mode="orbit_only",
+        gravity=GravityConfig(central_body="earth", central_body_degree=10, third_body_perturbers=["sun", "moon"]),
+        sim_settings=SimSettings(duration_days=3.0, dynamics_task_rate_s=30.0, integrator="rkf78"),
+        space_weather=_real_space_weather(),
+        spacecraft=[
+            SpacecraftConfig(
+                name="sat-1",
+                orbit=_starter_orbit(semi_major_axis_km, "2030-01-01T00:00:00"),
+                dry_mass_kg=_MICROSAT_MASS_KG,
+                inertia_kg_m2=_box_inertia(_MICROSAT_MASS_KG, _MICROSAT_SIZE_M),
+                enable_drag=True, drag_coeff=OPERATIONS_DRAG_COEFF, drag_area_m2=0.8,  # [-], [m^2]
+            ),
+        ],
+        monte_carlo=MonteCarloConfig(
+            enabled=True, num_runs=20, thread_count=1,
+            dispersions=[
+                DispersionConfig(spacecraft="sat-1", quantity="orbit_elements", kind="normal",
+                                 element_spread={"semi_major_axis_km": 1.0,  # [km] 1-sigma
+                                                 "inclination_deg": 0.02,  # [deg]
+                                                 "true_anomaly_deg": 0.1}),  # [deg]
+                DispersionConfig(spacecraft="sat-1", quantity="drag_coeff", kind="uniform",
+                                 bounds=[2.2, 3.0]),  # [-] AD10's end-of-life to operations values
+            ],
+        ),
+    )
+
+
 def main() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     _save(build_01_two_body_circular_orbit(), "01_two_body_circular_orbit.json")
@@ -1280,6 +1424,10 @@ def main() -> None:
     _save(build_19_sun_pointing_comms_link(), "19_sun_pointing_comms_link.json")
     _save(build_20_thermal_simulation(), "20_thermal_simulation.json")
     _save(build_21_disturbance_torques(), "21_disturbance_torques.json")
+    _save(build_22_starter_first_leo_satellite(), "22_starter_first_leo_satellite.json")
+    _save(build_23_starter_complete_small_satellite(), "23_starter_complete_small_satellite.json")
+    _save(build_24_formation_mean_element_control(), "24_formation_mean_element_control.json")
+    _save(build_25_monte_carlo_orbit_and_drag_dispersions(), "25_monte_carlo_orbit_and_drag_dispersions.json")
 
 
 if __name__ == "__main__":
