@@ -252,7 +252,7 @@ class OrbitIcWidget(QWidget):
         self.vel_z_km_s = _spin(-100.0, 100.0, decimals=6, step=0.1)
         for box in (self.pos_x_km, self.pos_y_km, self.pos_z_km):
             box.setToolTip(
-                "Spacecraft position at the epoch, in the Earth-centered inertial (J2000-ish) "
+                "Spacecraft position at the epoch, in the inertial frame EME2000 (SPICE J2000), centred on the central body "
                 "frame -- not a frame that rotates with Earth, so these numbers don't 'point' "
                 "at a fixed place on the ground the way latitude/longitude would. Distance "
                 "from Earth's center, not altitude above the surface."

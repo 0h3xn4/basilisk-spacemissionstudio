@@ -414,9 +414,9 @@ class SpacecraftEditorDialog(QDialog):
         )
         for box in (self.omega1, self.omega2, self.omega3):
             box.setToolTip(_omega_tip)
-        attitude_form.addRow("sigma_BN [-] (3 components)",
+        attitude_form.addRow("sigma_BN [-] (MRP, body B relative to EME2000 N)",
                               _hbox(self.sigma1, self.sigma2, self.sigma3))
-        attitude_form.addRow("omega_BN_B [rad/s] (3 components)",
+        attitude_form.addRow("omega_BN_B [rad/s] (body frame B)",
                               _hbox(self.omega1, self.omega2, self.omega3))
         layout.addWidget(attitude_group)
 
@@ -582,7 +582,7 @@ class SpacecraftEditorDialog(QDialog):
             box.setToolTip(_cp_boresight_tip)
         for axis, box in zip("xyz", (self.cp_boresight_x, self.cp_boresight_y, self.cp_boresight_z)):
             box.setPrefix(f"{axis}  ")
-        cp_form.addRow("Antenna boresight",
+        cp_form.addRow("Antenna boresight (body frame B)",
                         _hbox(self.cp_boresight_x, self.cp_boresight_y, self.cp_boresight_z))
 
         # sun_pointing_axis_b is Optional with a real semantic default
@@ -607,7 +607,7 @@ class SpacecraftEditorDialog(QDialog):
             box.setToolTip(_cp_sun_axis_tip)
         for axis, box in zip("xyz", (self.cp_sun_axis_x, self.cp_sun_axis_y, self.cp_sun_axis_z)):
             box.setPrefix(f"{axis}  ")
-        cp_form.addRow("Axis to point at the Sun",
+        cp_form.addRow("Axis to point at the Sun (body frame B)",
                         _hbox(self.cp_sun_axis_x, self.cp_sun_axis_y, self.cp_sun_axis_z))
         self._on_cp_sun_axis_default_toggled(self.cp_sun_axis_default_check.isChecked())
 
@@ -1134,7 +1134,7 @@ class SpacecraftEditorDialog(QDialog):
         tank_pos_row.addWidget(self.ft_tank_pos_z)
         tank_pos_row_widget = QWidget()
         tank_pos_row_widget.setLayout(tank_pos_row)
-        ft_form.addRow("Tank position r_TB_B [m]", tank_pos_row_widget)
+        ft_form.addRow("Tank position r_TB_B [m] (body frame B)", tank_pos_row_widget)
         power_layout.addWidget(self.fuel_tank_group)
 
         rf_link0 = config.rf_link if config else None

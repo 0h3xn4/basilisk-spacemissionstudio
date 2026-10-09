@@ -81,7 +81,7 @@ class BoxFacetDialog(QDialog):
         self.array_area.setToolTip("0 for no solar array")
         form.addRow("Array area [m^2]", self.array_area)
         self.normal_x, self.normal_y, self.normal_z = (_spin(-1.0, 1.0, v) for v in (0.0, 0.0, 1.0))
-        form.addRow("Array normal x, y, z", _row(self.normal_x, self.normal_y, self.normal_z))
+        form.addRow("Array normal x, y, z (body frame B)", _row(self.normal_x, self.normal_y, self.normal_z))
         self.loc_x, self.loc_y, self.loc_z = (_spin(-50.0, 50.0, v) for v in (0.0, 0.0, 0.75))
         form.addRow("Array centre x, y, z [m]", _row(self.loc_x, self.loc_y, self.loc_z))
         layout.addLayout(form)

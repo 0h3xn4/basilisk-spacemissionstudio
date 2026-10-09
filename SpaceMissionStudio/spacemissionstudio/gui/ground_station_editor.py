@@ -73,13 +73,13 @@ class GroundStationEditorDialog(QDialog):
         self.lat_deg = _spin(-90.0, 90.0, decimals=6, step=1.0, value=config.latitude_deg if config else 0.0)
         self.lat_deg.setToolTip("Geodetic latitude on the WGS-84 ellipsoid, north positive.\n"
                                 "Other central bodies: planetocentric, on a sphere.")
-        form.addRow("Geodetic latitude [deg]", self.lat_deg)
+        form.addRow("Geodetic latitude [deg] (WGS-84)", self.lat_deg)
         self.lon_deg = _spin(-180.0, 180.0, decimals=6, step=1.0, value=config.longitude_deg if config else 0.0)
         self.lon_deg.setToolTip("Longitude, east positive from the prime meridian of the body-fixed frame.")
-        form.addRow("Longitude [deg]", self.lon_deg)
+        form.addRow("Longitude [deg] (WGS-84, east positive)", self.lon_deg)
         self.alt_m = _spin(-500.0, 9000.0, decimals=1, step=10.0, value=config.altitude_m if config else 0.0)
         self.alt_m.setToolTip("Height above the WGS-84 ellipsoid (not above sea level: they differ by up to ~100 m).")
-        form.addRow("Altitude [m]", self.alt_m)
+        form.addRow("Height [m] (above the WGS-84 ellipsoid)", self.alt_m)
         self.min_elev_deg = _spin(0.0, 89.9, decimals=2, step=1.0,
                                    value=config.min_elevation_deg if config else 10.0)
         self.min_elev_deg.setToolTip(
