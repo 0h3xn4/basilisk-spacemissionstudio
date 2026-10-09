@@ -1431,8 +1431,9 @@ class MainWindow(QMainWindow):
         self._last_run_vizard_file = str(vizard_playback_file(save_file)) if save_file else None
         self.results_widget.set_featured_series(featured_series(scenario))
         _join_finished_worker(self._run_worker)
+        extra = {"sil": sil} if sil is not None else {}  # a plain run builds its worker exactly as before
         self._run_worker = RunWorker(scenario, vizard_request=self._vizard_request, live=live,
-                                     allow_scripts=bool(blocks), sil=sil)
+                                     allow_scripts=bool(blocks), **extra)
         self._last_run_sil = sil is not None
         if sil is not None:
             self.flight_software_widget.set_sil_running(sil[0])
