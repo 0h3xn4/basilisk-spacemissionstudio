@@ -35,6 +35,7 @@ import re
 from typing import List
 
 from ..schema.scenario import Scenario
+from . import link_budget
 
 _ELEMENTS = ("semi_major_axis", "eccentricity", "inclination", "raan", "arg_periapsis", "true_anomaly")
 
@@ -103,6 +104,9 @@ def _spacecraft_series(scenario: Scenario, sc) -> List[str]:
         names += [f"{name}.constant_thrust.propellant_remaining", f"{name}.constant_thrust.delta_v"]
     if sc.comms_pointing is not None:
         names += [f"{name}.comms_pointing.active_mode", f"{name}.comms_pointing.pointing_error_deg"]
+    if sc.data_handling is not None:
+        names += [f"{name}.data_handling.{part}"
+                  for part in ("stored", "downlink_rate", "data_generated", "data_downlinked", "data_lost")]
     return names
 
 
@@ -124,6 +128,8 @@ def expected_series_names(scenario: Scenario) -> List[str]:
             names += [f"{prefix}.{part}" for part in ("has_access", "slant_range", "elevation", "azimuth")]
             if sc.rf_link is not None:
                 names.append(f"{prefix}.link_margin_db")
+                if link_budget.needs_link_gate(sc):
+                    names += [f"{prefix}.antenna_off_boresight", f"{prefix}.link_closed"]
     return sorted(dict.fromkeys(names))
 
 

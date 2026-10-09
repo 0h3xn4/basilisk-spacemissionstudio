@@ -161,7 +161,7 @@ states or modes beyond those in 5.5.
 | SRS-F-10 | Orbit maintenance shall be available: LEO station keeping, along-track phasing (by a drift-orbit controller or by Basilisk's `meanOEFeedback` or `hillFrameRelativeControl` formation-flying modules), GEO longitude/inclination keeping, momentum management. | Tool |
 | SRS-F-11 | A mission sequence shall run these commands: propagate (duration, epoch or event); impulsive maneuver; Lambert transfer; assignment; report; if; while; script block. | Tool |
 | SRS-F-12 | Each run shall produce named series. Each series shall carry units and its frame. Results shall export to CSV with a `provenance.json` recording: tool and Basilisk versions; qualification; dependencies; scenario SHA-256; data files; time system; frames. | E-ST-10-09C 5.4.1a/h, 5.4.2a, 5.4.3; Q-ST-80C 6.2.4 |
-| SRS-F-13 | Analyses: orbital lifetime and disposal rules (5-year and 25-year); ESA AD10-style delta-V and propellant budget; launch-delay sweep; altitude trade; Monte Carlo dispersions; RF link budget; power and thermal. | AD6; Tool |
+| SRS-F-13 | Analyses: orbital lifetime and disposal rules (5-year and 25-year); ESA AD10-style delta-V and propellant budget; launch-delay sweep; altitude trade; Monte Carlo dispersions; RF link budget; onboard data generation, storage and downlink; power and thermal. | AD6; Tool |
 | SRS-F-14 | CCSDS OPM, OMM and OEM (KVN) shall be read and validated against 502.0-B-3. Validation errors and warnings shall cite the clause. The tool shall write OPMs of initial states and OEMs of runs (Hermite or Lagrange), convert TLE ↔ OMM, and set orbits from OPM/OMM. | CCSDS 502.0-B-3 sections 3–5, 7; Annex A (ICS) |
 | SRS-F-15 | The GUI shall offer: scenario editing; validation feedback; results plots; mission dashboard; mission output; the run's events as a timeline and a sortable, exportable table; one time cursor shared by these views; comparison of a session's runs and their inputs; undo of scenario edits; a command palette; the reference data files with their sources, dates and checksums; explanation of the scenario; end of life; budget; template loading. The CLI shall offer the same functions headless. | Tool |
 | SRS-F-16 | Vizard visualisation, live or from a file. (desirable) | Tool |
@@ -333,7 +333,7 @@ Methods: T = test, A = analysis, I = inspection, R = review of design.
 | SRS-F-10 | T | `tests/test_orbit_maintenance*.py`, `tests/test_formation_control.py`, `tests/test_geo_station_keeping.py`, `tests/test_momentum_dumping.py` |
 | SRS-F-11 | T | `tests/test_mission_engine.py`, `tests/test_command.py` |
 | SRS-F-12 | T | `tests/test_results.py`, `tests/test_frames.py`, `tests/test_dependencies.py` |
-| SRS-F-13 | T | `tests/test_lifetime.py`, `tests/test_propellant_budget.py`, `tests/test_monte_carlo.py`, `tests/test_link_budget.py`, `tests/test_thermal_simulation.py` |
+| SRS-F-13 | T | `tests/test_lifetime.py`, `tests/test_propellant_budget.py`, `tests/test_monte_carlo.py`, `tests/test_link_budget.py`, `tests/test_data_handling.py`, `tests/test_thermal_simulation.py` |
 | SRS-F-14 | T | `tests/test_ccsds_odm.py`, `tests/validation/test_v06_ccsds_oem.py` |
 | SRS-F-15 | T, I | `tests/gui/`, `tests/test_cli.py` |
 | SRS-F-16 | T | `tests/test_vizard*.py` |
