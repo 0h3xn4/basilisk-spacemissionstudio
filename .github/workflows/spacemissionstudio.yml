@@ -62,6 +62,11 @@ jobs:
           python -m pytest tests -q -n auto -p no:cacheprovider
           --cov=spacemissionstudio --cov-branch --cov-report=json:coverage.json --cov-report=term
           --junitxml=test-report.xml
+      - name: Offline tests with no network at all (UX/UI guidelines; review_log F-16)
+        run: |
+          # unprivileged user namespaces are restricted by AppArmor on ubuntu-24.04
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          unshare -rn python -m pytest tests/test_offline.py -q -p no:cacheprovider
       - name: Metrics and statement coverage >= 90 % (C-7, C-10)
         if: always()
         run: python compliance/tools/metrics.py --coverage coverage.json --junit test-report.xml --fail-under 90 --fail-under-branch 80

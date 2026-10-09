@@ -9,3 +9,8 @@ for the phased roadmap and what is/isn't implemented yet.
 """
 
 __version__ = "2.0.0"
+
+# Before anything imports Basilisk: keep its import-time GitHub request local (F-16).
+from . import _offline  # noqa: E402
+
+_offline.install()

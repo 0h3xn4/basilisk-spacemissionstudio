@@ -48,7 +48,9 @@ therefore run ONLY against an already-warm cache in normal operation --
 if one of them still needs the network (a missing/corrupted cache entry),
 that is treated as a configuration problem to fix by re-running the
 installer, not a background feature this app silently falls back on; see
-:class:`KernelError`'s own message for exactly that.
+:class:`KernelError`'s own message for exactly that. Runs use
+:func:`cached_path`/:func:`require_cached`, which never download
+(review_log F-17); Basilisk's ``get_path`` would.
 
 Requires a Basilisk build (imports ``Basilisk.utilities...``). Written
 directly against the verified ``dataFetcher``/``spiceKernels``/
@@ -77,6 +79,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable, List, Optional
 
+from Basilisk.utilities.supportDataTools import dataFetcher
 from Basilisk.utilities.supportDataTools.dataFetcher import DataFile, get_path
 
 # Matches Basilisk's own default kernel set exactly -- see
@@ -158,6 +161,61 @@ def ensure_kernels(kernels: Iterable = ALL_SUPPORT_DATA_FILES) -> List[KernelSta
     return statuses
 
 
+def cached_path(kernel) -> Path:
+    """Local path of a support-data file, without ever downloading it.
+
+    Basilisk's ``get_path`` downloads a file that is not in its cache;
+    every run of the tool uses this instead, so a run never touches the
+    network (SRS-S-01, review_log F-16). Downloads happen only where the
+    user starts them (:func:`ensure_kernels`: the startup prompt, Kernel
+    Status, ``spacemissionstudio kernels-status``, the installers). A file
+    Basilisk's registry gives a checksum for is checked against it.
+
+    Raises:
+        KernelError: the file is not installed, or its checksum is wrong.
+    """
+    import pooch
+
+    rel = dataFetcher.relpath(kernel)
+    local = dataFetcher.local_support_path(rel)
+    if local is not None and local.exists():
+        return local
+    path = Path(dataFetcher.POOCH.abspath) / rel
+    if not path.is_file():
+        raise KernelError(
+            f"support-data file {kernel.value} is not installed ({path}). SpaceMissionStudio does not download "
+            "during a run: fetch it from the Kernel Status tab or with `spacemissionstudio kernels-status`.")
+    expected = dataFetcher.POOCH.registry.get(rel)
+    if expected:
+        algorithm, _, digest = expected.rpartition(":")
+        if pooch.file_hash(str(path), alg=algorithm or "sha256") != digest:
+            raise KernelError(f"support-data file {path} does not match its checksum ({expected}); "
+                              "fetch it again from the Kernel Status tab")
+    return path
+
+
+def cached_statuses(kernels: Iterable = ALL_SUPPORT_DATA_FILES) -> List[KernelStatus]:
+    """Like :func:`ensure_kernels`, but only looks at the local cache: no download."""
+    statuses = []
+    for kernel in kernels:
+        try:
+            path = cached_path(kernel)
+            modified_utc = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc).isoformat()
+            statuses.append(KernelStatus(kernel.name, kernel.value, path, True, None, modified_utc))
+        except KernelError as exc:
+            statuses.append(KernelStatus(kernel.name, kernel.value, None, False, str(exc), None))
+    return statuses
+
+
+def require_cached(kernels: Iterable = ALL_SUPPORT_DATA_FILES) -> List[KernelStatus]:
+    """:func:`cached_statuses`, raising :class:`KernelError` naming every missing file."""
+    statuses = cached_statuses(kernels)
+    failed = [s for s in statuses if not s.available]
+    if failed:
+        raise KernelError("; ".join(s.error for s in failed))
+    return statuses
+
+
 def require_kernels(kernels: Iterable = ALL_SUPPORT_DATA_FILES) -> List[KernelStatus]:
     """Like :func:`ensure_kernels`, but raises :class:`KernelError` naming
     every kernel that failed, instead of returning a status list with
@@ -197,7 +255,7 @@ def build_spice_interface(grav_factory, spice_time_string: str, kernels: Iterabl
             publishes an ``EpochMsg`` other modules (e.g.
             ``spaceWeatherData``) can subscribe to.
     """
-    statuses = require_kernels(kernels)
+    statuses = require_cached(kernels)  # never downloads during a run (F-16)
     kernel_dir = statuses[0].path.parent
     return grav_factory.createSpiceInterface(
         path=str(kernel_dir),

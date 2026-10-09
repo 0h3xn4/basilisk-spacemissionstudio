@@ -135,7 +135,7 @@ No maintainer's process manual exists. This plan is the process.
 |---|---|---|
 | Update the bundled space weather | Each release; the forecast part ages within months | Download the current CelesTrak SW-All and NASA MSFC tables (with consent); test; commit |
 | Leap seconds | When IERS announces one | ERFA (pyerfa) and `naif0012.tls` must both carry it; until then, epochs after the new leap second are 1 s off (`engine/time_system.py`) |
-| Requalify a new Basilisk release | Before changing `QUALIFIED_BASILISK_VERSION` | Run the full suite and the validation (SValP) against the new release; re-run VP-0 if models changed; check F-01 and F-07: when the release fixes one, remove its workaround in this requalification and show that V-04 (F-01) or its drag case (F-07) stays within tolerance without it (decision 16); update the SRF |
+| Requalify a new Basilisk release | Before changing `QUALIFIED_BASILISK_VERSION` | Run the full suite and the validation (SValP) against the new release; re-run VP-0 if models changed; check F-01, F-07 and F-16 (the offline tests must still pass; F-16's hook is needed only while Basilisk makes its import-time request): when the release fixes one, remove its workaround in this requalification and show that V-04 (F-01) or its drag case (F-07) stays within tolerance without it (decision 16); update the SRF |
 | Review dependency versions | Each release | Record them in the SRF; check for security advisories |
 | Review the security analysis | Each release | `security_analysis.md` section 7 |
 

@@ -165,7 +165,7 @@ import numpy as np
 import Basilisk
 from Basilisk.simulation import spacecraft, svIntegrators
 from Basilisk.utilities import SimulationBaseClass, macros, orbitalMotion, simHelpers, simIncludeGravBody
-from Basilisk.utilities.supportDataTools.dataFetcher import DataFile, get_path
+from Basilisk.utilities.supportDataTools.dataFetcher import DataFile
 
 from .. import __version__ as _SPACEMISSIONSTUDIO_VERSION
 from .. import dependencies
@@ -726,7 +726,7 @@ class SimulationService:
                     "gravity.central_body_degree == 0 (point-mass) until engine.service is extended "
                     "with that body's gravity-field file."
                 )
-            gravity_file = get_path(DataFile.LocalGravData.GGM03S)
+            gravity_file = kernels.cached_path(DataFile.LocalGravData.GGM03S)
             central_body.useSphericalHarmonicsGravityModel(str(gravity_file), gravity.central_body_degree)
             self._data_files["gravity_field"] = dependencies.file_record(gravity_file)
         mu = central_body.mu
@@ -754,7 +754,7 @@ class SimulationService:
 
         spice_time_string = time_system.utc_iso_to_spice_string(scenario.epoch_utc)
         self.spice_object = kernels.build_spice_interface(grav_factory, spice_time_string, epoch_in_msg=True)
-        for status in kernels.ensure_kernels(kernels.DEFAULT_KERNELS):
+        for status in kernels.cached_statuses(kernels.DEFAULT_KERNELS):
             self._data_files[f"spice:{status.filename}"] = dependencies.file_record(status.path)
         # Earth-fixed frame: ITRF93 from the IERS-based NAIF Earth PCKs when
         # installed (engine.earth_orientation, ECSS-E-ST-10-09C 5.4.9f),
@@ -860,7 +860,7 @@ class SimulationService:
             self._mag_field_model = fsw.build_magnetic_field_wmm(
                 self.scSim, dyn_task_name, central_body_state_out_msg, central_body.radEquator
             )
-            self._data_files["magnetic_field"] = dependencies.file_record(get_path(DataFile.MagneticFieldData.WMM))
+            self._data_files["magnetic_field"] = dependencies.file_record(kernels.cached_path(DataFile.MagneticFieldData.WMM))
 
         # Phase 4: power budget (schema.scenario.PowerConfig),
         # station-keeping's eclipse-gated reboost burn

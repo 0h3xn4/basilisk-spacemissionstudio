@@ -181,6 +181,15 @@ recur after the results-widget tests began showing their widget
 **Not done:** the Windows installer has not been run (SRS-DEL-01, manual
 test, H13; SRelD K-06).
 
+**Offline (SRS-S-01):** `tests/test_offline.py` blocks and records every
+name lookup and connection while validating, exporting, running a
+template with real space weather and its CSV, OEM and provenance exports,
+and starting the GUI with the download prompt declined: no attempt to
+reach another computer. CI repeats it in a network namespace with no
+interfaces. Two defects were found and treated on the way (review_log
+F-16: Basilisk's import-time request to github.com, contained; F-17: runs
+downloaded missing support data, fixed). Met by test on Linux.
+
 **Traceability:**
 - Validation specification → technical specification: SVS section 11.
 - Validation specification → requirements baseline: none (waived, D-11).
