@@ -71,11 +71,16 @@ include = ["spacemissionstudio*"]
 # (see gui/theme.py) -- no __init__.py there either, same reason.
 # gui/assets/fonts/ holds IBM Plex (SIL OFL 1.1, the licence and the
 # provenance ship with the fonts).
+# fsw_export/ ships the Basilisk sources the flight-software export
+# packages (a zip of Basilisk's own files, ISC licence included, and the
+# manifest of their git hashes) and the C/CMake templates it fills in.
 [tool.setuptools.package-data]
 spacemissionstudio = ["scenarios/*.json", "scenarios/templates/*.json", "scenarios/templates/README.md",
                       "gui/assets/*.svg", "gui/assets/fonts/*.woff", "gui/assets/fonts/OFL.txt",
                       "gui/assets/fonts/README.md", "data/spaceweather/SW-All.txt", "data/spaceweather/oct2026f10-prd.txt",
-                      "data/spaceweather/README.md", "help/USER_MANUAL.md", "help/docs/images/*.png"]
+                      "data/spaceweather/README.md", "help/USER_MANUAL.md", "help/docs/images/*.png",
+                      "fsw_export/basilisk_fsw_sources.zip", "fsw_export/basilisk_fsw_sources.json",
+                      "fsw_export/templates/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
