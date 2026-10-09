@@ -55,6 +55,8 @@ painful than reserving the shape up front.
 
 from __future__ import annotations
 
+import re
+
 import json
 import math
 from dataclasses import dataclass, field, asdict
@@ -1880,6 +1882,30 @@ class SimSettings:
                   f"sim_settings.integrator {self.integrator!r} must be one of {SUPPORTED_INTEGRATORS}")
 
 
+@dataclass
+class FswExportRecord:
+    """Where a spacecraft's flight software was last exported
+    (``spacemissionstudio.fsw_export``): the folder, and the configuration
+    hash it was exported with, so the GUI can say when the scenario's
+    flight-software settings have changed since (a stale export).
+    ``parts`` holds one short hash per setting group, to name what changed.
+    The export folder's own ``manifest.json`` holds the full provenance."""
+
+    spacecraft: str
+    path: str  # the export folder, absolute or relative to the scenario file
+    config_digest: str  # 64 hex digits (fsw_export.digest.fsw_config_digest)
+    exported_utc: str = ""
+    basilisk_revision: str = ""
+    parts: dict = field(default_factory=dict)  # setting group -> 16 hex digits
+
+    def validate(self) -> None:
+        _require(bool(self.spacecraft), "fsw_exports[].spacecraft must not be empty")
+        _require(bool(self.path), f"fsw_exports[{self.spacecraft}].path must not be empty")
+        _require(isinstance(self.config_digest, str) and re.fullmatch(r"[0-9a-f]{64}", self.config_digest) is not None,
+                 f"fsw_exports[{self.spacecraft}].config_digest must be 64 lower-case hex digits")
+        _require(isinstance(self.parts, dict), f"fsw_exports[{self.spacecraft}].parts must be a mapping")
+
+
 SUPPORTED_SIMULATION_MODES = ("full_attitude", "orbit_only")
 
 
@@ -1923,6 +1949,7 @@ class Scenario:
     # mission_sequence means; engine.mission_engine is an ADDITIVE,
     # separate execution path only used when this is non-empty.
     mission_sequence: list = field(default_factory=list)  # list[Command]
+    fsw_exports: list = field(default_factory=list)  # list[FswExportRecord], at most one per spacecraft
     description: str = ""
     schema_version: int = CURRENT_SCHEMA_VERSION
 
@@ -1943,6 +1970,11 @@ class Scenario:
         _require(len(names) == len(set(names)), f"spacecraft names must be unique, got {names}")
         for sc in self.spacecraft:
             sc.validate()
+        for record in self.fsw_exports:
+            record.validate()
+        exported = [record.spacecraft for record in self.fsw_exports]
+        _require(len(exported) == len(set(exported)),
+                 f"fsw_exports lists a spacecraft more than once: {exported}")
         flexible = [sc.name for sc in self.spacecraft if sc.solar_arrays]
         _require(not flexible or self.sim_settings.integrator in ("rkf45", "rkf78"),
                   f"{flexible[0] if flexible else ''}: flexible solar arrays need an adaptive integrator "
@@ -2190,11 +2222,12 @@ class Scenario:
                                                 **sc))
 
         mission_sequence = [Command.from_dict(c) for c in data.pop("mission_sequence", [])]
+        fsw_exports = [FswExportRecord(**r) for r in data.pop("fsw_exports", [])]
 
         return Scenario(
             gravity=gravity, sim_settings=sim_settings, space_weather=space_weather,
             ground_stations=ground_stations, spacecraft=spacecraft, monte_carlo=monte_carlo,
-            mission_sequence=mission_sequence, **data,
+            mission_sequence=mission_sequence, fsw_exports=fsw_exports, **data,
         )
 
     def save(self, path: "str | Path") -> None:

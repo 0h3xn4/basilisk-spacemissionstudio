@@ -178,6 +178,7 @@ class ScenarioEditorWidget(QWidget):
         wholesale, on OK.
         """
         self._gravity = GravityConfig()
+        self._fsw_exports: list = []  # FswExportRecord list, kept as loaded (see set_fsw_exports)
         self._sim_settings = SimSettings()
         self._space_weather = SpaceWeatherConfig()
 
@@ -331,7 +332,14 @@ class ScenarioEditorWidget(QWidget):
             ground_stations=self.ground_station_list.to_list(),
             monte_carlo=self.monte_carlo_group.to_dataclass(),
             mission_sequence=self.mission_sequence_editor.to_command_list(),
+            fsw_exports=list(self._fsw_exports),
         )
+
+    def set_fsw_exports(self, records: list) -> None:
+        """Replaces the recorded flight-software exports (Flight Software
+        tab); they have no widget here but must survive every edit."""
+        self._fsw_exports = list(records)
+        self.changed.emit()
 
     def _expected_series_names(self) -> list[str]:
         try:
@@ -358,6 +366,7 @@ class ScenarioEditorWidget(QWidget):
         self._refresh_monte_carlo_spacecraft_names()
         self.monte_carlo_group.from_dataclass(scenario.monte_carlo)
         self.mission_sequence_editor.from_command_list(scenario.mission_sequence)
+        self._fsw_exports = list(scenario.fsw_exports)
 
         self.revalidate()
 

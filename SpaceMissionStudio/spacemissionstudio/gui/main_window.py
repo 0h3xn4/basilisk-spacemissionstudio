@@ -69,6 +69,7 @@ from .results_widget import ResultsWidget
 from .run_worker import MonteCarloWorker, RunWorker
 from .scenario_editor import ScenarioEditorWidget
 from .budget_widget import BudgetWidget
+from .fsw_workbench_widget import FlightSoftwareWidget
 from .lifetime_widget import LifetimeWidget
 from .scenario_explainer_widget import ScenarioExplainerWidget
 from .startup_fetch_dialog import maybe_run_startup_fetch
@@ -209,6 +210,8 @@ class MainWindow(QMainWindow):
         self.scenario_explainer_widget = ScenarioExplainerWidget()
         self.lifetime_widget = LifetimeWidget()
         self.budget_widget = BudgetWidget()
+        self.flight_software_widget = FlightSoftwareWidget()
+        self.flight_software_widget.exports_changed.connect(self.scenario_editor.set_fsw_exports)
 
         self.right_tabs = TabWidget()
         self.right_tabs.addTab(self.results_widget, "Results")
@@ -226,6 +229,7 @@ class MainWindow(QMainWindow):
         budget_scroll.setWidgetResizable(True)
         budget_scroll.setWidget(self.budget_widget)
         self.right_tabs.addTab(budget_scroll, "Budget")
+        self.right_tabs.addTab(self.flight_software_widget, "Flight Software")
         self._refresh_scenario_explainer()  # initial paint for the default scenario reset_to_default() just set up
 
         # "Load Scenario" first (index 0, so it's what a freshly launched
@@ -671,6 +675,8 @@ class MainWindow(QMainWindow):
         self.scenario_explainer_widget.set_scenario(scenario)
         self.lifetime_widget.set_scenario(scenario)
         self.budget_widget.set_scenario(scenario)
+        self.flight_software_widget.set_base_dir(self._current_path.parent if self._current_path else None)
+        self.flight_software_widget.set_scenario(scenario)
         # The tab says when there's something to check, so it's seen even
         # by someone who never opens it before pressing Run.
         count = self.scenario_explainer_widget.warning_count
@@ -1614,6 +1620,7 @@ class MainWindow(QMainWindow):
         if self._confirm_discard_unsaved():
             self.lifetime_widget.wait_for_worker()  # a few seconds at most; its thread must not be destroyed mid-run
             self.budget_widget.wait_for_worker()
+            self.flight_software_widget.wait_for_worker()
             event.accept()
         else:
             event.ignore()

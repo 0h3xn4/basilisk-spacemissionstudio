@@ -584,6 +584,58 @@ def cmd_ccsds_import(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_export_fsw(args: argparse.Namespace) -> int:
+    """Export a spacecraft's flight software as a standalone C project."""
+    from .fsw_export.capture import CaptureError
+    from .fsw_export.generate import ExportError
+    from .fsw_export.records import export_flight_software, with_record
+
+    try:
+        scenario = load_scenario(args.scenario)
+    except ScenarioValidationError as exc:
+        print(f"INVALID: {exc}", file=sys.stderr)
+        return 1
+    try:
+        result, record = export_flight_software(scenario, args.spacecraft, args.out, steps=args.steps,
+                                                overwrite=args.overwrite)
+    except (CaptureError, ExportError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+    manifest = result.manifest
+    print(f"{args.spacecraft}: {len(manifest['modules'])} modules, {len(manifest['ports']['inputs'])} inputs, "
+          f"{len(manifest['ports']['outputs'])} outputs, {manifest['recorded_steps']} recorded steps -> {result.directory}")
+    print(f"  configuration digest {record.config_digest}")
+    print(f"  build: cmake -S {result.directory} -B {result.directory}/build && cmake --build {result.directory}/build "
+          f"&& ctest --test-dir {result.directory}/build")
+    if args.record:
+        scenario.fsw_exports = with_record(scenario, record)
+        scenario.validate()
+        scenario.save(args.scenario)
+        print(f"  recorded in {args.scenario}")
+    return 0
+
+
+def cmd_fsw_status(args: argparse.Namespace) -> int:
+    """Whether each recorded flight-software export still matches the scenario."""
+    from .fsw_export.records import CURRENT, export_status
+
+    try:
+        scenario = load_scenario(args.scenario)
+    except ScenarioValidationError as exc:
+        print(f"INVALID: {exc}", file=sys.stderr)
+        return 1
+    if not scenario.fsw_exports:
+        print("no flight-software exports recorded in this scenario")
+        return 0
+    worst = 0
+    for record in scenario.fsw_exports:
+        status = export_status(scenario, record, base_dir=args.scenario.resolve().parent)
+        print(f"{record.spacecraft}: {status.state.upper()} -- {status.message} ({record.path})")
+        if status.state != CURRENT:
+            worst = 2
+    return worst
+
+
 def cmd_spaceweather_resolve(args: argparse.Namespace) -> int:
     try:
         scenario = load_scenario(args.scenario)
@@ -831,6 +883,20 @@ def build_parser() -> argparse.ArgumentParser:
     p_ccsds_in.add_argument("--set-epoch", action="store_true", help="move the scenario epoch to the OPM's epoch")
     p_ccsds_in.add_argument("--out", type=Path, help="write the updated scenario here (default: overwrite)")
     p_ccsds_in.set_defaults(func=cmd_ccsds_import)
+
+    p_fsw = subparsers.add_parser("export-fsw",
+                                  help="export a spacecraft's flight software as a standalone C project (needs Basilisk)")
+    p_fsw.add_argument("scenario", type=Path)
+    p_fsw.add_argument("--spacecraft", required=True)
+    p_fsw.add_argument("--out", type=Path, required=True, help="the export folder (empty, or an earlier export)")
+    p_fsw.add_argument("--steps", type=int, default=None, help="flight-software steps to record for the tests (200)")
+    p_fsw.add_argument("--overwrite", action="store_true", help="replace an earlier export in --out")
+    p_fsw.add_argument("--record", action="store_true", help="record the export in the scenario file")
+    p_fsw.set_defaults(func=cmd_export_fsw)
+    p_fsw_status = subparsers.add_parser("fsw-status",
+                                         help="check the scenario's recorded flight-software exports (stale or not)")
+    p_fsw_status.add_argument("scenario", type=Path)
+    p_fsw_status.set_defaults(func=cmd_fsw_status)
 
     p_sw = subparsers.add_parser("spaceweather-resolve",
                                   help="resolve space weather for a scenario without running it (no Basilisk needed)")

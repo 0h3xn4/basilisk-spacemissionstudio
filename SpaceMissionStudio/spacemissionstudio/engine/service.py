@@ -1724,31 +1724,39 @@ class SimulationService:
 
         self.dyn_task_name = dyn_task_name
         if initialize:
-            self.scSim.InitializeSimulation()
-            stop_time_s = sim_settings.duration_days * 86400.0
-            if self._desat_controls:
-                # thrMomentumManagement needs a real (nonzero) rwSpeedsInMsg
-                # reading in place before its Reset() establishes anything
-                # meaningful -- confirmed directly against a real Basilisk
-                # build (not assumed from the shipped example's comment
-                # alone): without this extra Reset() call, desaturation
-                # never fires for the ENTIRE run, with no error of any
-                # kind, because InitializeSimulation()'s own automatic
-                # Reset() at t=0 runs before any module has ever produced
-                # output. Priming one dynamics tick and re-Reset()ing here
-                # (not just at t=0) is Basilisk's own documented pattern
-                # (examples/scenarioMomentumDumping.py's "cannot be run at
-                # simulation time t=0" comment); this makes it automatic
-                # rather than a thing every scenario author has to know to
-                # do -- see engine.fsw.build_momentum_dumping's docstring
-                # for the actual numbers this was confirmed against.
-                priming_time_s = min(sim_settings.dynamics_task_rate_s, stop_time_s)
-                priming_time_ns = macros.sec2nano(priming_time_s)
-                self.scSim.ConfigureStopTime(priming_time_ns)
-                self.scSim.ExecuteSimulation()
-                for desat_control in self._desat_controls:
-                    desat_control.Reset(priming_time_ns)
-            self.scSim.ConfigureStopTime(macros.sec2nano(stop_time_s))
+            self.initialize()
+
+    def initialize(self) -> None:
+        """``InitializeSimulation()`` and the start-up steps that go with it.
+        ``build(initialize=False)`` leaves this to the caller, so a module
+        can be added to the task in between (``fsw_export.capture`` adds
+        its recorder this way)."""
+        sim_settings = self.scenario.sim_settings
+        self.scSim.InitializeSimulation()
+        stop_time_s = sim_settings.duration_days * 86400.0
+        if self._desat_controls:
+            # thrMomentumManagement needs a real (nonzero) rwSpeedsInMsg
+            # reading in place before its Reset() establishes anything
+            # meaningful -- confirmed directly against a real Basilisk
+            # build (not assumed from the shipped example's comment
+            # alone): without this extra Reset() call, desaturation
+            # never fires for the ENTIRE run, with no error of any
+            # kind, because InitializeSimulation()'s own automatic
+            # Reset() at t=0 runs before any module has ever produced
+            # output. Priming one dynamics tick and re-Reset()ing here
+            # (not just at t=0) is Basilisk's own documented pattern
+            # (examples/scenarioMomentumDumping.py's "cannot be run at
+            # simulation time t=0" comment); this makes it automatic
+            # rather than a thing every scenario author has to know to
+            # do -- see engine.fsw.build_momentum_dumping's docstring
+            # for the actual numbers this was confirmed against.
+            priming_time_s = min(sim_settings.dynamics_task_rate_s, stop_time_s)
+            priming_time_ns = macros.sec2nano(priming_time_s)
+            self.scSim.ConfigureStopTime(priming_time_ns)
+            self.scSim.ExecuteSimulation()
+            for desat_control in self._desat_controls:
+                desat_control.Reset(priming_time_ns)
+        self.scSim.ConfigureStopTime(macros.sec2nano(stop_time_s))
 
     def _record(self, msg):
         """A recorder for ``msg`` sampling every

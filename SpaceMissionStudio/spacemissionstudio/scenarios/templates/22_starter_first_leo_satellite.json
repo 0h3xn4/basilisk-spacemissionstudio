@@ -127,6 +127,7 @@
     "dispersions": []
   },
   "mission_sequence": [],
+  "fsw_exports": [],
   "description": "Start here for your own mission: one 150 kg satellite in a 550 km Sun-synchronous orbit with the environment every LEO mission needs -- detailed gravity, Sun and Moon, drag from real space weather and solar pressure -- and the Berlin ground station. No attitude, so a day runs in seconds.\n\nWhat to look at:\n- The Events tab: four Berlin passes (the first 10-18 min in) and 15 eclipses of about 35 min.\n- my-sat.orbit_elements_mean.raan: the orbit plane turns about 1 deg a day, in step with the Sun.\n- The Explain tab: everything this scenario switches on, in one view.\n\nMake it your own (Save As first):\n- Spacecraft > Edit: your mass, drag area and orbit (a TLE works too).\n- Ground stations: add yours.\n- Propagation setup: the duration and solar activity.\n\nTry changing:\n- Altitude 400 km and 30 days: drag lowers the mean semi-major axis ~1.8 km (at 550 km only ~0.1 km).\n- Spacecraft > New from template, for a satellite with hardware (see 23).",
   "schema_version": 4
 }

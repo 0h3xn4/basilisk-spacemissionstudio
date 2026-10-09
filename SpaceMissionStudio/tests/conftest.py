@@ -19,6 +19,7 @@ erroring the whole run when the corresponding install extra is missing:
 import importlib.util
 import logging
 import os
+import shutil
 import sys
 
 import pytest
@@ -27,6 +28,11 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 BASILISK_AVAILABLE = importlib.util.find_spec("Basilisk") is not None
 GUI_AVAILABLE = importlib.util.find_spec("PySide6") is not None
+# The exported flight-software package (spacemissionstudio.fsw_export) is
+# built with CMake and the platform's C compiler; GitHub's Linux, macOS and
+# Windows runners have both.
+C_TOOLCHAIN_AVAILABLE = shutil.which("cmake") is not None and any(
+    shutil.which(compiler) for compiler in ("cc", "gcc", "clang", "cl"))
 
 
 def pytest_configure(config):
@@ -35,6 +41,9 @@ def pytest_configure(config):
     )
     config.addinivalue_line(
         "markers", "requires_gui: test needs PySide6 (the 'gui' extra; auto-skipped without it)"
+    )
+    config.addinivalue_line(
+        "markers", "requires_c_toolchain: test builds C code with CMake (auto-skipped without CMake and a compiler)"
     )
     config.addinivalue_line(
         "markers", "requirement(*ids): ECSS/CCSDS requirement IDs the test verifies (compliance/ traceability)"
@@ -108,8 +117,11 @@ def _isolate_logging_setup(tmp_path, monkeypatch):
 def pytest_collection_modifyitems(config, items):
     skip_basilisk = pytest.mark.skip(reason="Basilisk is not installed/built in this environment")
     skip_gui = pytest.mark.skip(reason="PySide6 is not installed (pip install -e '.[gui]')")
+    skip_c = pytest.mark.skip(reason="CMake and a C compiler are needed to build the exported flight software")
     for item in items:
         if not BASILISK_AVAILABLE and "requires_basilisk" in item.keywords:
             item.add_marker(skip_basilisk)
         if not GUI_AVAILABLE and "requires_gui" in item.keywords:
             item.add_marker(skip_gui)
+        if not C_TOOLCHAIN_AVAILABLE and "requires_c_toolchain" in item.keywords:
+            item.add_marker(skip_c)
