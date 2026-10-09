@@ -94,6 +94,7 @@ from ..schema.scenario import (
 )
 from .data_handling_editor import GainTableWidget, InstrumentTableWidget
 from .facet_editor import FacetTableWidget
+from .solar_array_editor import SolarArrayTableWidget
 from .feedback import clear_invalid, mark_invalid, show_toast
 from .number_list import NumberListEditor
 from .orbit_ic_widget import OrbitIcWidget
@@ -384,6 +385,19 @@ class SpacecraftEditorDialog(QDialog):
         self.facet_table.from_list(config.facets if config else [])
         facet_layout.addWidget(self.facet_table)
         layout.addWidget(facet_group)
+
+        array_group = self.solar_array_group = QGroupBox("Flexible solar arrays")
+        array_group.setToolTip("Deployed arrays that flex: their mass and inertia move on a spring-damper hinge "
+                               "and act on the body. Needs full-attitude mode and an rkf45/rkf78 integrator.")
+        array_layout = QVBoxLayout(array_group)
+        array_hint = QLabel("Optional: slews and torques make them flex, and with a power budget each generates "
+                            "power facing its own cell-side normal. See User Manual Sec. 6.")
+        array_hint.setWordWrap(True)
+        array_layout.addWidget(array_hint)
+        self.solar_array_table = SolarArrayTableWidget()
+        self.solar_array_table.from_list(config.solar_arrays if config else [])
+        array_layout.addWidget(self.solar_array_table)
+        layout.addWidget(array_group)
 
         attitude_group = QGroupBox("Initial attitude / body rate")
         attitude_group.setToolTip(
@@ -1465,6 +1479,7 @@ class SpacecraftEditorDialog(QDialog):
             # fsw_mode/power above (to_dataclass() also force-clears it to
             # None in the _orbit_only branch, not just hiding this widget).
             self.comms_pointing_group.setChecked(False)
+            self.solar_array_group.setVisible(False)  # flexing moves the attitude, which orbit_only does not simulate
             # Facets follow the attitude, which orbit_only does not
             # simulate (Scenario.validate() rejects them); a spacecraft
             # preset (New from template...) brings a facet model along.
@@ -1684,6 +1699,7 @@ class SpacecraftEditorDialog(QDialog):
             srp_coeff=self.srp_coeff.value(),
             srp_area_m2=self.srp_area_m2.value(),
             facets=[] if self._orbit_only else self.facet_table.to_list(),
+            solar_arrays=[] if self._orbit_only else self.solar_array_table.to_list(),
             enable_gravity_gradient=self.gravity_gradient_check.isChecked(),
             vizard_model_path=self._viz_model_to_dataclass_path(),
             vizard_model_offset_m=[self.viz_offset_x.value(), self.viz_offset_y.value(), self.viz_offset_z.value()],
