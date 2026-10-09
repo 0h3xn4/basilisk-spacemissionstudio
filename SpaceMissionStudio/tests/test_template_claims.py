@@ -175,16 +175,17 @@ def test_14_css_estimate_settles_on_the_sun_axis():
 
 
 def test_21_off_centre_array_loads_the_wheels_unless_torque_rods_unload_them():
-    """A real run: rods-off stores ~2.0 N*m*s by the end of the day (2.02,
-    rw-x -938 RPM), rods-on keeps its wheels under ~30 RPM (28.2): January
-    2030 on NASA MSFC's 50th-percentile prediction, Cd 3.0."""
+    """A real run: rods-off stores ~1.7 N*m*s by the end of the day (1.72,
+    rw-x -815 RPM), rods-on keeps its wheels under ~20 RPM (18.7): January
+    2030 on NASA MSFC's 50th-percentile prediction, Cd 3.0 (re-measured
+    after F-07 and F-09, compliance/drag_remeasure.md)."""
     result = _run(_template("21"))
     js = 12.0 / (6000.0 * np.pi / 30.0)  # [kg*m^2] HR12 12 N*m*s at 6000 RPM
     stored = {name: np.linalg.norm(result.series[f"{name}.rw_speeds"].data[-1]) * js  # [N*m*s]
               for name in ("rods-off", "rods-on")}
-    assert 1.5 < stored["rods-off"] < 2.5  # [N*m*s] "about 2.0 N*m*s stored by the end"
+    assert 1.5 < stored["rods-off"] < 1.9  # [N*m*s] "about 1.7 N*m*s stored by the end"
     rods_on_rpm = result.series["rods-on.rw_speeds"].data[-1] * 30.0 / np.pi  # [RPM]
-    assert np.abs(rods_on_rpm).max() < 40.0  # [RPM] "stay under ~30 RPM"
+    assert np.abs(rods_on_rpm).max() < 25.0  # [RPM] "stay under ~20 RPM"
     for name in ("rods-off", "rods-on"):
         sun = result.series[f"{name}.sun_heading_body"]
         assert sun.data[sun.time_s > 600.0, 2].min() > 0.99  # still Sun-pointed

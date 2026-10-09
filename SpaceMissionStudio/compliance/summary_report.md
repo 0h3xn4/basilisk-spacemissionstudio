@@ -140,7 +140,7 @@ the time of writing.
   result changes:
   - template 18's spacecraft re-enters from 300 km after 34 days, not 25;
   - drag figures published earlier (5-year run, altitude trade, budgets)
-    are out of date (SRelD K-01).
+    were re-measured: 12-20 % lower (SRelD K-01, `drag_remeasure.md`).
 - **F-02:** the Earth GM is 398600.436 km³/s² (Basilisk's), under
   deviation D-07 (decision 6).
 - **Security:** a scenario file could run code without the user's
@@ -162,6 +162,7 @@ the time of writing.
 
 ## 7 Next steps (planned)
 
-1. The whole-tool review and update, starting from the known problems:
-   re-measure K-01, investigate K-08.
-2. Then the UX/UI guidelines (decision 5).
+1. The whole-tool review and update: done (K-01 re-measured, K-08 closed,
+   `review_log.md`).
+2. The UX/UI guidelines (decision 5): steps 1-3 done, step 4 and the Carbon
+   restyle next (`docs/ux_guidelines_gap.md`).

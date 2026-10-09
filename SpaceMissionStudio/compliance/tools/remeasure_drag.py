@@ -211,7 +211,14 @@ def _summarise_t05(result, scenario) -> dict:
     if exit_index is not None and (~outside[exit_index:]).any():
         back_index = exit_index + int(np.argmax(~outside[exit_index:]))
     after = separation_km[back_index:] if back_index is not None else np.array([])
-    return {"exit_day": None if exit_index is None else round(float(days[exit_index]), 1),
+    # every stay outside the band: first and last day outside, and the farthest separation then
+    edges = np.flatnonzero(np.diff(np.concatenate([[False], outside, [False]]).astype(int)))
+    excursions = [[round(float(days[a]), 2), round(float(days[b - 1]), 2),
+                   round(float(separation_km[a:b][np.argmax(np.abs(separation_km[a:b] - target_km))]), 2)]
+                  for a, b in zip(edges[0::2], edges[1::2])]
+    return {"excursions": excursions,
+            "days_outside": round(float(np.sum(np.diff(days, prepend=days[0])[outside])), 2),
+            "exit_day": None if exit_index is None else round(float(days[exit_index]), 1),
             "return_day": None if back_index is None else round(float(days[back_index]), 1),
             "band_km": [round(float(after.min()), 1), round(float(after.max()), 1)] if after.size else None,
             "delta_v_m_s": round(float(result.series[f"{follower.name}.phasing_keeping.delta_v"].data[-1, 0]), 4)}
@@ -291,10 +298,17 @@ def sweep_estimate() -> dict:
 
 
 def trade_estimate(workers: int) -> dict:
-    """Template 18's altitude trade at its default altitudes."""
+    """Template 18's altitude trade at today's default altitudes and at the
+    published ones (the default grid moved from 350-550 km to 300-500 km
+    after the trade was published, so a column-by-column comparison would
+    pair different altitudes)."""
     from spacemissionstudio.engine import propellant_budget
 
-    trade = propellant_budget.altitude_trade(_template("18"), SPACECRAFT, workers=workers)
+    scenario = _template("18")
+    own = next(sc for sc in scenario.spacecraft if sc.name == SPACECRAFT)
+    own_km = own.orbit.semi_major_axis_km - propellant_budget.REQ_EARTH_M / 1e3  # [km]
+    altitudes = sorted({*propellant_budget.default_altitudes_km(own_km), *PUBLISHED["trade"]["altitude_km"]})  # [km]
+    trade = propellant_budget.altitude_trade(scenario, SPACECRAFT, altitudes_km=altitudes, workers=workers)
     return {"altitude_km": [round(case.altitude_km) for case in trade.altitudes],
             "inclination_deg": [round(case.inclination_deg, 2) for case in trade.altitudes],
             "worst_year": [case.worst.launch_utc.year for case in trade.altitudes],
@@ -369,6 +383,11 @@ def report(results: dict, host: dict) -> str:
                   "| | Leaves band [day] | Back [day] | Then held [km] | Phasing delta-V [m/s] |", "|---|---|---|---|---|",
                   f"| Published | {old['exit_day']} | {old['return_day']} | {old['band_km']} | {old['delta_v_m_s']} |",
                   f"| Now | {r['exit_day']} | {r['return_day']} | {r['band_km']} | {r['delta_v_m_s']} |"]
+        if "excursions" in r:
+            lines += ["", f"Outside the band for {r['days_outside']} days in all, in {len(r['excursions'])} "
+                      "stay(s) (first day, last day, farthest separation [km]): "
+                      + "; ".join(f"{a}-{b} ({x})" for a, b, x in r["excursions"][:12])
+                      + (" ..." if len(r["excursions"]) > 12 else "") + "."]
     if "t21" in results:
         r, old = results["t21"], PUBLISHED["t21"]
         lines += ["", "## t21: template 21, one day", "",
@@ -387,18 +406,30 @@ def report(results: dict, host: dict) -> str:
                   "", f"Worst launch now: {r['worst_year']}."]
     if "trade" in results:
         r, old = results["trade"], PUBLISHED["trade"]
+
+        def published(key):  # aligned by altitude, "-" where none was published
+            by_altitude = dict(zip(old["altitude_km"], old[key]))
+            return [by_altitude.get(a) for a in r["altitude_km"]]
+
+        def cells(values):
+            return " | ".join("-" if v is None else f"{v:g}" for v in values)
+
+        changes = [None if p is None or not p else f"{(n - p) / p:+.1%}"
+                   for p, n in zip(published("in_plane_m_s"), r["in_plane_m_s"])]
         lines += ["", "## Altitude trade, template 18 (worst launch per altitude)", "",
                   "| Altitude [km] | " + " | ".join(str(a) for a in r["altitude_km"]) + " |",
                   "|---|" + "---|" * len(r["altitude_km"]),
-                  "| Inclination [deg] | " + " | ".join(f"{v:g}" for v in r["inclination_deg"]) + " |",
+                  "| Inclination [deg] | " + cells(r["inclination_deg"]) + " |",
                   "| Worst launch | " + " | ".join(str(v) for v in r["worst_year"]) + " |",
-                  "| In-plane, published [m/s] | " + " | ".join(f"{v:g}" for v in old["in_plane_m_s"]) + " |",
-                  "| In-plane, now [m/s] | " + " | ".join(f"{v:g}" for v in r["in_plane_m_s"]) + " |",
-                  "| Disposal, published [m/s] | " + " | ".join(f"{v:g}" for v in old["disposal_m_s"]) + " |",
-                  "| Disposal, now [m/s] | " + " | ".join(f"{v:g}" for v in r["disposal_m_s"]) + " |",
-                  "| Propellant, published [kg] | " + " | ".join(f"{v:g}" for v in old["propellant_kg"]) + " |",
-                  "| Propellant, now [kg] | " + " | ".join(f"{v:g}" for v in r["propellant_kg"]) + " |",
-                  "", f"Tank {r['tank_kg']} kg; lowest altitude that fits now: {r['lowest_fitting_km'] or 'none'}."]
+                  "| In-plane, published [m/s] | " + cells(published("in_plane_m_s")) + " |",
+                  "| In-plane, now [m/s] | " + cells(r["in_plane_m_s"]) + " |",
+                  "| In-plane change | " + " | ".join(c or "-" for c in changes) + " |",
+                  "| Disposal, published [m/s] | " + cells(published("disposal_m_s")) + " |",
+                  "| Disposal, now [m/s] | " + cells(r["disposal_m_s"]) + " |",
+                  "| Propellant, published [kg] | " + cells(published("propellant_kg")) + " |",
+                  "| Propellant, now [kg] | " + cells(r["propellant_kg"]) + " |",
+                  "", f"Tank {r['tank_kg']} kg; lowest altitude that fits now: {r['lowest_fitting_km'] or 'none'}. "
+                  "Published at 350-550 km; today's default grid is 300-500 km, so both are run."]
     if "disposal" in results:
         r, old = results["disposal"], PUBLISHED["disposal"]
         lines += ["", f"## Disposal from {DISPOSAL_ALTITUDE_KM:g} km at {DISPOSAL_EOL_UTC.date()} ({r['mass_kg']:g} kg, "
@@ -428,9 +459,12 @@ def main(argv=None) -> int:
                         help="cases to run (default: all)")
     parser.add_argument("--workers", type=int, default=3, help="parallel Basilisk runs (and altitude-trade workers)")
     parser.add_argument("--write", action="store_true", help="store the results in compliance/drag_remeasure.*")
+    parser.add_argument("--keep", action="store_true",
+                        help="start from the stored drag_remeasure.json and replace only the cases run now")
     args = parser.parse_args(argv)
     chosen = args.case or [*BASILISK_CASES, *ESTIMATE_CASES]
-    results: dict = {}
+    stored = ROOT / "drag_remeasure.json"
+    results: dict = json.loads(stored.read_text(encoding="utf-8")) if args.keep and stored.exists() else {}
     # longest first, so the five-year runs start at once
     basilisk = [case for case in BASILISK_CASES if case in chosen]
     context = multiprocessing.get_context("spawn")

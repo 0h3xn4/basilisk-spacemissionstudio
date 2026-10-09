@@ -91,7 +91,7 @@ SpaceMissionStudio". In summary:
 
 | # | Problem | Effect | Ref. |
 |---|---|---|---|
-| K-01 | The drag figures in the HISTORY entries for the 5-year run, the altitude trade and the budgets were measured before the F-07 correction | Those published numbers are out of date | HISTORY.md; to re-measure |
+| K-01 | Closed: the drag figures published before F-07 and F-09 (5-year runs, re-entry from 300 km, launch-delay sweep, altitude trade, disposal, templates 05 and 21) were re-measured on Basilisk 2.12.0. Station-keeping and trade figures fall 12-20 %; HISTORY, the template 05 and 21 descriptions, the template 21 claim test and the drag make-up docstring now give the new values. The bundled space weather has also changed since some were published, and the re-measurement does not separate the two; the disposal figures move both ways, not explained | – | `compliance/drag_remeasure.md`; HISTORY.md |
 | K-02 | The drag case of V-04 has an unexplained 1.6 % decay difference from GMAT (within tolerance) | Drag results carry it | `phase3_log.md` |
 | K-03 | The time argument is TDB, not TAI (F-05) | About 0.1 m/day in LEO | `phase3_log.md` |
 | K-04 | The field's GM and radius are the body's, not the field file's (F-03) | Centimetres per day | `phase3_log.md` |
@@ -128,8 +128,8 @@ are not (decision 14, H08).
 
 Planned, in order:
 1. The human actions of RD4: reviews, PA organisation, signatures.
-2. A review and update of the whole tool: re-measure K-01, investigate
-   K-08.
+2. A review and update of the whole tool: done (K-01 re-measured, K-08
+   closed, unreached code analysed; `review_log.md`).
 3. The UX/UI guidelines (`PROGRESS.md`, decision 5).
 
 Dropping the two Basilisk workarounds also depends on Basilisk: they go

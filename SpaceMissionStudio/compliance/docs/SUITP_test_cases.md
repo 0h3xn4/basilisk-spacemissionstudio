@@ -2131,7 +2131,7 @@ Levels: *unit* runs without Basilisk or Qt; *integration* runs a Basilisk simula
 | `test_08_prograde_burn_raises_the_orbit_on_the_far_side` | - | - | integration |
 | `test_13_torque_rods_steer_the_wheels_to_their_target_speeds` | - | - | integration |
 | `test_14_css_estimate_settles_on_the_sun_axis` | - | - | integration |
-| `test_21_off_centre_array_loads_the_wheels_unless_torque_rods_unload_them` | A real run: rods-off stores ~2.0 N*m*s by the end of the day (2.02, rw-x -938 RPM), rods-on keeps its wheels under ~30 RPM (28.2): January 2030 on NASA MSFC's 50th-percentile prediction, Cd 3.0. | - | integration |
+| `test_21_off_centre_array_loads_the_wheels_unless_torque_rods_unload_them` | A real run: rods-off stores ~1.7 N*m*s by the end of the day (1.72, rw-x -815 RPM), rods-on keeps its wheels under ~20 RPM (18.7): January 2030 on NASA MSFC's 50th-percentile prediction, Cd 3.0 (re-measured after F-07 an | - | integration |
 
 ### `tests/test_thermal_simulation.py`
 
