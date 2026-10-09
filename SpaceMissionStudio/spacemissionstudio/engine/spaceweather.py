@@ -87,13 +87,15 @@ conservative case follows ESA's guideline).
 from __future__ import annotations
 
 import csv
+import hashlib
+import json
 import os
 import tempfile
 import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -295,10 +297,43 @@ def fetch(dataset: str = "SW-All", cache_dir: Optional[Path] = None, force: bool
             f"{url} response exceeded {_MAX_DOWNLOAD_BYTES} bytes -- refusing to buffer an unbounded download"
         )
 
+    return _install(dest, data, url)
+
+
+def _manifest_of(path: Path) -> Path:
+    return path.with_name(path.name + ".manifest.json")
+
+
+def _previous_of(path: Path) -> Path:
+    return path.with_name(path.name + ".previous")
+
+
+def _install(dest: Path, data: bytes, source: str) -> Path:
+    """Check ``data`` is a readable CelesTrak file, keep the current file as
+    the previous version (for :func:`rollback`), install ``data`` at
+    ``dest`` and record its source, SHA-256 and dates in a manifest
+    (UX/UI guidelines: checked, consented downloads that can be rolled
+    back). CelesTrak publishes no checksums, so the check is that the
+    whole file parses and has observed days."""
     tmp = dest.with_suffix(dest.suffix + ".part")
     try:
         tmp.write_bytes(data)
+        try:
+            parsed = load_celestrak(tmp)
+        except SpaceWeatherError as exc:
+            raise SpaceWeatherError(f"{source} is not a usable CelesTrak space-weather file: {exc}") from exc
+        if dest.exists():
+            dest.replace(_previous_of(dest))  # keep the version being replaced
+            if _manifest_of(dest).exists():
+                _manifest_of(dest).replace(_manifest_of(_previous_of(dest)))
         tmp.replace(dest)  # atomic-ish: never leave a half-written file at `dest`
+        observed = [d for d, r in parsed.days.items() if r.kind == "observed"]
+        _manifest_of(dest).write_text(json.dumps({
+            "source": source, "sha256": hashlib.sha256(data).hexdigest(), "size_bytes": len(data),
+            "installed_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "first_date": parsed.first_date.isoformat(), "last_date": parsed.last_date.isoformat(),
+            "last_observed": max(observed).isoformat() if observed else None,
+        }, indent=2) + "\n", encoding="utf-8")
     except OSError as exc:
         # A disk-full/permission failure here is just as much a "this
         # fetch did not succeed" case as a network failure above -- same
@@ -306,7 +341,60 @@ def fetch(dataset: str = "SW-All", cache_dir: Optional[Path] = None, force: bool
         # caller (gui.startup_fetch_dialog's worker, in practice) would
         # need its own special handling for.
         raise SpaceWeatherError(f"could not write {dest}: {exc}") from exc
+    finally:
+        if tmp.exists():
+            tmp.unlink()
     return dest
+
+
+def import_file(path: "str | Path", dataset: str = "SW-All", cache_dir: Optional[Path] = None) -> Path:
+    """Install a CelesTrak file the user has (for example from removable
+    media) as the downloaded data, the way :func:`fetch` would; the
+    previous file is kept for :func:`rollback`."""
+    cache_dir = Path(cache_dir) if cache_dir else DEFAULT_CACHE_DIR
+    path = Path(path)
+    try:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        data = path.read_bytes()
+    except OSError as exc:
+        raise SpaceWeatherError(f"could not read {path}: {exc}") from exc
+    return _install(cache_dir / f"{dataset}.csv", data, f"imported from {path}")
+
+
+def rollback(dataset: str = "SW-All", cache_dir: Optional[Path] = None) -> Path:
+    """Put the previous downloaded or imported file back."""
+    cache_dir = Path(cache_dir) if cache_dir else DEFAULT_CACHE_DIR
+    dest = cache_dir / f"{dataset}.csv"
+    previous = _previous_of(dest)
+    if not previous.exists():
+        raise SpaceWeatherError("there is no previous space-weather file to roll back to")
+    previous.replace(dest)
+    if _manifest_of(previous).exists():
+        _manifest_of(previous).replace(_manifest_of(dest))
+    elif _manifest_of(dest).exists():
+        _manifest_of(dest).unlink()
+    return dest
+
+
+def installed_record(dataset: str = "SW-All", cache_dir: Optional[Path] = None) -> Optional[dict]:
+    """The manifest of the downloaded or imported file (source, SHA-256,
+    dates), or None when there is none; ``previous`` holds the kept one's."""
+    cache_dir = Path(cache_dir) if cache_dir else DEFAULT_CACHE_DIR
+    dest = cache_dir / f"{dataset}.csv"
+    if not dest.exists():
+        return None
+    try:
+        record = json.loads(_manifest_of(dest).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        record = {"source": "downloaded before manifests were kept", "size_bytes": dest.stat().st_size}
+    record["path"] = str(dest)
+    previous = _previous_of(dest)
+    if previous.exists():
+        try:
+            record["previous"] = json.loads(_manifest_of(previous).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            record["previous"] = {"source": "unknown"}
+    return record
 
 
 def cached_fetch_path(dataset: str = "SW-All", cache_dir: Optional[Path] = None) -> Optional[Path]:
