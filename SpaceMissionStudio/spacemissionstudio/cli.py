@@ -164,6 +164,13 @@ def cmd_run(args: argparse.Namespace) -> int:
             oem_path.write_text(text, encoding="ascii")
             print(f"  CCSDS OEM: {oem_path}")
 
+    from .engine import events
+
+    found = events.extract_events(result)  # the GUI's Events tab, headless (provenance.json covers it)
+    if found:
+        events_path = events.write_csv(found, args.out_dir / "events.csv", scenario.epoch_utc)
+        print(f"  events ({len(found)}): {events_path}")
+
     # Informational only -- never affects the exit code (see
     # ResultSet.warnings's own docstring: a non-empty list here is a
     # numerical-health diagnostic, not a validation failure).

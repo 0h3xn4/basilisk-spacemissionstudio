@@ -540,6 +540,7 @@ class _SpacecraftHandle:
     station_keeping_controller: Optional[object] = None  # Phase 4: only set if sc_config.station_keeping was configured
     geo_station_keeping_controller: Optional[object] = None  # only set if sc_config.geo_station_keeping is
     eclipse_out_msg: Optional[object] = None  # Phase 4: only set if power or station_keeping was configured
+    eclipse_recorder: Optional[object] = None  # set with eclipse_out_msg (the Events tab's eclipses)
     phasing_keeping_controller: Optional[object] = None  # Phase 4: only set if sc_config.phasing_keeping was configured
     constant_thrust_controller: Optional[object] = None  # Phase 5: only set if sc_config.constant_thrust was configured
     # comms_pointing (schema.scenario.CommsPointingConfig): the two
@@ -610,6 +611,7 @@ class SimulationService:
         self._ground_station_latitudes: Dict[str, tuple] = {}  # name -> (geocentric, geodetic) [rad]
         self._access_out_msgs: Dict[tuple, object] = {}  # (ground_station_name, spacecraft_name) -> accessOutMsg, for engine.vizard
         self._eclipse_object = None  # Phase 4: only built if some spacecraft has power or station_keeping configured
+        self._record_eclipses = False  # built anyway when the Sun is tracked: every spacecraft's eclipses are recorded
         # Phase 4: retains the vizInterface module enable_vizard() returns,
         # and (separately -- see that function's own docstring for why a
         # SWIG VizInterface proxy can't just carry this as one of its own
@@ -873,7 +875,12 @@ class SimulationService:
             or any(sensor.kind == "thermal" for sensor in sc.sensors)
             for sc in scenario.spacecraft
         )
-        if needs_eclipse:
+        # Events tab (UX/UI guidelines): every spacecraft's eclipses are
+        # recorded whenever the Sun is tracked, even when nothing above
+        # needs them. The eclipse model only writes messages; adding a
+        # spacecraft to it changes no dynamics.
+        self._record_eclipses = self._sun_state_out_msg is not None and gravity.central_body != "sun"
+        if needs_eclipse or self._record_eclipses:
             if self._sun_state_out_msg is None:
                 raise SimulationServiceError(
                     "a spacecraft has a power budget, station-keeping, SRP (enable_srp), or a 'thermal' sensor "
@@ -985,7 +992,7 @@ class SimulationService:
         sc_objects_in_order: List = []
         rw_effectors_in_order: List = []
         thr_effectors_in_order: List = []
-        eclipse_index = 0  # only incremented for spacecraft that actually have power/station_keeping/enable_srp
+        eclipse_index = 0  # only incremented for spacecraft added to the eclipse model (all of them when the Sun is tracked)
         drag_index = 0  # only incremented for spacecraft that actually have enable_drag
 
         for sc_config in scenario.spacecraft:
@@ -1046,11 +1053,13 @@ class SimulationService:
                 sc_config.power is not None or sc_config.station_keeping is not None or sc_config.enable_srp
                 or any(sensor.kind == "thermal" for sensor in sc_config.sensors)
             )
-            if needs_eclipse_for_this_sc:
+            if needs_eclipse_for_this_sc or self._record_eclipses:
                 self._eclipse_object.addSpacecraftToModel(sc_object.scStateOutMsg)
                 sc_eclipse_out_msg = self._eclipse_object.eclipseOutMsgs[eclipse_index]
                 eclipse_index += 1
                 handle.eclipse_out_msg = sc_eclipse_out_msg
+                handle.eclipse_recorder = self._record(sc_eclipse_out_msg)
+                self.scSim.AddModelToTask(dyn_task_name, handle.eclipse_recorder)
 
             # -- Phase 2: sensors are independent of fsw_mode (they read
             # truth spacecraft state / SPICE / the magnetic-field model
@@ -2071,6 +2080,15 @@ class SimulationService:
                 rwt_t_s = rw_thermal_recorder.times() * macros.NANO2SEC
                 result.add(TimeSeries(f"{name}.actuator.{actuator_name}.motor_temperature", rwt_t_s,
                                        ("temperature",), rw_thermal_recorder.temperature, units="C"))
+
+            if handle.eclipse_recorder is not None:
+                recorder = handle.eclipse_recorder
+                # 1 in full Sun, 0 in umbra; the older field name on builds without
+                # illuminationFactor (see orbit_maintenance._eclipse_illumination_fraction)
+                sunlight = getattr(recorder, "illuminationFactor", None)
+                result.add(TimeSeries(f"{name}.eclipse.illumination_factor", recorder.times() * macros.NANO2SEC,
+                                       ("illumination_factor",),
+                                       recorder.shadowFactor if sunlight is None else sunlight, units="-"))
 
             if handle.battery_recorder is not None:
                 battery_t_s = handle.battery_recorder.times() * macros.NANO2SEC

@@ -127,6 +127,9 @@ def _vector_display(name: str) -> Optional[SeriesDisplay]:
         return SeriesDisplay("Battery State of Charge", "Charge", "W*hr", 1.0, {"charge": "Charge"})
     if name.endswith(".battery_net_power"):
         return SeriesDisplay("Battery Net Power", "Net power", "W", 1.0, {"net_power": "Net power"})
+    if name.endswith(".eclipse.illumination_factor"):
+        return SeriesDisplay("Sunlight (Eclipse)", "Fraction of full Sun", "-", 1.0,
+                              {"illumination_factor": "Sunlight"})
     return None
 
 
