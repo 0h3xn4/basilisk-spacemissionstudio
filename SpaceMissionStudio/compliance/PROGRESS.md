@@ -129,6 +129,8 @@ the table below.
 | CI, Linux/Windows/macOS, `41b73b1c3` | 2259 | 11 | 0 (3 new tests in the K-10 follow-ups; no changed expectations) |
 | After the 6.2.3.6a removals (F-13), Python 3.11 | 2259 | 11 | 0 (no difference: the removed code had no tests) |
 | After F-13 and F-14, Python 3.12 with `sys.monitoring` coverage | 2261 | 11 | 0 (2 new tests, constant thrust; no changed expectations) |
+| CI run 48, `5c2805085` (UX step 1, F-16, F-17) | 2286 | 11 | Linux and Windows 0; macOS 1: the F1 test, as Qt's HelpContents key is Ctrl+? there. F1 is now set on every platform (`3214f1855`) |
+| After UX steps 2 and 3 and K-01, Python 3.11, `1d937c70b` | 2317 | 10 | 0 (new tests: the Data tab, the event model, the Events tab, the cursor on plots, dashboard and output, a real-run eclipse check; changed expectations: template 05's series count 40 -> 42 (eclipse series), template 21's claim figures (K-01). One skip fewer: the Kernel Status tests went with that tab, and one of them only ran without Basilisk) |
 
 ## Resuming
 
