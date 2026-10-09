@@ -1030,12 +1030,12 @@ class MainWindow(QMainWindow):
         anything to flush/save), ``kill()`` only if that doesn't work
         within the timeout.
 
-        Audit correction: this used to say waiting frees "the port it may
-        have bound" -- wrong. ``launch_vizard()`` only ever starts the
-        external Vizard GUI as a CLIENT process that dials OUT to
-        Basilisk's own ``vizInterface`` (the engine side, which is what
-        actually binds the port); see ``docs/source/Vizard/vizardAdvanced/
-        vizardLiveComm.rst``. Nothing this process does binds a port.
+        Waiting also frees the live-stream port. In Basilisk 2.12.0
+        ``vizInterface`` connects out to Vizard, so the Vizard process
+        started here is the one that listens on it (security analysis
+        S-06; the "binds" wording in ``docs/source/Vizard/vizardAdvanced/
+        vizardLiveComm.rst`` does not match the code). The tool itself
+        opens no port.
         """
         self._vizard_process.terminate()
         try:

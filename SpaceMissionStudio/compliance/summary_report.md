@@ -71,12 +71,12 @@ From `compliance_matrix.csv`. "Was" is after Phase 3; Phase 1 values are in
 | Standard | Compliant | Partially | Non-compliant | Not applicable | Human/process action |
 |---|---|---|---|---|---|
 | ECSS-E-ST-40C | 45 (was 4) | 533 (was 86) | 165 (was 553) | 33 | 7 (was 107) |
-| ECSS-Q-ST-80C | 12 (was 5) | 235 (was 96) | 22 (was 96) | 33 | 45 (was 117) |
+| ECSS-Q-ST-80C | 12 (was 5) | 236 (was 96) | 22 (was 96) | 33 | 44 (was 117) |
 | ECSS-E-ST-10-09C | 23 | 59 | 0 | 6 | 4 |
 | ECSS-E-ST-10-04C | 9 | 4 | 17 | 122 | 0 |
 | CCSDS 502.0-B-3 | 263 | 10 | 71 | 369 | 2 |
 
-Counts as of the human-action decisions 7 to 13 (2026-10-08): a waived
+Counts as of the human-action decisions 7 to 19 (2026-10-08): a waived
 requirement counts as non-compliant (with its deviation), and a decided
 human action moves its rows out of the last column.
 
