@@ -152,7 +152,9 @@ A few things to notice right away:
   (Section 7). **Data** lists the reference files and offers to
   download missing ones. **Explain** is a live summary of what the
   scenario you are editing does (end of Section 7). **End of Life** and
-  **Budget** estimate re-entry and delta-V (Section 11).
+  **Budget** estimate re-entry and delta-V (Section 11). A ninth,
+  **Monte Carlo**, appears when the scenario has Monte Carlo on
+  (Section 10).
 * The status bar at the bottom shows progress and, if it is not the
   verified 2.12.0, the Basilisk version.
 
@@ -526,11 +528,29 @@ then use **Run > Run Monte Carlo...** instead of the ordinary Run
 Simulation. This is a more advanced feature; most people won't need it
 for a first mission. Templates 09 and 25 are ready-made batches.
 
-Run Monte Carlo asks for a folder and saves every run there: `runN.json`
-with the values that run drew, and each spacecraft's position and
-velocity. The app does not plot a batch yet;
-[`examples/monte_carlo_spread.py`](examples/monte_carlo_spread.py) shows
-how to read the folder back and compare the runs.
+Run Monte Carlo asks for a folder, saves every run there, and opens the
+**Monte Carlo** tab on the batch (the tab is there whenever the scenario
+has Monte Carlo on, or a batch is open):
+
+![The Monte Carlo tab for template 25: tiles with the spread at the end, and every run's along-track offset from the batch mean](docs/images/monte_carlo_tab.png)
+
+* **Tiles:** how many runs succeeded, which failed, and how far apart
+  the runs ended (1-sigma) along the orbit, radially and across it, plus
+  the range of final altitudes.
+* **Plots:** every run's altitude and its offsets from the mean of all
+  runs, drawn as one family of thin lines, and the 1-sigma spread over
+  time. Offsets are measured along the orbit: "along-track" is how far
+  a run leads or trails the others.
+* **Runs:** a table of what each run drew (semi-major axis, drag
+  coefficient, mass, ...) and where it ended. Click a column to sort,
+  e.g. to see which drawn value goes with the largest offset; **Export
+  table CSV...** saves it.
+
+**Run > Open Monte Carlo Results...** shows a batch you ran earlier, from
+the folder you saved it in. It reads only the summary the batch wrote
+(`batch_results.npz` and `.json`), never Basilisk's own archive files.
+From Python, [`examples/monte_carlo_spread.py`](examples/monte_carlo_spread.py)
+reads the same summary.
 
 What can vary, each spacecraft on its own:
 

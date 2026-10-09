@@ -14,7 +14,7 @@ installed SpaceMissionStudio into active (see
 | [`run_a_template.py`](run_a_template.py) | Running any bundled template (or your own file) and reading its results: time series, events (passes, eclipses), CSV export. | yes | 5 s |
 | [`hohmann_transfer.py`](hohmann_transfer.py) | A Mission Sequence in code: burn, coast until apoapsis, burn again. The result is checked against the textbook Hohmann transfer. | yes | 5 s |
 | [`altitude_lifetime_sweep.py`](altitude_lifetime_sweep.py) | A parameter sweep: orbital lifetime at several altitudes, with real solar activity, checked against the 5-year disposal rule. | yes | 35 s |
-| [`monte_carlo_spread.py`](monte_carlo_spread.py) | Running template 25's Monte Carlo batch and reading the archive back, which the GUI does not plot. | yes | 1 min |
+| [`monte_carlo_spread.py`](monte_carlo_spread.py) | Running template 25's Monte Carlo batch and reading its summary back: the spread along, across and out of the orbit, day by day (the GUI's Monte Carlo tab shows the same). | yes | 1 min |
 
 ```bash
 python3 examples/build_a_scenario.py my_first_mission.json
@@ -39,7 +39,7 @@ All five use the same few entry points:
 | List events | `spacemissionstudio.engine.events.extract_events(result)` |
 | Summarize a scenario | `spacemissionstudio.engine.scenario_explainer.explain(scenario)` (the Explain tab) |
 | Estimate lifetime | `spacemissionstudio.engine.lifetime.spacecraft_lifetime(scenario, name)` (the End of Life tab) |
-| Monte Carlo | `spacemissionstudio.engine.monte_carlo.run_monte_carlo(scenario, scenario.monte_carlo, folder)` |
+| Monte Carlo | `spacemissionstudio.engine.monte_carlo.run_monte_carlo(scenario, scenario.monte_carlo, folder)`; read the results with `spacemissionstudio.engine.monte_carlo_results.load(folder)` |
 
 Series names follow `<spacecraft>.<quantity>` (`my-sat.position_N`) or
 `<station>.access_to_<spacecraft>.<quantity>`; the Results tab's

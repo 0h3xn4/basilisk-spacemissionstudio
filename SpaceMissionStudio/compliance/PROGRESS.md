@@ -137,6 +137,7 @@ the table below.
 | After Basilisk's formation-flying laws (SRS-F-10), Python 3.11, `be0d6368f` | 2365 | 10 | 0 (25 new tests: `tests/test_formation_control.py` (19, 9 of them real Basilisk runs), the editor round trip and field visibility, the formation dialog, generator and CLI law choice, the Explain badge; no changed expectations) |
 | After the new Monte Carlo dispersions (SRS-F-13), Python 3.11 | 2383 | 10 | 0 (18 new tests: validation of the five new quantities, one draw each and a three-run batch through Basilisk's Controller, the editor's new fields; no changed expectations) |
 | After the newcomer documentation, templates 22-25 and `examples/` (SUM, SRS-O-02, SRS-H-02), Python 3.11 | 2489 | 10 | 0 (106 new tests: the four new templates in every parametrized template, wizard, GUI and explainer test, their structure and claims (three Basilisk runs), the five examples, the selected-row contrast, the presets in orbit-only mode; no changed expectations) |
+| After Monte Carlo results in the app (SRS-F-13, SRS-F-15, S-04), Python 3.11 | 2504 | 10 | 0 (15 new tests: the pickle-free summary, its curvilinear spread and zero-spread formatting, a Basilisk batch writing it, the Monte Carlo tab, its ensemble plot and when the tab shows; changed expectations: `tests/test_examples.py`'s Monte Carlo example now reads the summary and returns three spreads) |
 
 ## Resuming
 

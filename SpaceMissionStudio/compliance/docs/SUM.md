@@ -227,7 +227,9 @@ in the CLI. An error never closes the application.
   - Run script blocks only if you trust the file and have read the code.
   - Conditions (`if`/`while`) cannot run code (AD3, S-02).
 - **Monte Carlo archives:** Basilisk writes them as pickle files. Do not
-  load archives you did not create (AD3, S-04).
+  load archives you did not create with Basilisk's own tools (AD3, S-04).
+  The Monte Carlo tab and **Open Monte Carlo Results...** read only the
+  pickle-free summary next to them (`batch_results.npz`, `.json`).
 - **Vizard live streaming:** the tool opens no network port. Vizard
   listens on port 5556 while a run streams, and the simulation connects
   to it.

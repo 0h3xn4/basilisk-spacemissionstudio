@@ -33,7 +33,7 @@ this for the first time should actually be able to read.
 | Learn to use the app (no programming or spacecraft background needed) | [`USER_MANUAL.md`](USER_MANUAL.md), also in the app under **Help > User Manual** (`F1`) |
 | Learn by example | The 25 [template missions](spacemissionstudio/scenarios/templates/README.md), from a single circular orbit to complete missions, with a suggested order |
 | Start your own mission | Templates **22** (a realistic satellite, orbit only) and **23** (a complete small satellite with hardware, radio link and Mission Sequence) |
-| Script it from Python | [`examples/`](examples/README.md): build a scenario, run templates, a Mission Sequence, a parameter sweep, a Monte Carlo archive |
+| Script it from Python | [`examples/`](examples/README.md): build a scenario, run templates, a Mission Sequence, a parameter sweep, Monte Carlo results |
 | Know what is verified, and how | "Verification status" below, and [`compliance/`](compliance/) |
 | Know why something is the way it is | [`HISTORY.md`](HISTORY.md), the development log |
 
@@ -200,8 +200,10 @@ slant range, elevation, azimuth per station/spacecraft pair), a real
 power budget (solar panel/battery/eclipse, driven by actual simulated
 attitude and eclipse state, not a flat duty cycle), a downlink RF
 link-margin estimate evaluated against real simulated slant range, and
-Monte Carlo batch analysis (`Basilisk.utilities.MonteCarlo`, dry-mass
-and attitude dispersions).
+Monte Carlo batch analysis (`Basilisk.utilities.MonteCarlo`: dry mass,
+attitude, orbital elements, inertia, body rate, drag and SRP
+coefficients), shown in the GUI's Monte Carlo tab (each run, the spread
+along, across and out of the orbit, and a table of what each run drew).
 
 **Automatic Sun-pointing / ground-station-pointing attitude switching** --
 `SpacecraftConfig.comms_pointing` (`engine.fsw.build_comms_pointing`): a
@@ -354,6 +356,7 @@ SpaceMissionStudio/
       fsw.py                         -- Phase 2: attitude nav/guidance/control/actuation chain (needs Basilisk)
       vizard.py                      -- Phase 2: Vizard integration (needs Basilisk, imported lazily)
       monte_carlo.py                 -- Phase 3: Basilisk.utilities.MonteCarlo bridge (needs Basilisk)
+      monte_carlo_results.py         -- a batch's pickle-free summary (batch_results.npz/.json) and its spread (no Basilisk needed)
       link_budget.py                 -- Phase 4: downlink RF link-margin estimate (no Basilisk needed)
       device_catalog.py              -- real, sourced, European-manufactured sensor/actuator device presets for gui/sensor_actuator_editor.py (no Basilisk needed)
       orbit_maintenance.py           -- Phase 4/5: station-keeping + phasing-keeping + constant-frame-thrust controllers, delta-V/propellant bookkeeping (needs Basilisk)
@@ -389,6 +392,7 @@ SpaceMissionStudio/
       vizard_launcher.py             -- find/launch the external Vizard application (no Basilisk needed)
       startup_fetch_dialog.py        -- startup prompt to fetch cached support data/Vizard when missing (no Basilisk needed)
       monte_carlo_editor.py          -- Phase 3: Monte Carlo settings + dispersion list editor
+      monte_carlo_results_widget.py  -- "Monte Carlo" tab: a batch's tiles, per-run plots and run table
       ground_station_editor.py       -- ground station list + add/edit/remove dialog
       orbit_ic_widget.py             -- classical-elements (true/mean anomaly)/Cartesian/TLE orbit editor
       constellation_dialog.py        -- Phase 4: "Generate Walker constellation" dialog
@@ -955,15 +959,17 @@ record): schema v4 turns it into the 95th percentile.
   but harmless. Passing explicit `control_params={"K": ..., "P": ...}`
   still overrides this unscaled, same as always -- that choice stays on
   you.
-* **Monte Carlo dispersions cover two quantities**: `dry_mass_kg`
-  (uniform/normal) and `attitude_sigma_bn` (uniform-random-attitude).
-  Cartesian position/velocity dispersion is deliberately NOT offered --
-  see `engine/monte_carlo.py`'s module docstring for why (Basilisk's
-  Cartesian dispersion classes replace each component with an absolute
-  random value, not a perturbation around the nominal orbit).
-* **`monte_carlo.thread_count > 1` is unverified** in this project's
-  development sandbox (no Basilisk build here to run it against) -- the
-  schema default is the definitely-safe `1`.
+* **Monte Carlo dispersions** cover dry mass, starting attitude, orbital
+  elements, inertia, body rate and the drag and SRP coefficients (User
+  Manual section 10). Raw Cartesian position/velocity dispersion is
+  deliberately NOT offered: Basilisk's Cartesian dispersion classes
+  replace each component with an absolute random value, not a
+  perturbation around the nominal orbit; the orbit varies as orbital
+  elements instead. The Monte Carlo tab tracks position and velocity
+  only (attitude, wheel speeds and other series are not kept per run).
+* **`monte_carlo.thread_count > 1`** has been run in this project's Linux
+  environment (template 25 and three-run batches with 3 threads, Basilisk
+  2.12.0); the schema default stays `1`.
 * **Monte Carlo retains a fixed set of data per run** (each spacecraft's
   position/velocity) -- there is no per-run custom retention-policy
   selection in the schema yet.
