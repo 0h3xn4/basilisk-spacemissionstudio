@@ -435,7 +435,9 @@ class MainWindow(QMainWindow):
         # app itself.
         help_menu = self.menuBar().addMenu("&Help")
         manual_action = QAction("&User Manual", self)
-        manual_action.setShortcut(QKeySequence.StandardKey.HelpContents)
+        # F1 on every platform (macOS's HelpContents is Ctrl+?, CI run 48), plus the platform's own key
+        manual_action.setShortcuts([QKeySequence("F1")] + [k for k in QKeySequence.keyBindings(
+            QKeySequence.StandardKey.HelpContents) if k.toString() != "F1"])
         manual_action.setToolTip("Opens the user manual shipped with the app (works offline).")
         manual_action.triggered.connect(self.on_user_manual)
         help_menu.addAction(manual_action)
