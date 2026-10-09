@@ -215,8 +215,10 @@ class MainWindow(QMainWindow):
         self.right_tabs.addTab(self.mission_dashboard_widget, "Mission Dashboard")
         self.right_tabs.addTab(self.mission_output_widget, "Mission Output")
         self.right_tabs.addTab(self.event_timeline_widget, "Events")
-        self.monte_carlo_results_widget = MonteCarloResultsWidget()
-        self.right_tabs.addTab(self.monte_carlo_results_widget, "Monte Carlo")
+        # Added and removed as needed (_update_monte_carlo_tab), never kept
+        # as a hidden tab: selecting a hidden tab crashed the macOS test run.
+        self.monte_carlo_results_widget = MonteCarloResultsWidget(self)
+        self.monte_carlo_results_widget.hide()
         self.right_tabs.addTab(self.data_panel_widget, "Data")
         self.right_tabs.addTab(self.scenario_explainer_widget, "Explain")
         self.right_tabs.addTab(self.lifetime_widget, "End of Life")
@@ -682,11 +684,18 @@ class MainWindow(QMainWindow):
         typical window, and most scenarios never use it."""
         wanted = (self.monte_carlo_results_widget.batch is not None
                   or (scenario is not None and scenario.monte_carlo.enabled))
-        self.right_tabs.setTabVisible(self.right_tabs.indexOf(self.monte_carlo_results_widget), wanted)
+        self._set_monte_carlo_tab(wanted)
+
+    def _set_monte_carlo_tab(self, wanted: bool) -> None:
+        widget = self.monte_carlo_results_widget
+        index = self.right_tabs.indexOf(widget)
+        if wanted and index < 0:
+            self.right_tabs.insertTab(self.right_tabs.indexOf(self.data_panel_widget), widget, "Monte Carlo")
+        elif not wanted and index >= 0:
+            self.right_tabs.removeTab(index)  # the widget stays, hidden, as the tab stack's child
 
     def _show_monte_carlo_tab(self) -> None:
-        self._update_monte_carlo_tab()
-        self.right_tabs.setTabVisible(self.right_tabs.indexOf(self.monte_carlo_results_widget), True)
+        self._set_monte_carlo_tab(True)
         self.right_tabs.setCurrentWidget(self.monte_carlo_results_widget)
 
     def on_open_monte_carlo_results(self) -> None:

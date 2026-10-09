@@ -530,7 +530,7 @@ Levels: *unit* runs without Basilisk or Qt; *integration* runs a Basilisk simula
 | `test_a_folder_without_results_says_so_and_shows_nothing` | - | - | integration |
 | `test_several_spacecraft_choose_whose_spread_is_shown` | - | - | integration |
 | `test_per_run_series_are_drawn_as_one_ensemble` | Interchangeable runs get one colour, thin translucent lines and a single legend entry, and the hover shows the run under the pointer -- not a colour each from a cycled palette and a 20-row hover box. | - | integration |
-| `test_the_main_window_shows_the_tab_only_when_it_has_something` | Nine tabs no longer fit a typical window: the Monte Carlo tab shows for a scenario with Monte Carlo on, or once a batch is open. | - | integration |
+| `test_the_main_window_shows_the_tab_only_when_it_has_something` | Nine tabs no longer fit a typical window: the Monte Carlo tab is there for a scenario with Monte Carlo on, or once a batch is open. | - | integration |
 
 ### `tests/gui/test_orbit_ic_widget.py`
 

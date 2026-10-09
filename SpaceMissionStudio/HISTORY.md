@@ -8280,7 +8280,15 @@ was unverified; three-thread batches have run here repeatedly, and both
 entries are corrected.
 
 On CI the macOS test worker crashed (a segmentation fault, Linux and
-Windows passing) when the wheel test switched the main window onto the
-new tab: it carried a second QWebEngineView from start-up, idle in every
-window. The tab's plot view is now built only when a batch is first
-shown, so a new window again holds one web view, as before this change.
+Windows passing) when the wheel test, which selects every tab of the main
+window in turn, reached the new tab. The first suspect was a second
+QWebEngineView the tab carried from start-up, idle in every window; its
+plot view is now built only when a batch is first shown, so a new window
+again holds one web view, as before this change. The crash stayed, so
+that was not the cause. What remained new was the tab itself being hidden
+(`setTabVisible(False)`) while the test selected it by index; nothing
+else in the main window hides a tab. The tab is now inserted when it is
+wanted and removed otherwise, so the main window never holds a hidden
+tab, and its test checks that every tab there is visible. The crash could
+not be reproduced on Linux; the macOS CI run on this change is the
+check.

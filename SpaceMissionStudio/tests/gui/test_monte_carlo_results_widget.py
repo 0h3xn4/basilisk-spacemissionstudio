@@ -147,8 +147,10 @@ def test_per_run_series_are_drawn_as_one_ensemble(qtbot, tmp_path):
 
 
 def test_the_main_window_shows_the_tab_only_when_it_has_something(qtbot, tmp_path, monkeypatch):
-    """Nine tabs no longer fit a typical window: the Monte Carlo tab shows
-    for a scenario with Monte Carlo on, or once a batch is open."""
+    """Nine tabs no longer fit a typical window: the Monte Carlo tab is
+    there for a scenario with Monte Carlo on, or once a batch is open. It
+    is removed, not hidden, otherwise: a hidden tab can still be selected
+    programmatically, and selecting one crashed the macOS test run."""
     from PySide6.QtWidgets import QFileDialog
 
     from spacemissionstudio.gui.load_scenario_widget import TEMPLATES_DIR
@@ -157,14 +159,15 @@ def test_the_main_window_shows_the_tab_only_when_it_has_something(qtbot, tmp_pat
     window = MainWindow(prompt_startup_fetch=False, check_autosave_recovery=False)
     qtbot.addWidget(window)
     tabs, tab = window.right_tabs, window.monte_carlo_results_widget
-    assert not tabs.isTabVisible(tabs.indexOf(tab))
+    assert tabs.indexOf(tab) < 0 and tab.isHidden()
     window.open_path(TEMPLATES_DIR / "09_monte_carlo_dispersion_analysis.json")
-    assert tabs.isTabVisible(tabs.indexOf(tab))
+    assert tabs.indexOf(tab) == tabs.indexOf(window.data_panel_widget) - 1  # just before Data
     window.open_path(TEMPLATES_DIR / "01_two_body_circular_orbit.json")
-    assert not tabs.isTabVisible(tabs.indexOf(tab))
+    assert tabs.indexOf(tab) < 0 and tab.isHidden()
 
     _save_batch(tmp_path)
     monkeypatch.setattr(QFileDialog, "getExistingDirectory", lambda *args, **kwargs: str(tmp_path))
     window.open_monte_carlo_results_action.trigger()
-    assert tabs.isTabVisible(tabs.indexOf(tab)) and tabs.currentWidget() is tab
+    assert tabs.indexOf(tab) >= 0 and tabs.currentWidget() is tab
     assert tab.folder == Path(tmp_path)
+    assert all(tabs.isTabVisible(i) for i in range(tabs.count()))  # no hidden tabs anywhere
