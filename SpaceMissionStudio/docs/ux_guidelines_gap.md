@@ -58,3 +58,17 @@ M (1-3 days), L (more).
    command palette.
 3. **Vizard time link:** accept that Vizard cannot be driven to a time
    (only opened on a run's file), or raise it with the Vizard developers?
+
+## Decisions (2026-10-09, the owner)
+
+1. **Carbon:** full restyle. Carbon's colour, type and spacing tokens
+   across the GUI, Carbon-style tables, notifications and form fields,
+   rebuilt in Qt; IBM Plex bundled (SIL Open Font Licence).
+2. **Order:** small and firm first: (1) the offline test, plausibility
+   checks while typing, frame tags, Help with the manual, provenance on
+   every output; (2) the data panel with consented, checked downloads;
+   (3) the event timeline and the shared time cursor; (4) run comparison,
+   undo, the command palette. The Carbon restyle runs alongside.
+3. **Vizard time link:** not possible with Vizard's interface. The
+   Results tab opens Vizard on the last run's file; the missing time
+   interface is added to the upstream reports (H10).
