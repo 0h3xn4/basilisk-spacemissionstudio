@@ -342,3 +342,30 @@ def test_selected_templates_title_and_description_are_visible_without_scrolling_
     assert widget.description_title.text() == widget.list_widget.item(4).text()
     top_of_card = widget.description_scroll.mapTo(widget, widget.description_scroll.rect().topLeft()).y()
     assert top_of_card < widget.height() - 100  # the card starts well inside the visible tab
+
+
+def test_the_selected_templates_title_stays_readable(qtbot):
+    """After the Carbon restyle, selected rows are light grey; the selected
+    title was still drawn white on it (contrast ~1.3:1). It must keep at
+    least WCAG AA's 4.5:1 against the selection colour."""
+    from PySide6.QtGui import QColor
+
+    from spacemissionstudio.gui.load_scenario_widget import LoadScenarioWidget
+    from spacemissionstudio.gui.theme import PALETTE
+
+    def luminance(color):
+        channels = []
+        for c in (color.redF(), color.greenF(), color.blueF()):
+            channels.append(c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4)
+        return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
+
+    widget = LoadScenarioWidget()
+    qtbot.addWidget(widget)
+    widget.show()
+    widget.list_widget.setCurrentRow(0)
+    row = widget._rows[widget.list_widget.item(0).text()]
+    row.title_label.ensurePolished()
+    text = row.title_label.palette().color(row.title_label.foregroundRole())
+    lighter, darker = sorted((luminance(text), luminance(QColor(PALETTE["selected"]))), reverse=True)
+    assert (lighter + 0.05) / (darker + 0.05) >= 4.5
+    assert row.title_label.styleSheet().endswith("font-weight: 600;")  # still marked as selected

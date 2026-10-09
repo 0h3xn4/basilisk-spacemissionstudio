@@ -1,10 +1,17 @@
 # Template missions
 
-Twenty ready-to-run scenario files -- eighteen each demonstrating one
-SpaceMissionStudio concept in isolation, plus two ('19', '20') that
-deliberately integrate several -- for learning the tool and the
-orbital-mechanics concepts it simulates, and as starting points for your
-own missions (copy one, edit it, save it under a new name).
+Twenty-five ready-to-run scenario files, for learning the tool and the
+orbital mechanics it simulates, and as starting points for your own
+missions (copy one, edit it, save it under a new name):
+
+* **01-18 and 21** each demonstrate one concept in isolation.
+* **19 and 20** deliberately integrate several.
+* **22-25** are starting points: 22 and 23 to build your own mission
+  from, 24 and 25 to compare with 05 and 09 using the newer formation
+  law and Monte Carlo dispersions.
+
+**New here?** Run 01, then 22, then follow the learning path at the end
+of this file. To start your own mission, open 22 or 23 and Save As.
 
 Every file is a complete, independently valid `Scenario` (built through
 `schema.scenario`'s own dataclasses and `Scenario.validate()`, not
@@ -35,19 +42,13 @@ spacemissionstudio validate spacemissionstudio/scenarios/templates/01_two_body_c
 Once opened in the GUI, **Save As...** under a new name/location before
 editing if you want to keep the original template intact for next time.
 
-Every one of these twenty-one templates also has its own **Customize...**
-button, on its row of the GUI's Load Scenario template list (see
-`gui/template_wizard.py` for the spec registry, or that module's own docstring for the two-stage rollout this
-went through): a short, guided multi-step wizard over just that
-template's own key tunable parameters (usually the ones already called
-out below and in each file's own `description`, under "Try changing:" --
-a few fields are the closest safe scalar equivalent instead, where the
-literal text needs full regeneration or a non-numeric mode switch; see
-each spec's own comment), pre-filled with its current values, ending in
-the Scenario Editor with those changes applied -- a faster path than the
-full editor form, and still just as safe (the original template file is
-never touched by
-either button).
+Every template also has its own **Customize...** button on its row of
+the GUI's Load Scenario list: one dialog with all of that template's
+settings, pre-filled, its key ones (usually those under "Try changing:")
+first, with a section list and a filter. **Open in editor** applies the
+changes in the Scenario Editor; the template file itself is never
+touched. The key settings of each template are defined in
+`gui/template_wizard.py`.
 
 ## Catalog
 
@@ -76,9 +77,32 @@ before it, but none of them depend on running an earlier one first.
 | 18 | `18_leo_station_keeping.json` | The direct LEO counterpart to '03': a 400 km satellite correcting atmospheric-drag-driven altitude decay with the same `station_keeping` deadband controller, instead of '03's GEO-scale Sun/Moon/SRP drift. A tight 1 km deadband and continuous drag mean repeated corrections; '03' instead holds a GEO slot's longitude and inclination. `enable_srp` deliberately off, same "isolate the one dominant perturbation" approach as '03'. Same real space-weather data as '04'/'05'/'07'/'08'; its exact nrlmsise00 decay rate has not been re-verified in this sandbox (no CelesTrak/SPICE route here) -- the station_keeping/drag parameters were instead tuned against a bypass-SPICE build with a realistically-reparameterized atmosphere model (2-3 real reboost burns over 14 days). |
 | 19 | `19_sun_pointing_comms_link.json` | An integrated spacecraft: `comms_pointing` automatically switches attitude between Sun-pointing (normal operation, maximizing `power` generation) and ground-station-pointing, driven entirely by real `groundLocation.GroundLocation` access to `berlin-gs` -- never a manually-specified time window -- with a genuine, physically-slewed transition (only the attitude REFERENCE switches; the spacecraft's own integrated state is never reset). `rf_link` (extended with an `antenna_beamwidth_deg`-driven pointing-loss term) computes a live link margin gated on BOTH real access AND the spacecraft having actually switched into comms-pointing mode, so it can show a real, physically meaningful "geometrically visible but not yet actually linked" period right at each transition. The run starts at 08:30 UTC so Berlin is about to pass under the 10:30-LTAN orbit: a high (~60 deg) pass ~10-18 min in and a low (~15 deg) one ~107-112 min in, inside a 2 h 15 min run (a Sun-synchronous orbit crosses Berlin's latitude only near 09:50 and 23:10 local time, so the old midnight-UTC start put the first pass ~8 h in). The one template that layers ground station + RF link + comms-pointing + power onto a single spacecraft -- see the file's own `description` for the full cross-subsystem story, including a documented, deliberately-not-yet-used upgrade path to Basilisk's own native `simpleAntenna`/`linkBudget` modules. |
 | 20 | `20_thermal_simulation.json` | Adds Basilisk's real thermal modules on top of '07's own ADCS hardware suite: a `"thermal"` sensor (`sensorThermal.SensorThermal`) on the Sun-facing +Z panel models an externally-mounted component heating in sunlight and cooling in eclipse -- real radiative absorption/emission plus an optional internal power draw, with its own `measurement_*` noise/bias/fault layer (`tempMeasurement.TempMeasurement`), the same device-interface-realism shape as every other sensor kind. `rw-1` separately carries an OPTIONAL per-wheel motor-thermal model (`motorThermal.MotorThermal`, the `motor_thermal_*` params) -- motor inefficiency/friction heat vs. ambient dissipation, independent of whether any `"thermal"` sensor exists at all; `rw-2`/`rw-3` deliberately have none set. Watch `{sat-1}.sensor.therm-1.temperature` track several full sunlight/eclipse cycles and `{sat-1}.actuator.rw-1.motor_temperature` rise above its 20 C ambient (its starting temperature) as the wheel works -- only ~0.05 C in a real Basilisk run: one gentle slew does little work. |
-| 21 | `21_disturbance_torques.json` | Attitude-dependent drag and solar radiation pressure from a facet model (`SpacecraftConfig.facets`, Basilisk's `facetDragDynamicEffector`/`facetSRPDynamicEffector`): two copies of one 300 kg Sun-pointing spacecraft, built as a box plus a 2.5 m^2 array on a boom 1.5 m off to +Y, so the array's pressure torques the spacecraft. `rods-off` has only wheels; `rods-on` adds 30 A*m^2 torque rods with magnetic momentum management. Confirmed in a real Basilisk run: rods-off stores ~2.0 N*m*s by the end of the day (January 2030, MSFC's 50th-percentile prediction, Cd 3.0), rods-on stays under ~30 RPM; both stay Sun-pointed. Sunlit SRP torque matches the hand estimate (2.24e-5 N*m, `tests/test_facets.py`). |
+| 21 | `21_disturbance_torques.json` | Attitude-dependent drag and solar radiation pressure from a facet model (`SpacecraftConfig.facets`, Basilisk's `facetDragDynamicEffector`/`facetSRPDynamicEffector`): two copies of one 300 kg Sun-pointing spacecraft, built as a box plus a 2.5 m^2 array on a boom 1.5 m off to +Y, so the array's pressure torques the spacecraft. `rods-off` has only wheels; `rods-on` adds 30 A*m^2 torque rods with magnetic momentum management. Confirmed in a real Basilisk run (`tests/test_template_claims.py`): rods-off stores ~1.7 N*m*s by the end of the day (January 2030, MSFC's 50th-percentile prediction, Cd 3.0), rods-on stays under ~20 RPM; both stay Sun-pointed. Sunlit SRP torque matches the hand estimate (2.24e-5 N*m, `tests/test_facets.py`). |
+| 22 | `22_starter_first_leo_satellite.json` | **Starter.** The smallest scenario that is still realistic: one 150 kg satellite in a 550 km Sun-synchronous orbit (10:30 LTAN), degree-10 gravity, Sun and Moon, drag from the real space weather shipped with the app (Cd 3.0), solar pressure, and the Berlin ground station. Orbit only, so a day runs in seconds. Confirmed in a real Basilisk run (`tests/test_template_claims.py`): four Berlin passes in the day, the first 10.5-18 min in, 15 eclipses of ~35 min, and the mean orbit plane turning ~1.0 deg/day (Sun-synchronous: 0.986). Over 30 days drag lowers the mean semi-major axis ~0.1 km here, ~1.8 km at 400 km. Its description says what to change first to make it your own. |
+| 23 | `23_starter_complete_small_satellite.json` | **Starter.** A complete small satellite: the GUI's "Microsatellite (150 kg)" preset (`engine.spacecraft_templates`: star tracker, IMU, sun sensor, three wheels unloaded by torque rods, facets with Cd 3.0, a 1 m^2 array and 300 Wh battery) in Sun-safe pointing, plus a 5 W S-band downlink (`rf_link`) to Berlin, on 22's orbit. Its Mission Sequence propagates until the first Berlin pass starts (`pass_start`), reports, propagates until it ends (`pass_end`), reports, and coasts another hour. Confirmed in a real Basilisk run (`tests/test_template_claims.py`): reports at 10.4 and 18.2 min, link margin 11 dB at the 10 deg edge and 21 dB at the 62 deg peak, wheels up to ~310 RPM in the turn to the Sun and back under 1 RPM by the end, ~35 Wh drawn in the 35 min eclipse. |
+| 24 | `24_formation_mean_element_control.json` | Template 05 with one change: follower-1's `phasing_keeping.control_law` is `mean_oe`, Basilisk's `meanOEFeedback` (continuous feedback on the mean orbital elements, through the follower's own 50 mN station-keeping thruster), for 14 days instead of 90. `tests/test_scenario_templates.py` checks that nothing else differs, so the two compare directly. Confirmed in a real Basilisk run: the separation error stays within 65 m (17 m RMS) after the first day, against 5 km for 05's drift-orbit law; 0.46 m/s in 14 days (0.20 of it in the first day), against 0.014 m/s for 05's 90 days. Requests stay under 4 mN and are not fired in eclipse (37% of the run); outside eclipse almost all are fired. |
+| 25 | `25_monte_carlo_orbit_and_drag_dispersions.json` | Template 09's idea with the newer dispersions: 20 runs of a 150 kg satellite at 400 km for 3 days, each starting on a slightly different orbit (`orbit_elements`, 1-sigma: 1 km in semi-major axis, 0.02 deg in inclination, 0.1 deg in true anomaly) with a drag coefficient drawn between 2.2 and 3.0 (`drag_coeff`). Measured in a real 20-run batch: the runs start ~10 km apart along track (1-sigma) and spread ~150 km per day (447 km after 3 days), almost all from the semi-major-axis spread (a 1 km lower orbit gains ~9 km per orbit); drag alone separates them by only ~10 km in 3 days. The GUI saves the batch to a folder but does not plot it; `examples/monte_carlo_spread.py` reads it back. |
+
+## A learning path
+
+| Step | Templates | What you learn |
+|---|---|---|
+| 1. Orbits | 01, 02, 22 | An ideal orbit; what Earth's shape, the Sun and the Moon do to it; a realistic satellite with drag and a ground station |
+| 2. Keeping an orbit | 18, 03, 17 | Station keeping against drag (LEO) and drift (GEO); how propellant runs down |
+| 3. Pointing | 06, 07, 15, 14 | Attitude control, ideal and with real hardware; pointing at the Moon; finding the Sun with sun sensors |
+| 4. Disturbances and momentum | 10, 21, 12, 13, 11 | Gravity-gradient and surface torques; unloading wheels with thrusters or torque rods; thrusters for pointing |
+| 5. Missions in steps | 08, 16, 23 | Mission Sequences: burns, a Lambert transfer, stopping on a ground pass |
+| 6. Several spacecraft | 04, 05, 24 | A Walker constellation; a formation held by two different control laws |
+| 7. Whole systems | 19, 20, 23 | Power, radio link and thermal working together |
+| 8. Uncertainty | 09, 25 | Monte Carlo batches: mass, orbit insertion, drag |
 
 ## Using one as a starting point for your own mission
+
+**22** and **23** are made for this: 22 has the environment every LEO
+mission needs and nothing else, 23 is a whole small-satellite mission.
+Open one, **Save As...** under your own name, and change it a step at a
+time, running after each (the User Manual's section 6, "Building your own
+scenario, step by step", walks through it).
 
 Templates '01' through '18' are deliberately minimal and self-contained --
 no ground stations, no RF links, no Monte Carlo batches layered on top of

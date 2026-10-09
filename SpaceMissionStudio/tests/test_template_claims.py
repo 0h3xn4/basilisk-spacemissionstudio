@@ -189,3 +189,47 @@ def test_21_off_centre_array_loads_the_wheels_unless_torque_rods_unload_them():
     for name in ("rods-off", "rods-on"):
         sun = result.series[f"{name}.sun_heading_body"]
         assert sun.data[sun.time_s > 600.0, 2].min() > 0.99  # still Sun-pointed
+
+
+def test_22_starter_has_four_berlin_passes_and_a_sun_synchronous_plane():
+    """The starter's description: four Berlin passes in its day, the first
+    10-18 min in, and the mean orbit plane turning ~1 deg a day."""
+    result = _run(_template("22"))
+    access = result.series["berlin-gs.access_to_my-sat.has_access"]
+    visible = np.concatenate([[0], (access.data[:, 0] > 0.5).astype(int), [0]])
+    starts = access.time_s[np.flatnonzero(np.diff(visible) == 1)]  # [s]
+    assert len(starts) == 4
+    assert 9 * 60 <= starts[0] <= 12 * 60  # [s]
+    raan = result.series["my-sat.orbit_elements_mean.raan"]
+    rate_deg_day = np.degrees(raan.data[-1, 0] - raan.data[0, 0]) / (raan.time_s[-1] / 86400.0)  # [deg/day]
+    assert 0.9 < rate_deg_day < 1.1  # Sun-synchronous: 0.986 deg/day
+
+
+def test_23_mission_sequence_reports_at_the_pass_and_the_wheels_unload():
+    """Reports at pass start and end (about 10 and 18 min in); the wheels
+    spin up to turn to the Sun, then the torque rods bring them back."""
+    from spacemissionstudio.engine.mission_engine import MissionEngine
+
+    result, summary = MissionEngine(_template("23")).run()
+    assert [r.label for r in summary.reports] == ["Pass start", "Pass end"]
+    start_s, end_s = (r.t_s for r in summary.reports)  # [s]
+    assert 9 * 60 <= start_s <= 12 * 60 and 16 * 60 <= end_s <= 20 * 60
+    margin = summary.reports[0].values["berlin-gs.access_to_smallsat-1.link_margin_db"][0]  # [dB]
+    assert 8.0 < margin < 14.0  # "11 dB at the 10 deg edge of the pass"
+    rpm = np.abs(result.series["smallsat-1.rw_speeds"].data) * 30.0 / np.pi  # [RPM]
+    assert 200.0 < rpm.max() < 400.0  # "up to ~300 RPM"
+    assert rpm[-1].max() < 5.0  # [RPM] "back near zero"
+    assert result.series["smallsat-1.sun_heading_body"].data[-1, 2] > 0.99  # Sun-pointed
+
+
+def test_24_mean_element_control_holds_tens_of_metres():
+    """Within ~65 m after the first day, at a few tenths of a m/s; three of
+    its fourteen days."""
+    result = _run(_template("24"), duration_days=3.0)  # [day]
+    error = result.series["follower-1.phasing_keeping.separation_error"]
+    error_m = np.radians(error.data[:, 0]) * 6928.0e3  # [m] along-track arc on the chief's orbit
+    assert np.abs(error_m[error.time_s > 86400.0]).max() < 80.0  # [m]
+    delta_v = result.series["follower-1.phasing_keeping.delta_v"].data[-1, 0]  # [m/s]
+    assert 0.1 < delta_v < 0.5  # [m/s] 0.20 the first day, 0.46 in 14 days
+    force = result.series["follower-1.phasing_keeping.force"].data  # [N] commanded, applied
+    assert force[:, 0].max() < 0.01  # requests of a few mN, under the 50 mN thruster

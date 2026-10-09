@@ -326,3 +326,46 @@ def test_comms_template_has_ground_station_passes_early_in_its_run():
     first_aos, _first_los, first_peak = passes[0]
     assert 5.0 <= first_aos <= 20.0, passes  # [min] after the initial attitude settles, well before the end
     assert first_peak >= 45.0, passes  # [deg] a high pass, so a healthy link margin shows
+
+
+def test_starter_templates_are_complete_starting_points():
+    """22 is orbit-only with a ground station and real-data drag; 23 flies
+    the 150 kg spacecraft preset with a Mission Sequence that stops on the
+    first Berlin pass."""
+    first = load_scenario(_TEMPLATES_DIR / "22_starter_first_leo_satellite.json")
+    assert first.simulation_mode == "orbit_only" and len(first.spacecraft) == 1
+    assert first.ground_stations and first.spacecraft[0].enable_drag
+    assert first.space_weather.source == "bundled"  # real space weather, never synthetic
+
+    complete = load_scenario(_TEMPLATES_DIR / "23_starter_complete_small_satellite.json")
+    sc = complete.spacecraft[0]
+    kinds = {a.kind for a in sc.actuators} | {s.kind for s in sc.sensors}
+    assert {"reaction_wheel", "magnetic_torque_rod", "star_tracker", "imu", "coarse_sun_sensor"} <= kinds
+    assert sc.power is not None and sc.rf_link is not None and sc.facets
+    assert all(f.drag_coeff == 3.0 for f in sc.facets)  # [-] AD10's operations value
+    stops = [c.params.get("event_kind") for c in complete.mission_sequence if c.kind == "propagate"]
+    assert stops[:2] == ["pass_start", "pass_end"]
+
+
+def test_formation_template_24_differs_from_05_only_in_its_control_law():
+    """24 is 05 under Basilisk's mean-element law, so the two compare
+    directly: same spacecraft, orbits and thruster."""
+    t05 = load_scenario(_TEMPLATES_DIR / "05_formation_flying_phasing.json").to_dict()
+    t24 = load_scenario(_TEMPLATES_DIR / "24_formation_mean_element_control.json").to_dict()
+    assert t24["spacecraft"][1]["phasing_keeping"]["control_law"] == "mean_oe"
+    t24["spacecraft"][1]["phasing_keeping"]["control_law"] = "drift_orbit"
+    for key in ("name", "description"):
+        t05.pop(key), t24.pop(key)
+    t05["sim_settings"].pop("duration_days"), t24["sim_settings"].pop("duration_days")
+    assert t24 == t05
+
+
+def test_monte_carlo_template_25_disperses_the_orbit_and_the_drag_coefficient():
+    scenario = load_scenario(_TEMPLATES_DIR / "25_monte_carlo_orbit_and_drag_dispersions.json")
+    assert scenario.monte_carlo.enabled
+    by_quantity = {d.quantity: d for d in scenario.monte_carlo.dispersions}
+    assert set(by_quantity) == {"orbit_elements", "drag_coeff"}
+    assert by_quantity["orbit_elements"].element_spread == {
+        "semi_major_axis_km": 1.0, "inclination_deg": 0.02, "true_anomaly_deg": 0.1}
+    assert by_quantity["drag_coeff"].bounds == [2.2, 3.0]
+    assert scenario.spacecraft[0].enable_drag

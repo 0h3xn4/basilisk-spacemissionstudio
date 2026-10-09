@@ -8089,3 +8089,128 @@ Tests: `tests/test_formation_control.py` (19, including real Basilisk
 runs of both laws, the thrust cut, the minimum on-time, eclipse and empty
 tank), plus the editor, dialog, generator, CLI and Explain tab. Suite:
 2365 passed, 10 skipped, 0 failed.
+
+## More Monte Carlo dispersions (SRS-F-13)
+
+Monte Carlo runs could vary only dry mass and starting attitude. Five more
+quantities can now vary per spacecraft, each through one of Basilisk's own
+`MonteCarlo.Dispersions` classes, unmodified (`engine/monte_carlo.py`):
+
+| Quantity | Basilisk class | Notes |
+|---|---|---|
+| `orbit_elements` | `OrbitalElementDispersion` | normal (1-sigma) or uniform (half-width) on each of a, e, i, RAAN, argument of periapsis and true anomaly, around the spacecraft's own starting orbit (any orbit type) |
+| `inertia_kg_m2` | `InertiaTensorDispersion` | normal on each diagonal element, optional rotation for products of inertia |
+| `angular_rate_bn_b` | `NormalVectorCartDispersion`, `UniformVectorCartDispersion` | per-axis spread in deg/s, added to the configured rate |
+| `drag_coeff`, `srp_coeff` | `NormalDispersion`, `UniformDispersion` | the sphere drag or SRP coefficient |
+
+Three behaviours of the Basilisk classes had to be worked around, all
+without changing Basilisk:
+
+* `OrbitalElementDispersion` sets an element with no entry to zero, so
+  every element gets an entry: its nominal value, spread or not.
+* The vector Cartesian classes write an absolute random vector; the body
+  rate subclasses add the nominal rate back.
+* `InertiaTensorDispersion` clips each diagonal offset to [-1, 1] kg m^2
+  unless given bounds; the tool passes infinite bounds unless the scenario
+  sets a clip.
+
+The orbit is never dispersed as raw Cartesian components, so each run
+starts on a real orbit. Validation: inertia and rate need full attitude;
+the coefficients need drag or SRP on and no surface facets. The service
+now keeps each spacecraft's drag and SRP effectors so a dispersion can
+reach them. The Monte Carlo editor shows only the fields the chosen
+quantity uses: one spread per orbital element, and the inertia rotation.
+
+Tests: each new quantity's validation; one draw each against template 07
+(an orbit spread moves only the elements it names; the rate spread sits on
+the nominal rate; a 5 kg m^2 inertia spread is not clipped to 1); and a
+three-run batch through Basilisk's Controller whose archived run
+parameters differ per run and stay within bounds; the editor round trip.
+
+## Documentation for newcomers, starter templates and Python examples
+
+A user asked for documentation that a newcomer can follow to install,
+set up and use the tool, and for examples and templates that serve both
+as starting points and as a way to understand the tool as a whole.
+
+**What was missing.**
+* Installation was spread over the README's long "Getting started"
+  section, the User Manual's section 2 and `packaging/README.md`. The
+  manual pin of Basilisk (`bsk[all]`) did not name the verified version,
+  2.12.0, and nothing said how to check an installation or what to do
+  when it failed.
+* The manual explained each tab but not how a scenario's parts fit
+  together, and had no walkthrough for building a scenario from an empty
+  one. Its section 5 still described the Customize wizard's old
+  Next/Back pages, its section 3 listed five right-hand tabs (there are
+  eight), and two of its three screenshots showed the GUI before the
+  Carbon restyle.
+* None of the 21 templates was meant to be copied into a new mission;
+  none used Basilisk's mean-element formation law or the new Monte Carlo
+  dispersions.
+* There was no example of using the tool from Python beyond two short
+  snippets in the README. The README's template section still said that
+  no template had been run in Basilisk.
+
+**What was added.**
+* `GETTING_STARTED.md`: what you need, three install paths (installer,
+  install script, `pip` with `bsk[all]==2.12.0`), how to check the
+  installation, a first run in the GUI, the CLI and Python, where files
+  are kept, and the installation problems seen so far with their fixes.
+  The README's front now has a documentation map and a six-line quick
+  start, and points to it.
+* User Manual: "How the pieces fit together" (a scenario's parts, where
+  each is edited and which template shows it, orbit-only against full
+  attitude); "Which template next?", a learning path through all 25;
+  "Building your own scenario, step by step"; section 5 rewritten for the
+  current Customize dialog; section 3's menus and tabs corrected; a note
+  on where Monte Carlo results go; three new screenshots taken from the
+  running app.
+* Four templates, built in `scripts/_generate_templates.py` with their
+  descriptions in `_template_descriptions.py`, each with a Customize spec:
+  * 22, a starter: a 150 kg satellite at 550 km, Sun-synchronous, with
+    the full LEO environment and a ground station, orbit only;
+  * 23, a starter: the GUI's 150 kg microsatellite preset as a whole
+    mission, with a downlink and a Mission Sequence that stops at the
+    start and end of the first Berlin pass;
+  * 24: template 05 under `mean_oe`, so the two laws compare directly;
+  * 25: a Monte Carlo batch over orbit insertion and the drag
+    coefficient.
+* `examples/`: five scripts (build a scenario, run a template, a Hohmann
+  transfer as a Mission Sequence, an altitude-lifetime sweep, a Monte
+  Carlo batch read back from its archive), listed in `examples/README.md`
+  and run by `tests/test_examples.py`.
+
+**Every number in the new descriptions comes from a Basilisk run**
+(Basilisk 2.12.0, January 2030 on NASA MSFC's 50th-percentile
+prediction). Three draft claims did not survive their run:
+* 22's "drag lowers the semi-major axis" over one day: drag moves the
+  mean semi-major axis by ~0.1 km in 30 days at 550 km, inside the mean
+  elements' own noise. The description now says that and gives 400 km's
+  1.8 km instead.
+* 24's force series "applied is 0 when a request is too small to fire":
+  the zeros (37% of the run) are the eclipses, when nothing fires; only
+  0.16% of the requests fell below half a minimum impulse bit.
+* The Hohmann example "circular to within the integrator's error": the
+  final orbit is within 0.3 km of the target because the second burn
+  fires at the first 10 s step past apoapsis.
+
+Template 25's batch showed what dominates: the runs spread ~150 km a day
+along track, almost all from the 1 km semi-major-axis spread (a lower
+orbit is faster); drag between 2.2 and 3.0 alone separates them by
+~10 km in three days. Its description says both.
+
+**Two GUI bugs found while taking the screenshots, fixed with tests.**
+* The selected row of the Load Scenario list drew its title white
+  (`on_accent`), left over from when the selection was blue. Since the
+  Carbon restyle the selection is light grey, so the selected template's
+  name was all but invisible (contrast about 1.3:1). It keeps the primary
+  text colour and turns semibold; a test checks WCAG AA's 4.5:1.
+* In an orbit-only scenario, **New from template...** could not add any
+  of the four spacecraft presets: the dialog dropped their sensors,
+  actuators and power but kept their facet model, which orbit-only
+  rejects, so OK always failed. The dialog now hides and drops facets in
+  orbit-only mode; a test runs every preset through it.
+
+Template 09's file gained the two new, empty `DispersionConfig` fields on
+regeneration; nothing else in the existing templates changed.

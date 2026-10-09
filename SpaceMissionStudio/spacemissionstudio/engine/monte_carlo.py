@@ -74,6 +74,32 @@ the propellant amount. Fixed with
 spacecraft's configured propellant back on top of the generated
 dry-mass value before it's written to ``hub.mHub``.
 
+Dispersed quantities
+--------------------
+Each ``schema.scenario.DISPERSION_QUANTITIES`` entry uses one of
+Basilisk's own ``Dispersions`` classes, unmodified:
+
+* ``dry_mass_kg``: ``UniformDispersion``/``NormalDispersion`` on
+  ``hub.mHub``, plus the propellant (below).
+* ``attitude_sigma_bn``: ``UniformEulerAngleMRPDispersion``.
+* ``orbit_elements``: ``OrbitalElementDispersion`` on ``hub.r_CN_NInit``
+  and ``hub.v_CN_NInit``. It draws every element absolutely and sets one
+  with no entry to zero, so each element gets an entry: the nominal value
+  (:func:`nominal_elements`, from the same state the service starts the
+  run in) with the configured spread, or none.
+* ``inertia_kg_m2``: ``InertiaTensorDispersion``, which adds a normal
+  offset to each diagonal element and rotates the tensor by small random
+  angles. Without bounds it clips each offset to [-1, 1] kg*m^2, so this
+  module passes infinite bounds unless the scenario sets its own.
+* ``angular_rate_bn_b``: ``NormalVectorCartDispersion``/
+  ``UniformVectorCartDispersion``, which draw an absolute vector; the
+  subclasses here add the nominal rate back, so the spread is a
+  perturbation (deg/s in the scenario, rad/s in Basilisk).
+* ``drag_coeff``/``srp_coeff``: ``UniformDispersion``/``NormalDispersion``
+  on the sphere ``dragDynamicEffector``'s ``coreParams.dragCoeff`` or the
+  ``radiationPressure`` effector's ``coefficientReflection``, reached
+  through ``sim.get_drag_<name>()``/``sim.get_srp_<name>()`` (below).
+
 Dispersion path resolution
 ---------------------------
 Basilisk's dispersion path strings resolve via attribute access, integer
@@ -137,17 +163,25 @@ import re
 from pathlib import Path
 from typing import List
 
-from Basilisk.utilities import macros
+import math
+
+import numpy as np
+
+from Basilisk.utilities import macros, orbitalMotion, simIncludeGravBody
 from Basilisk.utilities.MonteCarlo.Controller import Controller
 from Basilisk.utilities.MonteCarlo.Dispersions import (
+    InertiaTensorDispersion,
     NormalDispersion,
+    NormalVectorCartDispersion,
+    OrbitalElementDispersion,
     UniformDispersion,
     UniformEulerAngleMRPDispersion,
+    UniformVectorCartDispersion,
 )
 from Basilisk.utilities.MonteCarlo.RetentionPolicy import RetentionPolicy
 
 from ..schema.scenario import DispersionConfig, MonteCarloConfig, Scenario, SimSettings
-from .service import SimulationService
+from .service import SimulationService, _orbit_ic_to_rv
 
 # spacecraft.name -> attribute path suffix on that spacecraft's sc_object,
 # rooted after the "get_spacecraft_<name>()." accessor -- see module
@@ -155,6 +189,23 @@ from .service import SimulationService
 _QUANTITY_PATHS = {
     "dry_mass_kg": "hub.mHub",
     "attitude_sigma_bn": "hub.sigma_BNInit",
+    "inertia_kg_m2": "hub.IHubPntBc_B",
+    "angular_rate_bn_b": "hub.omega_BN_BInit",
+    # rooted after the drag/SRP effector accessor instead (_EFFECTOR_ACCESSORS)
+    "drag_coeff": "coreParams.dragCoeff",
+    "srp_coeff": "coefficientReflection",
+}
+# Effector accessor prefix for the coefficient quantities (see _create_sim).
+_EFFECTOR_ACCESSORS = {"drag_coeff": "get_drag_", "srp_coeff": "get_srp_"}
+# OrbitalElementDispersion's element names for each element_spread key,
+# and the factor from the key's unit (km, [-], deg) to Basilisk's (m, rad).
+_ELEMENT_KEYS = {
+    "semi_major_axis_km": ("a", 1000.0),
+    "eccentricity": ("e", 1.0),
+    "inclination_deg": ("i", math.pi / 180.0),
+    "raan_deg": ("Omega", math.pi / 180.0),
+    "arg_periapsis_deg": ("omega", math.pi / 180.0),
+    "true_anomaly_deg": ("f", math.pi / 180.0),
 }
 
 
@@ -235,9 +286,88 @@ class _DryMassPlusPropellantNormalDispersion(NormalDispersion):
         return super().generate(sim) + self._propellant_offset_kg
 
 
+class _AddedToNominalNormalRate(NormalVectorCartDispersion):
+    """``NormalVectorCartDispersion`` draws an absolute vector; the initial
+    body rate is dispersed around its nominal value instead."""
+
+    def __init__(self, varName, stdDeviation, nominal):
+        super().__init__(varName, mean=0.0, stdDeviation=stdDeviation)
+        self._nominal = np.asarray(nominal, dtype=float)
+
+    def generate(self, sim=None):
+        return list(self._nominal + np.asarray(super().generate(sim), dtype=float))
+
+
+class _AddedToNominalUniformRate(UniformVectorCartDispersion):
+    """Same as :class:`_AddedToNominalNormalRate`, uniform per axis."""
+
+    def __init__(self, varName, bounds, nominal):
+        super().__init__(varName, bounds=bounds)
+        self._nominal = np.asarray(nominal, dtype=float)
+
+    def generate(self, sim=None):
+        return list(self._nominal + np.asarray(super().generate(sim), dtype=float))
+
+
+def _central_body_mu(scenario: Scenario) -> float:
+    """[m^3/s^2] the central body's mu, from the same gravity factory the
+    service builds the run with."""
+    body = scenario.gravity.central_body
+    return simIncludeGravBody.gravBodyFactory().createBodies([body])[body].mu
+
+
+def nominal_elements(scenario: Scenario, sc_config):
+    """The spacecraft's initial orbit as Basilisk ``ClassicElements`` in the
+    simulation frame, from the same position and velocity the service
+    gives the run (so any orbit type, frame or anomaly works)."""
+    mu = _central_body_mu(scenario)
+    r_n, v_n = _orbit_ic_to_rv(mu, sc_config.orbit, scenario.epoch_utc)
+    return orbitalMotion.rv2elem(mu, np.asarray(r_n, dtype=float), np.asarray(v_n, dtype=float))
+
+
+def _orbit_dispersion(dispersion: DispersionConfig, scenario: Scenario, sc_config, accessor: str):
+    """``OrbitalElementDispersion`` around the nominal elements: each one is
+    drawn from N(nominal, spread) or U(nominal - spread, nominal + spread);
+    elements with no spread keep their nominal value (the Basilisk class
+    would otherwise set them to zero)."""
+    oe = nominal_elements(scenario, sc_config)
+    spread = dispersion.element_spread or {}
+    table = {"mu": _central_body_mu(scenario)}
+    for key, (element, factor) in _ELEMENT_KEYS.items():
+        nominal = float(getattr(oe, element))
+        width = float(spread.get(key, 0.0)) * factor
+        if dispersion.kind == "normal":
+            table[element] = ["normal", nominal, width]
+        else:
+            table[element] = ["uniform", nominal - width, nominal + width]
+    return OrbitalElementDispersion(f"{accessor}().hub.r_CN_NInit", f"{accessor}().hub.v_CN_NInit", table)
+
+
 def _build_dispersion(dispersion: DispersionConfig, scenario: Scenario):
     accessor = _accessor_name(dispersion.spacecraft)
+    sc_config = next((sc for sc in scenario.spacecraft if sc.name == dispersion.spacecraft), None)
+    if dispersion.quantity in _EFFECTOR_ACCESSORS:
+        effector_accessor = accessor.replace("get_spacecraft_", _EFFECTOR_ACCESSORS[dispersion.quantity], 1)
+        path = f"{effector_accessor}().{_QUANTITY_PATHS[dispersion.quantity]}"
+        if dispersion.kind == "uniform":
+            return UniformDispersion(path, bounds=dispersion.bounds)
+        return NormalDispersion(path, mean=dispersion.mean, stdDeviation=dispersion.std_deviation,
+                                bounds=dispersion.bounds)
+    if dispersion.quantity in ("orbit_elements", "angular_rate_bn_b") and sc_config is None:
+        raise MonteCarloError(
+            f"dispersion.spacecraft {dispersion.spacecraft!r} is not one of this scenario's spacecraft")
+    if dispersion.quantity == "orbit_elements":
+        return _orbit_dispersion(dispersion, scenario, sc_config, accessor)
     path = f"{accessor}().{_QUANTITY_PATHS[dispersion.quantity]}"
+    if dispersion.quantity == "inertia_kg_m2":
+        bounds = dispersion.bounds if dispersion.bounds is not None else [-math.inf, math.inf]
+        return InertiaTensorDispersion(path, stdDiag=dispersion.std_deviation, boundsDiag=bounds,
+                                       stdAngle=math.radians(dispersion.angle_std_deg or 0.0))
+    if dispersion.quantity == "angular_rate_bn_b":
+        nominal = sc_config.omega_bn_b_init_rad_s  # [rad/s]
+        if dispersion.kind == "normal":
+            return _AddedToNominalNormalRate(path, math.radians(dispersion.std_deviation), nominal)
+        return _AddedToNominalUniformRate(path, [math.radians(b) for b in dispersion.bounds], nominal)
 
     if dispersion.quantity == "dry_mass_kg":
         # scenario.validate() (the caller's responsibility -- see
@@ -247,7 +377,6 @@ def _build_dispersion(dispersion: DispersionConfig, scenario: Scenario):
         # MonteCarloError below is defensive, matching this module's own
         # "always a specific, actionable message" discipline rather than
         # a bare StopIteration/IndexError if that contract is ever violated.
-        sc_config = next((sc for sc in scenario.spacecraft if sc.name == dispersion.spacecraft), None)
         if sc_config is None:
             raise MonteCarloError(
                 f"dispersion.spacecraft {dispersion.spacecraft!r} is not one of this scenario's spacecraft"
@@ -282,7 +411,13 @@ def _create_sim(scenario: Scenario):
 
     for name, handle in service.spacecraft_handles.items():
         sc_object = handle.sc_object
-        setattr(sim, _accessor_name(name), (lambda sc_object=sc_object: sc_object))
+        accessor = _accessor_name(name)
+        setattr(sim, accessor, (lambda sc_object=sc_object: sc_object))
+        # The coefficient dispersions write to the drag/SRP effector itself.
+        for quantity, prefix in _EFFECTOR_ACCESSORS.items():
+            effector = handle.drag_effector if quantity == "drag_coeff" else handle.srp_effector
+            if effector is not None:
+                setattr(sim, accessor.replace("get_spacecraft_", prefix, 1), (lambda effector=effector: effector))
 
     sim.msgRecList = {f"{name}.scState": handle.recorder for name, handle in service.spacecraft_handles.items()}
     sim._spacemissionstudio_service = service  # stashed for _execute_sim to finish init/configure/execute

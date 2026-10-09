@@ -1072,6 +1072,65 @@ def test_valid_dispersions_validate():
     sc.validate()  # must not raise
 
 
+def _with_dispersion(sc, **fields):
+    sc.monte_carlo = MonteCarloConfig(enabled=True, dispersions=[DispersionConfig(spacecraft="sat-1", **fields)])
+    return sc
+
+
+def test_the_new_dispersion_quantities_validate():
+    """Orbit elements, inertia, body rate and the drag and SRP coefficients."""
+    sc = _minimal_scenario()
+    sc.spacecraft[0].enable_drag = True
+    sc.spacecraft[0].enable_srp = True
+    sc.gravity.third_body_perturbers = ["sun"]
+    sc.monte_carlo = MonteCarloConfig(enabled=True, dispersions=[
+        DispersionConfig(spacecraft="sat-1", quantity="orbit_elements", kind="normal",
+                         element_spread={"semi_major_axis_km": 0.5, "true_anomaly_deg": 0.01}),
+        DispersionConfig(spacecraft="sat-1", quantity="inertia_kg_m2", kind="normal", std_deviation=0.5,
+                         angle_std_deg=1.0),
+        DispersionConfig(spacecraft="sat-1", quantity="angular_rate_bn_b", kind="uniform", bounds=[-0.1, 0.1]),
+        DispersionConfig(spacecraft="sat-1", quantity="drag_coeff", kind="normal", mean=2.2, std_deviation=0.2),
+        DispersionConfig(spacecraft="sat-1", quantity="srp_coeff", kind="uniform", bounds=[1.2, 1.5]),
+    ])
+    sc.validate()  # must not raise
+
+
+@pytest.mark.parametrize("fields, message", [
+    ({"quantity": "orbit_elements", "kind": "normal"}, "needs element_spread"),
+    ({"quantity": "orbit_elements", "kind": "normal", "element_spread": {"altitude_km": 1.0}}, "element_spread key"),
+    ({"quantity": "orbit_elements", "kind": "uniform", "element_spread": {"raan_deg": -1.0}}, ">= 0"),
+    ({"quantity": "inertia_kg_m2", "kind": "normal"}, "needs std_deviation"),
+    ({"quantity": "inertia_kg_m2", "kind": "normal", "std_deviation": 1.0, "angle_std_deg": -2.0}, "angle_std_deg"),
+    ({"quantity": "angular_rate_bn_b", "kind": "uniform"}, "needs bounds"),
+    ({"quantity": "drag_coeff", "kind": "normal", "std_deviation": 0.1}, "needs mean and std_deviation"),
+])
+def test_a_badly_formed_new_dispersion_is_rejected(fields, message):
+    """Each new quantity checks the fields it uses, and says which one."""
+    with pytest.raises(ScenarioValidationError, match=message):
+        _with_dispersion(_minimal_scenario(), **fields).validate()
+
+
+@pytest.mark.parametrize("fields, message", [
+    ({"quantity": "drag_coeff", "kind": "uniform", "bounds": [2.0, 3.0]}, "needs enable_drag"),
+    ({"quantity": "srp_coeff", "kind": "uniform", "bounds": [1.2, 1.5]}, "needs enable_srp"),
+])
+def test_a_coefficient_dispersion_needs_its_force_model(fields, message):
+    """Dispersing the drag or SRP coefficient of a spacecraft with that force off is an error."""
+    with pytest.raises(ScenarioValidationError, match=message):
+        _with_dispersion(_minimal_scenario(), **fields).validate()
+
+
+@pytest.mark.parametrize("quantity, extra", [
+    ("inertia_kg_m2", {"std_deviation": 0.5}),
+    ("angular_rate_bn_b", {"std_deviation": 0.05}),
+])
+def test_attitude_dispersions_need_full_attitude(quantity, extra):
+    """Inertia and body rate do nothing without attitude dynamics."""
+    sc = _with_dispersion(_minimal_scenario(simulation_mode="orbit_only"), quantity=quantity, kind="normal", **extra)
+    with pytest.raises(ScenarioValidationError, match="attitude is not simulated"):
+        sc.validate()
+
+
 def test_monte_carlo_round_trips_through_save_load(tmp_path):
     sc = _minimal_scenario()
     sc.monte_carlo = MonteCarloConfig(

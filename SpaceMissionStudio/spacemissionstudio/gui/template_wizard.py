@@ -34,7 +34,7 @@ template with a registered spec here; every other template still only
 opens straight into the full editor via the existing "Open Template"
 button, unchanged.
 
-Every bundled template ('01' through '20') has a registered spec. The
+Every bundled template ('01' through '25') has a registered spec. The
 first pass covered three representative ones ('03' GEO station-keeping,
 '18' LEO station-keeping, '07' full attitude + hardware + power) to
 validate the spec format and the UX before this full rollout -- adding a
@@ -403,6 +403,81 @@ def _set_lambert_tof_s(scenario: Scenario, value: float) -> None:
     # exactly at target_position_m" lesson.
     _lambert_command(scenario).params["time_of_flight_s"] = value
     _lambert_coast_command(scenario).params["duration_days"] = value / 86400.0
+
+
+def _set_sun_synchronous_semi_major_axis(scenario: Scenario, value: float) -> None:
+    # The starter orbits ('22', '25') are Sun-synchronous: a new size keeps
+    # them so, with the inclination recomputed for it (engine.orbit_design,
+    # the same function the generator uses, so an unedited value
+    # reproduces the template exactly).
+    from ..engine.orbit_design import sun_synchronous_inclination_deg
+
+    orbit = _sc(scenario).orbit
+    orbit.semi_major_axis_km = value
+    orbit.inclination_deg = sun_synchronous_inclination_deg(value, orbit.eccentricity)
+
+
+def _orbit_element_spread(key: str):
+    """Get/set for one element of '25's orbit-element dispersion."""
+    def dispersion(scenario: Scenario):
+        return next(d for d in scenario.monte_carlo.dispersions if d.quantity == "orbit_elements")
+
+    def get(scenario: Scenario) -> float:
+        return float(dispersion(scenario).element_spread[key])
+
+    def set_(scenario: Scenario, value: float) -> None:
+        dispersion(scenario).element_spread[key] = value
+
+    return get, set_
+
+
+def _drag_coeff_bound(index: int):
+    """Get/set for the low (0) or high (1) end of '25's drag-coefficient dispersion."""
+    def dispersion(scenario: Scenario):
+        return next(d for d in scenario.monte_carlo.dispersions if d.quantity == "drag_coeff")
+
+    def get(scenario: Scenario) -> float:
+        return float(dispersion(scenario).bounds[index])
+
+    def set_(scenario: Scenario, value: float) -> None:
+        dispersion(scenario).bounds[index] = value
+
+    return get, set_
+
+
+def _final_coast_command(scenario: Scenario):
+    return scenario.mission_sequence[-1]
+
+
+def _sun_synchronous_orbit_page(intro: str) -> "WizardPageSpec":
+    return WizardPageSpec(
+        title="Orbit",
+        intro=intro,
+        fields=[
+            WizardField(
+                "Semi-major axis", "Orbit size: Earth's radius (6378 km) plus the altitude. The "
+                "inclination follows, so the orbit stays Sun-synchronous.",
+                lambda s: _sc(s).orbit.semi_major_axis_km, _set_sun_synchronous_semi_major_axis,
+                6578.0, 8378.0, decimals=1, step=10.0, suffix=" km",
+                hint="6378 km + altitude; stays Sun-synchronous",
+            ),
+        ],
+    )
+
+
+def _duration_page(intro: str, maximum_days: float) -> "WizardPageSpec":
+    return WizardPageSpec(
+        title="Simulation length",
+        intro=intro,
+        fields=[
+            WizardField(
+                "Duration", "Total simulated time.",
+                lambda s: s.sim_settings.duration_days,
+                lambda s, v: setattr(s.sim_settings, "duration_days", v),
+                0.1, maximum_days, decimals=2, step=1.0, suffix=" days", hint="Total simulated time",
+            ),
+        ],
+    )
 
 
 _SPECS: Dict[str, TemplateWizardSpec] = {
@@ -1393,6 +1468,141 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
                     ),
                 ],
             ),
+        ],
+    ),
+    "22_starter_first_leo_satellite.json": TemplateWizardSpec(
+        template_filename="22_starter_first_leo_satellite.json",
+        pages=[
+            _sun_synchronous_orbit_page("Lower orbits feel more drag and decay faster."),
+            WizardPageSpec(
+                title="Spacecraft",
+                intro="Mass and size set how strongly drag slows the satellite.",
+                fields=[
+                    WizardField(
+                        "Dry mass", "The spacecraft's mass without propellant.",
+                        lambda s: _sc(s).dry_mass_kg, lambda s, v: setattr(_sc(s), "dry_mass_kg", v),
+                        1.0, 5000.0, decimals=1, step=10.0, suffix=" kg", hint="Heavier = less slowed by drag",
+                    ),
+                    WizardField(
+                        "Drag area", "Cross-sectional area facing the flow.",
+                        lambda s: _sc(s).drag_area_m2, lambda s, v: setattr(_sc(s), "drag_area_m2", v),
+                        0.01, 100.0, decimals=2, step=0.1, suffix=" m^2", hint="Bigger = more drag",
+                    ),
+                ],
+            ),
+            _duration_page("Longer runs show more decay and more passes.", SimSettings._MAX_DURATION_DAYS),
+        ],
+    ),
+    "23_starter_complete_small_satellite.json": TemplateWizardSpec(
+        template_filename="23_starter_complete_small_satellite.json",
+        pages=[
+            WizardPageSpec(
+                title="Downlink",
+                intro="The radio link to berlin-gs during the pass.",
+                fields=[
+                    WizardField(
+                        "Transmitter power", "RF output power of the downlink transmitter.",
+                        lambda s: _sc(s).rf_link.tx_power_w, lambda s, v: setattr(_sc(s).rf_link, "tx_power_w", v),
+                        0.1, 100.0, decimals=1, step=1.0, suffix=" W", hint="More power = more link margin",
+                    ),
+                    WizardField(
+                        "Data rate", "Downlink data rate.",
+                        lambda s: _sc(s).rf_link.data_rate_bps / 1.0e6,
+                        lambda s, v: setattr(_sc(s).rf_link, "data_rate_bps", v * 1.0e6),
+                        0.01, 1000.0, decimals=2, step=1.0, suffix=" Mbit/s", hint="Faster = less link margin",
+                    ),
+                    WizardField(
+                        "Minimum elevation", "The lowest elevation above the horizon counted as a pass.",
+                        lambda s: s.ground_stations[0].min_elevation_deg,
+                        lambda s, v: setattr(s.ground_stations[0], "min_elevation_deg", v),
+                        0.0, 89.0, decimals=1, step=5.0, suffix=" deg", hint="Lowest elevation counted as a pass",
+                    ),
+                ],
+            ),
+            WizardPageSpec(
+                title="Mission timeline",
+                intro="The sequence stops at the pass; this is the coast after it.",
+                fields=[
+                    WizardField(
+                        "Coast after the pass", "How long the last propagate runs after the pass ends.",
+                        lambda s: _final_coast_command(s).params["duration_days"],
+                        lambda s, v: _final_coast_command(s).params.__setitem__("duration_days", v),
+                        0.001, 1.0, decimals=3, step=0.01, suffix=" days", hint="0.04 days is about an hour",
+                    ),
+                ],
+            ),
+        ],
+    ),
+    "24_formation_mean_element_control.json": TemplateWizardSpec(
+        template_filename="24_formation_mean_element_control.json",
+        pages=[
+            WizardPageSpec(
+                title="Formation control",
+                intro="Basilisk's mean-element feedback holds follower-1 ahead of chief-1.",
+                fields=[
+                    WizardField(
+                        "Target separation", "The along-track distance follower-1 holds ahead of chief-1.",
+                        lambda s: _follower(s).phasing_keeping.target_separation_km[0],
+                        lambda s, v: _follower(s).phasing_keeping.target_separation_km.__setitem__(0, v),
+                        1.0, 1000.0, decimals=2, step=5.0, suffix=" km",
+                        hint="Distance the follower holds ahead of the chief",
+                    ),
+                    WizardField(
+                        "Mean-element gain", "Feedback gain per kilogram of spacecraft: higher holds "
+                        "tighter and spends more delta-V.",
+                        lambda s: _follower(s).phasing_keeping.mean_oe_gain,
+                        lambda s, v: setattr(_follower(s).phasing_keeping, "mean_oe_gain", v),
+                        1.0, 1.0e6, decimals=0, step=500.0, suffix=" m^2/s^3",
+                        hint="Higher = tighter hold, more delta-V",
+                    ),
+                ],
+            ),
+            _duration_page("The law acts continuously, so a few days already show it.",
+                           SimSettings._MAX_SINGLE_RUN_DAYS),
+        ],
+    ),
+    "25_monte_carlo_orbit_and_drag_dispersions.json": TemplateWizardSpec(
+        template_filename="25_monte_carlo_orbit_and_drag_dispersions.json",
+        pages=[
+            WizardPageSpec(
+                title="Monte Carlo batch",
+                intro="Each run draws its own starting orbit and drag coefficient.",
+                fields=[
+                    WizardField(
+                        "Number of runs", "More runs give smoother statistics, at proportional runtime.",
+                        lambda s: float(s.monte_carlo.num_runs),
+                        lambda s, v: setattr(s.monte_carlo, "num_runs", int(round(v))),
+                        1.0, 1000.0, decimals=0, step=5.0,
+                        hint="More runs = smoother statistics, longer runtime",
+                    ),
+                    WizardField(
+                        "Semi-major axis spread", "1-sigma spread of the starting semi-major axis.",
+                        *_orbit_element_spread("semi_major_axis_km"),
+                        0.0, 100.0, decimals=2, step=0.5, suffix=" km", hint="1-sigma, around the nominal orbit",
+                    ),
+                    WizardField(
+                        "Inclination spread", "1-sigma spread of the starting inclination.",
+                        *_orbit_element_spread("inclination_deg"),
+                        0.0, 5.0, decimals=3, step=0.01, suffix=" deg", hint="1-sigma, around the nominal orbit",
+                    ),
+                    WizardField(
+                        "Along-track spread", "1-sigma spread of the starting true anomaly.",
+                        *_orbit_element_spread("true_anomaly_deg"),
+                        0.0, 10.0, decimals=3, step=0.05, suffix=" deg", hint="1-sigma position along the orbit",
+                    ),
+                    WizardField(
+                        "Drag coefficient, low", "The lowest drag coefficient a run can draw.",
+                        *_drag_coeff_bound(0), 1.0, 4.0, decimals=2, step=0.1,
+                        hint="Each run draws Cd between low and high",
+                    ),
+                    WizardField(
+                        "Drag coefficient, high", "The highest drag coefficient a run can draw.",
+                        *_drag_coeff_bound(1), 1.0, 4.0, decimals=2, step=0.1,
+                        hint="Must stay above the low end",
+                    ),
+                ],
+            ),
+            _duration_page("Each run's length: the spread grows with time.", SimSettings._MAX_SINGLE_RUN_DAYS),
         ],
     ),
 }

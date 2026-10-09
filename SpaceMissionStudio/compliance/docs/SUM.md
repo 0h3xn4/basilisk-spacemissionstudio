@@ -6,7 +6,10 @@ Document: SMS-SUM, issue 1 (draft), 2026-10-08. Remediation R14.
 **Status:** draft.
 - The user documentation already exists:
   - `USER_MANUAL.md` (UM), the tutorial and reference for users;
-  - `README.md` (RM), installation from source, features and the CLI.
+  - `README.md` (RM), features, verification status and the CLI;
+  - `GETTING_STARTED.md` (GS), installation, first run and installation
+    problems;
+  - `examples/` (EX), Python scripts using the tool as a library.
 - This SUM maps each DRD section to them and adds what they do not cover:
   - data files;
   - security;
@@ -27,6 +30,8 @@ not.
 |---|---|
 | UM | `USER_MANUAL.md` |
 | RM | `README.md` |
+| GS | `GETTING_STARTED.md` |
+| EX | `examples/README.md` and its scripts |
 | AD1 | ICD (`ICD.md`, `ICD_cli.md`): file formats and CLI |
 | AD2 | CSD (`CSD.md`): frames, time scales, units |
 | AD3 | Security analysis (`security_analysis.md`) |
@@ -79,8 +84,9 @@ The tool lets a mission analyst do the following without writing code:
 ### 7.1 Software application (H.2.1<7.1>)
 
 - Install with the `.deb` (Linux) or the `.exe` (Windows) (UM section 2;
-  AD4), or from source with `pip` (RM, "Getting started").
-- The installer needs the internet once, to fetch Basilisk.
+  AD4), the install scripts, or from source with `pip` (GS sections 3 to 5).
+- The installer needs the internet once, to fetch Basilisk and the
+  reference data.
 - No other manual operation is needed.
 
 ### 7.2 Software inventory (H.2.1<7.2>)
@@ -157,12 +163,15 @@ site. It has no schedule, operational profile or site personnel.
 
 ### 9.3 Getting started (H.2.1<9.3>)
 
-UM section 4 ("Your first simulation, in five minutes").
+UM section 4 ("Your first simulation, in five minutes"); GS sections 6
+and 7 (checking the installation, a first run in the GUI, the CLI and
+Python).
 
 **Check-list when something does not start:**
 - Is Basilisk installed? **Help > About** shows the versions.
 - Is a display available (GUI)?
 - Read the log file (section 6).
+- GS section 9 lists the installation problems seen so far and their fixes.
 
 ### 9.4 Access and security features (H.2.1<9.4>)
 
@@ -300,11 +309,14 @@ The UM combines a tutorial (sections 3 to 5) with reference material
 
 ### 11.2 Getting started (H.2.1<11.2>)
 
-UM section 1, "What is SpaceMissionStudio?"
+UM section 1, "What is SpaceMissionStudio?", with "How the pieces fit
+together": the parts of a scenario and where each is edited.
 
 ### 11.3 Using the software on a typical task (H.2.1<11.3>)
 
 UM section 4, with screenshots: load a template, run it, read the results.
+UM section 6, "Building your own scenario, step by step", builds one from
+an empty scenario; templates 22 and 23 are ready-made starting points.
 
 ## 12 Analytical index (H.2.1<12>)
 

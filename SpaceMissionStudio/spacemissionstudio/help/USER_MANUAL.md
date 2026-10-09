@@ -7,8 +7,10 @@ application.
 
 **Looking for something else?**
 
-* Installing SpaceMissionStudio, or developing it: see [`README.md`](README.md).
-* The full technical capability list and verification status: also
+* Installing SpaceMissionStudio: [`GETTING_STARTED.md`](GETTING_STARTED.md),
+  step by step for Linux and Windows.
+* Using it from Python scripts: [`examples/`](examples/README.md).
+* The full technical capability list and verification status:
   [`README.md`](README.md).
 * The story of how a specific feature or bug came to be: [`HISTORY.md`](HISTORY.md).
 
@@ -55,25 +57,74 @@ results. The built-in template missions (Section 4) are a safe, guided
 way to learn by doing -- pick one, run it, and see what happens before
 you ever build a scenario from scratch.
 
+### How the pieces fit together
+
+Everything revolves around one **scenario**: a single `.json` file that
+describes the whole mission. **Run** turns that description into results.
+
+```
+Scenario (one .json file)
+ |- Epoch and simulation mode ... when it starts; orbit only, or orbit + attitude
+ |- Propagation setup ........... planet, gravity detail, Sun/Moon, atmosphere, duration
+ |- Spacecraft (one or more)
+ |   |- Orbit ................... where it starts: orbital elements, position/velocity or a TLE
+ |   |- Mass and shape .......... mass, inertia, drag and sunlight areas (or flat plates)
+ |   |- Hardware ................ sensors, wheels, torque rods, thrusters, tank, battery, radio
+ |   '- Control ................. pointing mode, station keeping, formation keeping
+ |- Ground stations ............. where on Earth, lowest usable elevation, receiver
+ |- Mission sequence (optional) . coast, burn, report, step by step
+ '- Monte Carlo (optional) ...... which values vary between runs, and by how much
+          |
+          |  Run: Basilisk computes the physics
+          v
+Results: a plot of every quantity, an Events timeline, mission reports,
+         a dashboard, CSV export, a 3D replay in Vizard
+```
+
+Where each piece lives in the app, and which template shows it best:
+
+| Piece | Where you edit it | Learn it from template |
+|---|---|---|
+| Simulation mode, epoch | Scenario Editor, top | 01 (orbit only), 06 (attitude) |
+| Gravity, Sun and Moon, atmosphere, duration | Scenario Editor > **Edit Propagation Setup...** | 02, 18 |
+| A spacecraft's orbit and mass | Spacecraft > **Add...** / **Edit...** > **Orbit / mass** | 01, 22 |
+| Sensors and actuators | ... > **Sensors / actuators** | 07, 12, 13, 14 |
+| Where it points | ... > **Attitude control** | 06, 15, 19 |
+| Power, thrusters, radio | ... > **Power / propulsion / link budget** | 07, 17, 18, 19 |
+| Ground stations | Scenario Editor > Ground stations | 19, 22 |
+| Mission sequence | Scenario Editor > Mission sequence | 08, 16, 23 |
+| Monte Carlo | Scenario Editor > Monte Carlo | 09, 25 |
+| Results | the tabs on the right (Section 7) | any |
+
+**Orbit only or full attitude?** *Orbit only* simulates where each
+spacecraft goes: fast, and enough for orbits, drag, station keeping,
+formations and ground passes. *Full attitude* also simulates which way it
+points, so sensors, wheels, torque rods, pointing modes, flat-plate
+shapes and power from a Sun-facing panel become available; it needs a
+small time step and runs slower. Start with orbit only and switch when
+you need pointing.
+
 ## 2. Installing it
 
 If someone already installed SpaceMissionStudio for you, skip to
 [Section 3](#3-starting-the-app).
 
 **Linux:** double-click the `.deb` file you were given (or run
-`sudo apt install ./spacemissionstudio_<version>_all.deb` in a terminal, for example `spacemissionstudio_2.0.0_all.deb`), then
+`sudo apt install ./spacemissionstudio_2.0.0_all.deb` in a terminal), then
 find **SpaceMissionStudio** in your application menu like any other program.
 
-**Windows 11:** double-click the `.exe` installer you were given and
+**Windows 10/11:** double-click the `.exe` installer you were given and
 follow the setup wizard, then find **SpaceMissionStudio** in your Start Menu.
 
-Either installer needs an internet connection the first time it runs, to
-download the Basilisk simulation engine (this only happens once).
+Either installer needs an internet connection once, to download the
+Basilisk simulation engine and its reference data (planet positions,
+leap seconds, Earth's gravity and magnetic field, about 116 MB). After
+that the app works offline.
 
-**Don't have an installer, or want to run it from source instead?** See
-the "Getting started" section of [`README.md`](README.md) -- it walks
-through the handful of terminal commands needed (`pip install`, mostly)
-and is written for someone comfortable typing commands, not a programmer.
+**No installer, or want to run it from source?**
+[`GETTING_STARTED.md`](GETTING_STARTED.md) walks through every way to
+install it, with copy-and-paste commands, how to check that it works,
+and what to do when it doesn't.
 
 ## 3. Starting the app
 
@@ -84,23 +135,26 @@ and is written for someone comfortable typing commands, not a programmer.
 
 The window that opens looks like this:
 
-![The Load Scenario tab, listing all twenty-one built-in templates](docs/images/load_scenario_tab.png)
+![The Load Scenario tab with template 22 selected and its description below the list](docs/images/load_scenario_tab.png)
 
 A few things to notice right away:
 
-* **File / Run / Help** along the top -- the three menus you'll use
-  for almost everything.
+* **File / Edit / Run / Help** along the top -- the four menus you'll
+  use for almost everything.
 * A row of toolbar buttons just below the menus, mirroring the most
   common menu actions (New Scenario, Open, Save, Run Simulation, ...)
   so you don't have to open a menu every time.
 * Two tabs on the **left**: **Load Scenario** (where you start) and
   **Scenario Editor** (where you build/edit a mission in detail --
   Section 6).
-* Five tabs on the **right**: **Results**, **Mission Dashboard**,
-  **Mission Output**, **Data** (the first three empty until you run
-  something), and **Explain** (a live, always-current summary of
-  what the scenario you're currently editing actually does -- see
-  the end of Section 7).
+* Eight tabs on the **right**. **Results**, **Mission Dashboard**,
+  **Mission Output** and **Events** fill in when you run something
+  (Section 7). **Data** lists the reference files and offers to
+  download missing ones. **Explain** is a live summary of what the
+  scenario you are editing does (end of Section 7). **End of Life** and
+  **Budget** estimate re-entry and delta-V (Section 11).
+* The status bar at the bottom shows progress and, if it is not the
+  verified 2.12.0, the Basilisk version.
 
 The app opens on the **Load Scenario** tab deliberately: picking a
 starting point is the natural first move for everyone, whether you end
@@ -108,7 +162,7 @@ up using a template as-is or editing it into something new.
 
 ## 4. Your first simulation, in five minutes
 
-1. **Pick a template.** The list on the left shows all twenty-one
+1. **Pick a template.** The list on the left shows all twenty-five
    built-in example missions, numbered roughly from simplest to most
    advanced -- "01 - Two-body circular orbit" is the simplest possible
    case (one satellite, one orbit, nothing else going on) and a good
@@ -141,25 +195,47 @@ tracking.
 cause is that Basilisk, the simulation engine itself, isn't installed
 yet; the app will say so clearly rather than failing silently.
 
+### Which template next?
+
+Each template shows one idea, so a few at a time is plenty. A suggested
+path, each step building on the one before:
+
+| Step | Templates | What you learn |
+|---|---|---|
+| 1. Orbits | 01, 02, 22 | An ideal orbit; what Earth's shape, the Sun and the Moon do to it; a realistic satellite with drag and a ground station |
+| 2. Keeping an orbit | 18, 03, 17 | Station keeping against drag (low orbit) and drift (geostationary); how propellant runs down |
+| 3. Pointing | 06, 07, 15, 14 | Attitude control, ideal and with real hardware; pointing at the Moon; finding the Sun with sun sensors |
+| 4. Disturbances and momentum | 10, 21, 12, 13, 11 | Gravity-gradient and surface torques; unloading wheels with thrusters or torque rods; thrusters for pointing |
+| 5. Missions in steps | 08, 16, 23 | Mission Sequences: burns, a Lambert transfer, stopping on a ground pass |
+| 6. Several spacecraft | 04, 05, 24 | A Walker constellation; a formation held by two different control laws |
+| 7. Whole systems | 19, 20, 23 | Power, radio link and thermal working together |
+| 8. Uncertainty | 09, 25 | Monte Carlo batches: mass, orbit insertion, drag |
+
+**Starting your own mission?** Open **22** (a realistic satellite, orbit
+only) or **23** (a complete small satellite with hardware, a radio link
+and a Mission Sequence), use **File > Save As...**, and change it step
+by step (Section 6).
+
 ## 5. Tweaking a template without the full editor
 
-Say "02 - Elliptical orbit with perturbations" is close to what you
-want, but you'd like a different inclination or duration, without
+Say "22 - Starter: your first LEO satellite" is close to what you
+want, but you'd like a lower orbit or a heavier satellite, without
 learning the full Scenario Editor. Every row in the Load Scenario
 tab's template list has its own **Customize...** button on its right
 -- click the one on that template's row (no need to select the row
 first):
 
-![The "Customize: GEO station-keeping..." wizard, showing the station-keeping controller's own parameters pre-filled](docs/images/customize_wizard.png)
+![The Customize dialog for template 22: its key settings first, every other setting below, with a section list and a filter on the left](docs/images/customize_wizard.png)
 
-Clicking one opens a short, guided wizard over just that template's own
-handful of most-interesting settings (pre-filled with its current
-values) -- **Next**/**Back** through a couple of pages, change only what
-you care about, then **Finish**. The result opens directly in the
-Scenario Editor, ready to run, with everything else left exactly as the
-original template had it. The original template file on disk is never
-modified either way, whether you use this wizard or the full editor --
-so you can always come back to a clean copy later.
+It opens one window with every setting of that template, pre-filled
+with its current values: the handful that matter most under **Key
+settings** at the top, then everything else grouped by spacecraft and
+topic. The list on the left jumps to a section; the filter box finds a
+setting by name ("drag", "duration"). Change what you like, then
+**Open in editor**: the result opens in the Scenario Editor, ready to
+run. The original template file on disk is never modified, whether you
+use this dialog or the full editor -- so you can always come back to a
+clean copy later.
 
 ## 6. A tour of the Scenario Editor
 
@@ -187,9 +263,11 @@ out for a brand-new scenario:
   integrator, how long to simulate, and atmospheric drag/space-weather
   settings.
 * **Spacecraft** -- the list of spacecraft in the mission. **Add...**
-  opens a dialog with its own tabs: orbit & mass, sensors/actuators,
-  attitude control, power/propulsion, and a cosmetic 3D-model tab for
-  Vizard (Section 9). An orbit can be specified as classical orbital
+  opens a dialog with its own tabs: **Orbit / mass**, **Sensors /
+  actuators**, **Attitude control**, **Power / propulsion / link
+  budget**, a cosmetic **Vizard model** tab (Section 9) and **Budget
+  (AD10)** (Section 11). **New from template...** adds a complete
+  spacecraft from a 100-500 kg preset instead of a blank one. An orbit can be specified as classical orbital
   elements (semi-major axis, eccentricity, inclination, ...), Cartesian
   position/velocity, or a TLE (the format real tracked satellites are
   published in) -- pick whichever you have on hand. There are also
@@ -216,6 +294,41 @@ out for a brand-new scenario:
 A **validation message** at the very bottom of this tab updates live as
 you type, in plain language (e.g. naming exactly which field is missing
 or invalid) -- you don't have to guess why Run is unavailable.
+
+### Building your own scenario, step by step
+
+The quickest way to a mission of your own is a starter template (22 or
+23) and **Save As**. To start from an empty scenario instead:
+
+1. **File > New Scenario.** Give it a **Name**. Choose **Simulation
+   mode** *Orbit only* to begin with (Section 1 explains the choice) and
+   set the **Epoch (UTC)**: the date decides where the Sun and Moon are,
+   how dense the upper atmosphere is and when ground stations see you.
+2. **Edit Propagation Setup...** For a satellite around Earth: tick
+   **Enable spherical-harmonics gravity** with degree 10, add **sun** and
+   **moon** as third-body perturbers, start with a **Duration** of 1 day,
+   and leave the atmosphere on the bundled, real space-weather data.
+3. **Spacecraft > Add...**, or **New from template...** for a 100-500 kg
+   preset (in *Orbit only* mode it keeps the preset's mass, inertia and
+   drag areas and leaves its hardware out). On **Orbit / mass**: the semi-major axis is Earth's
+   radius (6378 km) plus the altitude, so 6928 km for 550 km. For an
+   Earth-observation orbit, press **Compute Sun-sync inclination for
+   this altitude** and **Compute RAAN for LTAN...** (10:30 is the usual
+   local time). Have a real satellite's TLE? Choose the TLE orbit type
+   and paste it. Then set the **Dry mass**, and tick **Enable atmospheric
+   drag** with its area (and **Enable solar radiation pressure**).
+4. **Ground stations > Add...**: a name, latitude, longitude and the
+   lowest usable elevation (10 deg is common).
+5. Look at the bottom of the tab: **✓ valid** means Run is available;
+   otherwise the message names the field to fix. The **Explain** tab
+   already shows the orbit type, the ground passes and what the
+   environment includes, before anything runs.
+6. **File > Save As...**, then **Run > Run Simulation**.
+7. Grow it one step at a time, running after each: switch to *Full
+   attitude* and pick a pointing mode on **Attitude control**; add
+   sensors and actuators; add station keeping on **Power / propulsion /
+   link budget**; add a Mission Sequence. When a result changes, you know
+   which step changed it. Template 23 is this process, finished.
 
 ### Formation control laws
 
@@ -405,13 +518,38 @@ everything numerically; Vizard is for *seeing* the mission.
 
 Real spacecraft never have perfectly known mass, attitude, etc. --
 **Monte Carlo** mode runs your scenario many times with small, randomized
-variations (currently: dry mass and/or starting attitude) and reports
-the spread of outcomes, instead of one single result. In the Scenario
-Editor's **Monte Carlo** section, check **Enabled**, set how many runs
-and how many to run in parallel, and add one or more **dispersions**
-(which quantity varies, and by how much) -- then use **Run > Run Monte
-Carlo...** instead of the ordinary Run Simulation. This is a more
-advanced feature; most people won't need it for a first mission.
+variations and reports the spread of outcomes, instead of one single
+result. In the Scenario Editor's **Monte Carlo** section, check
+**Enabled**, set how many runs and how many to run in parallel, and add
+one or more **dispersions** (which quantity varies, and by how much) --
+then use **Run > Run Monte Carlo...** instead of the ordinary Run
+Simulation. This is a more advanced feature; most people won't need it
+for a first mission. Templates 09 and 25 are ready-made batches.
+
+Run Monte Carlo asks for a folder and saves every run there: `runN.json`
+with the values that run drew, and each spacecraft's position and
+velocity. The app does not plot a batch yet;
+[`examples/monte_carlo_spread.py`](examples/monte_carlo_spread.py) shows
+how to read the folder back and compare the runs.
+
+What can vary, each spacecraft on its own:
+
+| Quantity | Varies | Kinds |
+|---|---|---|
+| `dry_mass_kg` | dry mass [kg] | uniform, normal |
+| `attitude_sigma_bn` | starting attitude, as random Euler angles | uniform |
+| `orbit_elements` | each orbital element around the spacecraft's starting orbit: semi-major axis [km], eccentricity, inclination, RAAN, argument of periapsis, true anomaly [deg] | normal (1-sigma), uniform (half-width) |
+| `inertia_kg_m2` | each diagonal element of the inertia [kg m^2], plus an optional small rotation that adds products of inertia | normal |
+| `angular_rate_bn_b` | starting body rate, each axis [deg/s], on top of the configured rate | normal, uniform |
+| `drag_coeff`, `srp_coeff` | the drag or radiation-pressure coefficient | uniform, normal |
+
+The orbit varies as orbital elements, never as raw position and velocity,
+so every run starts on a real orbit; an element left at 0 is not varied.
+For a near-circular orbit, put an along-track spread on the true anomaly
+only (its argument of periapsis is not well defined). Inertia and body
+rate need full attitude simulation. The coefficients need drag or solar
+pressure switched on, and a spacecraft without surface facets (facets
+carry their own coefficients).
 
 ## 11. Common questions and problems
 
@@ -419,7 +557,7 @@ advanced feature; most people won't need it for a first mission.
 SpaceMissionStudio's graphical shell opens fine on its own, but actually
 *running* a simulation needs the separate Basilisk engine installed too.
 If you used the `.deb`/`.exe` installer, this should already be set up;
-if not, see "Getting started" in [`README.md`](README.md). The app
+if not, see [`GETTING_STARTED.md`](GETTING_STARTED.md). The app
 always reports this clearly rather than crashing -- if you see a plain
 error message naming Basilisk, that's exactly what's going on, not a bug.
 
@@ -434,8 +572,8 @@ does the same from the command line.
 
 **The Results plot area stays blank after a run.** The plots run inside
 an embedded web-rendering component. On a very minimal Linux install,
-you may need a few extra system libraries -- see "Running the tests" in
-[`README.md`](README.md) for the exact package names if this happens.
+you may need a few extra system libraries -- section 9 of
+[`GETTING_STARTED.md`](GETTING_STARTED.md) has the exact package names.
 
 **A simulation is taking too long, or you started the wrong one.**
 **Run > Abort Run** stops it safely at the next checkpoint (not
@@ -581,8 +719,13 @@ anyone who hasn't worked with spacecraft before:
 
 * **More templates to learn from:**
   [`spacemissionstudio/scenarios/templates/README.md`](spacemissionstudio/scenarios/templates/README.md)
-  describes what each of the twenty-one built-in templates teaches, in
+  describes what each of the twenty-five built-in templates teaches, in
   more depth than the in-app description box.
+* **Scripting it from Python:** [`examples/`](examples/README.md) builds
+  a scenario in code, runs templates, writes a Mission Sequence, sweeps a
+  parameter and reads a Monte Carlo archive.
+* **Installing it somewhere else, or something not working after
+  installation:** [`GETTING_STARTED.md`](GETTING_STARTED.md).
 * **The full feature list and technical details:** [`README.md`](README.md)'s
   "Capabilities" section.
 * **How a specific feature or fix came to be, including real bugs found

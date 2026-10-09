@@ -944,6 +944,29 @@ def test_dialog_orbit_only_mode_force_clears_attitude_fields(qtbot):
     sc.validate()  # must not raise
 
 
+@pytest.mark.parametrize("preset_index", range(4))
+def test_every_spacecraft_preset_is_valid_in_an_orbit_only_scenario(qtbot, preset_index):
+    """New from template... in an orbit-only scenario: the presets carry a
+    facet model, which orbit_only rejects. The dialog hid and dropped their
+    sensors, actuators and power but kept the facets, so OK always failed
+    validation with the facet editor still showing."""
+    from spacemissionstudio.engine.spacecraft_templates import SPACECRAFT_TEMPLATES
+    from spacemissionstudio.gui.spacecraft_editor import SpacecraftEditorDialog
+    from spacemissionstudio.schema.scenario import GravityConfig, Scenario
+
+    preset = SPACECRAFT_TEMPLATES[preset_index].build()
+    preset.name = "from-preset"
+    dialog = SpacecraftEditorDialog(config=preset, simulation_mode="orbit_only")
+    qtbot.addWidget(dialog)
+    assert dialog.facet_group.isHidden()
+
+    sc = dialog.to_dataclass()
+    assert sc.facets == [] and sc.sensors == [] and sc.power is None
+    assert sc.dry_mass_kg == preset.dry_mass_kg and sc.drag_area_m2 == preset.drag_area_m2  # [kg], [m^2] kept
+    Scenario(name="t", epoch_utc="2030-01-01T00:00:00", simulation_mode="orbit_only", spacecraft=[sc],
+             gravity=GravityConfig(third_body_perturbers=["sun"])).validate()  # the presets fly SRP
+
+
 def test_dialog_full_attitude_mode_keeps_tabs_visible(qtbot):
     from spacemissionstudio.gui.spacecraft_editor import SpacecraftEditorDialog
 

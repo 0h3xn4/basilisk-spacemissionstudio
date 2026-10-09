@@ -135,6 +135,8 @@ the table below.
 | CI run 51, `baa17580b` | 2336 | 11 | Windows and macOS 0; Linux 1: a race in the new Data tab download test (review_log, test defects), fixed in the test |
 | After the Carbon restyle, Python 3.11 | 2340 | 10 | 0 (2 new theme tests: IBM Plex loads, Carbon tokens and shared series colours; changed expectations: radio-dot.svg is now icon-primary, the Events table opens earliest first) |
 | After Basilisk's formation-flying laws (SRS-F-10), Python 3.11, `be0d6368f` | 2365 | 10 | 0 (25 new tests: `tests/test_formation_control.py` (19, 9 of them real Basilisk runs), the editor round trip and field visibility, the formation dialog, generator and CLI law choice, the Explain badge; no changed expectations) |
+| After the new Monte Carlo dispersions (SRS-F-13), Python 3.11 | 2383 | 10 | 0 (18 new tests: validation of the five new quantities, one draw each and a three-run batch through Basilisk's Controller, the editor's new fields; no changed expectations) |
+| After the newcomer documentation, templates 22-25 and `examples/` (SUM, SRS-O-02, SRS-H-02), Python 3.11 | 2489 | 10 | 0 (106 new tests: the four new templates in every parametrized template, wizard, GUI and explainer test, their structure and claims (three Basilisk runs), the five examples, the selected-row contrast, the presets in orbit-only mode; no changed expectations) |
 
 ## Resuming
 

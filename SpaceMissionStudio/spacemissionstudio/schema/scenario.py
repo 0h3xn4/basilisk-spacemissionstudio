@@ -140,11 +140,29 @@ SUPPORTED_FSW_MODES = ("inertial3D", "hillPoint", "velocityPoint", "sunSafePoint
 # replace each component with an ABSOLUTE random value, not a perturbation
 # around the nominal orbit, which would silently produce a physically
 # nonsensical "dispersed" orbit).
-DISPERSION_QUANTITIES = ("dry_mass_kg", "attitude_sigma_bn")
+#
+# The orbit is dispersed as orbital elements around the spacecraft's own
+# initial orbit (Dispersions.OrbitalElementDispersion), never as raw
+# Cartesian components; the vector Cartesian classes are used only for the
+# initial body rate, as a spread added to the nominal rate.
+DISPERSION_QUANTITIES = ("dry_mass_kg", "attitude_sigma_bn", "orbit_elements", "inertia_kg_m2",
+                         "angular_rate_bn_b", "drag_coeff", "srp_coeff")
 DISPERSION_KINDS_BY_QUANTITY = {
     "dry_mass_kg": ("uniform", "normal"),
     "attitude_sigma_bn": ("uniform_euler_mrp",),
+    "orbit_elements": ("normal", "uniform"),
+    "inertia_kg_m2": ("normal",),
+    "angular_rate_bn_b": ("normal", "uniform"),
+    "drag_coeff": ("uniform", "normal"),
+    "srp_coeff": ("uniform", "normal"),
 }
+# DispersionConfig.element_spread keys ("orbit_elements"), each a 1-sigma
+# ("normal") or half-width ("uniform") around the nominal element.
+ORBIT_ELEMENT_SPREAD_KEYS = ("semi_major_axis_km", "eccentricity", "inclination_deg", "raan_deg",
+                             "arg_periapsis_deg", "true_anomaly_deg")
+# Quantities whose "normal" kind takes a spread only (no mean): the vector
+# and tensor ones, dispersed around their nominal values.
+SPREAD_ONLY_DISPERSION_QUANTITIES = ("orbit_elements", "inertia_kg_m2", "angular_rate_bn_b")
 
 
 class ScenarioValidationError(ValueError):
@@ -158,6 +176,11 @@ class ScenarioValidationError(ValueError):
 def _require(condition: bool, message: str) -> None:
     if not condition:
         raise ScenarioValidationError(message)
+
+
+def _is_finite_number(value) -> bool:
+    """True for a finite int or float (not a bool)."""
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
 
 
 def _is_direction_vector(values) -> bool:
@@ -1534,25 +1557,54 @@ class DispersionConfig:
     spacecraft: str  # must match a SpacecraftConfig.name in this scenario
     quantity: str  # one of DISPERSION_QUANTITIES
     kind: str  # one of DISPERSION_KINDS_BY_QUANTITY[quantity]
-    bounds: Optional[list] = None  # [lo, hi]; required for "uniform"/"uniform_euler_mrp"
-    mean: Optional[float] = None  # required for "normal"
-    std_deviation: Optional[float] = None  # required for "normal"
+    # [lo, hi]; required for "uniform"/"uniform_euler_mrp". In the quantity's
+    # unit: kg, rad (Euler angles), [-] (coefficients), deg/s added to the
+    # nominal rate ("angular_rate_bn_b"); for "inertia_kg_m2" an optional
+    # clip [kg*m^2] on each diagonal offset.
+    bounds: Optional[list] = None  # [lo, hi] in the quantity's unit (User Manual section 10)
+    mean: Optional[float] = None  # required for "normal" on dry_mass_kg, drag_coeff, srp_coeff
+    # required for "normal": kg, [-], kg*m^2 (each diagonal element of the
+    # inertia), deg/s (each axis of the initial rate)
+    std_deviation: Optional[float] = None  # 1-sigma in the quantity's unit (User Manual section 10)
+    # "orbit_elements": {key in ORBIT_ELEMENT_SPREAD_KEYS: spread}, in km,
+    # [-] or deg; elements left out are not dispersed
+    element_spread: Optional[dict] = None  # "orbit_elements": {element key: spread}
+    angle_std_deg: Optional[float] = None  # [deg] "inertia_kg_m2": 1-sigma rotation that mixes in off-diagonal terms
 
     def validate(self) -> None:
+        where = f"dispersion on {self.spacecraft}.{self.quantity}"
         _require(bool(self.spacecraft), "dispersion.spacecraft must not be empty")
         _require(self.quantity in DISPERSION_QUANTITIES,
                   f"dispersion.quantity {self.quantity!r} must be one of {DISPERSION_QUANTITIES}")
         allowed_kinds = DISPERSION_KINDS_BY_QUANTITY.get(self.quantity, ())
         _require(self.kind in allowed_kinds,
                   f"dispersion.kind {self.kind!r} for quantity {self.quantity!r} must be one of {allowed_kinds}")
+        if self.quantity == "orbit_elements":
+            spread = self.element_spread
+            _require(isinstance(spread, dict) and spread,
+                      f"{where}: needs element_spread, e.g. {{'semi_major_axis_km': 0.5}}")
+            for key, value in spread.items():
+                _require(key in ORBIT_ELEMENT_SPREAD_KEYS,
+                          f"{where}: element_spread key {key!r} must be one of {ORBIT_ELEMENT_SPREAD_KEYS}")
+                _require(_is_finite_number(value) and value >= 0,
+                          f"{where}: element_spread[{key!r}] must be a finite number >= 0")
+            return
         if self.kind in ("uniform", "uniform_euler_mrp"):
             _require(self.bounds is not None and len(self.bounds) == 2,
-                      f"dispersion on {self.spacecraft}.{self.quantity}: kind {self.kind!r} needs "
-                      "bounds as a 2-element [lo, hi] list")
+                      f"{where}: kind {self.kind!r} needs bounds as a 2-element [lo, hi] list")
         if self.kind == "normal":
-            _require(self.mean is not None and self.std_deviation is not None,
-                      f"dispersion on {self.spacecraft}.{self.quantity}: kind 'normal' needs "
-                      "mean and std_deviation")
+            if self.quantity in SPREAD_ONLY_DISPERSION_QUANTITIES:
+                _require(self.std_deviation is not None and _is_finite_number(self.std_deviation)
+                          and self.std_deviation >= 0, f"{where}: kind 'normal' needs std_deviation >= 0")
+            else:
+                _require(self.mean is not None and self.std_deviation is not None,
+                          f"{where}: kind 'normal' needs mean and std_deviation")
+        if self.quantity == "inertia_kg_m2":
+            _require(self.bounds is None or len(self.bounds) == 2,
+                      f"{where}: bounds, if given, must be a 2-element [lo, hi] list")
+            _require(self.angle_std_deg is None or (_is_finite_number(self.angle_std_deg)
+                                                    and self.angle_std_deg >= 0),
+                      f"{where}: angle_std_deg must be a finite number >= 0")
 
 
 @dataclass
@@ -1819,10 +1871,22 @@ class Scenario:
         self.space_weather.validate()
         self.sim_settings.validate()
         self.monte_carlo.validate()
+        by_name = {sc.name: sc for sc in self.spacecraft}
         for dispersion in self.monte_carlo.dispersions:
             _require(dispersion.spacecraft in names,
                       f"monte_carlo dispersion.spacecraft {dispersion.spacecraft!r} is not one of "
                       f"this scenario's spacecraft {names}")
+            sc = by_name[dispersion.spacecraft]
+            where = f"monte_carlo dispersion on {sc.name}.{dispersion.quantity}"
+            if dispersion.quantity in ("inertia_kg_m2", "angular_rate_bn_b"):
+                _require(self.simulation_mode == "full_attitude",
+                          f"{where}: attitude is not simulated in simulation_mode {self.simulation_mode!r}")
+            if dispersion.quantity == "drag_coeff":
+                _require(sc.enable_drag and not sc.facets,
+                          f"{where}: needs enable_drag and no facets (facets carry their own coefficients)")
+            if dispersion.quantity == "srp_coeff":
+                _require(sc.enable_srp and not sc.facets,
+                          f"{where}: needs enable_srp and no facets (facets carry their own coefficients)")
 
         # Mission sequence (schema.command.Command) -- structural
         # validation only (each command's own .validate() already

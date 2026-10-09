@@ -102,6 +102,47 @@ def test_dispersion_dialog_hides_fields_not_used_by_the_selected_kind(qtbot):
     assert dialog.std_spin.isVisible()
 
 
+def test_dispersion_dialog_builds_an_orbit_element_dispersion(qtbot):
+    """The orbit is dispersed element by element: only the spreads show, and
+    elements left at 0 are not written."""
+    from spacemissionstudio.gui.monte_carlo_editor import _DispersionEditorDialog
+
+    dialog = _DispersionEditorDialog(["sat-1"])
+    qtbot.addWidget(dialog)
+    dialog.show()
+    dialog.quantity_combo.setCurrentText("orbit_elements")
+    dialog.kind_combo.setCurrentText("normal")
+    assert dialog.element_spins["semi_major_axis_km"].isVisible()
+    assert not dialog.mean_spin.isVisible() and not dialog.std_spin.isVisible()
+    assert not dialog.bounds_lo_spin.isVisible()
+    dialog.element_spins["semi_major_axis_km"].setValue(0.5)
+    dialog.element_spins["true_anomaly_deg"].setValue(0.01)
+    config = dialog.to_dataclass()
+    assert config.element_spread == {"semi_major_axis_km": 0.5, "true_anomaly_deg": 0.01}
+    assert config.mean is None and config.std_deviation is None and config.bounds is None
+
+
+def test_dispersion_dialog_round_trips_the_new_quantities(qtbot):
+    """Inertia (with its angle), body rate and the coefficients survive
+    open-and-OK unchanged."""
+    from spacemissionstudio.gui.monte_carlo_editor import _DispersionEditorDialog
+    from spacemissionstudio.schema.scenario import DispersionConfig
+
+    for item in (
+        DispersionConfig(spacecraft="sat-1", quantity="inertia_kg_m2", kind="normal", std_deviation=0.4,
+                         angle_std_deg=1.5),
+        DispersionConfig(spacecraft="sat-1", quantity="angular_rate_bn_b", kind="uniform", bounds=[-0.1, 0.1]),
+        DispersionConfig(spacecraft="sat-1", quantity="angular_rate_bn_b", kind="normal", std_deviation=0.05),
+        DispersionConfig(spacecraft="sat-1", quantity="drag_coeff", kind="normal", mean=2.5, std_deviation=0.2),
+        DispersionConfig(spacecraft="sat-1", quantity="srp_coeff", kind="uniform", bounds=[1.2, 1.5]),
+        DispersionConfig(spacecraft="sat-1", quantity="orbit_elements", kind="uniform",
+                         element_spread={"inclination_deg": 0.05}),
+    ):
+        dialog = _DispersionEditorDialog(["sat-1"], item)
+        qtbot.addWidget(dialog)
+        assert dialog.to_dataclass() == item, item.quantity
+
+
 def test_dispersion_dialog_kind_choices_follow_quantity(qtbot):
     from spacemissionstudio.gui.monte_carlo_editor import _DispersionEditorDialog
 
