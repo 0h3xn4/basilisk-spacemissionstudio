@@ -308,6 +308,41 @@ def _power_comms_section(scenario) -> ExplanationSection | None:
     return ExplanationSection(title="Power & comms", badges=badges)
 
 
+_PASS_MINUTES = 10.0  # [min] a typical LEO pass, for the "per pass" figure only
+
+
+def _data_handling_section(scenario) -> ExplanationSection | None:
+    """What the instruments produce, how long the memory lasts and what a
+    pass can carry (engine.data_handling) -- arithmetic on the settings,
+    before any run."""
+    with_data = [sc for sc in scenario.spacecraft if sc.data_handling is not None]
+    if not with_data:
+        return None
+    badges = [Badge("Data handling", "accent")]
+    patterns = {sc.rf_link.antenna_pattern for sc in with_data if sc.rf_link is not None}
+    if "cosine" in patterns:
+        badges.append(Badge("Patch antenna", "neutral"))
+    if "table" in patterns:
+        badges.append(Badge("Antenna gain table", "neutral"))
+    notes = []
+    for sc in with_data:
+        dh = sc.data_handling
+        rate_bps = sum(i.data_rate_bps for i in dh.instruments)  # [bit/s]
+        per_day_gbit = rate_bps * 86400.0 / 1e9  # [Gbit/day]
+        free_gbit = dh.storage_capacity_gbit - sum(i.initial_data_gbit for i in dh.instruments)  # [Gbit]
+        hours = free_gbit * 1e9 / rate_bps / 3600.0 if rate_bps > 0 else float("inf")  # [h]
+        notes.append(f"{sc.name}: {per_day_gbit:.3g} Gbit/day; memory full in {hours:.3g} h")
+        if sc.rf_link is None:
+            badges.append(Badge(f"{sc.name}: no downlink (no RF link)", "warning"))
+        elif not scenario.ground_stations:
+            badges.append(Badge(f"{sc.name}: no ground station to downlink to", "warning"))
+        else:
+            per_pass_gbit = sc.rf_link.data_rate_bps * _PASS_MINUTES * 60.0 / 1e9  # [Gbit]
+            notes.append(f"{sc.name}: {sc.rf_link.data_rate_bps / 1e6:.3g} Mbit/s, "
+                         f"{per_pass_gbit:.3g} Gbit per {_PASS_MINUTES:g}-min pass")
+    return ExplanationSection(title="Data handling", badges=badges, notes=notes)
+
+
 def _ground_stations_section(scenario) -> ExplanationSection | None:
     if not scenario.ground_stations:
         return None
@@ -402,6 +437,7 @@ def _explain(scenario) -> ScenarioExplanation:
         _attitude_section(scenario),
         _environment_section(scenario),
         _power_comms_section(scenario),
+        _data_handling_section(scenario),
         _ground_stations_section(scenario),
         _monte_carlo_section(scenario),
     ) if s is not None]

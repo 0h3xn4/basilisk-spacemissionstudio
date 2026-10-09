@@ -165,8 +165,10 @@ def cmd_run(args: argparse.Namespace) -> int:
             oem_path.write_text(text, encoding="ascii")
             print(f"  CCSDS OEM: {oem_path}")
 
-    from .engine import events
+    from .engine import data_budget, events
 
+    for line in data_budget.summary_lines(result):
+        print(f"  data: {line}")
     found = events.extract_events(result)  # the GUI's Events tab, headless (provenance.json covers it)
     if found:
         events_path = events.write_csv(found, args.out_dir / "events.csv", scenario.epoch_utc)

@@ -233,3 +233,21 @@ def test_24_mean_element_control_holds_tens_of_metres():
     assert 0.1 < delta_v < 0.5  # [m/s] 0.20 the first day, 0.46 in 14 days
     force = result.series["follower-1.phasing_keeping.force"].data  # [N] commanded, applied
     assert force[:, 0].max() < 0.01  # requests of a few mN, under the 50 mN thruster
+
+
+def test_26_the_memory_overflows_between_berlin_pass_groups_and_the_patch_link_holds():
+    """The first day: the 3 Gbit memory is full by about 12 h in and data
+    is lost; Berlin's link closes throughout its passes, with ~16 dB at the
+    best and ~3.7 dB at the 10 deg edge, 65 deg off the patch's boresight."""
+    result = _run(_template("26"), duration_days=1.0)  # [day]
+    stored = result.series["eo-sat.data_handling.stored"]
+    full = stored.time_s[stored.data[:, 0] > 3.0e9 - 0.1e9]  # [s] within 0.1 Gbit of the capacity
+    assert full.size and 10.0 * 3600.0 < full[0] < 13.0 * 3600.0
+    assert result.series["eo-sat.data_handling.data_lost"].data[-1, 0] > 0.0
+    pair = "berlin-gs.access_to_eo-sat"
+    margin = result.series[f"{pair}.link_margin_db"].data[:, 0]  # [dB]
+    assert 15.0 < np.nanmax(margin) < 17.5 and 2.5 < np.nanmin(margin) < 4.5
+    angle = result.series[f"{pair}.antenna_off_boresight"].data[:, 0]  # [deg]
+    assert 60.0 < angle[np.nanargmin(margin)] < 68.0
+    access = result.series[f"{pair}.has_access"].data[:, 0]
+    assert np.array_equal(result.series[f"{pair}.link_closed"].data[:, 0], access)

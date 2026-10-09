@@ -30,11 +30,12 @@ simulation starting where the last one ended:
 * remaining propellant (station-keeping, GEO station-keeping, constant
   thrust, fuel tank) and battery charge;
 * thermal-sensor and wheel-motor temperatures (from their last recorded
-  value).
+  value);
+* the data in each instrument's memory partition (``data_handling``).
 
 Results are stitched into one :class:`ResultSet` on one time axis;
-cumulative delta-V series carry on from where the previous segment left
-off. Space weather is resolved once for the whole span, so a run past
+cumulative delta-V series, and the generated, downlinked and lost data
+counts, carry on from where the previous segment left off. Space weather is resolved once for the whole span, so a run past
 the real data's last date is refused before the first segment.
 
 A spacecraft that re-enters ends the run there (see
@@ -151,6 +152,12 @@ def _carry_state(segment: Scenario, service, result: ResultSet) -> Dict[str, flo
         if handle.battery_module is not None and sc.power is not None:
             stored_j = float(handle.battery_module.batPowerOutMsg.read().storageLevel)  # [J]
             sc.power.battery_initial_soc = min(1.0, max(0.0, stored_j / (sc.power.battery_capacity_wh * 3600.0)))
+        if handle.data_handling is not None:
+            from .data_handling import BITS_PER_GBIT, stored_bits_by_instrument
+
+            stored = stored_bits_by_instrument(handle.data_handling.storage, handle.data_handling.instrument_names)
+            for instrument in sc.data_handling.instruments:
+                instrument.initial_data_gbit = stored[instrument.name] / BITS_PER_GBIT  # [Gbit]
         for sensor in sc.sensors:
             series = result.series.get(f"{sc.name}.sensor.{sensor.name}")
             if sensor.kind == "thermal" and series is not None and len(series.data):
@@ -160,7 +167,16 @@ def _carry_state(segment: Scenario, service, result: ResultSet) -> Dict[str, flo
             if series is not None and len(series.data):
                 actuator.params["motor_thermal_initial_temp_c"] = float(series.data[-1, 0])  # [C]
     return {name: float(ts.data[-1, 0]) for name, ts in result.series.items()
-            if name.endswith(".delta_v") and len(ts.data)}
+            if _is_cumulative(name) and len(ts.data)}
+
+
+_CUMULATIVE_SUFFIXES = (".delta_v", ".data_generated", ".data_downlinked", ".data_lost")
+
+
+def _is_cumulative(name: str) -> bool:
+    """A series that counts up from 0 in each segment and must continue
+    from the previous segment's total."""
+    return name.endswith(_CUMULATIVE_SUFFIXES)
 
 
 def _append(merged: Optional[ResultSet], part: ResultSet, offset_s: float,
@@ -175,7 +191,7 @@ def _append(merged: Optional[ResultSet], part: ResultSet, offset_s: float,
             merged.warnings.append(warning)
     for name, ts in part.series.items():
         time_s = ts.time_s + offset_s
-        data = ts.data + dv_offsets.get(name, 0.0) if name.endswith(".delta_v") else ts.data
+        data = ts.data + dv_offsets.get(name, 0.0) if _is_cumulative(name) else ts.data
         previous = merged.series.get(name)
         if previous is None:
             merged.series[name] = TimeSeries(name, time_s, ts.columns, data, units=ts.units)

@@ -168,7 +168,7 @@ from Basilisk.utilities.supportDataTools.dataFetcher import DataFile
 from .. import __version__ as _SPACEMISSIONSTUDIO_VERSION
 from .. import dependencies, output_provenance
 from ..schema.scenario import OrbitIC, Scenario
-from . import (earth_orientation, environment_models, formation_control, frames, fsw, geodesy,
+from . import (data_handling, earth_orientation, environment_models, formation_control, frames, fsw, geodesy,
                geodetic_atmosphere, kernels, link_budget, long_run, orbit_maintenance, planet_rotation,
                time_system, tle, vizard)
 from .results import ResultSet, RunProvenance, TimeSeries, conservation_drift_warnings
@@ -559,6 +559,11 @@ class _SpacecraftHandle:
     comms_veh_config_msg: Optional[object] = None
     comms_power_sink: Optional[object] = None  # the simplePowerSink.SimplePowerSink() itself, or None
     comms_pointing_arbitrator: Optional[object] = None  # set once the deferred pass runs; owns tLog/modeLog/pointingErrorDegLog
+    # engine.data_handling: the live link gate (rf_link with data_handling or
+    # an antenna pattern) and the data chain (data_handling), both built in
+    # a deferred pass once the access messages exist.
+    link_gate: Optional[object] = None
+    data_handling: Optional[object] = None  # data_handling.DataHandlingHandle
 
 
 class SimulationService:
@@ -1627,6 +1632,28 @@ class SimulationService:
             handle.control_torque_recorder = self._record(mrp.cmdTorqueOutMsg)
             self.scSim.AddModelToTask(dyn_task_name, handle.control_torque_recorder)
 
+        # Phase: data handling and the live link gate (engine.data_handling)
+        # -- like comms_pointing above, they need every access message.
+        gs_configs_by_name = {gs.name: gs for gs in scenario.ground_stations}
+        for sc_config in scenario.spacecraft:
+            handle = self._handles[sc_config.name]
+            gate = None
+            if link_budget.needs_link_gate(sc_config) and gs_configs_by_name:
+                gate = data_handling.build_link_gate(
+                    self.scSim, dyn_task_name, sc_config.name, sc_config, handle.sc_object,
+                    list(gs_configs_by_name.values()),
+                    {gs: self._access_out_msgs[(gs, sc_config.name)] for gs in gs_configs_by_name},
+                    {gs: loc.currentGroundStateOutMsg for gs, loc in self._ground_locations.items()},
+                    scenario.sim_settings.record_interval_s,
+                )
+                handle.link_gate = gate
+            if sc_config.data_handling is not None:
+                handle.data_handling = data_handling.build_data_handling(
+                    self.scSim, dyn_task_name, sc_config.name, sc_config.data_handling, gate,
+                    sc_config.rf_link.data_rate_bps if sc_config.rf_link is not None else 0.0,
+                    handle.battery_module, self._record, scenario.sim_settings.record_interval_s,
+                )
+
         if self.vizard_request is not None:
             battery_by_spacecraft = {
                 name: handle.battery_module for name, handle in self._handles.items()
@@ -2193,6 +2220,38 @@ class SimulationService:
                 result.add(TimeSeries(f"{name}.comms_pointing.pointing_error_deg", cp_t_s, ("pointing_error_deg",),
                                        np.asarray(arbitrator.pointingErrorDegLog), units="deg"))
 
+            if handle.link_gate is not None:
+                gate = handle.link_gate
+                gate_t_s = np.asarray(gate.tLog)
+                for index, station in enumerate(gate.stations):
+                    prefix = f"{station.name}.access_to_{name}"
+                    result.add(TimeSeries(f"{prefix}.link_margin_db", gate_t_s, ("link_margin_db",),
+                                           np.asarray(gate.marginDbLog[index]), units="dB"))
+                    result.add(TimeSeries(f"{prefix}.antenna_off_boresight", gate_t_s, ("antenna_off_boresight",),
+                                           np.asarray(gate.offBoresightDegLog[index]), units="deg"))
+                    result.add(TimeSeries(f"{prefix}.link_closed", gate_t_s, ("link_closed",),
+                                           np.asarray(gate.linkClosedLog[index]), units="-"))
+
+            if handle.data_handling is not None:
+                dh = handle.data_handling
+                recorder = dh.storage_recorder
+                stored_t_s = recorder.times() * macros.NANO2SEC
+                level = np.asarray(recorder.storageLevel, dtype=float).reshape(-1, 1)  # [bit]
+                count = len(dh.instrument_names)
+                partitions = (np.asarray(recorder.storedData, dtype=float).reshape(len(stored_t_s), -1)[:, :count]
+                              if len(stored_t_s) else np.zeros((0, count)))  # [bit] one partition per instrument
+                result.add(TimeSeries(f"{name}.data_handling.stored", stored_t_s, ("total", *dh.instrument_names),
+                                       np.hstack([level, partitions]), units="bit"))
+                ledger = dh.ledger
+                ledger_t_s = np.asarray(ledger.tLog)
+                result.add(TimeSeries(f"{name}.data_handling.downlink_rate", ledger_t_s, ("downlink_rate",),
+                                       np.asarray(ledger.downlinkRateLog), units="bit/s"))
+                for field_name, log in (("data_generated", ledger.generatedLog),
+                                        ("data_downlinked", ledger.downlinkedLog),
+                                        ("data_lost", ledger.lostLog)):
+                    result.add(TimeSeries(f"{name}.data_handling.{field_name}", ledger_t_s, (field_name,),
+                                           np.asarray(log), units="bit"))
+
         for (gs_name, sc_name), recorder in self._access_recorders.items():
             access_t_s = recorder.times() * macros.NANO2SEC
             series_name = f"{gs_name}.access_to_{sc_name}"
@@ -2213,9 +2272,10 @@ class SimulationService:
         # the access-analysis series just added above (see
         # engine.link_budget's module docstring for what this does and does
         # NOT account for), only for spacecraft that opted in via
-        # schema.scenario.RFLinkConfig.
+        # schema.scenario.RFLinkConfig. A spacecraft with a live link gate
+        # (engine.data_handling) has its margin from the gate instead.
         for sc_config in self.scenario.spacecraft:
-            if sc_config.rf_link is None:
+            if sc_config.rf_link is None or self._handles[sc_config.name].link_gate is not None:
                 continue
             comms_target = sc_config.comms_pointing.target_ground_station \
                 if sc_config.comms_pointing is not None else None

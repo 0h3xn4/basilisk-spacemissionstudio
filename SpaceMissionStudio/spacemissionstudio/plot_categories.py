@@ -236,6 +236,27 @@ def _comms_and_thermal_display(name: str) -> Optional[SeriesDisplay]:
     return None
 
 
+_DATA_HANDLING_DISPLAYS = {
+    "stored": SeriesDisplay("Onboard Data Stored", "Stored data", "Gbit", 1e-9, {"total": "Total"}),
+    "downlink_rate": SeriesDisplay("Downlink Rate", "Data rate", "Mbit/s", 1e-6, {"downlink_rate": "Downlink rate"}),
+    "data_generated": SeriesDisplay("Data Generated (cumulative)", "Data", "Gbit", 1e-9,
+                                    {"data_generated": "Generated"}),
+    "data_downlinked": SeriesDisplay("Data Downlinked (cumulative)", "Data", "Gbit", 1e-9,
+                                     {"data_downlinked": "Downlinked"}),
+    "data_lost": SeriesDisplay("Data Lost to a Full Memory (cumulative)", "Data", "Gbit", 1e-9,
+                               {"data_lost": "Lost"}),
+}
+
+
+def _data_handling_display(name: str) -> Optional[SeriesDisplay]:
+    """``"{sc}.data_handling.<field>"`` series (``engine.data_handling``):
+    bits shown in Gbit, rates in Mbit/s."""
+    prefix, _, field_name = name.rpartition(".")
+    if not prefix.endswith(".data_handling"):
+        return None
+    return _DATA_HANDLING_DISPLAYS.get(field_name)
+
+
 _MONTE_CARLO_OFFSETS = {"radial": "Radial", "along_track": "Along-track", "cross_track": "Cross-track"}
 
 
@@ -299,6 +320,12 @@ def _access_pair_display(name: str) -> Optional[SeriesDisplay]:
         return SeriesDisplay(f"Azimuth: {pair}", "Azimuth angle", "deg", _RAD2DEG, standalone_title=True)
     if field == "link_margin_db":
         return SeriesDisplay(f"Link Margin: {pair}", "Link margin", "dB", 1.0, standalone_title=True)
+    if field == "antenna_off_boresight":
+        return SeriesDisplay(f"Antenna Angle off Boresight: {pair}", "Angle off boresight", "deg", 1.0,
+                              {"antenna_off_boresight": "Off boresight"}, standalone_title=True)
+    if field == "link_closed":
+        return SeriesDisplay(f"Link Closes: {pair}", "Link closes", "-", 1.0, {"link_closed": "Link closes"},
+                              standalone_title=True)
     return None
 
 
@@ -344,7 +371,7 @@ def categorize(name: str, series: TimeSeries) -> Optional[SeriesDisplay]:
     this feature existed -- rather than erroring or looking unfinished.
     """
     for fn in (_vector_display, _orbit_element_display, _controller_display, _comms_and_thermal_display,
-               _access_pair_display, _monte_carlo_display):
+               _access_pair_display, _monte_carlo_display, _data_handling_display):
         result = fn(name)
         if result is not None:
             return result

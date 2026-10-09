@@ -44,6 +44,7 @@ corrected.
 
 from __future__ import annotations
 
+import math
 from typing import NamedTuple
 
 from PySide6.QtCore import Signal
@@ -72,8 +73,10 @@ from ..schema.scenario import (
     ActuatorConfig,
     CommsPointingConfig,
     ConstantThrustConfig,
+    DataHandlingConfig,
     FuelTankConfig,
     GeoStationKeepingConfig,
+    InstrumentConfig,
     MagneticMomentumManagementConfig,
     MomentumDumpingConfig,
     OrbitIC,
@@ -89,6 +92,7 @@ from ..schema.scenario import (
     SUPPORTED_SENSOR_KINDS,
     SUPPORTED_THRUST_FRAMES,
 )
+from .data_handling_editor import GainTableWidget, InstrumentTableWidget
 from .facet_editor import FacetTableWidget
 from .feedback import clear_invalid, mark_invalid, show_toast
 from .number_list import NumberListEditor
@@ -1185,15 +1189,14 @@ class SpacecraftEditorDialog(QDialog):
         power_layout.addWidget(self.fuel_tank_group)
 
         rf_link0 = config.rf_link if config else None
-        self.rf_link_group = QGroupBox("Downlink RF link budget (margin ESTIMATE only)")
+        self.rf_link_group = QGroupBox("Downlink RF link budget")
         self.rf_link_group.setCheckable(True)
         self.rf_link_group.setToolTip(
-            "Checking this ON computes a reported downlink Eb/N0 margin estimate (a simplified "
-            "free-space-path-loss budget, evaluated against the real simulated slant range to "
-            "each configured ground station) -- for REPORTING only: it does NOT feed back into "
-            "the simulated physics (no data-rate/duty-cycle simulation). A positive margin means "
-            "the link closes with that much headroom; negative means it doesn't close at that "
-            "range with these numbers."
+            "Checking this ON computes the downlink Eb/N0 margin (a free-space-path-loss budget, "
+            "evaluated against the real simulated slant range to each configured ground station). "
+            "A positive margin means the link closes with that much headroom; negative means it "
+            "doesn't close at that range with these numbers. With 'Data handling' below ON, the "
+            "transmitter sends data only while the margin is >= 0 dB."
         )
         self.rf_link_group.setChecked(rf_link0 is not None)
         rf_form = QFormLayout(self.rf_link_group)
@@ -1266,7 +1269,90 @@ class SpacecraftEditorDialog(QDialog):
         rf_form.addRow("TX antenna gain [dBi]", self.tx_antenna_gain_dbi)
         rf_form.addRow("Implementation/pointing loss [dB]", self.rf_implementation_loss_db)
         rf_form.addRow("Required Eb/N0 [dB]", self.required_ebno_db)
+
+        # Antenna pattern: how the gain falls off away from boresight,
+        # evaluated against the real attitude (RFLinkConfig.antenna_pattern).
+        self.rf_pattern_combo = ComboBox()
+        for label, value in (("Fixed gain", "fixed"), ("Patch antenna (cos^n from the peak gain)", "cosine"),
+                             ("Gain table from the datasheet", "table")):
+            self.rf_pattern_combo.addItem(label, value)
+        self.rf_pattern_combo.setCurrentIndex(
+            max(0, self.rf_pattern_combo.findData(rf_link0.antenna_pattern if rf_link0 else "fixed")))
+        self.rf_pattern_combo.setToolTip(
+            "Fixed gain: the TX antenna gain toward every station. Patch: the gain falls off as "
+            "cos^n of the angle off boresight (n from the peak gain), and behind the ground plane "
+            "it is the front-to-back ratio below the peak. Table: the gain against angle from "
+            "the antenna's datasheet. Patch and table use the simulated attitude."
+        )
+        rf_form.addRow("Antenna pattern", self.rf_pattern_combo)
+        self.rf_front_to_back_db = _spin(0.0, 60.0, decimals=1, step=1.0,
+                                         value=rf_link0.antenna_front_to_back_db if rf_link0 else 15.0)
+        self.rf_front_to_back_db.setToolTip(
+            "Patch only: how far below the peak the gain is behind the ground plane. Take it from "
+            "the datasheet; 15 dB is only a starting value."
+        )
+        rf_form.addRow("Front-to-back ratio [dB]", self.rf_front_to_back_db)
+        self.rf_gain_table = GainTableWidget()
+        self.rf_gain_table.from_list(rf_link0.antenna_gain_table if rf_link0 and rf_link0.antenna_gain_table
+                                     else [[0.0, 6.0], [30.0, 5.0], [60.0, 2.0], [90.0, -5.0], [180.0, -20.0]])
+        rf_form.addRow("Gain table", self.rf_gain_table)
+        boresight0 = rf_link0.antenna_boresight_b if rf_link0 else None
+        self.rf_boresight_check = QCheckBox("Antenna boresight (body frame)")
+        self.rf_boresight_check.setChecked(boresight0 is not None)
+        self.rf_boresight_check.setToolTip(
+            "The body axis the antenna points along. Unticked: the comms-pointing boresight is used "
+            "if comms pointing is on. Patch and table patterns need one."
+        )
+        boresight0 = boresight0 or [0.0, 0.0, 1.0]
+        self.rf_boresight_x = _spin(-1.0, 1.0, decimals=4, step=0.1, value=boresight0[0])
+        self.rf_boresight_y = _spin(-1.0, 1.0, decimals=4, step=0.1, value=boresight0[1])
+        self.rf_boresight_z = _spin(-1.0, 1.0, decimals=4, step=0.1, value=boresight0[2])
+        self._rf_boresight_row = _hbox(self.rf_boresight_x, self.rf_boresight_y, self.rf_boresight_z)
+        rf_form.addRow(self.rf_boresight_check, self._rf_boresight_row)
+        self.rf_pattern_hint = QLabel()
+        self.rf_pattern_hint.setWordWrap(True)
+        self.rf_pattern_hint.setStyleSheet(f"color: {PALETTE['text_muted']};")
+        rf_form.addRow(self.rf_pattern_hint)
+        self._rf_form = rf_form
+        self.rf_pattern_combo.currentIndexChanged.connect(self._refresh_rf_pattern)
+        self.tx_antenna_gain_dbi.valueChanged.connect(self._refresh_rf_pattern)
+        self.rf_boresight_check.toggled.connect(self._rf_boresight_row.setEnabled)
+        self._rf_boresight_row.setEnabled(self.rf_boresight_check.isChecked())
+        self._refresh_rf_pattern()
         power_layout.addWidget(self.rf_link_group)
+
+        data_handling0 = config.data_handling if config else None
+        self.data_handling_group = QGroupBox("Data handling: instruments, memory and downlink")
+        self.data_handling_group.setCheckable(True)
+        self.data_handling_group.setChecked(data_handling0 is not None)
+        self.data_handling_group.setToolTip(
+            "Instruments write data into an onboard memory (Basilisk's simpleInstrument and "
+            "partitionedStorageUnit); data a full memory cannot take is lost. With the RF link above "
+            "ON, a transmitter (spaceToGroundTransmitter) sends it down at the link's data rate "
+            "whenever the link to a ground station closes."
+        )
+        dh_form = QFormLayout(self.data_handling_group)
+        self.dh_capacity_gbit = _spin(0.001, 1.0e6, decimals=3, step=1.0,
+                                      value=data_handling0.storage_capacity_gbit if data_handling0 else 8.0)
+        self.dh_capacity_gbit.setToolTip("Onboard memory for instrument data. 8 Gbit = 1 GB.")
+        dh_form.addRow("Memory capacity [Gbit]", self.dh_capacity_gbit)
+        self.dh_transmitter_power_w = _spin(0.0, 1.0e4, decimals=2, step=1.0,
+                                            value=data_handling0.transmitter_power_w if data_handling0 else 0.0)
+        self.dh_transmitter_power_w.setToolTip(
+            "Electrical power the transmitter draws while it sends (needs the power budget). "
+            "This is DC input power, not the RF output power above."
+        )
+        dh_form.addRow("Transmitter power draw [W]", self.dh_transmitter_power_w)
+        self.dh_instruments = InstrumentTableWidget()
+        self.dh_instruments.from_list(data_handling0.instruments if data_handling0
+                                      else [InstrumentConfig("housekeeping", 4.0e3)])
+        dh_form.addRow("Instruments", self.dh_instruments)
+        dh_hint = QLabel("Rates are constant: for an instrument that does not run all the time, give its "
+                         "orbit-average rate. See User Manual Sec. 6, data handling.")
+        dh_hint.setWordWrap(True)
+        dh_hint.setStyleSheet(f"color: {PALETTE['text_muted']};")
+        dh_form.addRow(dh_hint)
+        power_layout.addWidget(self.data_handling_group)
         power_layout.addStretch(1)
 
         tabs.addTab(_scrollable(power_tab), "Power / propulsion / link budget")
@@ -1582,6 +1668,7 @@ class SpacecraftEditorDialog(QDialog):
             power=power,
             comms_pointing=comms_pointing,
             rf_link=self._rf_link_to_dataclass(),
+            data_handling=self._data_handling_to_dataclass(),
             station_keeping=self._station_keeping_to_dataclass(),
             geo_station_keeping=self._geo_station_keeping_to_dataclass(),
             phasing_keeping=self._phasing_keeping_to_dataclass(),
@@ -1775,7 +1862,51 @@ class SpacecraftEditorDialog(QDialog):
             implementation_loss_db=self.rf_implementation_loss_db.value(),
             required_ebno_db=self.required_ebno_db.value(),
             antenna_beamwidth_deg=self.rf_beamwidth_deg.value() if self.rf_beamwidth_check.isChecked() else None,
+            antenna_pattern=self.rf_pattern_combo.currentData(),
+            antenna_gain_table=self.rf_gain_table.to_list() if self.rf_pattern_combo.currentData() == "table" else [],
+            antenna_front_to_back_db=self.rf_front_to_back_db.value(),
+            antenna_boresight_b=[self.rf_boresight_x.value(), self.rf_boresight_y.value(),
+                                 self.rf_boresight_z.value()] if self.rf_boresight_check.isChecked() else None,
         )
+
+    def _data_handling_to_dataclass(self) -> DataHandlingConfig | None:
+        if not self.data_handling_group.isChecked():
+            return None
+        return DataHandlingConfig(
+            storage_capacity_gbit=self.dh_capacity_gbit.value(),
+            instruments=self.dh_instruments.to_list(),
+            transmitter_power_w=self.dh_transmitter_power_w.value(),
+        )
+
+    def _refresh_rf_pattern(self, *_args) -> None:
+        """Shows the controls the chosen pattern uses, and its beamwidth."""
+        pattern = self.rf_pattern_combo.currentData()
+        for widget, visible in ((self.rf_front_to_back_db, pattern == "cosine"),
+                                (self.rf_gain_table, pattern == "table")):
+            widget.setVisible(visible)
+            label = self._rf_form.labelForField(widget)
+            if label is not None:
+                label.setVisible(visible)
+        self.tx_antenna_gain_dbi.setEnabled(pattern != "table")  # the table's 0 deg row is the peak
+        text = ""
+        if pattern == "cosine":
+            from ..engine import link_budget
+
+            gain = self.tx_antenna_gain_dbi.value()
+            if gain < 10.0 * math.log10(2.0):
+                text = "A patch needs a peak gain of at least 3.01 dBi."
+            else:
+                n = link_budget.cosine_exponent(gain)
+                rf = RFLinkConfig(1.0, 1.0, 1.0, tx_antenna_gain_dbi=gain, antenna_pattern="cosine")
+                text = (f"n = {n:.2f}, half-power beamwidth {link_budget.half_power_beamwidth_deg(rf):.0f} deg. "
+                        "The model takes the gain as the directivity, so a real patch's beam is narrower: a "
+                        "datasheet table is closer. The pattern applies the pointing loss: leave it out of the "
+                        "implementation loss.")
+        elif pattern == "table":
+            text = ("The 0 deg row is the peak gain; TX antenna gain above is not used. The table applies the "
+                    "pointing loss: leave it out of the implementation loss.")
+        self.rf_pattern_hint.setText(text)
+        self.rf_pattern_hint.setVisible(bool(text))
 
 
 def _hbox(*widgets: QWidget) -> QWidget:

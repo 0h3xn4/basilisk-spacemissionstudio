@@ -19,7 +19,7 @@
 "events as a timeline with a sortable, exportable table").
 
 One model for every kind: ground-station passes, eclipses, manoeuvre
-burns, thruster firings and mode changes. Each :class:`Event` is a
+burns, thruster firings, mode changes and data downlinks. Each :class:`Event` is a
 contiguous run of samples where a recorded series says the event is on,
 from its first to its last such sample -- the convention the Results
 tab's access timeline already uses. Nothing is simulated or estimated
@@ -47,7 +47,8 @@ ECLIPSE = "eclipse"
 BURN = "burn"
 THRUSTER = "thruster firing"
 MODE = "mode"
-KINDS = (ACCESS, ECLIPSE, BURN, THRUSTER, MODE)
+DOWNLINK = "downlink"
+KINDS = (ACCESS, ECLIPSE, BURN, THRUSTER, MODE, DOWNLINK)
 
 _UMBRA_SHADOW_FACTOR = 0.01  # [-] below this the Sun is fully hidden (umbra)
 # The phasing controller's states (engine.orbit_maintenance.PhasingKeepingController).
@@ -220,7 +221,30 @@ def _modes(result: ResultSet) -> List[Event]:
     return events
 
 
-_EXTRACTORS = (_passes, _eclipses, _burns, _thruster_firings, _modes)
+def _downlinks(result: ResultSet) -> List[Event]:
+    """Each window in which a spacecraft's link to a station closes and data
+    went down (engine.data_handling), with how much. A pass that empties
+    the memory early still counts as one downlink; two stations whose
+    windows overlap both show the bits sent in the overlap."""
+    events = []
+    for name, series in result.series.items():
+        prefix, _, part = name.rpartition(".")
+        if part != "link_closed" or ".access_to_" not in prefix:
+            continue
+        station, _, spacecraft = prefix.partition(".access_to_")
+        downlinked = result.series.get(f"{spacecraft}.data_handling.data_downlinked")
+        if downlinked is None or downlinked.time_s.shape != series.time_s.shape:
+            continue
+        values = _column(downlinked)
+        for first, last in intervals(series.time_s, _column(series) > 0.5):
+            bits = values[last] - values[max(first - 1, 0)]  # [bit]
+            if bits > 0:
+                events.append(Event(DOWNLINK, spacecraft, float(series.time_s[first]), float(series.time_s[last]),
+                                    f"downlink to {station}", f"{bits / 1e9:.3g} Gbit", station))
+    return events
+
+
+_EXTRACTORS = (_passes, _eclipses, _burns, _thruster_firings, _modes, _downlinks)
 
 
 def extract_events(result: Optional[ResultSet]) -> List[Event]:
@@ -247,6 +271,7 @@ def missing_kinds(result: Optional[ResultSet]) -> Dict[str, str]:
         BURN: ("no station-keeping or phasing control", lambda n: n.endswith((".burn_on", ".phasing_keeping.state"))),
         MODE: ("no comms pointing or phasing control",
                lambda n: n.endswith((".comms_pointing.active_mode", ".phasing_keeping.state"))),
+        DOWNLINK: ("no data handling", lambda n: n.endswith(".data_handling.downlink_rate")),
     }
     return {kind: why for kind, (why, has) in reasons.items() if not any(has(n) for n in names)}
 

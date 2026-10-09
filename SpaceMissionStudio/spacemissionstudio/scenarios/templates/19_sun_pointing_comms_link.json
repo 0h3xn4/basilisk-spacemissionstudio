@@ -82,7 +82,11 @@
         "tx_antenna_gain_dbi": 6.0,
         "implementation_loss_db": 2.0,
         "required_ebno_db": 10.0,
-        "antenna_beamwidth_deg": 30.0
+        "antenna_beamwidth_deg": 30.0,
+        "antenna_pattern": "fixed",
+        "antenna_gain_table": [],
+        "antenna_front_to_back_db": 15.0,
+        "antenna_boresight_b": null
       },
       "comms_pointing": {
         "target_ground_station": "berlin-gs",
@@ -94,6 +98,7 @@
         "sun_pointing_axis_b": null,
         "comms_power_w": 15.0
       },
+      "data_handling": null,
       "station_keeping": null,
       "geo_station_keeping": null,
       "phasing_keeping": null,

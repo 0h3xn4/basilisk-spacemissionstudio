@@ -66,6 +66,7 @@
       "power": null,
       "rf_link": null,
       "comms_pointing": null,
+      "data_handling": null,
       "station_keeping": {
         "target_altitude_km": 550.0,
         "deadband_km": 15.0,
@@ -155,6 +156,7 @@
       "power": null,
       "rf_link": null,
       "comms_pointing": null,
+      "data_handling": null,
       "station_keeping": {
         "target_altitude_km": 550.0,
         "deadband_km": 15.0,

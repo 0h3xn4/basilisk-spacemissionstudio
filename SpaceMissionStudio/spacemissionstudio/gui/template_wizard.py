@@ -1605,6 +1605,42 @@ _SPECS: Dict[str, TemplateWizardSpec] = {
             _duration_page("Each run's length: the spread grows with time.", SimSettings._MAX_SINGLE_RUN_DAYS),
         ],
     ),
+    "26_earth_observation_data_downlink.json": TemplateWizardSpec(
+        template_filename="26_earth_observation_data_downlink.json",
+        pages=[
+            WizardPageSpec(
+                title="Data and downlink",
+                intro="The camera fills the memory; Berlin's passes empty it while the patch's link closes.",
+                fields=[
+                    WizardField(
+                        "Memory capacity", "Onboard memory for the camera and housekeeping data.",
+                        lambda s: _sc(s).data_handling.storage_capacity_gbit,
+                        lambda s, v: setattr(_sc(s).data_handling, "storage_capacity_gbit", v),
+                        0.1, 1000.0, decimals=2, step=1.0, suffix=" Gbit", hint="8 Gbit lost nothing in 2 days",
+                    ),
+                    WizardField(
+                        "Camera data rate", "The camera's orbit-average data rate.",
+                        lambda s: _sc(s).data_handling.instruments[0].data_rate_bps / 1.0e3,
+                        lambda s, v: setattr(_sc(s).data_handling.instruments[0], "data_rate_bps", v * 1.0e3),
+                        0.1, 1.0e5, decimals=1, step=10.0, suffix=" kbit/s", hint="More data = fuller memory",
+                    ),
+                    WizardField(
+                        "Downlink data rate", "What the transmitter sends while the link closes.",
+                        lambda s: _sc(s).rf_link.data_rate_bps / 1.0e6,
+                        lambda s, v: setattr(_sc(s).rf_link, "data_rate_bps", v * 1.0e6),
+                        0.01, 1000.0, decimals=2, step=1.0, suffix=" Mbit/s", hint="Faster = less link margin",
+                    ),
+                    WizardField(
+                        "Transmitter power", "RF output power of the downlink transmitter.",
+                        lambda s: _sc(s).rf_link.tx_power_w, lambda s, v: setattr(_sc(s).rf_link, "tx_power_w", v),
+                        0.1, 100.0, decimals=1, step=0.5, suffix=" W", hint="More power = more link margin",
+                    ),
+                ],
+            ),
+            _duration_page("Berlin's pass groups come twice a day, so two days show the memory filling twice.",
+                           SimSettings._MAX_SINGLE_RUN_DAYS),
+        ],
+    ),
 }
 
 

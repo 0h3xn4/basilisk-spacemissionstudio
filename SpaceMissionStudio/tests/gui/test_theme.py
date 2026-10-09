@@ -128,5 +128,5 @@ def test_the_palette_carries_carbon_g10_tokens_and_the_charts_share_its_series_c
               "accent": "#0F62FE", "danger": "#DA1E28", "success": "#24A148", "border": "#E0E0E0"}
     assert {key: PALETTE[key] for key in carbon} == carbon
     assert results_widget._SERIES_COLORS == SERIES_COLORS
-    assert list(event_timeline_widget.KIND_COLOURS.values()) == SERIES_COLORS[:5]
+    assert list(event_timeline_widget.KIND_COLOURS.values()) == SERIES_COLORS[:6]  # one per event kind
     assert PALETTE["danger"] not in SERIES_COLORS and PALETTE["success"] not in SERIES_COLORS

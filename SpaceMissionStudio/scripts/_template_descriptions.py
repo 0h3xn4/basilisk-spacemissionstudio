@@ -420,4 +420,25 @@ Try changing:
 - Number of runs, for smoother statistics.
 - The element spreads, for a better or worse launcher.
 - Add a dry-mass dispersion: with drag on, mass matters (compare template 09).""",
+    "26": """\
+An Earth-observation microsatellite and its data: a camera (80 kbit/s, orbit average) and housekeeping \
+write into a 3 Gbit onboard memory, and an S-band patch antenna on the nadir face sends it to Berlin at \
+5 Mbit/s whenever the link closes. Two days, pointing at nadir.
+
+Berlin sees the satellite in two groups of passes a day, 9 to 11 h apart. Between them the camera fills \
+the memory, and what no longer fits is lost.
+
+What to look at:
+- eo-sat.data_handling.stored: filling between passes, emptying in them, full in the long gaps.
+- eo-sat.data_handling.data_lost: 0.9 Gbit of the 14.5 Gbit generated; the memory is first full 12 h in.
+- berlin-gs.access_to_eo-sat.link_margin_db: 16 dB at the best pass, 3.7 dB at the 10 deg edge, where \
+Berlin is 65 deg off the patch's boresight (.antenna_off_boresight).
+- The Events tab: each downlink and how much it sent.
+
+Try changing:
+- Memory capacity 8 Gbit (Data handling, Power/propulsion tab): nothing is lost.
+- Add a ground station on Svalbard (78.23 N, 15.39 E): everything generated is downlinked.
+- Data rate 10 Mbit/s: the edge margin falls to 0.6 dB.
+- Antenna pattern: a gain table from your patch's datasheet. The cos^n model is broader than most real \
+patches.""",
 }

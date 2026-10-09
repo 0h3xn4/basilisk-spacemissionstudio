@@ -199,7 +199,11 @@ editor and output console.
 slant range, elevation, azimuth per station/spacecraft pair), a real
 power budget (solar panel/battery/eclipse, driven by actual simulated
 attitude and eclipse state, not a flat duty cycle), a downlink RF
-link-margin estimate evaluated against real simulated slant range, and
+link-margin estimate evaluated against real simulated slant range,
+onboard data handling (instruments filling a memory and a transmitter
+emptying it while the link to a station closes, with a patch antenna's
+gain pattern applied to the real attitude; template 26, User Manual
+Sec. 6), and
 Monte Carlo batch analysis (`Basilisk.utilities.MonteCarlo`: dry mass,
 attitude, orbital elements, inertia, body rate, drag and SRP
 coefficients), shown in the GUI's Monte Carlo tab (each run, the spread
@@ -357,7 +361,9 @@ SpaceMissionStudio/
       vizard.py                      -- Phase 2: Vizard integration (needs Basilisk, imported lazily)
       monte_carlo.py                 -- Phase 3: Basilisk.utilities.MonteCarlo bridge (needs Basilisk)
       monte_carlo_results.py         -- a batch's pickle-free summary (batch_results.npz/.json) and its spread (no Basilisk needed)
-      link_budget.py                 -- Phase 4: downlink RF link-margin estimate (no Basilisk needed)
+      link_budget.py                 -- Phase 4: downlink RF link-margin estimate and antenna patterns (no Basilisk needed)
+      data_handling.py               -- instruments, memory, transmitter, link gate and data ledger
+      data_budget.py                 -- a run's data totals, read back from its series (no Basilisk needed)
       device_catalog.py              -- real, sourced, European-manufactured sensor/actuator device presets for gui/sensor_actuator_editor.py (no Basilisk needed)
       orbit_maintenance.py           -- Phase 4/5: station-keeping + phasing-keeping + constant-frame-thrust controllers, delta-V/propellant bookkeeping (needs Basilisk)
       geo_station_keeping.py         -- GEO east-west (longitude box) and north-south (inclination) station-keeping (needs Basilisk)
