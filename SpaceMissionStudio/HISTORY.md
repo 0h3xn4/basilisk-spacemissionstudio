@@ -7858,3 +7858,47 @@ Details in `compliance/review_log.md`.
   overlapping asynchronous queries; a late timer tick raised the
   "'NoneType' object is not subscriptable" tracebacks seen in the CI logs,
   and several answers could save the file twice. One query at a time now.
+
+## Unreachable code; offline, plausibility checks, frames, help and provenance (UX/UI guidelines, step 1)
+
+**Unreachable code (ECSS-Q-ST-80C 6.2.3.6a).** Seven pieces of code nothing
+could reach were removed: six functions nobody called and an exception
+clause nothing could trigger. Constant-frame thrust was reachable but no
+test ran it; a test against the rocket and Gauss equations now does. The
+analysis is in `compliance/unreached_code.md` and `review_log.md` (F-13 to
+F-15). Coverage on Python 3.11 does not see the code Basilisk runs on its
+own thread, so the published coverage errs low (93.3 % of statements run
+when measured with Python 3.12's `sys.monitoring`).
+
+**Offline, tested (F-16, F-17).** A new test blocks every network lookup and
+connection while validating, exporting, running a template and starting the
+GUI; CI repeats it with no network interface at all. It found:
+
+* Basilisk 2.12.0 sends a request to github.com whenever its data fetcher is
+  imported, which every run does. The tool now keeps that request on the
+  computer (it is pointed at a closed local port while that module loads;
+  Basilisk itself is unchanged). To be reported to the Basilisk developers.
+* A run downloaded any support-data file missing from Basilisk's cache. Runs
+  now read only the cache (with checksums where Basilisk publishes them) and
+  say where to fetch a missing file: Kernel Status or
+  `spacemissionstudio kernels-status`.
+
+**While editing,** the Scenario Editor now warns under its validation line
+about a perigee below the surface or below 120 km, a Cartesian state inside
+Earth or escaping (often km and m mixed up), a drag run outside the
+space-weather data, and missing or out-of-span Earth orientation files.
+
+**Frames:** every position and vector input names its frame in its label
+(body frame B, EME2000, WGS-84), not only in a tooltip.
+
+**Help:** Help > User Manual (F1) shows the manual shipped with the app,
+offline; Help > Keyboard Shortcuts lists the shortcuts.
+
+**Provenance in every output:** PNG and SVG plots, OEM, OPM and OMM files,
+the Mission Output CSV, Monte Carlo archives and the budget copy now name
+the tool and Basilisk versions and the scenario's SHA-256; run outputs also
+list every reference data file with its SHA-256.
+
+The plan for the rest of the guidelines (Carbon restyle, data panel, event
+timeline, shared time cursor, run comparison, undo, command palette) is in
+`docs/ux_guidelines_gap.md`.
