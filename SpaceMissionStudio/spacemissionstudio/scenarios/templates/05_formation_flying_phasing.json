@@ -67,6 +67,7 @@
       "rf_link": null,
       "comms_pointing": null,
       "data_handling": null,
+      "solar_arrays": [],
       "station_keeping": {
         "target_altitude_km": 550.0,
         "deadband_km": 15.0,
@@ -157,6 +158,7 @@
       "rf_link": null,
       "comms_pointing": null,
       "data_handling": null,
+      "solar_arrays": [],
       "station_keeping": {
         "target_altitude_km": 550.0,
         "deadband_km": 15.0,

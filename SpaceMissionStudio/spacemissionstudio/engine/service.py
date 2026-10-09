@@ -170,7 +170,7 @@ from .. import dependencies, output_provenance
 from ..schema.scenario import OrbitIC, Scenario
 from . import (data_handling, earth_orientation, environment_models, formation_control, frames, fsw, geodesy,
                geodetic_atmosphere, kernels, link_budget, long_run, orbit_maintenance, planet_rotation,
-               time_system, tle, vizard)
+               solar_arrays, time_system, tle, vizard)
 from .results import ResultSet, RunProvenance, TimeSeries, conservation_drift_warnings
 from .vizard import VizardRequest
 
@@ -564,6 +564,7 @@ class _SpacecraftHandle:
     # a deferred pass once the access messages exist.
     link_gate: Optional[object] = None
     data_handling: Optional[object] = None  # data_handling.DataHandlingHandle
+    solar_arrays: Optional[object] = None  # solar_arrays.SolarArrayHandle, only with flexible arrays
 
 
 class SimulationService:
@@ -1010,15 +1011,11 @@ class SimulationService:
             # constant-thrust propellant is additional mass on top of the
             # dry mass, not already counted in it -- independent propellant
             # budgets, so both are added if both are configured (see
-            # ConstantThrustConfig's docstring).
-            initial_mass_kg = sc_config.dry_mass_kg
-            if sc_config.station_keeping is not None:
-                initial_mass_kg += sc_config.station_keeping.propellant_kg
-            if sc_config.geo_station_keeping is not None:
-                initial_mass_kg += sc_config.geo_station_keeping.propellant_kg
-            if sc_config.constant_thrust is not None:
-                initial_mass_kg += sc_config.constant_thrust.propellant_kg
-            sc_object.hub.mHub = initial_mass_kg
+            # ConstantThrustConfig's docstring). Flexible solar arrays are
+            # part of the dry mass but their own state effectors, so the
+            # hub carries the rest (engine.solar_arrays.hub_mass_kg).
+            sc_object.hub.mHub = solar_arrays.hub_mass_kg(sc_config)
+            fsw_inertia = solar_arrays.fsw_inertia_kg_m2(sc_config)  # the hub's plus the undeflected arrays'
             sc_object.hub.IHubPntBc_B = simHelpers.np2EigenMatrix3d(sc_config.inertia_kg_m2)
             sc_object.hub.sigma_BNInit = [[v] for v in sc_config.sigma_bn_init]
             sc_object.hub.omega_BN_BInit = [[v] for v in sc_config.omega_bn_b_init_rad_s]
@@ -1130,6 +1127,16 @@ class SimulationService:
                 handle.battery_recorder = self._record(battery.batPowerOutMsg)
                 self.scSim.AddModelToTask(dyn_task_name, handle.battery_recorder)
                 handle.battery_module = battery
+
+            # Flexible solar arrays (engine.solar_arrays): after the power
+            # budget, so a power-generating array can feed its battery.
+            if sc_config.solar_arrays:
+                handle.solar_arrays = solar_arrays.build_solar_arrays(
+                    self.scSim, dyn_task_name, sc_config.name, sc_config, sc_object, self._record,
+                    battery=handle.battery_module, sun_state_msg=self._sun_state_out_msg,
+                    eclipse_msg=sc_eclipse_out_msg,
+                    panel_efficiency=sc_config.power.panel_efficiency if sc_config.power is not None else 0.0,
+                )
 
             # -- Phase 4: station-keeping (schema.scenario.StationKeepingConfig)
             # -- independent of fsw_mode/sensors/power like the blocks
@@ -1293,7 +1300,7 @@ class SimulationService:
                 nav = fsw.build_simple_nav(
                     self.scSim, dyn_task_name, sc_config.name, sc_object, sun_state_out_msg=self._sun_state_out_msg
                 )
-                veh_config_msg = fsw.build_vehicle_config_msg(sc_config.inertia_kg_m2)
+                veh_config_msg = fsw.build_vehicle_config_msg(fsw_inertia)
 
                 # Real sun-heading ESTIMATION (schema.scenario's
                 # fsw_params['use_css_estimation']) instead of reading
@@ -1352,7 +1359,7 @@ class SimulationService:
                     mrp = fsw.build_mrp_feedback(
                         self.scSim, dyn_task_name, sc_config.name, guid_msg, veh_config_msg, sc_config.control_params,
                         rw_config_msg=rw_config_msg, rw_speed_out_msg=rw_state_effector.rwSpeedOutMsg,
-                        inertia_kg_m2=sc_config.inertia_kg_m2,
+                        inertia_kg_m2=fsw_inertia,
                     )
                     rw_motor_torque_mod = fsw.build_rw_motor_torque(
                         self.scSim, dyn_task_name, sc_config.name, mrp, rw_config_msg, rw_state_effector
@@ -1431,7 +1438,7 @@ class SimulationService:
                     if thruster_actuators:
                         mrp = fsw.build_mrp_feedback(
                             self.scSim, dyn_task_name, sc_config.name, guid_msg, veh_config_msg,
-                            sc_config.control_params, inertia_kg_m2=sc_config.inertia_kg_m2,
+                            sc_config.control_params, inertia_kg_m2=fsw_inertia,
                         )
                         _, thruster_effector, thr_config_msg = fsw.build_thrusters(
                             self.scSim, dyn_task_name, sc_config.name, sc_object, thruster_actuators
@@ -1455,7 +1462,7 @@ class SimulationService:
                     else:
                         mrp = fsw.build_mrp_feedback(
                             self.scSim, dyn_task_name, sc_config.name, guid_msg, veh_config_msg,
-                            sc_config.control_params, inertia_kg_m2=sc_config.inertia_kg_m2,
+                            sc_config.control_params, inertia_kg_m2=fsw_inertia,
                         )
                         fsw.build_idealized_actuation(self.scSim, dyn_task_name, sc_config.name, sc_object, mrp)
 
@@ -1492,7 +1499,7 @@ class SimulationService:
                 nav = fsw.build_simple_nav(
                     self.scSim, dyn_task_name, sc_config.name, sc_object, sun_state_out_msg=self._sun_state_out_msg
                 )
-                veh_config_msg = fsw.build_vehicle_config_msg(sc_config.inertia_kg_m2)
+                veh_config_msg = fsw.build_vehicle_config_msg(fsw_inertia)
 
                 sun_axis_b = comms_config.sun_pointing_axis_b
                 if sun_axis_b is None:
@@ -1626,7 +1633,7 @@ class SimulationService:
 
             mrp = fsw.build_mrp_feedback(
                 self.scSim, dyn_task_name, sc_config.name, arbitrator.attGuidOutMsg, handle.comms_veh_config_msg,
-                sc_config.control_params, inertia_kg_m2=sc_config.inertia_kg_m2,
+                sc_config.control_params, inertia_kg_m2=solar_arrays.fsw_inertia_kg_m2(sc_config),
             )
             fsw.build_idealized_actuation(self.scSim, dyn_task_name, sc_config.name, handle.sc_object, mrp)
             handle.control_torque_recorder = self._record(mrp.cmdTorqueOutMsg)
@@ -2219,6 +2226,21 @@ class SimulationService:
                                        np.asarray(arbitrator.modeLog, dtype=float), units="-"))
                 result.add(TimeSeries(f"{name}.comms_pointing.pointing_error_deg", cp_t_s, ("pointing_error_deg",),
                                        np.asarray(arbitrator.pointingErrorDegLog), units="deg"))
+
+            if handle.solar_arrays is not None:
+                arrays = handle.solar_arrays
+                for array_name, recorder, power_recorder in zip(arrays.names, arrays.state_recorders,
+                                                                arrays.power_recorders):
+                    prefix = f"{name}.solar_array.{array_name}"
+                    array_t_s = recorder.times() * macros.NANO2SEC
+                    result.add(TimeSeries(f"{prefix}.deflection", array_t_s, ("deflection",),
+                                           np.asarray(recorder.theta, dtype=float), units="rad"))
+                    result.add(TimeSeries(f"{prefix}.deflection_rate", array_t_s, ("deflection_rate",),
+                                           np.asarray(recorder.thetaDot, dtype=float), units="rad/s"))
+                    if power_recorder is not None:
+                        result.add(TimeSeries(f"{prefix}.power", power_recorder.times() * macros.NANO2SEC,
+                                               ("power",), np.asarray(power_recorder.netPower, dtype=float),
+                                               units="W"))
 
             if handle.link_gate is not None:
                 gate = handle.link_gate
