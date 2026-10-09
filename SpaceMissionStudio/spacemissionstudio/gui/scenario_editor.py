@@ -43,6 +43,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ..engine.scenario_checks import plausibility_warnings
 from ..engine.series_names import expected_series_names
 from ..schema.scenario import (
     GravityConfig,
@@ -91,6 +92,13 @@ class ScenarioEditorWidget(QWidget):
         self.validation_label = QLabel()
         self.validation_label.setWordWrap(True)
         outer_layout.addWidget(self.validation_label)
+        # Plausibility checks while editing (UX/UI guidelines): orbits that
+        # cannot be flown, a run outside the installed reference data.
+        self.plausibility_label = QLabel()
+        self.plausibility_label.setWordWrap(True)
+        self.plausibility_label.setStyleSheet(f"color: {PALETTE['warning']};")
+        self.plausibility_label.setVisible(False)
+        outer_layout.addWidget(self.plausibility_label)
 
         self.changed.connect(self.revalidate)
         self.revalidate()
@@ -357,11 +365,15 @@ class ScenarioEditorWidget(QWidget):
         ))
 
     def revalidate(self) -> None:
+        warnings = []
         try:
-            self.to_scenario()
+            scenario = self.to_scenario()
         except ScenarioValidationError as exc:
             self.validation_label.setText(f"⚠ {exc}")
             self.validation_label.setStyleSheet(f"color: {PALETTE['danger']};")
         else:
             self.validation_label.setText("✓ valid")
             self.validation_label.setStyleSheet(f"color: {PALETTE['success']};")
+            warnings = plausibility_warnings(scenario)
+        self.plausibility_label.setText("\n".join(f"⚠ {warning}" for warning in warnings))
+        self.plausibility_label.setVisible(bool(warnings))

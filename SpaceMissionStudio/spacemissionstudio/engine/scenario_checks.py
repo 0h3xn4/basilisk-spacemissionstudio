@@ -41,7 +41,8 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import List, Optional
 
 import numpy as np
@@ -258,6 +259,114 @@ def scenario_warnings(scenario) -> List[str]:
 # [-] samples per series over which recording every step is flagged
 # (~1.7 MB per simulated day at full recording for one LEO spacecraft)
 _MANY_SAMPLES = 1_000_000
+
+
+_REENTRY_PERIGEE_KM = 120.0  # [km] perigee counted as re-entry, as engine.lifetime
+_EARTH_RADIUS_M = geodesy.WGS84_SEMI_MAJOR_AXIS_M  # [m]
+
+
+def _orbit_warnings(scenario) -> List[str]:
+    """Initial orbits that cannot be flown: a perigee below the surface or
+    so low the spacecraft re-enters at once, a position inside Earth, a
+    state that escapes (Earth only)."""
+    if getattr(scenario.gravity, "central_body", "earth") != "earth":
+        return []
+    warnings = []
+    for sc in scenario.spacecraft:
+        orbit = sc.orbit
+        kind = getattr(orbit, "type", None)
+        if kind == "cartesian":
+            r = np.array(orbit.position_km, dtype=float) * 1e3  # [m]
+            v = np.array(orbit.velocity_km_s, dtype=float) * 1e3  # [m/s]
+            if np.linalg.norm(r) < _EARTH_RADIUS_M:
+                warnings.append(f"{sc.name}: the position is inside Earth ({np.linalg.norm(r) / 1e3:.0f} km "
+                                "from its centre)")
+                continue
+            energy = 0.5 * float(v @ v) - _MU_M3_S2 / float(np.linalg.norm(r))  # [m^2/s^2]
+            if energy >= 0.0:
+                warnings.append(f"{sc.name}: position and velocity give an escape trajectory, not an orbit "
+                                "(check the units: km and km/s)")
+                continue
+        elements = _initial_elements(orbit, scenario.epoch_utc)
+        if elements is None:
+            continue
+        perigee_km = (elements[0] * (1.0 - elements[1]) - _EARTH_RADIUS_M) / 1e3  # [km]
+        if perigee_km < 0.0:
+            warnings.append(f"{sc.name}: perigee is {-perigee_km:.0f} km below Earth's surface")
+        elif perigee_km < _REENTRY_PERIGEE_KM:
+            warnings.append(f"{sc.name}: perigee at {perigee_km:.0f} km -- it re-enters within about an orbit")
+    return warnings
+
+
+_COVERAGE_CACHE: dict = {}
+
+
+def _space_weather_coverage(source, local_file_path, msfc_file_path):
+    """``spaceweather.data_coverage``, cached per file and modification
+    time: it parses the whole file, and this runs on every edit."""
+    from . import spaceweather
+
+    paths = [spaceweather.real_data_path(source, local_file_path), msfc_file_path]
+    key = (source, local_file_path, msfc_file_path,
+           tuple(Path(p).stat().st_mtime_ns if p and Path(p).exists() else None for p in paths))
+    if key not in _COVERAGE_CACHE:
+        _COVERAGE_CACHE.clear()
+        _COVERAGE_CACHE[key] = spaceweather.data_coverage(source, local_file_path, msfc_file_path=msfc_file_path)
+    return _COVERAGE_CACHE[key]
+
+
+def _run_span(scenario):
+    start = datetime.fromisoformat(scenario.epoch_utc.replace("Z", "+00:00"))
+    if start.tzinfo is not None:
+        start = start.astimezone(timezone.utc).replace(tzinfo=None)
+    return start, start + timedelta(days=float(scenario.sim_settings.duration_days))
+
+
+def _data_coverage_warnings(scenario) -> List[str]:
+    """A run outside the installed reference data: the space-weather data
+    (drag with NRLMSISE-00) and the IERS Earth orientation files."""
+    from . import earth_orientation
+
+    start, end = _run_span(scenario)
+    warnings = []
+    sw = scenario.space_weather
+    drag = any(sc.enable_drag for sc in scenario.spacecraft)
+    if drag and getattr(sw, "atmosphere_model", "nrlmsise00") == "nrlmsise00":
+        try:
+            first, last = _space_weather_coverage(sw.source, sw.local_file_path, sw.msfc_file_path)
+        except Exception as exc:  # noqa: BLE001 -- a missing or unreadable file is itself the warning
+            warnings.append(f"space weather: {exc}")
+        else:
+            if start.date() < first:
+                warnings.append(f"space weather: the data start {first}, after the epoch -- the run is refused")
+            elif last is not None and end.date() > last:
+                warnings.append(f"space weather: the data end {last}, before the run ends -- the run is refused")
+    if getattr(scenario.gravity, "central_body", "earth") == "earth":
+        needs_frame = (scenario.gravity.central_body_degree or 0) >= 2 or bool(scenario.ground_stations)
+        kernels = earth_orientation.installed()
+        if needs_frame and not kernels:
+            warnings.append("Earth orientation: no IERS files installed -- the Earth-fixed frame is IAU_EARTH "
+                            "(about 160 m/day of error at 400 km); fetch them from Kernel Status")
+        for kernel in kernels:
+            until = kernel.high_accuracy_until
+            if kernel.role == "high_precision" and until is not None and end > until:
+                warnings.append(f"Earth orientation: high accuracy until {until:%Y-%m-%d}; the run goes on into "
+                                "predicted values (lower accuracy)")
+    return warnings
+
+
+def plausibility_warnings(scenario) -> List[str]:
+    """Checks to show while the scenario is edited (UX/UI guidelines,
+    "plausibility checks while typing"): initial orbits that cannot be
+    flown, and a run outside the installed reference data. Short lines,
+    deterministic rules. Never raises."""
+    warnings: List[str] = []
+    for check in (_orbit_warnings, _data_coverage_warnings):
+        try:
+            warnings += check(scenario)
+        except Exception:  # noqa: BLE001, S110 -- a half-edited scenario must never break the editor
+            pass
+    return warnings
 
 
 def _tle_warnings(scenario) -> List[str]:
