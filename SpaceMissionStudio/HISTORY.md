@@ -8278,3 +8278,9 @@ The README's limitations still said Monte Carlo covered two quantities
 (out of date since the dispersions above) and that `thread_count > 1`
 was unverified; three-thread batches have run here repeatedly, and both
 entries are corrected.
+
+On CI the macOS test worker crashed (a segmentation fault, Linux and
+Windows passing) when the wheel test switched the main window onto the
+new tab: it carried a second QWebEngineView from start-up, idle in every
+window. The tab's plot view is now built only when a batch is first
+shown, so a new window again holds one web view, as before this change.

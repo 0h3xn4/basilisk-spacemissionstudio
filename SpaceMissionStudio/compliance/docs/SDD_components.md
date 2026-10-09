@@ -71,7 +71,7 @@ Identifiers are module paths: `engine/service` is `spacemissionstudio/engine/ser
 | `gui/mission_output_widget` | MissionOutputWidget | SRS-F-15 | `MissionOutputWidget` | engine/results, gui/theme, output_provenance, plot_categories | PySide6, numpy | 382 |
 | `gui/mission_sequence_editor` | Tree editor for a scenario's ``mission_sequence`` -- the GUI counterpart of ``schema.command.Command``/``engine.mission_engine.MissionEngine``. | - | `MissionSequenceEditorWidget` | gui/feedback, gui/theme, gui/widgets, schema/command | PySide6 | 813 |
 | `gui/monte_carlo_editor` | Monte Carlo editor | SRS-F-15 | `DispersionListWidget`, `MonteCarloGroupWidget` | gui/feedback, gui/widgets, schema/scenario | PySide6 | 454 |
-| `gui/monte_carlo_results_widget` | The "Monte Carlo" tab | - | `MonteCarloResultsWidget` | engine/monte_carlo_results, gui/results_widget, gui/scenario_explainer_widget, gui/theme | PySide6 | 248 |
+| `gui/monte_carlo_results_widget` | The "Monte Carlo" tab | - | `MonteCarloResultsWidget` | engine/monte_carlo_results, gui/results_widget, gui/scenario_explainer_widget, gui/theme | PySide6 | 264 |
 | `gui/number_list` | An ordered list of numbers edited as one labelled spin box per entry. | - | `NumberListEditor` | gui/theme, gui/widgets | PySide6 | 151 |
 | `gui/orbit_ic_widget` | OrbitIcWidget | SRS-F-15 | `OrbitIcWidget` | engine/orbit_design, engine/tle, gui/widgets, schema/scenario | PySide6 | 405 |
 | `gui/param_form` | A labelled form for an open ``params`` dict, driven by parameter specs. | SRS-H-01 | `is_vector`, `short_label`, `choices`, `ParamForm` | gui/theme, gui/widgets | PySide6 | 321 |

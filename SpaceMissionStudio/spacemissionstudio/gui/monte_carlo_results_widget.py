@@ -95,8 +95,13 @@ class MonteCarloResultsWidget(QWidget):
         layout.addLayout(self.tiles_row)
 
         self.views = QTabWidget()
-        self.plots = ResultsWidget()
-        self.views.addTab(self.plots, "Plots")
+        # The plot view (a second QWebEngineView next to the Results tab's)
+        # is built only once a batch is shown: an idle one in every window
+        # costs a Chromium renderer, and the macOS CI runner's test worker
+        # crashed showing it on a plain tab switch.
+        self.plots: Optional[ResultsWidget] = None
+        self._plots_placeholder = QWidget()
+        self.views.addTab(self._plots_placeholder, "Plots")
         runs_page = QWidget()
         runs_layout = QVBoxLayout(runs_page)
         runs_layout.setContentsMargins(0, 4, 0, 0)
@@ -159,7 +164,8 @@ class MonteCarloResultsWidget(QWidget):
             self.title_label.setText("No Monte Carlo batch yet")
             self.hint_label.setText(_EMPTY_HINT)
             self._set_tiles([])
-            self.plots.set_result(None)
+            if self.plots is not None:
+                self.plots.set_result(None)
             self.table.setRowCount(0)
             self.table.setColumnCount(0)
             return
@@ -171,8 +177,18 @@ class MonteCarloResultsWidget(QWidget):
         self.hint_label.setText(f"{days:.3g} days per run, {source}. Spreads are 1-sigma offsets from the mean of "
                                 f"all runs: along the orbit, radially and across it.{note}")
         self.hint_label.setToolTip(str(self.folder) if self.folder else "")
-        self.plots.set_result(mcr.to_result_set(batch), batch.epoch_utc or None)
+        self._ensure_plots().set_result(mcr.to_result_set(batch), batch.epoch_utc or None)
         self._refresh_spacecraft_views()
+
+    def _ensure_plots(self) -> ResultsWidget:
+        if self.plots is None:
+            self.plots = ResultsWidget()
+            index = self.views.indexOf(self._plots_placeholder)
+            self.views.removeTab(index)
+            self._plots_placeholder.deleteLater()
+            self.views.insertTab(index, self.plots, "Plots")
+            self.views.setCurrentIndex(index)
+        return self.plots
 
     def _refresh_spacecraft_views(self) -> None:
         batch = self.batch

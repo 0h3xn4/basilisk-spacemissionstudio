@@ -106,6 +106,7 @@ def test_a_folder_without_results_says_so_and_shows_nothing(qtbot, tmp_path):
     widget = MonteCarloResultsWidget()
     qtbot.addWidget(widget)
     assert widget.views.isHidden()
+    assert widget.plots is None  # no idle web view until there is a batch to plot
     assert not widget.load_folder(tmp_path)
     assert "has no Monte Carlo results" in widget.hint_label.text()
     assert widget.batch is None and widget.views.isHidden() and _tile_texts(widget) == []
