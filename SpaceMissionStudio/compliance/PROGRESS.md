@@ -126,6 +126,9 @@ the table below.
 | After Phase 4 (R14, R15) | 2239 | 11 | 0 (30 new tests; changed expectations: the script-block tests pass consent, the condition hint text; listed in the R15 commit) |
 | After H09 (decision 15) | 2243 | 11 | 0 (4 new tests of the branch coverage gate; no changed expectations) |
 | After the K-10 fixes (F-09 to F-12) | 2256 | 11 | 0 (13 new tests; changed expectations: the wizard sizing and hint tests, three width limits in character widths, the kernel path tooltip; listed in the commits) |
+| CI, Linux/Windows/macOS, `41b73b1c3` | 2259 | 11 | 0 (3 new tests in the K-10 follow-ups; no changed expectations) |
+| After the 6.2.3.6a removals (F-13), Python 3.11 | 2259 | 11 | 0 (no difference: the removed code had no tests) |
+| After F-13 and F-14, Python 3.12 with `sys.monitoring` coverage | 2261 | 11 | 0 (2 new tests, constant thrust; no changed expectations) |
 
 ## Resuming
 

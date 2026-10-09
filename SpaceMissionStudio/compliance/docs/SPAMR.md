@@ -48,7 +48,8 @@ As in the SPAP.
 decision 10). The measures and their verification status are in
 `dependability_safety_analysis.md` section 4. The supplier verified them;
 there is no independent verification (H06). The unreachable-code analysis
-is open.
+is done (`unreached_code.md`, `review_log.md` F-13 to F-15); keeping
+defensive checks is an interpretation for the customer to confirm.
 
 ## 5 Methods and tools (C.2.1<5>)
 

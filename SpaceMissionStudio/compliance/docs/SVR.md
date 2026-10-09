@@ -189,7 +189,7 @@ test, H13; SRelD K-06).
 
 | Requirement | Result |
 |---|---|
-| SRS-Q-01 statement coverage ≥ 90 %, branch coverage ≥ 80 % | 91.5 % and 81.7 %, met |
+| SRS-Q-01 statement coverage ≥ 90 %, branch coverage ≥ 80 % | Met, with a thin margin: 91.5 % and 81.7 % (2026-10-08); 90.1 % and 81.4 % in a local single-process run on 2026-10-09 after the 6.2.3.6a removals (cause of the 1.4-point drop not found; CI's gate passed on the same code). Both figures err low: coverage does not see code Basilisk runs on its own thread (review_log F-15); measured with `sys.monitoring` on Python 3.12, statement coverage is 93.3 % |
 | SRS-Q-02 zero static-analysis findings | 0, met |
 | SRS-Q-03 complexity ≤ 15 for new code | Met: no new function above 15 |
 | Q-ST-80C 6.2.6.1 verification of the quality requirements | As above; thresholds agreed with the customer (decision 15) |
