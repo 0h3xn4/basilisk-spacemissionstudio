@@ -457,6 +457,23 @@ def test_generate_phasing_formation_writes_new_scenario(tmp_path, capsys):
 
 
 @pytest.mark.skipif(not _BASILISK_AVAILABLE, reason="needs a real Basilisk build (real Hill-frame transform)")
+def test_generate_phasing_formation_takes_a_control_law(tmp_path):
+    """--control-law puts a Basilisk formation law on the generated follower."""
+    path = tmp_path / "chief.json"
+    _write_chief_scenario(path)
+    out_path = tmp_path / "formation.json"
+    rc = cli.main([
+        "generate-phasing-formation", str(path), "--out", str(out_path), "--chief", "chief-1",
+        "--follower-name", "follower-1", "--along-track-km", "1", "--control-law", "hill_pd",
+    ])
+    assert rc == 0
+
+    from spacemissionstudio.schema import load_scenario
+
+    assert load_scenario(out_path).spacecraft[1].phasing_keeping.control_law == "hill_pd"
+
+
+@pytest.mark.skipif(not _BASILISK_AVAILABLE, reason="needs a real Basilisk build (real Hill-frame transform)")
 def test_generate_phasing_formation_rejects_zero_along_track_km(tmp_path, capsys):
     path = tmp_path / "chief.json"
     _write_chief_scenario(path)

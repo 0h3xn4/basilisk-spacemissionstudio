@@ -251,6 +251,17 @@ class PhasingFormationDialog(QDialog):
         self.correction_window_days = _double_spin(1e-3, 1.0e4, 2, 1.0, 3.0)
         self.max_drift_days = _double_spin(1e-3, 1.0e4, 2, 1.0, 90.0)
         self.max_delta_sma_km = _double_spin(1e-6, 1.0e4, 3, 0.5, 3.0)
+        self.control_law_combo = ComboBox()
+        for label, law in (("Drift orbit (occasional burns)", "drift_orbit"),
+                           ("Mean orbital elements (Basilisk)", "mean_oe"),
+                           ("Hill-frame PD (Basilisk, close formations)", "hill_pd")):
+            self.control_law_combo.addItem(label, userData=law)
+        self.control_law_combo.setToolTip(
+            "Which flight-software law holds the separation. The tolerances below apply to the "
+            "drift orbit only; the Basilisk laws' gains keep their defaults and can be changed "
+            "in the follower's Spacecraft editor. See User Manual, 'Formation control laws'."
+        )
+        phasing_form.addRow("Control law", self.control_law_combo)
         phasing_form.addRow("Reconfiguration interval [day]", self.reconfiguration_interval_days)
         phasing_form.addRow("Tolerance fraction [-]", self.tolerance_fraction)
         phasing_form.addRow("Restore tolerance fraction [-]", self.restore_tolerance_fraction)
@@ -368,6 +379,7 @@ class PhasingFormationDialog(QDialog):
             eclipse_sunlit_threshold=self.eclipse_sunlit_threshold.value(),
             min_on_time_s=self.min_on_time_s.value(),
             eccentricity_neutral_burns=self.eccentricity_neutral_check.isChecked(),
+            control_law=self.control_law_combo.currentData(),
         )
         request.validate()  # raises ScenarioValidationError with a specific message on anything bad
         return request

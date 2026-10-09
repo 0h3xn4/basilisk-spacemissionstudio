@@ -102,6 +102,7 @@ from typing import Optional
 import numpy as np
 
 from ..schema.scenario import (
+    PHASING_CONTROL_LAWS,
     PhasingKeepingConfig,
     ScenarioValidationError,
     OrbitIC,
@@ -158,6 +159,7 @@ class PhasingFormationRequest:
     eclipse_sunlit_threshold: float = 0.99  # [-]
     min_on_time_s: float = 0.0  # [s] shared thruster's minimum firing duration (StationKeepingConfig)
     eccentricity_neutral_burns: bool = False  # see StationKeepingConfig
+    control_law: str = "drift_orbit"  # PhasingKeepingConfig.control_law; its gains keep their defaults
 
     def validate(self) -> None:
         _require(bool(self.chief_name), "phasing_formation.chief_name must not be empty")
@@ -190,6 +192,8 @@ class PhasingFormationRequest:
         _require(0.0 < self.eclipse_sunlit_threshold <= 1.0,
                   "phasing_formation.eclipse_sunlit_threshold must be in (0, 1]")
         _require(0.0 <= self.min_on_time_s <= 86400.0, "phasing_formation.min_on_time_s must be in [0, 86400] s")
+        _require(self.control_law in PHASING_CONTROL_LAWS,
+                  f"phasing_formation.control_law must be one of {PHASING_CONTROL_LAWS}")
 
 
 def generate_phasing_follower(request: PhasingFormationRequest, chief: SpacecraftConfig,
@@ -345,5 +349,6 @@ def generate_phasing_follower(request: PhasingFormationRequest, chief: Spacecraf
         correction_window_days=request.correction_window_days,
         max_drift_days=request.max_drift_days,
         max_delta_semi_major_axis_km=request.max_delta_semi_major_axis_km,
+        control_law=request.control_law,
     )
     return follower

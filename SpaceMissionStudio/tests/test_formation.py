@@ -216,3 +216,13 @@ def test_rejects_non_classical_elements_chief_orbit():
     chief = _chief(orbit=OrbitIC(type="cartesian", position_km=[7000.0, 0.0, 0.0], velocity_km_s=[0.0, 7.5, 0.0]))
     with pytest.raises(ScenarioValidationError, match="classical_elements"):
         generate_phasing_follower(_request(), chief, chief, central_body="earth")
+
+
+def test_the_generated_follower_uses_the_requested_control_law():
+    """A Basilisk formation law chosen in the generator lands on the
+    follower's phasing_keeping, with the law's default gains."""
+    follower = generate_phasing_follower(_request(control_law="mean_oe"), _chief(), _chief(), central_body="earth")
+    assert follower.phasing_keeping.control_law == "mean_oe"
+    assert follower.phasing_keeping.mean_oe_gain == 2500.0
+    with pytest.raises(ScenarioValidationError, match="control_law"):
+        _request(control_law="lqr").validate()

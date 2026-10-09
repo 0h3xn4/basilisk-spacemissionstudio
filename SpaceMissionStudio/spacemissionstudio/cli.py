@@ -64,6 +64,7 @@ from . import dependencies, output_provenance
 from .logging_setup import configure_logging
 from .schema import ScenarioValidationError, load_scenario
 from .schema.command import script_blocks
+from .schema.scenario import PHASING_CONTROL_LAWS
 
 
 def cmd_validate(args: argparse.Namespace) -> int:
@@ -690,6 +691,7 @@ def cmd_generate_phasing_formation(args: argparse.Namespace) -> int:
         eclipse_sunlit_threshold=args.eclipse_sunlit_threshold,
         min_on_time_s=args.min_on_time_s,
         eccentricity_neutral_burns=args.eccentricity_neutral_burns,
+        control_law=args.control_law,
     )
     try:
         follower = generate_phasing_follower(request, chief, template, scenario.gravity.central_body)
@@ -896,6 +898,10 @@ def build_parser() -> argparse.ArgumentParser:
                                  "thrust x this); 0 = ideal")
     p_phasing.add_argument("--eccentricity-neutral-burns", action="store_true",
                             help="gate firings so long eclipse-interrupted burns don't change eccentricity")
+    p_phasing.add_argument("--control-law", choices=PHASING_CONTROL_LAWS, default="drift_orbit",
+                            help="drift_orbit (occasional burns), mean_oe (Basilisk meanOEFeedback) or "
+                                 "hill_pd (Basilisk hillFrameRelativeControl, close formations); see "
+                                 "the User Manual's 'Formation control laws'")
     p_phasing.set_defaults(func=cmd_generate_phasing_formation)
 
     p_gui = subparsers.add_parser("gui", help="launch the PySide6 GUI shell")

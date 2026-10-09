@@ -235,6 +235,10 @@ def _formation_section(scenario) -> ExplanationSection | None:
         badges.append(Badge("GEO station-keeping (E-W, N-S)", "accent"))
     if any(sc.phasing_keeping is not None for sc in scenario.spacecraft):
         badges.append(Badge("Phasing-keeping", "accent"))
+    laws = {sc.phasing_keeping.control_law for sc in scenario.spacecraft if sc.phasing_keeping is not None}
+    for law, label in (("mean_oe", "Basilisk mean-element feedback"), ("hill_pd", "Basilisk Hill-frame PD")):
+        if law in laws:
+            badges.append(Badge(label, "accent"))
     if any(sc.constant_thrust is not None for sc in scenario.spacecraft):
         badges.append(Badge("Constant thrust", "accent"))
     if not badges:
@@ -335,7 +339,9 @@ def _formation_diagrams(scenario) -> List[FormationDiagram]:
     diagrams = []
     for sc in scenario.spacecraft:
         pk = sc.phasing_keeping
-        if pk is None or not pk.target_separation_km:
+        # The diagram shows the drift-orbit law's trigger/restore band; the
+        # Basilisk laws (engine.formation_control) have no band.
+        if pk is None or not pk.target_separation_km or pk.control_law != "drift_orbit":
             continue
         diagrams.append(FormationDiagram(
             chief_name=pk.chief_spacecraft,
