@@ -361,7 +361,8 @@ def remember_vizard_executable(path: Path, settings: Optional[QSettings] = None)
     settings.setValue(_SETTINGS_KEY, str(path))
 
 
-def launch_vizard(executable_path: Path, direct_comm_address: Optional[str] = None) -> "subprocess.Popen[bytes]":
+def launch_vizard(executable_path: Path, direct_comm_address: Optional[str] = None,
+                  load_file: Optional[Path] = None) -> "subprocess.Popen[bytes]":
     """Starts Vizard as a background process and returns the
     :class:`subprocess.Popen` handle so the caller can poll whether it's
     still running (``.poll() is None``). On macOS this resolves an
@@ -382,6 +383,9 @@ def launch_vizard(executable_path: Path, direct_comm_address: Optional[str] = No
             own ``DEFAULT_LIVE_STREAM_ADDRESS`` comment for why. ``None``
             (the default) launches Vizard with no arguments, exactly as
             before.
+        load_file: a playback file Vizard opens at start (its ``-loadFile``
+            argument, ``vizardCommandLine.rst``): the Results tab's "Open in
+            Vizard" for the last run's file.
     """
     if sys.platform == "darwin" and executable_path.suffix == ".app":
         macos_dir = executable_path / "Contents" / "MacOS"
@@ -395,6 +399,8 @@ def launch_vizard(executable_path: Path, direct_comm_address: Optional[str] = No
     args = [str(executable_path)]
     if direct_comm_address:
         args += ["-directComm", direct_comm_address]
+    if load_file is not None:
+        args += ["-loadFile", str(load_file)]
     return subprocess.Popen(args)  # noqa: S603 -- argument list, no shell; the user's chosen Vizard executable
 
 

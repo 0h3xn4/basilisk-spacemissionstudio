@@ -1915,3 +1915,32 @@ def test_a_run_hands_the_scenarios_featured_series_to_the_results_tab(window, mo
     window.on_run()
     assert window.results_widget._featured == featured_series(load_scenario(path))
     assert len(window.results_widget._featured) == 5
+
+
+def test_results_offer_the_last_runs_vizard_file_and_open_it(window, monkeypatch, tmp_path):
+    """After a run that wrote a playback file, Results shows "Open in
+    Vizard", which starts Vizard with -loadFile on that file; a new run
+    hides it again."""
+    from pathlib import Path
+
+    from spacemissionstudio.gui import main_window
+
+    playback = tmp_path / "run.bin"
+    playback.write_bytes(b"\x00")
+    window._last_run_vizard_file = str(playback)
+    window._offer_vizard_playback()
+    assert window.results_widget.vizard_button.isVisibleTo(window.results_widget)
+    calls = []
+    monkeypatch.setattr(main_window, "find_vizard_executable", lambda: Path("/fake/Vizard"))
+    monkeypatch.setattr(main_window, "launch_vizard",
+                        lambda path, load_file=None: calls.append((path, load_file)) or _FakeVizardProcess())
+    window.results_widget.vizard_button.click()
+    assert calls == [(Path("/fake/Vizard"), playback)]
+    window._clear_run_views()
+    assert not window.results_widget.vizard_button.isVisibleTo(window.results_widget)
+
+
+def test_no_vizard_button_when_the_run_wrote_no_file(window, tmp_path):
+    window._last_run_vizard_file = str(tmp_path / "missing.bin")
+    window._offer_vizard_playback()
+    assert not window.results_widget.vizard_button.isVisibleTo(window.results_widget)

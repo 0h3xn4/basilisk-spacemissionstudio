@@ -573,6 +573,16 @@ class VizardError(Exception):
     """
 
 
+def playback_file(save_file: str) -> Path:
+    """The file Basilisk writes for ``VizardRequest.save_file``: the path
+    itself when it ends in ``.bin``, else ``<dir>/_VizFiles/<name>_UnityViz.bin``
+    (``vizSupport.enableUnityVisualization``, Basilisk 2.12.0)."""
+    path = Path(save_file)
+    if path.suffix.lower() == ".bin":
+        return path
+    return (path.parent if str(path.parent) else Path(".")) / "_VizFiles" / f"{path.stem}_UnityViz.bin"
+
+
 @dataclass
 class VizardRequest:
     """What the GUI/CLI ask for. Exactly one of ``save_file``/``live_stream``

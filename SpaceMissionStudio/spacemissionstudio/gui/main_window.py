@@ -81,6 +81,7 @@ from .vizard_launcher import (
     remember_vizard_executable,
 )
 from .widgets import TabWidget
+from ..engine.vizard import playback_file as vizard_playback_file
 
 _FILE_FILTER = "SpaceMissionStudio scenario (*.json)"
 
@@ -165,6 +166,7 @@ class MainWindow(QMainWindow):
         # also isn't nagged repeatedly once they do.
         self._vizard_live_stream_hint_shown = False
         self._last_run_epoch_utc: str | None = None  # set in on_run(); see its own comment
+        self._last_run_vizard_file: str | None = None  # the playback file the last run writes, if any
         self._last_run_scenario: Scenario | None = None  # set in on_run(); fed to mission_dashboard_widget
 
         self.scenario_editor = ScenarioEditorWidget()
@@ -187,6 +189,7 @@ class MainWindow(QMainWindow):
         self.results_widget.set_time_cursor(self.time_cursor)
         self.mission_dashboard_widget.set_time_cursor(self.time_cursor)
         self.mission_output_widget.set_time_cursor(self.time_cursor)
+        self.results_widget.open_in_vizard.connect(self.open_vizard_playback)
         self.scenario_explainer_widget = ScenarioExplainerWidget()
         self.lifetime_widget = LifetimeWidget()
         self.budget_widget = BudgetWidget()
@@ -670,7 +673,29 @@ class MainWindow(QMainWindow):
         self.mission_dashboard_widget.set_result(None)
         self.mission_output_widget.clear()
         self.event_timeline_widget.set_result(None)
+        self.results_widget.set_vizard_file(None)
         self.time_cursor.clear()
+
+    def _offer_vizard_playback(self) -> None:
+        """Show "Open in Vizard" on Results when the run wrote a playback file."""
+        path = self._last_run_vizard_file
+        self.results_widget.set_vizard_file(path if path and Path(path).is_file() else None)
+
+    def open_vizard_playback(self, path: str) -> bool:
+        """Start Vizard on ``path`` (``-loadFile``); False if it could not be started."""
+        if not path or not Path(path).is_file():
+            QMessageBox.warning(self, "No playback file", f"The run's Vizard file is not there: {path}")
+            return False
+        executable = find_vizard_executable() or self._locate_vizard()
+        if executable is None:
+            return False
+        try:
+            launch_vizard(executable, load_file=Path(path))
+        except OSError as exc:
+            QMessageBox.critical(self, "Could not launch Vizard", f"{executable}: {exc}")
+            return False
+        self.statusBar().showMessage(f"Opened {path} in Vizard.")
+        return True
 
     def _on_time_cursor_changed(self, time_s) -> None:
         self.time_cursor_label.setVisible(time_s is not None)
@@ -1209,6 +1234,8 @@ class MainWindow(QMainWindow):
         # needs to recompute a live link-budget breakdown.
         self._last_run_epoch_utc = scenario.epoch_utc
         self._last_run_scenario = scenario
+        save_file = getattr(self._vizard_request, "save_file", None)
+        self._last_run_vizard_file = str(vizard_playback_file(save_file)) if save_file else None
         self.results_widget.set_featured_series(featured_series(scenario))
         _join_finished_worker(self._run_worker)
         self._run_worker = RunWorker(scenario, vizard_request=self._vizard_request, live=live,
@@ -1286,6 +1313,7 @@ class MainWindow(QMainWindow):
             self.results_widget.set_live_result(result, self._last_run_epoch_utc)
             self.mission_dashboard_widget.set_live_result(result, self._last_run_scenario)
             self.event_timeline_widget.set_result(result, self._last_run_epoch_utc)
+            self._offer_vizard_playback()
             self.lifetime_widget.set_last_run(self._last_run_scenario, result)
             self.budget_widget.set_last_run(self._last_run_scenario, result)
             if command_summary is not None:
@@ -1321,6 +1349,7 @@ class MainWindow(QMainWindow):
             self.results_widget.set_live_result(partial_result, self._last_run_epoch_utc)
             self.mission_dashboard_widget.set_live_result(partial_result, self._last_run_scenario)
             self.event_timeline_widget.set_result(partial_result, self._last_run_epoch_utc)
+            self._offer_vizard_playback()
             if command_summary is not None:
                 self.mission_output_widget.set_command_summary(command_summary, partial_result)
                 self.right_tabs.setCurrentWidget(self.mission_output_widget)

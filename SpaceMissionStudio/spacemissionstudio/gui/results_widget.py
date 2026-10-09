@@ -387,6 +387,8 @@ def _empty_state_html() -> str:
 
 
 class ResultsWidget(QWidget):
+    open_in_vizard = Signal(str)  # the last run's playback file
+
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
         self._result: ResultSet | None = None
@@ -550,6 +552,15 @@ class ResultsWidget(QWidget):
         self.save_svg_button.clicked.connect(self._on_save_plot_svg)
         self.save_svg_button.setEnabled(False)
         button_row.addWidget(self.save_svg_button)
+        # The last run's Vizard playback file (UX/UI guidelines, decision 3:
+        # open only -- Vizard has no interface to follow the time cursor).
+        self.vizard_button = QPushButton("Open in Vizard")
+        self.vizard_button.setToolTip("Opens the playback file this run wrote in Vizard. Vizard cannot follow "
+                                      "the time cursor.")
+        self.vizard_button.clicked.connect(lambda: self.open_in_vizard.emit(self._vizard_file or ""))
+        self.vizard_button.setVisible(False)
+        self._vizard_file: Optional[str] = None
+        button_row.addWidget(self.vizard_button)
         button_row.addStretch(1)
         button_row.addWidget(self.view_label)
         button_row.addWidget(self.view_combo)
@@ -1047,6 +1058,11 @@ class ResultsWidget(QWidget):
         if self._png_poll_state is None:
             self.save_png_button.setEnabled(self.figure is not None)
             self.save_svg_button.setEnabled(self.figure is not None)
+
+    def set_vizard_file(self, path: Optional[str]) -> None:
+        """Offer "Open in Vizard" for ``path`` (the run's playback file), or hide it."""
+        self._vizard_file = path
+        self.vizard_button.setVisible(bool(path))
 
     # -- the shared time cursor -------------------------------------------
 

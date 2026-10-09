@@ -343,6 +343,10 @@ afterward) instead of just plots of numbers.
 * **Run > Launch Vizard** starts the separate Vizard application itself.
   If SpaceMissionStudio can't find it already installed, it offers to
   download AVS's own pre-built copy for you automatically.
+* **Open in Vizard** appears on the Results tab after a run that saved a
+  playback file, and starts Vizard on that file. Vizard cannot follow
+  the time cursor (Section 7): it has no way for another program to set
+  its playback time.
 
 Vizard is entirely optional -- plots in the Results tab already show
 everything numerically; Vizard is for *seeing* the mission.

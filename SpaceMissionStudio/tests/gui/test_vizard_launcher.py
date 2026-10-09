@@ -514,3 +514,29 @@ def test_vizard_fetch_worker_request_cancel_is_seen_by_should_cancel(tmp_path, m
     assert worker.wait(5000)  # join it: GC of a still-running QThread aborts the process
 
     assert seen_should_cancel["callable"]() is True  # the Event was already set before start()
+
+
+def test_launch_opens_a_playback_file_with_load_file(tmp_path, monkeypatch):
+    """Vizard's documented ``-loadFile`` argument opens a run's playback
+    file (UX/UI guidelines, decision 3: open only)."""
+    from spacemissionstudio.gui import vizard_launcher
+
+    monkeypatch.setattr(vizard_launcher.sys, "platform", "linux")
+    exe = tmp_path / "Vizard.x86_64"
+    exe.write_bytes(b"")
+    captured = {}
+    monkeypatch.setattr(vizard_launcher.subprocess, "Popen", lambda args: captured.setdefault("args", args))
+    vizard_launcher.launch_vizard(exe, load_file=tmp_path / "run.bin")
+    assert captured["args"] == [str(exe), "-loadFile", str(tmp_path / "run.bin")]
+
+
+def test_the_playback_file_follows_basilisks_naming():
+    """vizSupport.enableUnityVisualization: a ``.bin`` path is used as is;
+    any other name goes to ``_VizFiles/<name>_UnityViz.bin`` beside it."""
+    from pathlib import Path
+
+    from spacemissionstudio.engine.vizard import playback_file
+
+    assert playback_file("/runs/a.bin") == Path("/runs/a.bin")
+    assert playback_file("/runs/a") == Path("/runs/_VizFiles/a_UnityViz.bin")
+    assert playback_file("a.txt") == Path("_VizFiles/a_UnityViz.bin")
