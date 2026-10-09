@@ -251,3 +251,29 @@ def test_26_the_memory_overflows_between_berlin_pass_groups_and_the_patch_link_h
     assert 60.0 < angle[np.nanargmin(margin)] < 68.0
     access = result.series[f"{pair}.has_access"].data[:, 0]
     assert np.array_equal(result.series[f"{pair}.link_closed"].data[:, 0], access)
+
+
+def test_27_the_wings_ring_at_their_coupled_mode_and_the_pointing_settles():
+    """The turn to the Sun swings each wing ~0.07 deg, ringing at ~0.26 Hz
+    (above its hub-fixed 0.2 Hz) and below 0.001 deg within ~4.3 min; the
+    Sun is within 0.1 deg after ~7.1 min; each wing gives up to ~980 W.
+    The first 15 minutes, all in sunlight."""
+    result = _run(_template("27"), duration_days=0.01)  # [day]
+    deflection = result.series["flex-sat.solar_array.wing-1.deflection"]
+    theta_deg = np.degrees(deflection.data[:, 0])
+    assert 0.05 < np.abs(theta_deg).max() < 0.08  # [deg]
+    assert np.allclose(theta_deg, -np.degrees(result.series["flex-sat.solar_array.wing-2.deflection"].data[:, 0]),
+                       atol=0.002)  # [deg] the two wings swing as a mirror pair
+    t = deflection.time_s
+    above = t[np.abs(theta_deg) > 0.001]  # [s]
+    assert 3.5 * 60.0 < above[-1] < 5.0 * 60.0
+    window = (t > 5.0) & (t < 120.0)  # [s] the ringing, less its slow drift
+    ringing = theta_deg[window] - np.convolve(theta_deg[window], np.ones(41) / 41, mode="same")
+    crossings = t[window][30:-30][np.nonzero(np.diff(np.sign(ringing[30:-30])) != 0)[0]]
+    assert 0.24 < 1.0 / (2.0 * np.mean(np.diff(crossings))) < 0.28  # [Hz]
+    heading = result.series["flex-sat.sun_heading_body"]
+    unit = heading.data / np.linalg.norm(heading.data, axis=1)[:, None]
+    off_sun_deg = np.degrees(np.arccos(np.clip(unit[:, 2], -1.0, 1.0)))
+    assert 6.5 * 60.0 < heading.time_s[off_sun_deg > 0.1][-1] < 7.7 * 60.0  # [s]
+    power = result.series["flex-sat.solar_array.wing-1.power"].data[:, 0]  # [W]
+    assert 960.0 < power.max() < 1000.0

@@ -64,6 +64,7 @@ from spacemissionstudio.schema.scenario import (
     SensorConfig,
     ActuatorConfig,
     SimSettings,
+    SolarArrayConfig,
     SpacecraftConfig,
     SpaceWeatherConfig,
     StationKeepingConfig,
@@ -89,6 +90,11 @@ _MICROSAT_MASS_KG = 150.0  # [kg]
 _MICROSAT_SIZE_M = (0.8, 0.8, 1.0)  # [m] -> I = 20.5, 20.5, 16.0 kg*m^2
 _SMALLSAT_MASS_KG = 300.0  # [kg]
 _SMALLSAT_SIZE_M = (1.2, 1.2, 1.5)  # [m] -> I = 92.3, 92.3, 72.0 kg*m^2
+_WING_MASS_KG = 8.0  # [kg] each of template 27's two wings
+_WING_SIZE_M = (2.4, 1.0)  # [m] span, width
+_WING_FIRST_MODE_HZ = 0.2  # [Hz] assumed, with the hub held fixed
+_WING_DAMPING_RATIO = 0.005  # [-] assumed structural damping
+_FLEX_DURATION_DAYS = 0.1  # [day] about one and a half orbits
 _LARGE_SMALLSAT_MASS_KG = 500.0  # [kg]
 _LARGE_SMALLSAT_SIZE_M = (1.2, 1.2, 1.6)  # [m] -> I = 166.7, 166.7, 120.0 kg*m^2
 
@@ -1446,6 +1452,56 @@ def build_26_earth_observation_data_downlink() -> Scenario:
     )
 
 
+def build_27_flexible_solar_arrays() -> Scenario:
+    # The 300 kg preset with its cells on two deployed wings, one on each
+    # side face, each a panel on a spring-damper hinge (Basilisk's
+    # hingedRigidBodyStateEffector). It starts tipped away from the Sun, so
+    # the Sun-safe turn that opens the run swings the wings. The wings' mass
+    # is part of the 300 kg: the hub gets the rest, and its inertia is the
+    # box's for that mass.
+    from spacemissionstudio.engine.spacecraft_templates import SPACECRAFT_TEMPLATES
+
+    preset = next(t for t in SPACECRAFT_TEMPLATES if t.name == "Small satellite (300 kg)")
+    spacecraft = preset.build()
+    spacecraft.name = "flex-sat"
+    spacecraft.orbit = _starter_orbit()
+    spacecraft.sigma_bn_init = [0.1, 0.2, -0.15]  # [-] MRP, tipped away from the Sun
+    spacecraft.omega_bn_b_init_rad_s = [0.0, 0.0, 0.0]  # [rad/s]
+    span_m, width_m = _WING_SIZE_M
+    half_y = _SMALLSAT_SIZE_M[1] / 2.0  # [m] the side faces
+    spacecraft.solar_arrays = [
+        SolarArrayConfig(
+            name=f"wing-{number}", mass_kg=_WING_MASS_KG, span_m=span_m, width_m=width_m,
+            hinge_position_b=[0.0, sign * half_y, 0.0],  # [m]
+            deploy_direction_b=[0.0, sign, 0.0], normal_b=[0.0, 0.0, 1.0],  # cells on +z, the Sun-safe axis
+            first_mode_hz=_WING_FIRST_MODE_HZ, damping_ratio=_WING_DAMPING_RATIO)
+        for number, sign in ((1, 1.0), (2, -1.0))  # wing-1 on +y, wing-2 on -y
+    ]
+    hub_mass_kg = _SMALLSAT_MASS_KG - 2 * _WING_MASS_KG  # [kg]
+    spacecraft.inertia_kg_m2 = _box_inertia(hub_mass_kg, _SMALLSAT_SIZE_M)
+    spacecraft.power.panel_area_m2 = 0.5  # [m^2] body cells on the +z face; the wings carry the rest
+    facets = box_facets(_SMALLSAT_SIZE_M, spacecraft.power.panel_area_m2, spacecraft.power.panel_normal_b,
+                        drag_coeff=OPERATIONS_DRAG_COEFF)
+    for number, sign in ((1, 1.0), (2, -1.0)):  # each wing, undeflected, as a front and back plate
+        wing = box_facets(_SMALLSAT_SIZE_M, span_m * width_m, [0.0, 0.0, 1.0],
+                          array_location_b=[0.0, sign * (half_y + span_m / 2.0), 0.0],
+                          drag_coeff=OPERATIONS_DRAG_COEFF)[6:]
+        for facet in wing:
+            facet.name = f"wing-{number} {facet.name.split()[-1]}"
+        facets.extend(wing)
+    spacecraft.facets = facets
+    return Scenario(
+        name="27 - Flexible solar arrays",
+        description=DESCRIPTIONS["27"],
+        epoch_utc=_STARTER_EPOCH_UTC,
+        simulation_mode="full_attitude",
+        gravity=GravityConfig(central_body="earth", central_body_degree=10, third_body_perturbers=["sun", "moon"]),
+        sim_settings=SimSettings(duration_days=_FLEX_DURATION_DAYS, dynamics_task_rate_s=0.5, integrator="rkf78"),
+        space_weather=_real_space_weather(),
+        spacecraft=[spacecraft],
+    )
+
+
 def main() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     _save(build_01_two_body_circular_orbit(), "01_two_body_circular_orbit.json")
@@ -1475,6 +1531,7 @@ def main() -> None:
     _save(build_24_formation_mean_element_control(), "24_formation_mean_element_control.json")
     _save(build_25_monte_carlo_orbit_and_drag_dispersions(), "25_monte_carlo_orbit_and_drag_dispersions.json")
     _save(build_26_earth_observation_data_downlink(), "26_earth_observation_data_downlink.json")
+    _save(build_27_flexible_solar_arrays(), "27_flexible_solar_arrays.json")
 
 
 if __name__ == "__main__":

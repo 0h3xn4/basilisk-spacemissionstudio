@@ -1,0 +1,506 @@
+{
+  "name": "27 - Flexible solar arrays",
+  "epoch_utc": "2030-01-01T08:30:00",
+  "simulation_mode": "full_attitude",
+  "gravity": {
+    "central_body": "earth",
+    "central_body_degree": 10,
+    "third_body_perturbers": [
+      "sun",
+      "moon"
+    ]
+  },
+  "spacecraft": [
+    {
+      "name": "flex-sat",
+      "orbit": {
+        "type": "classical_elements",
+        "semi_major_axis_km": 6928.0,
+        "eccentricity": 0.0,
+        "inclination_deg": 97.59,
+        "raan_deg": 259.42,
+        "arg_periapsis_deg": 0.0,
+        "anomaly_type": "true",
+        "true_anomaly_deg": 0.0,
+        "mean_anomaly_deg": null,
+        "position_km": null,
+        "velocity_km_s": null,
+        "tle_line1": null,
+        "tle_line2": null
+      },
+      "dry_mass_kg": 300.0,
+      "inertia_kg_m2": [
+        87.3,
+        0.0,
+        0.0,
+        0.0,
+        87.3,
+        0.0,
+        0.0,
+        0.0,
+        68.2
+      ],
+      "sigma_bn_init": [
+        0.1,
+        0.2,
+        -0.15
+      ],
+      "omega_bn_b_init_rad_s": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "enable_drag": true,
+      "drag_coeff": 2.2,
+      "drag_area_m2": 1.8,
+      "enable_srp": true,
+      "srp_coeff": 1.3,
+      "srp_area_m2": 4.0,
+      "facets": [
+        {
+          "name": "bus +x",
+          "area_m2": 1.8,
+          "normal_b": [
+            1.0,
+            0.0,
+            0.0
+          ],
+          "location_b": [
+            0.6,
+            0.0,
+            0.0
+          ],
+          "drag_coeff": 3.0,
+          "specular_coeff": 0.336,
+          "diffuse_coeff": 0.139
+        },
+        {
+          "name": "bus -x",
+          "area_m2": 1.8,
+          "normal_b": [
+            -1.0,
+            0.0,
+            0.0
+          ],
+          "location_b": [
+            -0.6,
+            0.0,
+            0.0
+          ],
+          "drag_coeff": 3.0,
+          "specular_coeff": 0.336,
+          "diffuse_coeff": 0.139
+        },
+        {
+          "name": "bus +y",
+          "area_m2": 1.8,
+          "normal_b": [
+            0.0,
+            1.0,
+            0.0
+          ],
+          "location_b": [
+            0.0,
+            0.6,
+            0.0
+          ],
+          "drag_coeff": 3.0,
+          "specular_coeff": 0.336,
+          "diffuse_coeff": 0.139
+        },
+        {
+          "name": "bus -y",
+          "area_m2": 1.8,
+          "normal_b": [
+            0.0,
+            -1.0,
+            0.0
+          ],
+          "location_b": [
+            0.0,
+            -0.6,
+            0.0
+          ],
+          "drag_coeff": 3.0,
+          "specular_coeff": 0.336,
+          "diffuse_coeff": 0.139
+        },
+        {
+          "name": "bus +z",
+          "area_m2": 1.44,
+          "normal_b": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "location_b": [
+            0.0,
+            0.0,
+            0.75
+          ],
+          "drag_coeff": 3.0,
+          "specular_coeff": 0.336,
+          "diffuse_coeff": 0.139
+        },
+        {
+          "name": "bus -z",
+          "area_m2": 1.44,
+          "normal_b": [
+            0.0,
+            0.0,
+            -1.0
+          ],
+          "location_b": [
+            0.0,
+            0.0,
+            -0.75
+          ],
+          "drag_coeff": 3.0,
+          "specular_coeff": 0.336,
+          "diffuse_coeff": 0.139
+        },
+        {
+          "name": "array front",
+          "area_m2": 0.5,
+          "normal_b": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "location_b": [
+            0.0,
+            0.0,
+            0.75
+          ],
+          "drag_coeff": 3.0,
+          "specular_coeff": 0.16,
+          "diffuse_coeff": 0.16
+        },
+        {
+          "name": "array back",
+          "area_m2": 0.5,
+          "normal_b": [
+            -0.0,
+            -0.0,
+            -1.0
+          ],
+          "location_b": [
+            0.0,
+            0.0,
+            0.75
+          ],
+          "drag_coeff": 3.0,
+          "specular_coeff": 0.0,
+          "diffuse_coeff": 0.56
+        },
+        {
+          "name": "wing-1 front",
+          "area_m2": 2.4,
+          "normal_b": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "location_b": [
+            0.0,
+            1.7999999999999998,
+            0.0
+          ],
+          "drag_coeff": 3.0,
+          "specular_coeff": 0.16,
+          "diffuse_coeff": 0.16
+        },
+        {
+          "name": "wing-1 back",
+          "area_m2": 2.4,
+          "normal_b": [
+            -0.0,
+            -0.0,
+            -1.0
+          ],
+          "location_b": [
+            0.0,
+            1.7999999999999998,
+            0.0
+          ],
+          "drag_coeff": 3.0,
+          "specular_coeff": 0.0,
+          "diffuse_coeff": 0.56
+        },
+        {
+          "name": "wing-2 front",
+          "area_m2": 2.4,
+          "normal_b": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "location_b": [
+            0.0,
+            -1.7999999999999998,
+            0.0
+          ],
+          "drag_coeff": 3.0,
+          "specular_coeff": 0.16,
+          "diffuse_coeff": 0.16
+        },
+        {
+          "name": "wing-2 back",
+          "area_m2": 2.4,
+          "normal_b": [
+            -0.0,
+            -0.0,
+            -1.0
+          ],
+          "location_b": [
+            0.0,
+            -1.7999999999999998,
+            0.0
+          ],
+          "drag_coeff": 3.0,
+          "specular_coeff": 0.0,
+          "diffuse_coeff": 0.56
+        }
+      ],
+      "enable_gravity_gradient": false,
+      "sensors": [
+        {
+          "kind": "star_tracker",
+          "name": "st-1",
+          "params": {
+            "noise_arcsec": 5.0
+          }
+        },
+        {
+          "kind": "imu",
+          "name": "imu-1",
+          "params": {
+            "gyro_noise_rad_s": 1e-05
+          }
+        },
+        {
+          "kind": "coarse_sun_sensor",
+          "name": "css-1",
+          "params": {
+            "nHat_B": [
+              0.0,
+              0.0,
+              1.0
+            ]
+          }
+        }
+      ],
+      "actuators": [
+        {
+          "kind": "reaction_wheel",
+          "name": "rw-x",
+          "params": {
+            "gsHat_B": [
+              1.0,
+              0.0,
+              0.0
+            ],
+            "rw_type": "Honeywell_HR12",
+            "maxMomentum": 12.0
+          }
+        },
+        {
+          "kind": "reaction_wheel",
+          "name": "rw-y",
+          "params": {
+            "gsHat_B": [
+              0.0,
+              1.0,
+              0.0
+            ],
+            "rw_type": "Honeywell_HR12",
+            "maxMomentum": 12.0
+          }
+        },
+        {
+          "kind": "reaction_wheel",
+          "name": "rw-z",
+          "params": {
+            "gsHat_B": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "rw_type": "Honeywell_HR12",
+            "maxMomentum": 12.0
+          }
+        },
+        {
+          "kind": "magnetic_torque_rod",
+          "name": "mtb-x",
+          "params": {
+            "gtHat_B": [
+              1.0,
+              0.0,
+              0.0
+            ],
+            "max_dipole_a_m2": 30.0
+          }
+        },
+        {
+          "kind": "magnetic_torque_rod",
+          "name": "mtb-y",
+          "params": {
+            "gtHat_B": [
+              0.0,
+              1.0,
+              0.0
+            ],
+            "max_dipole_a_m2": 30.0
+          }
+        },
+        {
+          "kind": "magnetic_torque_rod",
+          "name": "mtb-z",
+          "params": {
+            "gtHat_B": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "max_dipole_a_m2": 30.0
+          }
+        }
+      ],
+      "fsw_mode": "sunSafePoint",
+      "fsw_params": {
+        "sHatBdyCmd": [
+          0.0,
+          0.0,
+          1.0
+        ]
+      },
+      "control_params": {},
+      "power": {
+        "panel_area_m2": 0.5,
+        "panel_efficiency": 0.29,
+        "panel_normal_b": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "bus_idle_power_w": 150.0,
+        "battery_capacity_wh": 700.0,
+        "battery_initial_soc": 0.9
+      },
+      "rf_link": null,
+      "comms_pointing": null,
+      "data_handling": null,
+      "solar_arrays": [
+        {
+          "name": "wing-1",
+          "mass_kg": 8.0,
+          "span_m": 2.4,
+          "width_m": 1.0,
+          "hinge_position_b": [
+            0.0,
+            0.6,
+            0.0
+          ],
+          "deploy_direction_b": [
+            0.0,
+            1.0,
+            0.0
+          ],
+          "normal_b": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "first_mode_hz": 0.2,
+          "damping_ratio": 0.005,
+          "initial_deflection_deg": 0.0,
+          "initial_rate_deg_s": 0.0,
+          "generates_power": true
+        },
+        {
+          "name": "wing-2",
+          "mass_kg": 8.0,
+          "span_m": 2.4,
+          "width_m": 1.0,
+          "hinge_position_b": [
+            0.0,
+            -0.6,
+            0.0
+          ],
+          "deploy_direction_b": [
+            0.0,
+            -1.0,
+            0.0
+          ],
+          "normal_b": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "first_mode_hz": 0.2,
+          "damping_ratio": 0.005,
+          "initial_deflection_deg": 0.0,
+          "initial_rate_deg_s": 0.0,
+          "generates_power": true
+        }
+      ],
+      "station_keeping": null,
+      "geo_station_keeping": null,
+      "phasing_keeping": null,
+      "constant_thrust": null,
+      "momentum_dumping": null,
+      "magnetic_momentum_management": {
+        "wheel_speed_biases_rad_s": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "c_gain": 0.003
+      },
+      "fuel_tank": null,
+      "propellant_budget": null,
+      "vizard_model_path": null,
+      "vizard_model_offset_m": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "vizard_model_rotation_deg": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "vizard_model_scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    }
+  ],
+  "ground_stations": [],
+  "space_weather": {
+    "source": "bundled",
+    "local_file_path": null,
+    "cache_dir": null,
+    "atmosphere_model": "nrlmsise00",
+    "forecast_percentile": 50.0,
+    "msfc_file_path": null
+  },
+  "sim_settings": {
+    "duration_days": 0.1,
+    "dynamics_task_rate_s": 0.5,
+    "integrator": "rkf78",
+    "record_interval_s": 0.0
+  },
+  "monte_carlo": {
+    "enabled": false,
+    "num_runs": 10,
+    "thread_count": 1,
+    "verbose": false,
+    "dispersions": []
+  },
+  "mission_sequence": [],
+  "description": "A 300 kg satellite whose cells sit on two deployed wings, 2.4 x 1.0 m and 8 kg each, one on each side. Each wing is a panel on a spring-damper hinge, so it flexes and its motion acts back on the attitude. The satellite starts 71 deg off the Sun and turns to it with its wheels. 2.4 hours.\n\nThe wings' first mode is assumed: 0.2 Hz with the hub held fixed, and 0.5% damping. Use your array's measured or analysed value.\n\nWhat to look at:\n- flex-sat.solar_array.wing-1.deflection: 0.07 deg as the wheels start the turn, ringing at 0.26 Hz. Free of the hub's mass, the wing rings faster than its hub-fixed 0.2 Hz.\n- The ringing is below 0.001 deg within 4.3 min: the attitude control damps it through the hub.\n- flex-sat.sun_heading_body: within 0.1 deg of the Sun after 7.1 min, the same as with the wings rigid.\n- flex-sat.solar_array.wing-1.power: up to 980 W per wing in sunlight, 0 in each eclipse (the first from 23 to 58 min).\n\nTry changing:\n- First mode 0.05 Hz (Flexible solar arrays, Orbit / mass tab): the wings swing 0.94 deg and ring at 0.065 Hz, and the pointing still settles as before.\n- Damping 5%: the ringing dies only slightly sooner, since the control already damps most of it.\n- Recording interval 5 s: the Explain tab warns that the samples are too far apart to show the flexing.\n\nNote:\n- Flexible arrays need the rkf45 or rkf78 integrator.",
+  "schema_version": 4
+}
