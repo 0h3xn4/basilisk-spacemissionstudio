@@ -83,6 +83,7 @@ packages from PyPI.
 | S-12 | **Denial of service by a crafted scenario:** a `while` that never ends, a huge expression or a huge duration. | Low, low (the user's own session) | `while` stops after a fixed iteration cap; exponents are capped; durations are bounded by validation; every run is cancellable. Very large string or number products are still possible in a condition. | Mostly treated | `tests/test_mission_engine.py::test_while_loop_exceeding_iteration_cap_raises_clear_error` |
 | S-13 | **Network use the user did not start** (found 2026-10-09, review_log F-16, F-17). Basilisk 2.12.0 contacted github.com whenever it was imported, so in every run; and a run downloaded any support-data file missing from Basilisk's cache. | Medium (every run), low (privacy: reveals the tool's use and Basilisk version; supply chain: a download nobody asked for) | Basilisk's import-time request is kept on this computer by an import hook that points the proxy settings at a closed local port while that module loads (`spacemissionstudio/_offline.py`); runs read support data only from the cache, with checksums where Basilisk's registry has them (`engine/kernels.py`). Verified by `tests/test_offline.py`, also run in CI with no network interface. | Treated; residual: a new Basilisk release may add other network use, so requalification repeats the offline tests (SMP 8) | `tests/test_offline.py`; CI step "Offline tests with no network at all" |
 | S-14 | **Flight-software export** (SRS-F-18). It writes a C project the user then builds and runs, from a scenario that may come from someone else, and it replaces earlier exports. Found while writing this entry: the scenario and spacecraft names went into the generated C comments, a C string literal and a CMake comment as typed, so a name containing `*/`, a quote or a newline could have put code into the project. | Medium (scenarios are shared), high (the code is compiled and run) | User text reaches generated C and CMake only through `fsw_export.generate._comment` (one line, printable ASCII, comment delimiters broken) and `_c_string` (octal escapes for everything but plain printable ASCII); identifiers are ASCII-only. The exported Basilisk sources are checked against their git blob hashes on every read. A non-empty folder that holds no earlier export is refused; replacing an export deletes only the files its own manifest lists, inside the folder. | Implemented, tested | `tests/test_fsw_export.py::test_names_from_a_shared_scenario_cannot_put_code_into_the_export`, `test_the_export_holds_basilisks_bytes_documents_and_a_complete_manifest`; `tests/test_fsw_vendored_sources.py::test_a_changed_file_is_refused` |
+| S-15 | **Software-in-the-loop runs** (SRS-F-19). The tool starts a program the user names, gives it the simulation's inputs every step, and lets its outputs drive the simulated actuators; for the run it listens on a socket. A shared scenario must not be able to choose the program, and another local process must not be able to pose as it. | Medium (the program runs with the user's rights), medium (a local process could connect first) | The program is never read from the scenario: the user picks it in Run SIL... (or names it on the command line), sees its full path and SHA-256, and confirms; the hash is checked again just before the start, so a program swapped in between is refused. It is started with an argument list and no shell, with two fixed arguments. The socket is a Unix-domain socket in a new folder of mode 0700 (socket 0600), removed afterwards; on Windows, or on request, TCP bound to 127.0.0.1 only. A 128-bit session token, passed in the program's environment, must come back in HELLO (compared in constant time). Every frame is checked (magic, version, type, length at most 16 MiB, CRC-32, sizes, order); anything else stops the run with the reason and the program is stopped. | Implemented, tested; residual: on TCP a local process can connect before the program and make the run fail (it cannot pose as the program without the token) | `tests/test_sil_contract.py` (wrong token, versions, sizes, CRC, the socket's permissions), `tests/test_sil.py`, `tests/gui/test_sil_widgets.py::test_the_dialog_shows_the_programs_hash_and_needs_consent_for_each_program`, `tests/test_sil_contract.py::test_a_program_changed_after_consent_is_refused` |
 
 ## 4 Static security analysis
 
@@ -95,7 +96,7 @@ packages from PyPI.
 | S102 `exec` | `engine/mission_engine.py` (`script_block`) | By design, behind consent (S-01); noqa with reason |
 | S307 `eval` | `engine/mission_engine.py` (conditions) | **Removed:** replaced by the whitelist evaluator (S-02) |
 | S310 URL open (×6) | `earth_orientation`, `spaceweather`, `vizard_launcher` | Constant https URLs; noqa with reason |
-| S603 subprocess | `gui/vizard_launcher.py` | Argument list, no shell (S-11); noqa |
+| S603 subprocess | `gui/vizard_launcher.py`, `sil/runner.py` | Argument list, no shell (S-11, S-15); noqa |
 | S110, S112 try-except-pass/continue (×3) | `engine/scenario_checks.py`, `engine/vizard.py` | Deliberate: the Explain tab must survive a half-edited scenario; noqa with reason |
 | S101 assert | `gui/mission_dashboard_widget.py` | Type narrowing only; noqa |
 
@@ -108,8 +109,10 @@ input).
 
 The architecture (SDD 4.1) has no network service. Code from a file
 executes in exactly one place: `script_block`, behind consent. The tool opens
-no listening socket. During live runs Vizard, a separate program, listens
-on port 5556 and Basilisk connects to it (S-06).
+a listening socket only during a software-in-the-loop run, for the program
+the user confirmed: a private Unix-domain socket, or TCP on 127.0.0.1 (S-15).
+During live runs Vizard, a separate program, listens on port 5556 and
+Basilisk connects to it (S-06).
 
 **Residual vulnerabilities after treatment:**
 - S-05: the Vizard download is not verifiable.
@@ -117,7 +120,10 @@ on port 5556 and Basilisk connects to it (S-06).
   interface binding is unknown.
 - S-08: dependencies are not pinned by hash.
 - S-12: residual resource use in conditions.
-- The consent for S-01 relies on the user reading the code.
+- S-15: on TCP, another local process can connect first and make a SIL
+  run fail.
+- The consent for S-01 relies on the user reading the code, and the
+  consent for S-15 on the user trusting the program.
 
 ## 6 Delivery and installation (E-ST-40C 5.7.2.1b, 5.7.2.3b)
 

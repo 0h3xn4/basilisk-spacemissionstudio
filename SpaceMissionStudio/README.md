@@ -200,6 +200,16 @@ simulation's flight software exactly (GCC and Clang, Linux). The scenario
 records each export and flags it stale when its flight-software settings
 change. User Manual Sec. 6, "Exporting the flight software".
 
+**Software in the loop** -- Run SIL... (or `spacemissionstudio sil`)
+flies a spacecraft with an external flight-software program in
+lock-step, over a versioned transport contract (`SIL_CONTRACT.md`, a
+local socket), and compares every command with the simulation's own
+modules: per-signal residuals, round-trip and execution time, jitter,
+dropped steps (`spacemissionstudio.sil`). Each export includes the host
+harness and an adapter template for third-party C flight software. The
+exported flight software in the loop reproduces the normal run bit for
+bit. User Manual Sec. 6, "Running the flight software in the loop".
+
 **Mission planning** -- a GMAT/FreeFlyer-inspired Resources / Mission
 Sequence / Output architecture: `propagate` (duration, epoch, or
 event stop conditions: periapsis, apoapsis, or the start/end of the next

@@ -58,10 +58,11 @@ See SRS section 4 for the software overview.
 | ICD-07 | Basilisk is used only through its public Python API (2.12.0). | SRS-I-07 |
 | ICD-08 | Vizard is used through Basilisk's `vizSupport`: a save file or a live stream to a separate Vizard process. | SRS-I-08 |
 | ICD-09 | A flight-software export is a folder holding a standalone C project for one spacecraft, its interface control document, its traceability table, a `manifest.json` with the configuration digest and the SHA-256 of every file, and the recorded run (`capture.json`, `tests/data/*.trace`). | SRS-F-18 |
+| ICD-10 | A software-in-the-loop run exchanges frames of the SIL transport contract, version 1 (`SIL_CONTRACT.md` in every export), between the tool and the flight-software program it started: HELLO with the program's ports and layout hashes, RESET, one STEP and OUTPUT per step, ERROR, BYE. | SRS-F-19 |
 
 The interfaces are of three kinds:
 
-- **Software to software:** ICD-04 to ICD-09.
+- **Software to software:** ICD-04 to ICD-10.
 - **Software to hardware:** none. The tool uses only the host computer.
 - **Man-machine:** the GUI and the CLI (ICD-02). The GUI is described in
   the SUM.
@@ -167,6 +168,17 @@ messages (`SimulationBaseClass`, `spacecraft`, `gravityEffector`,
 | Record in the scenario | `Scenario.fsw_exports[]`: spacecraft, folder, `config_digest`, per-group hashes (`parts`), export time, Basilisk revision (RD1). |
 | Frequency | On the user's request. |
 
+#### 5.3.10 Software-in-the-loop link (ICD-10)
+
+| Item | Definition |
+|---|---|
+| Service | `sil` (CLI) or Run SIL... in the Flight Software tab runs the scenario with one spacecraft's flight software in an external program, one step at a time. |
+| Parties | The tool listens; the program, started as `<program> sil <address>` with the session token in `SMS_SIL_TOKEN`, connects. |
+| Transport | A Unix-domain stream socket in a folder only the user can open (Linux, macOS), or TCP on 127.0.0.1 (Windows, or on request). The protocol needs only a reliable ordered byte stream (`generated/fsw_transport.h`, `spacemissionstudio.sil.transport.Transport`). |
+| Format | Frames of a 28-byte little-endian header (magic `SMSL`, contract version 1, type, sequence number, payload length, simulation time in ns, CRC-32) and a payload. HELLO carries the token, name, configuration digest, step and every port (name, message type, size, 16-hex-digit layout hash); RESET and STEP carry a written flag and the raw payload per input port; OUTPUT the program's execution time and the same per output and telemetry port. Normative: `spacemissionstudio/fsw_export/templates/SIL_CONTRACT.md`. |
+| Errors | A wrong magic, version, type, length, CRC, token, step or port list; a frame out of order; no answer within the step timeout (10 s by default); a closed link; an exited program: ERROR with the reason, and the run stops. |
+| Frequency | Every flight-software step of the run. |
+
 ## 6 Validation requirements (E.2.1<6>)
 
 | ID | Method | Evidence |
@@ -180,11 +192,13 @@ messages (`SimulationBaseClass`, `spacecraft`, `gravityEffector`,
 | ICD-07 | T, I | the test suite against Basilisk 2.12.0 (CI); `tests/test_dependencies.py` |
 | ICD-08 | T | `tests/test_vizard*.py` |
 | ICD-09 | T | `tests/test_fsw_export.py`, `tests/test_fsw_export_units.py`, `tests/test_fsw_vendored_sources.py` |
+| ICD-10 | T | `tests/test_sil_contract.py` (both sides of the frames, every refusal), `tests/test_sil.py` (the C harness against the Python side) |
 
 ## 7 Traceability (E.2.1<7>)
 
 - **Backward (ICD → SRS):** column "SRS" of 5.2.
 - **Forward (SRS-I-01 to SRS-I-08 → ICD):** one-to-one. ICD-nn details
-  SRS-I-nn. ICD-09 details the export format of SRS-F-18.
+  SRS-I-nn. ICD-09 details the export format of SRS-F-18, ICD-10 the
+  SIL link of SRS-F-19.
 - **Further:** the CCSDS items are traced in
   `compliance/traceability_matrix.csv`.

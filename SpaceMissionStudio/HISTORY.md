@@ -8579,3 +8579,94 @@ format); SRF (the export redistributes Basilisk sources); security
 analysis S-14. The 5.3.2.4 (automatic code generation) entries stay not
 applicable to the tool's own code, and now say what each export provides
 to the developer of the flight software it generates.
+
+## Software in the loop (SRS-F-19): workbench phase 2
+
+The flight software can now fly the spacecraft from outside the tool:
+**Run SIL...** on the Flight Software tab, or `spacemissionstudio sil`,
+starts a program (an export's `fsw_host`, the adapter's
+`fsw_adapter_host`, or anything that follows the contract) and runs the
+scenario in lock-step with it. Basilisk is unchanged.
+
+**The contract (`SIL_CONTRACT.md`, version 1).**
+- Frames of a 28-byte header (magic, version, type, sequence number,
+  length, time in ns, CRC-32) and a payload.
+- HELLO carries the program's ports with their layout hashes, so a
+  program built for other payloads is refused before the first step.
+  Then RESET, one STEP and OUTPUT per step, ERROR and BYE.
+- The byte stream is a Unix-domain socket in a private folder (TCP on
+  127.0.0.1 on Windows) behind a three-function interface on each side.
+  A serial or UDP link replaces only that.
+- Implemented twice: in Python (`spacemissionstudio.sil`) and in C (the
+  export's `generated/fsw_sil.c`). The tests run each against the other.
+
+**Where the bridge goes.** Every model in the dynamics task has the same
+priority, so they run in the order they were added. A first look at the
+templates showed that `ExtForceTorque` (06, 15) reads `mrpFeedback`'s
+command right after it, in the same step. A bridge added at the end of
+the task would have applied the program's commands one step late.
+- The runner builds the scenario once to find the spacecraft's last
+  flight-software module.
+- It then builds it again with a `SimBaseClass` subclass. That subclass
+  calls `super().AddModelToTask` and adds the bridge right after that
+  module, at its priority.
+- The phase 1 timing check (no model between the first and last module
+  may see a difference) then guarantees the same-step latency.
+- A second model at the end of the task keeps the inputs as they stand
+  once every model has reset; they go out in RESET.
+
+**Shadow and drive.** Each step the bridge does three things:
+- sends the inputs as the modules read them;
+- compares the program's outputs with what the modules just wrote;
+- writes the program's actuator commands into the modules' output
+  messages through their own `write()`.
+
+The actuators read those commands. The modules keep running as the
+reference, on the same inputs.
+
+**Measured.**
+- The exported `fsw_host` in the loop reproduces the normal run bit for
+  bit: every result series identical and every residual zero. This holds
+  for templates 06 (same-step actuation, TCP), 12 (the momentum-dumping
+  priming re-Reset) and 13 (models between the modules), on Linux.
+- Round trip: 0.17 to 0.19 ms per step on average on this test machine
+  (template 07, 0.4 ms at the 99th percentile).
+- An export made with a 20 % higher P gain, run against the original
+  scenario, showed wheel-torque residuals up to 1.8e-3 N*m, settling
+  within about 0.1 h, and the stale-export warning.
+
+**Failing loudly.** Each of these stops the run with the reason, and the
+program's last output is kept:
+- a wrong token, version, step, port name, size or layout hash (every
+  difference named);
+- a broken frame;
+- no answer within the step timeout;
+- a closed link, an exited program, or an ERROR from the program.
+  `fsw_host` sends a module's `BSK_ERROR` as one before it exits; no
+  test triggers a module error, so that path is not exercised.
+
+An optional step deadline counts late answers as dropped steps; the late
+answers are recognised by their sequence number and discarded.
+`SimulationService` gained one optional argument (the simulation class);
+an exception raised in a Python SysModel comes out of
+`ExecuteSimulation()` as a generic "director method" error, so the
+runner reports the bridge's own error instead.
+
+**Adapter.** Each export now also has `adapter/`:
+- generated payload structs for every port, and the configuration
+  constants the modules use;
+- port glue;
+- a template `fsw_adapter.c` (`fsw_init`, `fsw_reset`, `fsw_step`);
+- `ADAPTER_GUIDE.md`.
+
+It builds as `fsw_adapter_host` with the same harness, so it can also
+replay the recorded run. As generated it sets no command; the comparison
+then lists every output as never written.
+
+**Consent.** The program never comes from the scenario. The dialog
+shows its full path and SHA-256 and needs a tick for each program; the
+runner checks the hash again just before starting it (security analysis
+S-15). The analysis no longer says the tool opens no listening socket.
+
+**Compliance.** SRS-F-19 with its verification, ICD-10 (the SIL link),
+security analysis S-15, the SDD component map.

@@ -61,7 +61,8 @@ SOFTWARE_RULES = [
      "export (SRS-F-18) generates C for the user's flight software; for that software these requirements fall on its "
      "developer, and each export carries the records they need: the generation's inputs and provenance "
      "(manifest.json, capture.json), the interfaces (ICD.md), the parameter traceability (TRACEABILITY.md) and its "
-     "verification (unit tests and the replay of a recorded run).", "-", "S", "no", ""),
+     "verification (unit tests, the replay of a recorded run, and a SIL harness that runs it against the simulation, "
+     "SRS-F-19).", "-", "S", "no", ""),
     ("E-ST-40C", "5.3.2.5a", "P", "compliance/docs/SDP.md section 6 (configuration management description); git", "Changes go through git and CI; no change board (waived, D-12) and no release tags yet (version 2.1.0 to be tagged, decision 11).", "-", "S", "no", "R14,D-12"),
     ("E-ST-40C", "5.3.3*", "N", "-", "No joint or technical reviews held.", _REVIEW_FIX, "M", "no", "H01,D-08"),
     ("E-ST-40C", "5.3.4*", "N", "-", "No project reviews (SRR, PDR, CDR, QR, AR) held.", _REVIEW_FIX, "M", "no", "H01,D-08"),

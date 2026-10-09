@@ -482,7 +482,9 @@ and writes:
 | `basilisk/` | The Basilisk 2.12.0 sources of the modules, unchanged, with Basilisk's ISC licence |
 | `generated/fsw_config.c` | Every module parameter and fixed configuration message, each with the scenario field and GUI control it comes from |
 | `generated/fsw_scheduler.c` | `fsw_init`, `fsw_reset` and `fsw_step`: the modules in the simulation's order, at its step |
-| `host/fsw_host.c` | `fsw_host info` lists the ports; `fsw_host replay` runs a recorded input trace |
+| `host/fsw_host.c` | `fsw_host info` lists the ports; `fsw_host replay` runs a recorded input trace; `fsw_host sil` runs it in the loop |
+| `adapter/` | A template that puts flight software of your own behind the same ports (`ADAPTER_GUIDE.md`) |
+| `SIL_CONTRACT.md` | How the tool and a flight-software program talk in the loop |
 | `tests/` | One unit test per module and a replay of the recorded run |
 | `ICD.md` | Every input, output, telemetry and configuration message: fields, units, producer, consumers, rate |
 | `TRACEABILITY.md` | GUI parameter, scenario field, symbol and line in `fsw_config.c`, Basilisk source file |
@@ -515,6 +517,66 @@ Refused, with the reason: comms pointing (its mode switch is Python), and
 spacecraft without attitude flight software. Station keeping, phasing,
 formation control and the data-handling gate run in Python in the tool
 and are listed in the ICD as not exported.
+
+### Running the flight software in the loop
+
+**Run SIL...** on a spacecraft's card (or `spacemissionstudio sil`) runs
+the scenario with that spacecraft's flight software in a separate
+program: software in the loop (SIL). Each step the tool sends the
+program the spacecraft's inputs, waits for its commands, and gives them
+to the wheels, thrusters or torque rods in that same step. Vizard shows
+the run as usual. The spacecraft's own modules keep running on the same
+inputs as the reference, so every command can be compared with what
+they computed.
+
+1. Export the flight software and build it (above): the program is
+   `<folder>/build/fsw_host`. For flight software of your own, build
+   `fsw_adapter_host` from the export's `adapter/` (its `ADAPTER_GUIDE.md`).
+2. Press **Run SIL...**. The dialog finds the export's `fsw_host`, or
+   choose another program. It shows the program's SHA-256. Tick that you
+   trust it (it runs with your user's rights) and press **Run SIL**.
+3. The run goes as any other run (progress bar, live plots, Abort). At
+   the end the Flight Software tab shows the comparison.
+
+| In the comparison | What it is |
+|---|---|
+| Steps, Dropped steps | Steps run; steps whose answer missed the deadline |
+| Max \|residual\| | The largest difference between the program's and the modules' values (external - reference), over every signal and step |
+| Round trip p99, Jitter | The time from sending a step to its answer, 99th percentile and standard deviation |
+| Flight-software step | The program's own time per step, as it reports it |
+| Signals | Every output and telemetry value: largest and RMS residual, when, the reference's size, steps not written |
+| Residuals | The residuals over time, one plot per message |
+| Program output | What the program printed |
+
+**Save report...** writes the full report (JSON) and the sampled
+residuals (CSV). From the command line:
+
+```sh
+spacemissionstudio sil scenario.json --spacecraft sat-1 --binary <folder>/build/fsw_host \
+    --report sil.json --max-error 1e-9
+```
+
+`--max-error` makes the exit status 2 when any residual is larger, or a
+command was never written: a check for CI.
+
+**Options.** The **step deadline** (off by default) counts a late answer
+as a dropped step, and the previous commands stay in place. The **step
+timeout** (10 s) stops the run when the program does not answer at all.
+On Linux and macOS the link is a Unix-domain socket only you can open;
+on Windows, TCP on 127.0.0.1.
+
+**It stops, with the reason,** when the program speaks another contract
+version, runs at another step, or has other ports or payload layouts
+than the spacecraft (each difference is named); when it exits, closes
+the link or reports an error; and at the timeout. An export older than
+the scenario's settings still runs, with a "stale export" warning: its
+residuals then show what the changed settings do.
+
+**Results.** On Linux, the exported `fsw_host` in the loop reproduces
+the normal run exactly, bit for bit, for the attitude templates tested
+(06, 12 and 13), with zero residuals. On this test machine one step
+took 0.17 to 0.19 ms on average there and back. The mission sequence and
+Monte Carlo are not run in SIL: the scenario runs its set duration once.
 
 Limits: the navigation inputs are what the simulation's `simpleNav`
 gives, the true state without navigation error; one rate group, the
@@ -882,6 +944,10 @@ anyone who hasn't worked with spacecraft before:
 * **Interface control document (ICD)** -- a document that lists every
   message a piece of software reads and writes: its fields, units, who
   produces it and who reads it. Each flight-software export has one.
+* **Software in the loop (SIL)** -- running the real flight software as
+  its own program against the simulated spacecraft, step by step: the
+  simulation sends it the sensor readings and flies the spacecraft with
+  its commands, to check it before it ever runs on the spacecraft.
 * **Ground station** -- a fixed point on Earth's surface a spacecraft
   might need to communicate with; SpaceMissionStudio can compute exactly
   when each spacecraft is visible to each ground station.
