@@ -8290,5 +8290,95 @@ that was not the cause. What remained new was the tab itself being hidden
 else in the main window hides a tab. The tab is now inserted when it is
 wanted and removed otherwise, so the main window never holds a hidden
 tab, and its test checks that every tab there is visible. The crash could
-not be reproduced on Linux; the macOS CI run on this change is the
-check.
+not be reproduced on Linux; the macOS CI run on this change passed.
+
+## Onboard data handling and a patch-antenna downlink (SRS-F-13, SRS-F-15)
+
+A spacecraft can now carry instruments, an onboard memory and a
+transmitter (`SpacecraftConfig.data_handling`, `engine.data_handling`).
+The radio link used to be a margin estimate only: nothing produced data,
+stored it or sent it.
+
+**What Basilisk offers, and what is used.** Basilisk has two chains. The
+mature one -- `simpleInstrument`, `partitionedStorageUnit`,
+`spaceToGroundTransmitter`, wired as `examples/scenarioGroundDownlink.py`
+wires them -- is used. The newer RF chain (`simpleAntenna`, `linkBudget`,
+`downlinkHandling`, all beta) is not: `simpleAntenna` refuses a
+directivity below 9 dB (`setAntennaDirectivity_dB` raises a Basilisk
+error), and even at 9 dB its Gaussian beam is 68 deg wide, so it cannot
+represent the patch antennas most small satellites fly (real user
+feedback: "most satellites only use patch antennas"). `linkBudget` also
+has no line-of-sight check. Basilisk itself is unchanged.
+
+**The link gate.** The transmitter sends while any of its access messages
+says there is access. A Python module of this tool, `_DownlinkGate`,
+re-publishes each ground station's real `groundLocation` access message
+with access cleared unless the link closes: the Eb/N0 margin for the real
+slant range, with the antenna's gain toward the station, is 0 dB or more.
+That gain comes from the simulated attitude: the angle between the
+antenna's body-frame boresight and the line of sight to the station,
+through `RFLinkConfig.antenna_pattern`:
+
+* `"fixed"` -- the earlier behaviour (the peak gain, and the parabolic
+  pointing loss when `antenna_beamwidth_deg` is set);
+* `"cosine"` -- a patch: `G0 cos^n(theta)` in front of the ground plane,
+  `n = 10^(G0/10) / 2 - 1` (cos^n over the forward hemisphere has
+  directivity 2(n + 1); a test integrates the pattern numerically and
+  gets the peak gain back), `antenna_front_to_back_db` below the peak
+  behind it;
+* `"table"` -- gain against angle from the antenna's datasheet.
+
+The cos^n model takes the gain as the directivity, so a real patch's beam
+is narrower than the model's (120 deg at half power for 6 dBi); the
+manual and the editor say so and point to the table. Scenarios without a
+pattern or data handling keep their margin series exactly as before.
+
+**The ledger.** `_DataLedger` follows the storage unit step by step and
+counts generated, lost and downlinked bits, repeating the storage unit's
+rule (`DataStorageUnitBase::integrateDataStatus`): each instrument's step
+of `round(rate * dt)` bits is added only if it fits, then the transmitter
+removes data, never below zero. Generated = downlinked + lost + on board,
+and a test checks the downlinked count against the transmitter's own
+output summed over the steps (a memory that never runs empty: equal to
+the bit). It also switches the transmitter's power draw; instruments draw
+constant power. Long runs carry each partition's contents into the next
+segment, and the cumulative counts continue.
+
+A first version gave the gate an explicit task priority, which ran it
+before the ground station's access module: it read the previous step's
+access, and the link stayed "closed" one step past the end of each pass.
+The test that link-closed never exceeds access caught it; the chain now
+runs at the default priority, in the order it is added, after the
+spacecraft and ground stations.
+
+**Results and the GUI.** Series `<sc>.data_handling.stored` (total and
+per instrument), `.downlink_rate`, `.data_generated`, `.data_downlinked`,
+`.data_lost`, and per station `.link_margin_db` (now from the gate),
+`.antenna_off_boresight` and `.link_closed`. The Events tab gains
+"downlink" events: one per window in which the link closed and data went
+down, with the amount (a first version, one event per sample with a
+non-zero rate, split a pass into many 0-minute events once the memory ran
+empty). The spacecraft editor's power/propulsion tab has the antenna
+pattern (with its beamwidth shown) and a Data handling group with an
+instrument table; the Explain tab gives each spacecraft's data per day,
+how long until its memory is full and what a 10-minute pass carries;
+`spacemissionstudio run` prints the totals.
+
+**Template 26** (Earth observation: data and its downlink): the 150 kg
+microsatellite preset at nadir, a camera (80 kbit/s orbit average) and
+housekeeping into 3 Gbit, a 6 dBi S-band patch on the nadir face sending
+to Berlin at 5 Mbit/s. Measured over its 2 days: 14.52 Gbit generated,
+11.49 downlinked, 0.89 lost, 2.14 on board at the end; the memory is
+first full at 11.7 h, in the 9 to 11 h gaps between Berlin's two daily
+pass groups. The margin is 16.2 dB at the best pass and 3.7 dB at the
+10 deg edge, where Berlin is 64.8 deg off the boresight. Its "try
+changing" items were run: an 8 Gbit memory loses nothing (12.37 Gbit
+downlinked); a second station on Svalbard (78.23 N, 15.39 E) downlinks
+14.51 of the 14.52 Gbit; 10 Mbit/s lowers the edge margin to 0.6 dB.
+
+**Cost.** The ledger and gate run every step in Python: a quarter day of
+template 23 at 1 s steps took 16.3 s without data handling, 19.8 s with
+the memory only and 21.8 s with the downlink as well.
+
+**SRS-F-13** now names "onboard data generation, storage and downlink"
+among the analyses; `tests/test_data_handling.py` verifies it.

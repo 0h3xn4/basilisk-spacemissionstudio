@@ -91,6 +91,7 @@ Where each piece lives in the app, and which template shows it best:
 | Sensors and actuators | ... > **Sensors / actuators** | 07, 12, 13, 14 |
 | Where it points | ... > **Attitude control** | 06, 15, 19 |
 | Power, thrusters, radio | ... > **Power / propulsion / link budget** | 07, 17, 18, 19 |
+| Instruments, memory, downlink | ... > **Power / propulsion / link budget** > Data handling | 26 |
 | Ground stations | Scenario Editor > Ground stations | 19, 22 |
 | Mission sequence | Scenario Editor > Mission sequence | 08, 16, 23 |
 | Monte Carlo | Scenario Editor > Monte Carlo | 09, 25 |
@@ -210,7 +211,7 @@ path, each step building on the one before:
 | 4. Disturbances and momentum | 10, 21, 12, 13, 11 | Gravity-gradient and surface torques; unloading wheels with thrusters or torque rods; thrusters for pointing |
 | 5. Missions in steps | 08, 16, 23 | Mission Sequences: burns, a Lambert transfer, stopping on a ground pass |
 | 6. Several spacecraft | 04, 05, 24 | A Walker constellation; a formation held by two different control laws |
-| 7. Whole systems | 19, 20, 23 | Power, radio link and thermal working together |
+| 7. Whole systems | 19, 20, 23, 26 | Power, radio link and thermal working together; data from instrument to ground |
 | 8. Uncertainty | 09, 25 | Monte Carlo batches: mass, orbit insertion, drag |
 
 **Starting your own mission?** Open **22** (a realistic satellite, orbit
@@ -366,6 +367,52 @@ bit are not fired. The Basilisk gains are in the same group. The drift
 orbit's tolerances apply to the drift orbit only. With a Basilisk law,
 the follower's own station keeping never fires: the law follows the
 chief's reboosts itself.
+
+### Data handling and the downlink
+
+**Data handling** (spacecraft editor, **Power / propulsion / link budget**
+tab) gives a spacecraft instruments, an onboard memory and a transmitter,
+all Basilisk modules (`simpleInstrument`, `partitionedStorageUnit`,
+`spaceToGroundTransmitter`):
+
+* Each instrument writes at a constant rate into its own part of the
+  memory. For an instrument that does not run all the time, give its
+  orbit-average rate. Housekeeping telemetry is an instrument too.
+* A full memory takes nothing more: what does not fit is lost, and the
+  run counts it.
+* With the **Downlink RF link budget** on, the transmitter sends at the
+  link's data rate to any ground station whose link closes: the station is
+  in view and the Eb/N0 margin is 0 dB or more. It empties the fullest
+  part of the memory first.
+* Instruments and the transmitter can draw power from the power budget.
+
+**Antenna pattern** (same group as the link budget) says how the
+antenna's gain falls off away from its boresight. The margin then uses
+the gain toward the station at every step, from the simulated attitude:
+
+| Pattern | Gain toward the station | Use it for |
+|---|---|---|
+| Fixed gain | The TX antenna gain, always | An antenna that tracks the station (comms pointing), or a first estimate |
+| Patch (cos^n) | The peak gain times cos^n of the angle off boresight, n from the peak gain; behind the ground plane, the front-to-back ratio below the peak | A patch antenna on a body face, before you have its datasheet |
+| Gain table | The datasheet's gain against angle, interpolated in dB | A real antenna |
+
+The cos^n model takes the gain as the directivity. A real patch's gain
+is below its directivity, so for the same gain its beam is narrower than
+the model's (120 deg wide at half power for 6 dBi): a datasheet table is
+closer. Basilisk's own antenna model (`simpleAntenna`) is not used: it
+needs a directivity above 9 dB, which a patch does not have.
+
+The run records, per spacecraft, `<sc>.data_handling.stored` (in total and
+per instrument), `.downlink_rate`, `.data_generated`, `.data_downlinked`
+and `.data_lost`; and per station `<gs>.access_to_<sc>.link_margin_db`,
+`.antenna_off_boresight` and `.link_closed`. The Events tab lists each
+downlink and how much it sent, and `spacemissionstudio run` prints the
+totals. Template 26 shows all of it.
+
+Not modelled: rates that change over an orbit; more than one transmitter,
+or adaptive coding; atmosphere, rain and polarisation losses in the link
+budget (lump them into the implementation loss); ground antenna pointing,
+which is assumed perfect.
 
 ## 7. Reading the Results tab
 
@@ -725,6 +772,13 @@ anyone who hasn't worked with spacecraft before:
 * **Ground station** -- a fixed point on Earth's surface a spacecraft
   might need to communicate with; SpaceMissionStudio can compute exactly
   when each spacecraft is visible to each ground station.
+* **Link margin** -- how much stronger the received radio signal is than
+  the receiver needs (Eb/N0 above the required value, in dB). At 0 dB or
+  more the link closes and data can be sent; below 0 dB it cannot.
+* **Patch antenna** -- a flat antenna on a face of the spacecraft, the
+  kind most small satellites fly. Its gain is highest straight out of the
+  face (its boresight) and falls off toward the sides, so the link to a
+  station depends on where the spacecraft points.
 * **Delta-V** -- how much a spacecraft's velocity changes from a
   maneuver/burn; the standard way to measure "how much fuel does this
   cost", independent of the specific spacecraft.

@@ -138,6 +138,7 @@ the table below.
 | After the new Monte Carlo dispersions (SRS-F-13), Python 3.11 | 2383 | 10 | 0 (18 new tests: validation of the five new quantities, one draw each and a three-run batch through Basilisk's Controller, the editor's new fields; no changed expectations) |
 | After the newcomer documentation, templates 22-25 and `examples/` (SUM, SRS-O-02, SRS-H-02), Python 3.11 | 2489 | 10 | 0 (106 new tests: the four new templates in every parametrized template, wizard, GUI and explainer test, their structure and claims (three Basilisk runs), the five examples, the selected-row contrast, the presets in orbit-only mode; no changed expectations) |
 | After Monte Carlo results in the app (SRS-F-13, SRS-F-15, S-04), Python 3.11 | 2504 | 10 | 0 (15 new tests: the pickle-free summary, its curvilinear spread and zero-spread formatting, a Basilisk batch writing it, the Monte Carlo tab, its ensemble plot and when the tab shows; changed expectations: `tests/test_examples.py`'s Monte Carlo example now reads the summary and returns three spreads) |
+| After onboard data handling and the patch-antenna downlink (SRS-F-13, SRS-F-15), Python 3.11 | 2557 | 10 | 0 (53 new tests: antenna patterns, the data-handling schema, the instrument/memory/transmitter chain and its bookkeeping in Basilisk, the link gate's geometry, long-run carry-over, power draw, downlink events, the run summary, the editor, template 26's wizard and claims; changed expectations: `tests/gui/test_theme.py`'s Events colours now cover six kinds, the new "downlink" one included) |
 
 ## Resuming
 
