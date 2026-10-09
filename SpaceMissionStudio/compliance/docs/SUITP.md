@@ -64,7 +64,8 @@ by the data files of SDD 4.1.
 
 - No master schedule exists (SVerP 4.3).
 - The tests run in CI on every push and pull request that touches the
-  tool: about 5 minutes for the suite.
+  tool: about 5 minutes for the suite. A change to Markdown files only
+  runs the document checks and the Help tests instead (about 2 minutes).
 - There are no other test milestones.
 
 ### 5.3 Resources summary (K.2.1<5.3>)

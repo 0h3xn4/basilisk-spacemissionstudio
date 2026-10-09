@@ -87,6 +87,19 @@ def test_editing_eclipse_sunlit_threshold_updates_request(qtbot):
     assert request.eclipse_sunlit_threshold == 0.9
 
 
+def test_the_control_law_choice_reaches_the_request(qtbot):
+    """The dialog offers the drift orbit and Basilisk's two formation laws."""
+    from spacemissionstudio.gui.phasing_formation_dialog import PhasingFormationDialog
+
+    dialog = PhasingFormationDialog(["chief-1"])
+    qtbot.addWidget(dialog)
+    combo = dialog.control_law_combo
+    assert [combo.itemData(i) for i in range(combo.count())] == ["drift_orbit", "mean_oe", "hill_pd"]
+    assert dialog.to_request().control_law == "drift_orbit"
+    combo.setCurrentIndex(combo.findData("mean_oe"))
+    assert dialog.to_request().control_law == "mean_oe"
+
+
 def test_central_body_is_not_independently_selectable(qtbot):
     from spacemissionstudio.gui.phasing_formation_dialog import PhasingFormationDialog
 

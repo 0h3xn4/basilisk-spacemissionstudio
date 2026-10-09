@@ -52,6 +52,7 @@ KINDS = (ACCESS, ECLIPSE, BURN, THRUSTER, MODE)
 _UMBRA_SHADOW_FACTOR = 0.01  # [-] below this the Sun is fully hidden (umbra)
 # The phasing controller's states (engine.orbit_maintenance.PhasingKeepingController).
 _PHASING_IDLE, _PHASING_BURN_OUT, _PHASING_DRIFT, _PHASING_BURN_RESTORE = range(4)
+_PHASING_FIRING = 4  # a Basilisk formation law firing (engine.formation_control.FIRING)
 
 
 @dataclass(frozen=True)
@@ -171,6 +172,8 @@ def _burns(result: ResultSet) -> List[Event]:
                          _burn_maker(result, series, spacecraft, "phasing burn (start drift)", delta_v_name))
         events += _spans(series, state == _PHASING_BURN_RESTORE,
                          _burn_maker(result, series, spacecraft, "phasing burn (stop drift)", delta_v_name))
+        events += _spans(series, state == _PHASING_FIRING,
+                         _burn_maker(result, series, spacecraft, "formation control firing", delta_v_name))
     return events
 
 

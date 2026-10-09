@@ -883,14 +883,16 @@ class SpacecraftEditorDialog(QDialog):
         self.phasing_keeping_group.setCheckable(True)
         self.phasing_keeping_group.setToolTip(
             "Checking this ON holds this spacecraft's along-track spacing from a 'chief' "
-            "spacecraft at a target distance, via an occasional drift-orbit maneuver (a small, "
-            "temporary altitude offset, let it drift, then a restoring burn) -- useful for "
+            "spacecraft at a target distance -- by default via an occasional drift-orbit maneuver "
+            "(a small, temporary altitude offset, let it drift, then a restoring burn), or by one "
+            "of Basilisk's formation-flying control laws (see 'Control law') -- useful for "
             "spreading satellites evenly around the SAME orbital plane, e.g. a Walker "
             "constellation. REQUIRES 'Station keeping' above to also be enabled: both share "
             "one physical thruster/propellant tank, with altitude-keeping taking priority if "
             "both want to fire on the same tick. While this is on, that station keeping holds "
             "altitude RELATIVE TO THE CHIEF (it mirrors the chief's reboosts; its target "
-            "altitude is ignored and its deadband is measured below the chief), so give the "
+            "altitude is ignored and its deadband is measured below the chief); with a Basilisk "
+            "law it never fires on its own, the law follows the chief instead. Give the "
             "chief its own station keeping. Needs a chief spacecraft in the same scenario "
             "sharing this one's orbital plane and altitude."
         )
@@ -910,6 +912,26 @@ class SpacecraftEditorDialog(QDialog):
             self.pk_chief_combo.addItem("(add another spacecraft to this scenario first)", userData=None)
             self.pk_chief_combo.setEnabled(False)
         pk_form.addRow("Chief spacecraft", self.pk_chief_combo)
+        self._pk_form = pk_form
+
+        # engine.formation_control: Basilisk's own formation-flying laws as
+        # alternatives to the drift-orbit controller.
+        self.pk_control_law_combo = ComboBox()
+        for label, law in (("Drift orbit (occasional burns)", "drift_orbit"),
+                           ("Mean orbital elements (Basilisk meanOEFeedback)", "mean_oe"),
+                           ("Hill-frame PD (Basilisk hillFrameRelativeControl)", "hill_pd")):
+            self.pk_control_law_combo.addItem(label, userData=law)
+        self.pk_control_law_combo.setToolTip(
+            "Drift orbit: a few planned burns when the separation leaves its tolerance.\n"
+            "Mean orbital elements: continuous feedback on all six mean elements; holds the "
+            "separation to tens of metres, for far more delta-V (template 05: 3.3 m/s in 90 days "
+            "against 0.014 m/s for the drift orbit). Earth with J2 only.\n"
+            "Hill-frame PD: holds a fixed point next to the chief; for close formations "
+            "(about a kilometre) with enough thrust -- it fires all the time and can diverge "
+            "if the thruster saturates.\n"
+            "See User Manual, 'Formation control laws'."
+        )
+        pk_form.addRow("Control law", self.pk_control_law_combo)
 
         # One row per stage instead of a comma-separated list.
         self.pk_target_separations = NumberListEditor(
@@ -972,6 +994,31 @@ class SpacecraftEditorDialog(QDialog):
             "during a correction."
         )
         pk_form.addRow("Max drift-orbit SMA offset [km]", self.pk_max_delta_sma_km)
+        self.pk_mean_oe_gain = _spin(1.0e-3, 1.0e9, decimals=1, step=500.0,
+                                      value=pk0.mean_oe_gain if pk0 else 2500.0)
+        self.pk_mean_oe_gain.setToolTip(
+            "meanOEFeedback's gain on every mean-element error, per kg of spacecraft (the "
+            "module outputs a force). 2500 pulls a 5 km error in within a day at 550 km; "
+            "a tenth of it is slow, ten times it costs more to hold."
+        )
+        pk_form.addRow("Element gain [m^2/s^3 per kg]", self.pk_mean_oe_gain)
+        self.pk_hill_position_gain = _spin(1.0e-12, 1.0, decimals=7, step=1.0e-6,
+                                            value=pk0.hill_position_gain if pk0 else 2.0e-6)
+        self.pk_hill_position_gain.setToolTip(
+            "Position gain K (same on all three Hill axes). The command is K x position error, "
+            "so keep it under the thruster's acceleration for the errors you expect."
+        )
+        pk_form.addRow("Position gain K [1/s^2]", self.pk_hill_position_gain)
+        self.pk_hill_velocity_gain = _spin(1.0e-9, 10.0, decimals=5, step=1.0e-4,
+                                            value=pk0.hill_velocity_gain if pk0 else 2.0e-3)
+        self.pk_hill_velocity_gain.setToolTip(
+            "Velocity gain P (same on all three axes); about 2 x sqrt(K) for a well-damped hold."
+        )
+        pk_form.addRow("Velocity gain P [1/s]", self.pk_hill_velocity_gain)
+        law_index = self.pk_control_law_combo.findData(pk0.control_law if pk0 else "drift_orbit")
+        self.pk_control_law_combo.setCurrentIndex(max(law_index, 0))
+        self.pk_control_law_combo.currentIndexChanged.connect(self._show_phasing_law_fields)
+        self._show_phasing_law_fields()
         if pk0 is not None:
             chief_index = self.pk_chief_combo.findData(pk0.chief_spacecraft)
             if chief_index >= 0:
@@ -1662,6 +1709,20 @@ class SpacecraftEditorDialog(QDialog):
             tank_position_b_m=[self.ft_tank_pos_x.value(), self.ft_tank_pos_y.value(), self.ft_tank_pos_z.value()],
         )
 
+    def _show_phasing_law_fields(self) -> None:
+        """Only the chosen control law's own settings are shown."""
+        law = self.pk_control_law_combo.currentData()
+        drift = (self.pk_tolerance_fraction, self.pk_restore_tolerance_fraction, self.pk_correction_window_days,
+                 self.pk_max_drift_days, self.pk_max_delta_sma_km)
+        rows = [(w, law == "drift_orbit") for w in drift] + [
+            (self.pk_mean_oe_gain, law == "mean_oe"),
+            (self.pk_hill_position_gain, law == "hill_pd"), (self.pk_hill_velocity_gain, law == "hill_pd")]
+        for widget, shown in rows:
+            widget.setVisible(shown)
+            label = self._pk_form.labelForField(widget)
+            if label is not None:
+                label.setVisible(shown)
+
     def _phasing_keeping_to_dataclass(self) -> PhasingKeepingConfig | None:
         if not self.phasing_keeping_group.isChecked():
             return None
@@ -1681,6 +1742,10 @@ class SpacecraftEditorDialog(QDialog):
             correction_window_days=self.pk_correction_window_days.value(),
             max_drift_days=self.pk_max_drift_days.value(),
             max_delta_semi_major_axis_km=self.pk_max_delta_sma_km.value(),
+            control_law=self.pk_control_law_combo.currentData(),
+            mean_oe_gain=self.pk_mean_oe_gain.value(),
+            hill_position_gain=self.pk_hill_position_gain.value(),
+            hill_velocity_gain=self.pk_hill_velocity_gain.value(),
         )
 
     def _power_to_dataclass(self) -> PowerConfig | None:

@@ -217,6 +217,41 @@ A **validation message** at the very bottom of this tab updates live as
 you type, in plain language (e.g. naming exactly which field is missing
 or invalid) -- you don't have to guess why Run is unavailable.
 
+### Formation control laws
+
+A follower's **Phasing keeping** (spacecraft editor, power/propulsion
+tab) holds its distance ahead of the chief with one of three laws, set
+in **Control law**. All three use the follower's station-keeping
+thruster and tank, and none fires in eclipse.
+
+| Law | How it works | Good for |
+|---|---|---|
+| Drift orbit (default) | When the separation leaves its tolerance, a burn lowers or raises the orbit slightly, the follower drifts back, and a second burn stops it. | Long missions; the fewest firings. |
+| Mean orbital elements | Basilisk's `meanOEFeedback`: continuous feedback on all six mean orbital elements. | Holding a separation to tens of metres, at a much higher delta-V. Earth with J2 (gravity degree 2 or more) only. |
+| Hill-frame PD | Basilisk's `hillFrameRelativeControl`: holds a fixed point next to the chief. | Close formations, about a kilometre, for short phases. |
+
+Measured on template 05 (550 km, 405 kg, 0.05 N thruster; 90 days with
+degree-10 gravity, Sun, Moon and drag):
+
+* Drift orbit kept the follower within 5 km of 50 km (2.3 km RMS) for
+  0.014 m/s.
+* Mean orbital elements kept it within 65 m (26 m RMS) for 3.3 m/s, about
+  230 times as much. Started 5 km off, it closes the gap within a day for
+  2.6 m/s.
+* Hill-frame PD holds 1 km for about 0.9 m/s a day. It fights every
+  natural relative motion, J2's included.
+* Hill-frame PD cannot hold template 05's 50 km. Its straight-line
+  feedforward needs 6.5e-4 m/s^2 there, five times what the thruster
+  gives. When it asks for more than the thruster can give, it diverges;
+  the Explain tab warns before you run.
+
+Neither Basilisk law was designed for a thrust limit. Their requests are
+cut to the thruster's thrust, and requests under half a minimum impulse
+bit are not fired. The Basilisk gains are in the same group. The drift
+orbit's tolerances apply to the drift orbit only. With a Basilisk law,
+the follower's own station keeping never fires: the law follows the
+chief's reboosts itself.
+
 ## 7. Reading the Results tab
 
 After a run finishes, the **Results** tab shows one plot at a time:

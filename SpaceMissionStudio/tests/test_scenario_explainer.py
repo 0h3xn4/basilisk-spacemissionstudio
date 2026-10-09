@@ -146,6 +146,25 @@ def test_formation_diagram_uses_the_first_entry_of_a_multi_step_schedule():
     assert explanation.formation_diagrams[0].target_separation_km == 1000.0  # the FIRST (current) step
 
 
+def test_a_basilisk_formation_law_gets_its_badge_and_no_tolerance_diagram():
+    """The diagram draws the drift-orbit law's trigger/restore band, which a
+    Basilisk law (engine.formation_control) does not have."""
+    chief = SpacecraftConfig(name="chief-1", orbit=OrbitIC(
+        type="classical_elements", semi_major_axis_km=6928.0, eccentricity=0.001,
+        inclination_deg=97.59, raan_deg=0.0, arg_periapsis_deg=0.0, true_anomaly_deg=0.0))
+    follower = SpacecraftConfig(
+        name="follower-1",
+        orbit=OrbitIC(type="classical_elements", semi_major_axis_km=6928.0, eccentricity=0.001,
+                       inclination_deg=97.59, raan_deg=0.0, arg_periapsis_deg=0.0, true_anomaly_deg=0.4),
+        phasing_keeping=PhasingKeepingConfig(chief_spacecraft="chief-1", target_separation_km=[50.0],
+                                             control_law="mean_oe"),
+    )
+    explanation = explain(Scenario(name="f", epoch_utc="2030-01-01T00:00:00", spacecraft=[chief, follower]))
+    formation_section = next(s for s in explanation.sections if s.title == "Formation / orbit maintenance")
+    assert "Basilisk mean-element feedback" in {b.label for b in formation_section.badges}
+    assert explanation.formation_diagrams == []
+
+
 def test_no_formation_diagram_without_phasing_keeping():
     scenario = _single_spacecraft_scenario()
     explanation = explain(scenario)

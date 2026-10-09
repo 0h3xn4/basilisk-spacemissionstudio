@@ -687,6 +687,47 @@ def test_dialog_builds_phasing_keeping_config_when_group_checked(qtbot):
     assert sc.phasing_keeping.max_delta_semi_major_axis_km == 2.0
 
 
+def test_dialog_round_trips_a_basilisk_formation_law(qtbot):
+    """Opening and accepting a follower that uses a Basilisk formation law
+    keeps the law and its gains (no field is dropped on re-edit)."""
+    from spacemissionstudio.gui.spacecraft_editor import SpacecraftEditorDialog
+    from spacemissionstudio.schema.scenario import (OrbitIC, PhasingKeepingConfig, SpacecraftConfig,
+                                                    StationKeepingConfig)
+
+    existing = SpacecraftConfig(
+        name="follower",
+        orbit=OrbitIC(type="cartesian", position_km=[7000, 0, 0], velocity_km_s=[0, 7.5, 0]),
+        station_keeping=StationKeepingConfig(target_altitude_km=550.0, deadband_km=1.5, thrust_n=0.05,
+                                              isp_s=1500.0, propellant_kg=5.0),
+        phasing_keeping=PhasingKeepingConfig(chief_spacecraft="chief", target_separation_km=[1.0],
+                                             control_law="hill_pd", hill_position_gain=3.5e-6,
+                                             hill_velocity_gain=4.0e-3, mean_oe_gain=1234.0),
+    )
+    dialog = SpacecraftEditorDialog(config=existing, other_spacecraft_names=["chief"])
+    qtbot.addWidget(dialog)
+    assert dialog.to_dataclass().phasing_keeping == existing.phasing_keeping
+
+
+def test_only_the_chosen_control_laws_settings_are_shown(qtbot):
+    """Drift-orbit tolerances, the element gain and the PD gains each show
+    only for their own law."""
+    from spacemissionstudio.gui.spacecraft_editor import SpacecraftEditorDialog
+
+    dialog = SpacecraftEditorDialog(other_spacecraft_names=["chief"])
+    qtbot.addWidget(dialog)
+    dialog.phasing_keeping_group.setChecked(True)
+    combo = dialog.pk_control_law_combo
+    assert combo.currentData() == "drift_orbit"
+    shown = {"drift_orbit": dialog.pk_tolerance_fraction, "mean_oe": dialog.pk_mean_oe_gain,
+             "hill_pd": dialog.pk_hill_position_gain}
+    for law in ("drift_orbit", "mean_oe", "hill_pd"):
+        combo.setCurrentIndex(combo.findData(law))
+        # isHidden(): the widget's own state (the tab holding it is not on screen)
+        assert {name: not widget.isHidden() for name, widget in shown.items()} == {
+            name: name == law for name in shown}
+        assert dialog._pk_form.labelForField(dialog.pk_hill_velocity_gain).isHidden() is (law != "hill_pd")
+
+
 def test_target_separation_stages_are_added_and_removed_as_rows(qtbot):
     """Real user feedback: the comma-separated separation list is now one
     km box per stage, with Add/Remove, never fewer than one stage."""

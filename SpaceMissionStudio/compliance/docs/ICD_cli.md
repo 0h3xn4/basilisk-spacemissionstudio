@@ -166,6 +166,7 @@ generate a follower spacecraft holding a phasing formation with an existing chie
 | `--eclipse-sunlit-threshold` | minimum shadow factor [-] (1.0 = full sunlight) before a station-keeping reboost burn may fire |
 | `--min-on-time-s` | shared thruster's minimum firing duration [s] (minimum impulse bit = thrust x this); 0 = ideal |
 | `--eccentricity-neutral-burns` | gate firings so long eclipse-interrupted burns don't change eccentricity |
+| `--control-law {drift_orbit,mean_oe,hill_pd}` | drift_orbit (occasional burns), mean_oe (Basilisk meanOEFeedback) or hill_pd (Basilisk hillFrameRelativeControl, close formations); see the User Manual's 'Formation control laws' |
 
 ## `gui`
 

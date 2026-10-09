@@ -243,7 +243,8 @@ def scenario_warnings(scenario) -> List[str]:
     """Short warnings for setups that can't do what they're configured
     for. Never raises."""
     warnings: List[str] = []
-    for check in (_pass_warnings, _recording_warnings, _tle_warnings, _gravity_warnings):
+    for check in (_pass_warnings, _recording_warnings, _tle_warnings, _gravity_warnings,
+                  _formation_law_warnings):
         try:
             warnings += check(scenario)
         except Exception:  # noqa: BLE001, S110 -- a half-edited scenario must never break the Explain tab
@@ -477,6 +478,47 @@ def _pass_warnings(scenario) -> List[str]:
         else:
             warnings.append(f"{gs.name}: no pass in this run or the 2 days after it -- check the orbit "
                             "and the station's minimum elevation")
+    return warnings
+
+
+def _formation_law_warnings(scenario) -> List[str]:
+    """Hill-frame PD followers (``phasing_keeping.control_law`` "hill_pd")
+    whose thruster cannot keep the law below its limit: holding the
+    separation (the law's feedforward at the reference point, 3 n^2 x),
+    or the PD command K * error at the start. A saturated PD law in orbit
+    diverges (engine.formation_control)."""
+    warnings: List[str] = []
+    by_name = {sc.name: sc for sc in scenario.spacecraft}
+    for sc in scenario.spacecraft:
+        pk = sc.phasing_keeping
+        chief = by_name.get(pk.chief_spacecraft) if pk is not None else None
+        if pk is None or pk.control_law != "hill_pd" or chief is None or sc.station_keeping is None:
+            continue
+        chief_elements = _initial_elements(chief.orbit, scenario.epoch_utc)
+        follower_elements = _initial_elements(sc.orbit, scenario.epoch_utc)
+        if chief_elements is None or follower_elements is None:
+            continue
+        a = chief_elements[0]  # [m]
+        accel_max = sc.station_keeping.thrust_n / (sc.dry_mass_kg + sc.station_keeping.propellant_kg)  # [m/s^2]
+        theta = pk.target_separation_km[0] * 1e3 / a  # [rad]
+        reference = np.array([-a * (1.0 - math.cos(theta)), a * math.sin(theta), 0.0])  # [m]
+        hold = 3.0 * _MU_M3_S2 / a ** 3 * abs(reference[0])  # [m/s^2]
+        if hold > accel_max:
+            warnings.append(f"{sc.name}: hill_pd needs {hold:.1e} m/s^2 to hold {pk.target_separation_km[0]:g} km, "
+                            f"more than its thruster's {accel_max:.1e} m/s^2 -- use mean_oe or drift_orbit")
+            continue
+        times = np.array([0.0, 1.0])  # [s] velocity by difference
+        rc, rd = _positions(chief_elements, times, False), _positions(follower_elements, times, False)
+        x_hat = rc[0] / np.linalg.norm(rc[0])
+        z_hat = np.cross(rc[0], rc[1] - rc[0])
+        z_hat /= np.linalg.norm(z_hat)
+        offset = rd[0] - rc[0]
+        rho = np.array([offset @ x_hat, offset @ np.cross(z_hat, x_hat), offset @ z_hat])  # [m] Hill frame
+        command = pk.hill_position_gain * float(np.linalg.norm(rho - reference))  # [m/s^2]
+        if command > accel_max:
+            warnings.append(f"{sc.name}: hill_pd starts {np.linalg.norm(rho - reference) / 1e3:.2f} km off its "
+                            f"reference and asks for {command:.1e} m/s^2, more than the thruster's "
+                            f"{accel_max:.1e} m/s^2 -- a saturated PD law can diverge")
     return warnings
 
 

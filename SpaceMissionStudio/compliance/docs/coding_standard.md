@@ -92,7 +92,9 @@ These tools are identified for Q-ST-80C 6.3.4.3a and 6.3.4.6a:
 Code is evaluated while it is written (Q-ST-80C 6.3.4.6b). The CI workflow
 `.github/workflows/spacemissionstudio.yml` runs on every push and pull request
 that touches `SpaceMissionStudio/`, so the programmer gets feedback on each
-change. It runs:
+change. A change to Markdown files only (no code, test, data or workflow)
+runs just the document checks: whitespace hooks, the DRD check and
+generated documents, and the Help tests. Anything else runs:
 
 1. ruff;
 2. the tests with coverage;

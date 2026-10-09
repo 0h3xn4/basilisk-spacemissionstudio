@@ -204,6 +204,10 @@ Constellation-wide phasing maintenance: holds this (follower) spacecraft's along
 | `correction_window_days` | float | `3.0` | [day] target time to null a fresh phasing error |
 | `max_drift_days` | float | `90.0` | [day] safety cap on the drift coast phase |
 | `max_delta_semi_major_axis_km` | float | `3.0` | [km] safety clamp on the drift-orbit SMA offset |
+| `control_law` | str | `'drift_orbit'` | one of PHASING_CONTROL_LAWS: drift_orbit, mean_oe, hill_pd |
+| `mean_oe_gain` | float | `2500.0` | [m^2/s^3] "mean_oe": diagonal of K per kg of spacecraft |
+| `hill_position_gain` | float | `2e-06` | [1/s^2] "hill_pd": diagonal of K |
+| `hill_velocity_gain` | float | `0.002` | [1/s] "hill_pd": diagonal of P |
 
 ## PowerConfig
 

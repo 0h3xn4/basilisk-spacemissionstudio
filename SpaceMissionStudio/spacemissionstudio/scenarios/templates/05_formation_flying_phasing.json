@@ -176,7 +176,11 @@
         "restore_tolerance_fraction": 0.02,
         "correction_window_days": 3.0,
         "max_drift_days": 90.0,
-        "max_delta_semi_major_axis_km": 3.0
+        "max_delta_semi_major_axis_km": 3.0,
+        "control_law": "drift_orbit",
+        "mean_oe_gain": 2500.0,
+        "hill_position_gain": 2e-06,
+        "hill_velocity_gain": 0.002
       },
       "constant_thrust": null,
       "momentum_dumping": null,
