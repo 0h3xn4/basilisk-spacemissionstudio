@@ -1,0 +1,45 @@
+{
+  "collection_status": "partial",
+  "generated_at": "2026-10-10T12:31:32+00:00",
+  "github": {
+    "current_clone_window": {
+      "clones": null,
+      "end": null,
+      "start": null,
+      "unique_cloners": null
+    },
+    "forks": null,
+    "release_asset_downloads": null,
+    "repository": "0h3xn4/basilisk-spacemissionstudio",
+    "tracked_clone_coverage": {
+      "end": null,
+      "start": null
+    },
+    "tracked_clones": null
+  },
+  "pypi": {
+    "counting_policy": "distribution_files_or_unknown_filename",
+    "coverage": {
+      "end": "2026-10-09",
+      "start": "2025-08-27"
+    },
+    "downloads_excluding_known_mirrors": 43429,
+    "package": "bsk",
+    "pip_downloads": 13628
+  },
+  "schema_version": 2,
+  "sources": {
+    "github": {
+      "error": "A GitHub token with repository Administration read permission is required",
+      "last_attempt_at": "2026-10-10T12:31:32+00:00",
+      "last_success_at": null,
+      "status": "error"
+    },
+    "pypi": {
+      "error": null,
+      "last_attempt_at": "2026-10-10T12:31:32+00:00",
+      "last_success_at": "2026-10-10T12:31:32+00:00",
+      "status": "ok"
+    }
+  }
+}
