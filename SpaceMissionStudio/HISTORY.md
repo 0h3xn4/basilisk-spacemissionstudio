@@ -8710,3 +8710,35 @@ logs at that level today (all fourteen use `_bskError` for errors and
 It now stops as `_bskError` does, and `_bskLogNoThrow` returns -1 at that
 level (and does nothing for a NULL logger), as Basilisk's does. A C test
 checks both.
+
+## Navigation error (SRS-F-09)
+
+Until now the flight software was always told the true state: `simpleNav`
+ran without its error model. A spacecraft can now carry
+`navigation_error` (Attitude control tab, "Navigation error"): per
+channel (attitude, body rate, Sun heading, position, velocity) a per-step
+standard deviation and a bound, plus a random seed. They map onto
+`simpleNav`'s Gauss-Markov model: `PMatrix` holds the step and
+`walkBounds` the bound, per axis, with angles as MRPs, `tan(angle/4)`.
+
+**Found while building it.**
+- Basilisk treats a zero bound as no bound at all, so a step without a
+  bound would let the error grow without limit. The schema refuses that.
+- The attitude, body-rate and Sun-heading result series were recorded
+  from `simpleNav`'s output. With errors on they would have quietly become
+  what the flight software was told, not what the spacecraft did. When
+  errors are on, a second, error-free `simpleNav` that feeds nothing now
+  supplies those series. New `navigation_error.*` series give the
+  difference: rotation angle, rate, Sun-heading angle, position, velocity.
+- A segmented long run rebuilds the simulation per segment, so the same
+  seed would replay the same random walk in every segment. Each segment
+  now gets the scenario's seed (or Basilisk's default) plus its number.
+  The error still restarts at zero in each segment.
+
+**Measured** on template 07 over 30 minutes:
+- Every error stays within its limit, and the attitude and Sun-heading
+  errors reach the clamp exactly.
+- The same seed repeats the run bit for bit; another seed differs.
+- An all-zero block changes nothing.
+- The exported flight software in the loop, given the same noisy
+  navigation, still reproduces the normal run bit for bit.

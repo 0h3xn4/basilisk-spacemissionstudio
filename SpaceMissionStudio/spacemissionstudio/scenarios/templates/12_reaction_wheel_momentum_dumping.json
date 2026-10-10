@@ -282,6 +282,7 @@
         "max_counter_value": 100
       },
       "magnetic_momentum_management": null,
+      "navigation_error": null,
       "fuel_tank": null,
       "propellant_budget": null,
       "vizard_model_path": null,

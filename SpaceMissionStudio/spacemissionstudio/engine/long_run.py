@@ -210,6 +210,21 @@ def _append(merged: Optional[ResultSet], part: ResultSet, offset_s: float,
     return merged
 
 
+_BASILISK_DEFAULT_SEED = 0x1badcad1  # GaussMarkov's RNGSeed when none is set (gauss_markov.cpp)
+
+
+def _seed_navigation_errors(scenario: Scenario, segment: Scenario, index: int) -> None:
+    """Each segment is a new simulation, so its navigation-error random
+    walk starts again from zero; a seed per segment (the scenario's, or
+    Basilisk's default, plus the segment number) keeps it from repeating
+    the same sequence every segment."""
+    for original, copied in zip(scenario.spacecraft, segment.spacecraft):
+        if original.navigation_error is not None:
+            base = original.navigation_error.seed if original.navigation_error.seed is not None else \
+                _BASILISK_DEFAULT_SEED
+            copied.navigation_error.seed = (base + index) % 2 ** 32
+
+
 def run_segmented(scenario: Scenario, on_progress: Optional[Callable[[ResultSet, float], None]] = None,
                   should_cancel: Optional[Callable[[], bool]] = None, vizard_request=None) -> ResultSet:
     """Runs ``scenario`` as a chain of segments (see this module's
@@ -231,6 +246,7 @@ def run_segmented(scenario: Scenario, on_progress: Optional[Callable[[ResultSet,
         # segment starts at the UTC of ET(epoch) + offset, not epoch + offset.
         segment.epoch_utc = time_system.elapsed_to_utc(epoch, [offset_s])[0].isoformat()
         segment.sim_settings.duration_days = length_s / 86400.0  # [day]
+        _seed_navigation_errors(scenario, segment, index)
         service = SimulationService(segment)
         if on_progress is None and should_cancel is None:
             part = service.run()

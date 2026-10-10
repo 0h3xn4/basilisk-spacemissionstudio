@@ -76,6 +76,11 @@ def _spacecraft_series(scenario: Scenario, sc) -> List[str]:
         # Uncontrolled: attitude comes straight from the spacecraft state.
         names += [f"{name}.attitude_sigma_BN", f"{name}.body_rate_omega_BN_B"]
 
+    if (sc.fsw_mode is not None or sc.comms_pointing is not None) and sc.navigation_error is not None \
+            and sc.navigation_error.any_error:
+        names += [f"{name}.navigation_error.{part}" for part in ("attitude", "rate", "sun_heading", "position",
+                                                                 "velocity")]
+
     for sensor in sc.sensors:
         series = f"{name}.sensor.{sensor.name}"
         if sensor.kind == "imu":

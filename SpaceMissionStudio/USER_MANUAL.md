@@ -455,6 +455,33 @@ shows all of it.
 Not modelled: more than one mode per panel, twisting, and panels that
 deploy or are driven during the run.
 
+### Navigation error
+
+By default the flight software is told the true state. To see how it copes
+with imperfect navigation, open the spacecraft, **Attitude control** tab,
+and tick **Navigation error**. Basilisk's navigation model (`simpleNav`)
+then adds an error to what the flight software is told:
+
+| Row | Perturbs |
+|---|---|
+| Attitude, Body rate | The attitude and rate the controller works from |
+| Sun heading | The Sun direction (Sun-safe pointing) |
+| Position, Velocity | The orbit position and velocity |
+
+Each error, per axis, is a random walk. At every flight-software step it
+changes by a random amount (**Step per update**, one standard deviation)
+and is held within **Bound**. A row with a step needs a bound; a row left
+at zero has no error. **Random seed** makes runs repeatable: the same seed
+gives the same errors.
+
+With errors on, the attitude, body-rate and Sun-heading plots still show
+the true values. New plots under "Navigation Error" show the difference
+between what the flight software was told and the truth, as one magnitude
+each: attitude, rate and Sun heading in degrees, position in m, velocity in
+m/s. A run longer than one segment restarts the errors at zero in each
+segment, with a new seed. Software in the loop gives the program the same
+noisy navigation as the simulation's own modules.
+
 ### Exporting the flight software
 
 The **Flight Software** tab (or `spacemissionstudio export-fsw`) writes a
@@ -579,8 +606,9 @@ took 0.17 to 0.19 ms on average there and back. The mission sequence and
 Monte Carlo are not run in SIL: the scenario runs its set duration once.
 
 Limits: the navigation inputs are what the simulation's `simpleNav`
-gives, the true state without navigation error; one rate group, the
-dynamics step; payloads in the host's byte order.
+gives: the true state, or the true state with the spacecraft's navigation
+error (above); one rate group, the dynamics step; payloads in the host's
+byte order.
 
 ## 7. Reading the Results tab
 

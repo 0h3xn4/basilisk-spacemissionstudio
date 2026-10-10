@@ -980,6 +980,71 @@ class MagneticMomentumManagementConfig:
         _require(self.c_gain > 0, f"{spacecraft_name}: magnetic_momentum_management.c_gain must be > 0")
 
 
+_NAV_CHANNELS = (  # (field prefix, unit, what it perturbs)
+    ("attitude", "deg", "attitude"),
+    ("rate", "deg/s", "body rate"),
+    ("sun", "deg", "Sun heading"),
+    ("position", "m", "position"),
+    ("velocity", "m/s", "velocity"),
+)
+
+
+@dataclass
+class NavigationErrorConfig:
+    """Errors on what the flight software is told, by Basilisk's
+    ``simpleNav`` (its Gauss-Markov error model, ``PMatrix`` and
+    ``walkBounds``). Without this, the navigation messages are the true
+    state.
+
+    Each error, per axis, is a random walk: every flight-software step it
+    changes by a normal draw of standard deviation ``<channel>_step`` and is
+    held within ``<channel>_bound`` (Basilisk clamps at the bound). A
+    channel with a step needs a bound: Basilisk treats a zero bound as no
+    bound at all, and the error would drift without limit. Attitude and
+    Sun-heading errors are small rotations, given here in degrees per axis
+    (``simpleNav`` applies them as MRPs, ``tan(angle/4)``). ``seed`` is
+    Basilisk's random-number seed (``None``: its default), so a run is
+    repeatable.
+    """
+
+    attitude_step_deg: float = 0.0  # [deg] 1-sigma change per step, per axis
+    attitude_bound_deg: float = 0.0  # [deg] per axis
+    rate_step_deg_s: float = 0.0  # [deg/s]
+    rate_bound_deg_s: float = 0.0  # [deg/s]
+    sun_step_deg: float = 0.0  # [deg]
+    sun_bound_deg: float = 0.0  # [deg]
+    position_step_m: float = 0.0  # [m]
+    position_bound_m: float = 0.0  # [m]
+    velocity_step_m_s: float = 0.0  # [m/s]
+    velocity_bound_m_s: float = 0.0  # [m/s]
+    seed: Optional[int] = None
+
+    def channel(self, prefix: str) -> tuple:
+        """``(step, bound)`` of one channel, in this config's units."""
+        unit = next(u for p, u, _ in _NAV_CHANNELS if p == prefix).replace("/", "_")
+        return getattr(self, f"{prefix}_step_{unit}"), getattr(self, f"{prefix}_bound_{unit}")
+
+    def validate(self, spacecraft_name: str) -> None:
+        for prefix, unit, label in _NAV_CHANNELS:
+            step, bound = self.channel(prefix)
+            for value, what in ((step, "step"), (bound, "bound")):
+                _require(isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+                         and value >= 0.0,
+                         f"{spacecraft_name}: navigation_error {label} {what} must be a number >= 0 [{unit}]")
+            _require(step == 0.0 or bound > 0.0,
+                     f"{spacecraft_name}: navigation_error {label} needs a bound > 0 when its step is set "
+                     "(without one Basilisk lets the error grow without limit)")
+        _require(self.attitude_bound_deg < 180.0 and self.sun_bound_deg < 180.0,
+                 f"{spacecraft_name}: navigation_error attitude and Sun bounds must be below 180 deg")
+        _require(self.seed is None or (isinstance(self.seed, int) and not isinstance(self.seed, bool)
+                                       and 0 <= self.seed < 2 ** 32),
+                 f"{spacecraft_name}: navigation_error seed must be an integer from 0 to 2^32 - 1")
+
+    @property
+    def any_error(self) -> bool:
+        return any(self.channel(prefix)[0] > 0.0 for prefix, _, _ in _NAV_CHANNELS)
+
+
 @dataclass
 class FuelTankConfig:
     """Real propellant depletion for this spacecraft's ``"thruster"``
@@ -1201,6 +1266,8 @@ class SpacecraftConfig:
     constant_thrust: Optional[ConstantThrustConfig] = None
     momentum_dumping: Optional[MomentumDumpingConfig] = None
     magnetic_momentum_management: Optional[MagneticMomentumManagementConfig] = None
+    # What simpleNav tells the flight software; None: the true state.
+    navigation_error: Optional[NavigationErrorConfig] = None
     fuel_tank: Optional[FuelTankConfig] = None
     propellant_budget: Optional[PropellantBudgetConfig] = None  # see engine/propellant_budget.py
 
@@ -1589,6 +1656,11 @@ class SpacecraftConfig:
                       "actuator (desaturation hardware) on this spacecraft")
             num_reaction_wheels = sum(1 for a in self.actuators if a.kind == "reaction_wheel")
             self.magnetic_momentum_management.validate(self.name, num_reaction_wheels)
+        if self.navigation_error is not None:
+            _require(self.fsw_mode is not None or self.comms_pointing is not None,
+                     f"{self.name}: navigation_error needs attitude flight software (a pointing mode or comms "
+                     "pointing): only then is there navigation to perturb")
+            self.navigation_error.validate(self.name)
         if self.propellant_budget is not None:
             self.propellant_budget.validate(self.name)
         if self.fuel_tank is not None:
@@ -2206,6 +2278,9 @@ class Scenario:
                 MagneticMomentumManagementConfig(**magnetic_momentum_management_data)
                 if magnetic_momentum_management_data is not None else None
             )
+            navigation_error_data = sc.pop("navigation_error", None)
+            navigation_error = (NavigationErrorConfig(**navigation_error_data)
+                                if navigation_error_data is not None else None)
             fuel_tank_data = sc.pop("fuel_tank", None)
             fuel_tank = FuelTankConfig(**fuel_tank_data) if fuel_tank_data is not None else None
             budget_data = sc.pop("propellant_budget", None)
@@ -2218,6 +2293,7 @@ class Scenario:
                                                 phasing_keeping=phasing_keeping, constant_thrust=constant_thrust,
                                                 momentum_dumping=momentum_dumping,
                                                 magnetic_momentum_management=magnetic_momentum_management,
+                                                navigation_error=navigation_error,
                                                 fuel_tank=fuel_tank, facets=facets,
                                                 **sc))
 

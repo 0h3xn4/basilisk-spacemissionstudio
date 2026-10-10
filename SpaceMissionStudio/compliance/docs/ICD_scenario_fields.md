@@ -207,6 +207,24 @@ Batch execution settings -- see ``engine/monte_carlo.py``. ``thread_count`` > 1 
 | `verbose` | bool | `False` |  |
 | `dispersions` | list | `[]` | list[DispersionConfig] |
 
+## NavigationErrorConfig
+
+Errors on what the flight software is told, by Basilisk's ``simpleNav`` (its Gauss-Markov error model, ``PMatrix`` and ``walkBounds``). Without this, the navigation messages are the true state.
+
+| Field | Type | Default | Unit / note |
+|---|---|---|---|
+| `attitude_step_deg` | float | `0.0` | [deg] 1-sigma change per step, per axis |
+| `attitude_bound_deg` | float | `0.0` | [deg] per axis |
+| `rate_step_deg_s` | float | `0.0` | [deg/s] |
+| `rate_bound_deg_s` | float | `0.0` | [deg/s] |
+| `sun_step_deg` | float | `0.0` | [deg] |
+| `sun_bound_deg` | float | `0.0` | [deg] |
+| `position_step_m` | float | `0.0` | [m] |
+| `position_bound_m` | float | `0.0` | [m] |
+| `velocity_step_m_s` | float | `0.0` | [m/s] |
+| `velocity_bound_m_s` | float | `0.0` | [m/s] |
+| `seed` | Optional[int] | `None` |  |
+
 ## OrbitIC
 
 One spacecraft's orbit initial condition, in exactly one of three forms. Only the fields for ``type`` need to be set; the others are left ``None`` and ignored -- this keeps the JSON readable (no all-fields-always-present clutter) while still being one dataclass, so ``engine.service.SimulationService`` has a single type to switch on.
@@ -399,6 +417,7 @@ See engine/spaceweather.py and engine/service.py. Real data only (user requireme
 | `constant_thrust` | Optional[ConstantThrustConfig] | `None` |  |
 | `momentum_dumping` | Optional[MomentumDumpingConfig] | `None` |  |
 | `magnetic_momentum_management` | Optional[MagneticMomentumManagementConfig] | `None` |  |
+| `navigation_error` | Optional[NavigationErrorConfig] | `None` |  |
 | `fuel_tank` | Optional[FuelTankConfig] | `None` |  |
 | `propellant_budget` | Optional[PropellantBudgetConfig] | `None` | see engine/propellant_budget.py |
 | `vizard_model_path` | Optional[str] | `None` | path to a .obj file, or "CUBE"/"CYLINDER"/"SPHERE" |

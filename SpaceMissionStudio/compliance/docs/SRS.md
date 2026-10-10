@@ -331,7 +331,7 @@ Methods: T = test, A = analysis, I = inspection, R = review of design.
 | SRS-F-06 | T | `tests/test_earth_orientation.py`, `tests/validation/test_v02_earth_orientation.py` |
 | SRS-F-07 | T | `tests/test_time_system.py`, `tests/validation/test_v01_time_scales.py` |
 | SRS-F-08 | T | `tests/test_geodesy.py`, `tests/validation/test_v05_passes.py` |
-| SRS-F-09 | T | `tests/test_device_realism.py`, `tests/test_css_estimation.py`, `tests/test_solar_arrays.py`, FSW tests |
+| SRS-F-09 | T | `tests/test_device_realism.py`, `tests/test_css_estimation.py`, `tests/test_solar_arrays.py`, `tests/test_navigation_error.py`, FSW tests |
 | SRS-F-10 | T | `tests/test_orbit_maintenance*.py`, `tests/test_formation_control.py`, `tests/test_geo_station_keeping.py`, `tests/test_momentum_dumping.py` |
 | SRS-F-11 | T | `tests/test_mission_engine.py`, `tests/test_command.py` |
 | SRS-F-12 | T | `tests/test_results.py`, `tests/test_frames.py`, `tests/test_dependencies.py` |

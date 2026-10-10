@@ -46,6 +46,7 @@ display object.
 from __future__ import annotations
 
 import math
+import re
 from dataclasses import dataclass
 from typing import Dict, Optional
 
@@ -109,6 +110,15 @@ def _vector_display(name: str) -> Optional[SeriesDisplay]:
         return SeriesDisplay("Body Angular Rate", "Angular rate", "rad/s", 1.0, dict(_XYZ_LABELS))
     if name.endswith(".sun_heading_body"):
         return SeriesDisplay("Sun Heading (Body Frame)", "Unit vector component", "-", 1.0, dict(_XYZ_LABELS))
+    navigation = re.search(r"\.navigation_error\.(attitude|rate|sun_heading|position|velocity)$", name)
+    if navigation is not None:
+        part = navigation.group(1)
+        title, label, unit = {"attitude": ("Navigation Error: Attitude", "Attitude error", "deg"),
+                              "rate": ("Navigation Error: Body Rate", "Rate error", "deg/s"),
+                              "sun_heading": ("Navigation Error: Sun Heading", "Sun heading error", "deg"),
+                              "position": ("Navigation Error: Position", "Position error", "m"),
+                              "velocity": ("Navigation Error: Velocity", "Velocity error", "m/s")}[part]
+        return SeriesDisplay(title, label, unit, 1.0, {part: "Navigated - true"})
     if name.endswith(".sun_heading_body_estimated"):
         return SeriesDisplay("Sun Heading Estimate (CSS, Body Frame)", "Unit vector component", "-", 1.0,
                               dict(_XYZ_LABELS))

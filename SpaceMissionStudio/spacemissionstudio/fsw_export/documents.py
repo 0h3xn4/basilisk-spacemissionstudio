@@ -167,8 +167,8 @@ def icd_markdown(cap: FswCapture) -> str:
               "Not covered: timing on target hardware, real sensors (the inputs are the simulation's navigation "
               "messages), and modes or settings the scenario does not use.", "",
               "## 7 Assumptions and limits", "",
-              "- Navigation inputs are what the simulation's `simpleNav` gives; in SpaceMissionStudio today that is "
-              "the true state, without navigation error.",
+              "- Navigation inputs are what the simulation's `simpleNav` gives: the true state, or with the "
+              "spacecraft's navigation error a bounded random walk on it (User Manual, \"Navigation error\").",
               "- Payloads are exchanged in the host's byte order; the traces in `tests/data/` are little-endian.",
               "- The scheduler runs one rate group; it is the rate the simulation ran the modules at.", ""]
     return "\n".join(lines)

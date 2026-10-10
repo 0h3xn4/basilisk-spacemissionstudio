@@ -55,6 +55,7 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -65,6 +66,7 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QScrollArea,
+    QSpinBox,
     QVBoxLayout,
     QWidget,
 )
@@ -79,6 +81,7 @@ from ..schema.scenario import (
     InstrumentConfig,
     MagneticMomentumManagementConfig,
     MomentumDumpingConfig,
+    NavigationErrorConfig,
     OrbitIC,
     PhasingKeepingConfig,
     PowerConfig,
@@ -518,6 +521,8 @@ class SpacecraftEditorDialog(QDialog):
         self.control_param_form.set_specs(_CONTROL_PARAM_SPECS, dict(config.control_params) if config else {})
         control_layout.addWidget(self.control_param_form)
         fsw_layout.addWidget(self.control_group)
+        self._build_navigation_error_group(config.navigation_error if config else None)
+        fsw_layout.addWidget(self.navigation_error_group)
         fsw_layout.addStretch(1)
 
         # comms_pointing (Phase 6 audit fix): previously had NO editor
@@ -1690,6 +1695,7 @@ class SpacecraftEditorDialog(QDialog):
             constant_thrust=self._constant_thrust_to_dataclass(),
             momentum_dumping=self._momentum_dumping_to_dataclass(),
             magnetic_momentum_management=self._magnetic_momentum_management_to_dataclass(),
+            navigation_error=self._navigation_error_to_dataclass(),
             fuel_tank=self._fuel_tank_to_dataclass(),
             propellant_budget=self.budget_group.to_config(),
             enable_drag=self.enable_drag_check.isChecked(),
@@ -1785,6 +1791,58 @@ class SpacecraftEditorDialog(QDialog):
             thr_min_fire_time=self.md_thr_min_fire_time.value(),
             max_counter_value=int(self.md_max_counter_value.value()),
         )
+
+    # (channel, row label, unit, spin-box maximum)
+    _NAV_ROWS = (("attitude", "Attitude", "deg", 90.0), ("rate", "Body rate", "deg/s", 10.0),
+                 ("sun", "Sun heading", "deg", 90.0), ("position", "Position", "m", 1.0e5),
+                 ("velocity", "Velocity", "m/s", 1.0e2))
+
+    def _build_navigation_error_group(self, nav0) -> None:
+        """Navigation error: per channel, the random-walk step and its bound
+        (NavigationErrorConfig), and the seed."""
+        self.navigation_error_group = QGroupBox("Navigation error (what the flight software is told)")
+        self.navigation_error_group.setCheckable(True)
+        self.navigation_error_group.setChecked(nav0 is not None)
+        self.navigation_error_group.setToolTip(
+            "Off: the flight software sees the true state. On: Basilisk's navigation model adds a "
+            "random walk to each value, held within its bound. Plots then show the true attitude, and "
+            "the navigation errors separately.")
+        grid = QGridLayout(self.navigation_error_group)
+        header_step, header_bound = QLabel("Step per update (1-sigma)"), QLabel("Bound")
+        for label in (header_step, header_bound):
+            label.setStyleSheet(f"color: {PALETTE['text_muted']};")
+        grid.addWidget(header_step, 0, 1)
+        grid.addWidget(header_bound, 0, 2)
+        self.nav_spins = {}
+        for row, (channel, label, unit, maximum) in enumerate(self._NAV_ROWS, start=1):
+            step, bound = nav0.channel(channel) if nav0 is not None else (0.0, 0.0)
+            spins = (_spin(0.0, maximum, decimals=6, step=0.001, value=step),
+                     _spin(0.0, maximum, decimals=6, step=0.01, value=bound))
+            for spin in spins:
+                spin.setSuffix(f" {unit}")
+            grid.addWidget(QLabel(label), row, 0)
+            grid.addWidget(spins[0], row, 1)
+            grid.addWidget(spins[1], row, 2)
+            self.nav_spins[channel] = spins
+        self.nav_seed = QSpinBox()
+        self.nav_seed.setRange(-1, 2 ** 31 - 1)
+        self.nav_seed.setSpecialValueText("Basilisk default")
+        self.nav_seed.setValue(nav0.seed if nav0 is not None and nav0.seed is not None else -1)
+        self.nav_seed.setToolTip("The same seed gives the same errors in every run.")
+        grid.addWidget(QLabel("Random seed"), len(self._NAV_ROWS) + 1, 0)
+        grid.addWidget(self.nav_seed, len(self._NAV_ROWS) + 1, 1)
+
+    def _navigation_error_to_dataclass(self) -> NavigationErrorConfig | None:
+        if not self.navigation_error_group.isChecked():
+            return None
+        values = {}
+        for channel, _, unit, _ in self._NAV_ROWS:
+            step, bound = self.nav_spins[channel]
+            suffix = unit.replace("/", "_")
+            values[f"{channel}_step_{suffix}"] = step.value()
+            values[f"{channel}_bound_{suffix}"] = bound.value()
+        seed = self.nav_seed.value()
+        return NavigationErrorConfig(seed=None if seed < 0 else seed, **values)
 
     def _magnetic_momentum_management_to_dataclass(self) -> MagneticMomentumManagementConfig | None:
         if not self.magnetic_momentum_management_group.isChecked():

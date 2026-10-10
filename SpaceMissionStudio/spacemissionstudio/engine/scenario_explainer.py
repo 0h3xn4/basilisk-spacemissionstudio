@@ -260,6 +260,8 @@ def _attitude_section(scenario) -> ExplanationSection | None:
     badges = [Badge(_mode_name(mode), "accent") for mode in modes]
     if comms_pointing_count:
         badges.append(Badge("Comms pointing", "accent"))
+    if any(sc.navigation_error is not None and sc.navigation_error.any_error for sc in scenario.spacecraft):
+        badges.append(Badge("Navigation error", "accent"))
     return ExplanationSection(title="Attitude control", badges=badges)
 
 

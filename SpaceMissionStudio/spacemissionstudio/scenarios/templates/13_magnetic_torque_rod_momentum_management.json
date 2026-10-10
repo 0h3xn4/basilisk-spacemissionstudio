@@ -194,6 +194,7 @@
         ],
         "c_gain": 0.003
       },
+      "navigation_error": null,
       "fuel_tank": null,
       "propellant_budget": null,
       "vizard_model_path": null,

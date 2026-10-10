@@ -268,6 +268,7 @@
       "constant_thrust": null,
       "momentum_dumping": null,
       "magnetic_momentum_management": null,
+      "navigation_error": null,
       "fuel_tank": null,
       "propellant_budget": null,
       "vizard_model_path": null,
@@ -588,6 +589,7 @@
         ],
         "c_gain": 0.003
       },
+      "navigation_error": null,
       "fuel_tank": null,
       "propellant_budget": null,
       "vizard_model_path": null,
