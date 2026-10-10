@@ -8811,6 +8811,21 @@ documents against the code and tests.
   without a mark; a docstring pointed at a missing file; the export
   README's usage snippet reset before writing the inputs.
 
+- *SIL deadlock* (SRS-F-19), found by this pull request's CI: a run
+  with a step deadline the program misses hung until the job's
+  90-minute limit (both macOS jobs, one Linux job). Every late
+  `OUTPUT` stayed unread, so once both socket buffers were full the
+  program waited to write its `OUTPUT` and the simulation waited to
+  write its `STEP`, each for ever. Reproduced locally: template 07,
+  60 min, deadline 1e-7 s, Unix socket, no progress after 90 s. The
+  simulation now reads while it sends (and reads what has already
+  arrived when a wait runs out), and a send the program takes nothing
+  of for the step timeout fails the run. The same run now completes
+  in 7 s with all 3601 steps dropped. Two tests hang without the fix:
+  4 MiB sent both ways before either side reads, and 20000 dropped
+  steps followed by an answered one and BYE. CI now dumps every
+  thread's stack for a test still running after 10 minutes.
+
 **Withdrawn.** An earlier note said Monte Carlo runs share one
 navigation seed. They do not: Basilisk's Controller
 (`setShouldDisperseSeeds`) gives every model with an `RNGSeed`,

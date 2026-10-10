@@ -145,7 +145,7 @@ jobs:
         run: spacemissionstudio earth-orientation --fetch
       - name: Tests with coverage (C-9, C-10)
         run: >
-          python -m pytest tests -q -n auto -p no:cacheprovider
+          python -m pytest tests -q -n auto -p no:cacheprovider -o faulthandler_timeout=600
           --cov=spacemissionstudio --cov-branch --cov-report=json:coverage.json --cov-report=term
           --junitxml=test-report.xml
       - name: Offline tests with no network at all (UX/UI guidelines; review_log F-16)
@@ -210,7 +210,7 @@ jobs:
       - name: IERS-based Earth orientation files for the validation cases (SVS VP-1)
         run: spacemissionstudio earth-orientation --fetch
       - name: Tests
-        run: python -m pytest tests -q -n auto -p no:cacheprovider --junitxml=test-report-${{ matrix.os }}.xml
+        run: python -m pytest tests -q -n auto -p no:cacheprovider -o faulthandler_timeout=600 --junitxml=test-report-${{ matrix.os }}.xml
       - uses: actions/upload-artifact@v6
         if: always()
         with:
