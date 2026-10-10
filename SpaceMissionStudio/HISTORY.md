@@ -8869,3 +8869,12 @@ over. What changed instead:
 - Tests: the warning (and none for single runs or runs without errors),
   and Basilisk's `simpleNav` starting from zero and reaching 90 % within
   the steps the warning assumes.
+
+**SIL step timeout (SRS-F-19), found by this pull request's CI on
+Windows.** A step with no deadline failed after the 10 s step timeout
+although the program was still answering: it was working through late
+answers to earlier steps. The contract defines the step timeout as no
+answer at all for that long, so the wait now restarts with each late
+answer. Reproduced with a scripted flight software 20 ms per step behind
+(100 dropped steps against a 0.3 s timeout); the new test fails without
+the fix.
