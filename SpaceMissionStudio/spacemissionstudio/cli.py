@@ -495,7 +495,13 @@ def cmd_ccsds_validate(args: argparse.Namespace) -> int:
 
     failed = False
     for path in args.files:
-        issues = ccsds_odm.validate(Path(path).read_text(encoding="ascii", errors="replace"))
+        try:
+            text = Path(path).read_text(encoding="ascii", errors="replace")
+        except OSError as exc:
+            print(f"{path}: cannot be read ({exc.strerror or exc})", file=sys.stderr)
+            failed = True
+            continue
+        issues = ccsds_odm.validate(text)
         errors = [i for i in issues if i.level == "error"]
         failed = failed or bool(errors)
         print(f"{path}: {'conforms' if not errors else f'{len(errors)} error(s)'}"
