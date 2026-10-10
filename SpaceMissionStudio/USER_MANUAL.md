@@ -479,8 +479,10 @@ the true values. New plots under "Navigation Error" show the difference
 between what the flight software was told and the truth, as one magnitude
 each: attitude, rate and Sun heading in degrees, position in m, velocity in
 m/s. A run longer than one segment restarts the errors at zero in each
-segment, with a new seed. Software in the loop gives the program the same
-noisy navigation as the simulation's own modules.
+segment, with a new seed. In a Monte Carlo batch Basilisk gives every run
+its own random seed (the scenario's seed is not used there), so the runs see
+different errors. Software in the loop gives the program the same noisy
+navigation as the simulation's own modules.
 
 ### Exporting the flight software
 

@@ -8759,3 +8759,66 @@ Both causes were reproduced on Linux before fixing them.
   `time.perf_counter()`, and a reply measured later than its deadline
   counts as dropped even when the wait itself did not run out. Reproduced
   with a 15.625 ms `monotonic` tick: 0 of 61 steps dropped before, 61 after.
+
+## Audit of the whole tool (2026-10-10)
+
+A complete review: automated sweeps over all of `spacemissionstudio/`, a
+line-by-line reading of this pull request's code, targeted reading and
+fuzzing of the rest, and a check of every claim in the compliance
+documents against the code and tests.
+
+**What was run.**
+- Lint with extra bug-finding rules, vulture, codespell: nothing that
+  was a bug (closure warnings are calls inside their own loop; the naive
+  datetimes are the app's naive-UTC convention).
+- The exported C (templates 06, 07, 12, 13) built with `-Wall -Wextra
+  -Wshadow -Wconversion` (no warnings), run under AddressSanitizer and
+  UndefinedBehaviorSanitizer (unit tests, replay and a SIL run each:
+  no memory error), and the clang static analyzer (one report, in
+  Basilisk's own `mrpFeedback.c`: a false positive, unchanged).
+- Fuzzing: 6000 mutated scenario files, 6000 mutated CCSDS messages,
+  3000 mutated TLEs.
+- The compliance documents: every cited test and path exists, every
+  requirement ID is in the extracted standards, every "Compliant" row
+  names evidence.
+
+**Found and fixed** (each with a test that fails without the fix):
+- *Scenario files* (SRS-F-01): 62 kinds of wrong-typed value got past
+  `load_scenario` as a raw TypeError, ValueError or AttributeError; the
+  GUI's Open showed nothing. Values are now checked against their
+  declared types, naming the field.
+- *Conditions* (SRS-S-04, S-12): a deeply nested `if` condition crashed
+  loading with MemoryError. Length, depth and repetition are capped.
+- *CCSDS* (SRS-F-14): 14 kinds of malformed message raised Python
+  errors; `ccsds-validate` printed tracebacks. Each is now a
+  conformance error citing its clause.
+- *SIL* (SRS-F-19, S-15): the program's hash was re-checked before the
+  seconds-long build, not "just before the start" as S-15 said; it is
+  now checked again right before the launch. The report is strict JSON
+  (it held NaN and Infinity tokens).
+- *Export* (SRS-F-18): `fsw_host replay --expect` without its file
+  skipped the comparison and exited 0; a folder with someone else's
+  `manifest.json` was offered for replacement and lost that file; a
+  relative `--out` was recorded so that `fsw-status` reported the
+  export missing; replay leaked its buffers.
+- *TLE* (SRS-F-02): an epoch field like `26280e50000000` passed the
+  check and failed the run with a NaN error.
+- *GUI*: the Run SIL dialog, the SIL comparison panel and the Monte
+  Carlo tab had boxes and tabs the mouse wheel changed, against the
+  app-wide rule; an export ending during a half-typed edit lost its
+  record.
+- *Documents*: 449 requirement quotes in the matrix ended mid-sentence
+  without a mark; a docstring pointed at a missing file; the export
+  README's usage snippet reset before writing the inputs.
+
+**Withdrawn.** An earlier note said Monte Carlo runs share one
+navigation seed. They do not: Basilisk's Controller
+(`setShouldDisperseSeeds`) gives every model with an `RNGSeed`,
+`simpleNav` included, its own random seed per run (read from its code;
+the manual now says so).
+
+**Still open.** The Run SIL dialog hashes the program at each keystroke
+of its path (slow only for a very large file; hashing later would let a
+ticked consent go stale). `compliance/unreached_code.md` is a dated
+measurement that still lists a widget removed since. The sequence
+numbers of the SIL link wrap after 2^32 frames.
