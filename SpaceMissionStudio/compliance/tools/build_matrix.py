@@ -80,6 +80,13 @@ def _match(rules, rid: str):
     return max(prefixed, key=lambda r: len(r[1])) if prefixed else None
 
 
+
+def _quote(text: str, limit: int = 240) -> str:
+    """The requirement as quoted in the matrix: whole when short, else its
+    first ``limit`` characters marked as cut, so a quote never seems to end
+    where the requirement does not (the full text is in requirements/)."""
+    return text if len(text) <= limit else text[:limit - 5].rstrip() + " [...]"
+
 def build() -> int:
     rules = _rules()
     rows, missing, used = [], [], set()
@@ -88,7 +95,7 @@ def build() -> int:
             requirements = list(csv.DictReader(f))
         for req in requirements:
             row = {"standard": standard, "ID": req["ID"], "clause": req["clause"], "level": req["level"],
-                   "requirement_text": req["requirement_text"][:240], "applicability": req["applicability"]}
+                   "requirement_text": _quote(req["requirement_text"]), "applicability": req["applicability"]}
             if req["applicability"] in _TAILORED_OUT:
                 reason = {"Not requested": "OCM out of scope (user decision 2026-10-08)",
                           "Deleted": "deleted in this issue"}.get(req["applicability"], req["basis"])

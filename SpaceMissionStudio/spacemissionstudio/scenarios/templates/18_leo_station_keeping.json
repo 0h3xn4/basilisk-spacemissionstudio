@@ -83,6 +83,7 @@
       "constant_thrust": null,
       "momentum_dumping": null,
       "magnetic_momentum_management": null,
+      "navigation_error": null,
       "fuel_tank": null,
       "propellant_budget": null,
       "vizard_model_path": null,
@@ -126,6 +127,7 @@
     "dispersions": []
   },
   "mission_sequence": [],
+  "fsw_exports": [],
   "description": "The LEO counterpart to 03: a 400 km satellite holding its altitude against atmospheric drag with a 1 km deadband. Radiation pressure is off, to isolate drag.\n\nWhat to look at:\n- leo-sat-1.station_keeping.altitude and .propellant_remaining: each reboost, and the propellant it costs over 14 days; compare 03, which holds a GEO slot's longitude and inclination instead.\n\nTry changing:\n- Orbit altitude: lower decays much faster (try 350 or 300 km).\n- Drag area or coefficient.\n- Deadband.\n\nNote:\n- Drag uses real space weather; 2030 is NASA MSFC's 50th-percentile prediction.\n- Cd 3.0: ESA AD10's operations value. The Budget tab's Launch delays repeats the budget for launches up to 5 years late.",
   "schema_version": 4
 }

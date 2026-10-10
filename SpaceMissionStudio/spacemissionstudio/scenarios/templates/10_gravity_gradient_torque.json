@@ -71,6 +71,7 @@
       "constant_thrust": null,
       "momentum_dumping": null,
       "magnetic_momentum_management": null,
+      "navigation_error": null,
       "fuel_tank": null,
       "propellant_budget": null,
       "vizard_model_path": null,
@@ -114,6 +115,7 @@
     "dispersions": []
   },
   "mission_sequence": [],
+  "fsw_exports": [],
   "description": "No attitude control, an elongated 500 kg bus (1 x 1 x 2 m: Ixx = Iyy = 208, Izz = 83 kg*m^2) and gravity-gradient torque on. Without the torque the spacecraft would stay at its initial attitude; with it, it slowly turns.\n\nWhat to look at:\n- Vizard's attitude view: the spacecraft drifts away from its starting orientation.\n- sat-1.attitude_sigma_BN: moving away from zero, its starting value.\n\nTry changing:\n- Inertia: make all three values equal and the torque vanishes.\n- Altitude: the torque falls off as 1/r^3.\n- Add inertial3D pointing with reaction wheels (see 07) to cancel it.",
   "schema_version": 4
 }

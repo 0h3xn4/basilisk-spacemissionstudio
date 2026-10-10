@@ -436,3 +436,53 @@ def test_oem_interpolation_can_be_lagrange_for_gmat():
     assert "INTERPOLATION        = LAGRANGE" in text and _errors(text) == []
     with pytest.raises(odm.OdmError, match="HERMITE or LAGRANGE"):
         odm.oem_from_result(result, "2024-06-01T00:00:00", "earth", ["a"], interpolation="spline")
+
+
+@pytest.mark.parametrize("change, clause", [
+    (lambda t: t.replace("META_START", "", 1), "5.2.3.3"),  # META_STOP before any metadata group
+    (lambda t: t.replace("COVARIANCE_START\nEPOCH", "COVARIANCE_START\nCOV_REF_FRAME = EME2000\nEPOCH", 1),
+     "5.2.5.3"),
+    (lambda t: t.replace("COV_REF_FRAME = EME2000\n", "COV_REF_FRAME = EME2000\n 1.0e-04 x\n", 1), "5.2.5.4"),
+])
+def test_a_malformed_oem_is_an_issue_citing_the_clause_not_a_crash(change, clause):
+    """A META_STOP before any META_START, COV_REF_FRAME before the
+    covariance EPOCH and a non-numeric covariance line used to raise
+    AttributeError, TypeError or ValueError (and ccsds-validate printed a
+    traceback): each is now a conformance error citing its clause."""
+    original = _example("oem_g13.txt")
+    text = change(original)
+    assert text != original
+    with pytest.raises(odm.OdmError, match=clause):
+        odm.read(text)
+    assert any(clause in issue.message or clause in issue.clause for issue in _errors(text)), odm.validate(text)
+
+
+def test_mutated_examples_validate_without_crashing():
+    """600 random edits of the Annex G examples (lines deleted, cut,
+    duplicated, or keywords and odd values inserted): validate() returns
+    its issues and read() raises OdmError at worst. Seeded."""
+    import random
+
+    rng = random.Random(502)
+    files = sorted(_DATA.glob("*.txt"))
+    tokens = ["", "=", "x", "1e999", "nan", "META_START", "META_STOP", "DATA_START", "COVARIANCE_START",
+              "COVARIANCE_STOP", "EPOCH = 2026-13-45T99:99:99", "COV_REF_FRAME = EME2000", "[km]", "1 2 3"]
+    for _ in range(600):
+        lines = rng.choice(files).read_text().splitlines()
+        for _ in range(rng.randint(1, 4)):
+            i = rng.randrange(len(lines))
+            op = rng.random()
+            if op < 0.3:
+                del lines[i]
+            elif op < 0.6:
+                lines[i] = lines[i][: rng.randrange(len(lines[i]) + 1)] + rng.choice(tokens)
+            elif op < 0.8:
+                lines.insert(i, rng.choice(tokens))
+            else:
+                lines[i] = rng.choice(lines)
+        text = "\n".join(lines)
+        assert isinstance(odm.validate(text), list)
+        try:
+            odm.read(text)
+        except odm.OdmError:
+            pass

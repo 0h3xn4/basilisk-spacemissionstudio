@@ -200,3 +200,17 @@ def test_precession_nutation_matches_spice_iau_1976_1980(tmp_path):
             np.testing.assert_allclose(teme, erfa.rz(dpsi * math.cos(erfa.obl80(t1, t2)), spice), atol=1e-13)
     finally:
         pyswice.unload_c(str(frame_kernel))  # the leap-second kernel stays: Basilisk may share it
+
+
+def test_a_tle_whose_epoch_field_is_not_a_day_of_year_is_refused():
+    """An epoch field such as ``26280e50000000`` (a valid checksum) passed
+    the format check, then gave a NaN epoch and failed the run with
+    "cannot convert float NaN to integer": it is now refused naming the
+    columns. Day 000 and day 367 are refused too."""
+    from spacemissionstudio.engine.tle import TLEError, _checksum, check_lines
+
+    line2 = "2 25544  51.6416 247.4627 0006703 130.5360 325.0288 15.49815361 12342"
+    for epoch in ("26280e50000000", "26000.50000000", "26367.00000000", "2628O.50000000"):
+        body = f"1 25544U 98067A   {epoch}  .00016717  00000-0  10270-3 0  900"
+        with pytest.raises(TLEError, match=r"epoch .*columns 19-32"):
+            check_lines(body + str(_checksum(body + "0")), line2[:68] + str(_checksum(line2)))

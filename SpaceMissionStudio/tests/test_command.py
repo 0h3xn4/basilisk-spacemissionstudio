@@ -377,6 +377,28 @@ def test_condition_errors_name_the_problem():
         evaluate_condition("10 ** 10 ** 10", _CONTEXT)
 
 
+
+@pytest.mark.parametrize("expression, reason", [
+    ("-" * 100_000 + "1", "longer than 2000 characters"),
+    ("+".join(["1"] * 5000), "longer than 2000 characters"),
+    ("-" * 1500 + "1", "nested more than 50 levels deep"),
+    ("'x' * 10 ** 9", "repeats a text or list more than 1000000 times"),
+    ("10 ** 999 * [0]", "repeats a text or list more than 1000000 times"),
+], ids=["long-unary", "long-sum", "deep", "repeat-text", "repeat-list"])  # short: Windows caps the test id's env var
+def test_a_condition_cannot_exhaust_memory_or_the_stack(expression, reason):
+    """A crafted condition is refused with a message (security analysis
+    S-12): too long or nested too deep (it raised MemoryError or
+    RecursionError, which crashed loading the scenario; both are refused
+    at validation), or repeating a text or list without bound (refused
+    when evaluated). Ordinary nesting still works."""
+    from spacemissionstudio.schema.command import ConditionError, evaluate_condition
+
+    with pytest.raises(ConditionError, match=reason):
+        evaluate_condition(expression, _CONTEXT)
+    if not reason.startswith("repeats"):  # length and depth are refused already when the scenario is validated
+        assert Command(kind="if", params={"condition": expression}).validate("mission_sequence[0]")
+    assert evaluate_condition("((((1 + 2) * 3) - 4) / 5) > 0 and -(-(-1)) < 0", _CONTEXT) is True
+
 def test_validation_reports_a_condition_outside_the_allowed_set():
     """The editor shows a disallowed condition before the run, with the
     command's path."""

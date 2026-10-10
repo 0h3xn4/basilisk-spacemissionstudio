@@ -142,6 +142,7 @@ against the verified call sequences cited above.
 
 from __future__ import annotations
 
+import math
 from typing import Dict, List, Optional
 
 import numpy as np
@@ -249,7 +250,33 @@ class FswError(Exception):
     """
 
 
-def build_simple_nav(scSim, task_name: str, tag: str, sc_object, sun_state_out_msg=None):
+# simpleNav's 18 error states: position, velocity, attitude (MRP), body rate,
+# Sun heading (MRP), accumulated delta-V -- three each (simpleNav.cpp).
+_NAV_STATE_INDEX = {"position": 0, "velocity": 3, "attitude": 6, "rate": 9, "sun": 12}
+
+
+def navigation_error_matrices(navigation_error) -> tuple:
+    """``(PMatrix, walkBounds)`` for ``simpleNav`` from a
+    :class:`~spacemissionstudio.schema.scenario.NavigationErrorConfig`:
+    PMatrix diagonal = the per-step standard deviation, walkBounds = the
+    bound, per axis, in simpleNav's units (m, m/s, MRP, rad/s, MRP).
+    Angles become MRPs, ``tan(angle/4)``."""
+    p_matrix = [[0.0] * 18 for _ in range(18)]
+    bounds = [0.0] * 18
+    for prefix, start in _NAV_STATE_INDEX.items():
+        step, bound = navigation_error.channel(prefix)
+        if prefix in ("attitude", "sun"):
+            step, bound = math.tan(math.radians(step) / 4.0), math.tan(math.radians(bound) / 4.0)
+        elif prefix == "rate":
+            step, bound = math.radians(step), math.radians(bound)
+        for axis in range(3):
+            p_matrix[start + axis][start + axis] = step
+            bounds[start + axis] = bound
+    return p_matrix, bounds
+
+
+def build_simple_nav(scSim, task_name: str, tag: str, sc_object, sun_state_out_msg=None, navigation_error=None,
+                     model_tag: str = "simpleNav"):
     """Always built for any spacecraft with ``fsw_mode`` set -- the
     truth-to-navigation-message bridge every guidance mode reads from (see
     module docstring). ``sun_state_out_msg`` is the central SPICE
@@ -258,10 +285,20 @@ def build_simple_nav(scSim, task_name: str, tag: str, sc_object, sun_state_out_m
     ``NavAttMsgPayload.vehSunPntBdy`` (verified directly in
     ``simpleNav.cpp``'s ``computeTrueOutput()``), which ``sunSafePoint``
     and any ``coarse_sun_sensor`` need.
+
+    ``navigation_error`` (a ``NavigationErrorConfig``) puts simpleNav's
+    error model on: see :func:`navigation_error_matrices`. Without it the
+    messages are the true state. ``model_tag`` names a second, error-free
+    instance the service records the truth from when errors are on.
     """
     nav = simpleNav.SimpleNav()
-    nav.ModelTag = f"{tag}_simpleNav"
+    nav.ModelTag = f"{tag}_{model_tag}"
     nav.scStateInMsg.subscribeTo(sc_object.scStateOutMsg)
+    if navigation_error is not None and navigation_error.any_error:
+        nav.PMatrix, bounds = navigation_error_matrices(navigation_error)
+        nav.walkBounds = [[b] for b in bounds]
+        if navigation_error.seed is not None:
+            nav.RNGSeed = navigation_error.seed
     if sun_state_out_msg is not None:
         nav.sunStateInMsg.subscribeTo(sun_state_out_msg)
     scSim.AddModelToTask(task_name, nav)

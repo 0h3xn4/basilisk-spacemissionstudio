@@ -8477,3 +8477,363 @@ claim about them is made.
 **SRS-F-09** now says that "Deployed solar arrays may be flexible: a
 panel on a spring-damper hinge whose motion acts on the attitude"; it is
 verified by `tests/test_solar_arrays.py`.
+
+## Flight-software export (SRS-F-18): workbench phase 1
+
+The tool can now write a spacecraft's attitude flight software as a
+standalone C project (`spacemissionstudio.fsw_export`, the Flight Software
+tab, `spacemissionstudio export-fsw` and `fsw-status`). Basilisk itself is
+unchanged: the export is generated from its sources and templates.
+
+**Investigation first (phase 0).**
+- All of the tool's flight software runs in the one dynamics task, at
+  its step, in insertion order; there is no separate flight-software rate.
+- Fifteen of the modules `engine.fsw` builds are Basilisk C modules, and
+  depend on each other only through `XMsg_C` message containers.
+- Basilisk ships no packaging or autocode hooks to reuse.
+- The installed 2.12.0 wheel holds no C sources, but records the revision
+  it was built from (`611665f74`, the `v2.12.0` tag). The checked-out
+  tree is 2.13.0b0, so exporting from it would have shipped other code
+  than the simulation runs.
+- Basilisk generates its C message interface at build time from
+  `msg_C.h.in`/`msg_C.cpp.in`; the `.cpp` template's C-to-C half is plain
+  C. A throwaway build of `mrpFeedback` from the 2.12.0 sources with a
+  10-line logging stub gave a torque bit-identical to Basilisk's.
+- Each payload class's numpy `__dtype__` has the C struct's exact size,
+  padding and nested structs included, for all 24 message types.
+
+**Sources.** The include closure of the fifteen modules (71 files and
+Basilisk's licence) is vendored unchanged from the 2.12.0 revision as one
+zip (`scripts/vendor_basilisk_fsw.py`). A zip rather than loose files:
+16 of the files end lines with spaces, and the repository's whitespace
+hooks would have rewritten them. Every read recomputes the file's git blob
+hash and refuses a changed file.
+
+**Capture, not a second description.** `fsw_export.capture` builds the
+scenario with `engine.service`, stops before `InitializeSimulation()`
+(`build()` now has an `initialize()` step that can be called separately),
+and reads the flight software off the Basilisk objects:
+- the modules in the task's execution order, with every configuration
+  field's value;
+- each input's `payloadPointer`, matched against module outputs, other
+  models' messages, or else a standalone configuration message (then a
+  constant, checked unchanged at every step);
+- the simulation readers of each output (`isSubscribedTo()`).
+
+It refuses an export whose flight software would see different values
+outside the simulation, and comms pointing (a Python mode switch). A
+recorder at the end of the task keeps, for a short run, what each module
+read and wrote. It also records the state when `InitializeSimulation()`
+had run every `Reset()`: that mattered, because the reaction-wheel
+effector writes its speeds during its own `Reset`, and
+`thrMomentumManagement` reads them in its `Reset`.
+
+**Generated project.**
+- `basilisk/`: the sources, unchanged.
+- `generated/cMsgCInterface/`: the C message interface from Basilisk's
+  templates.
+- `fsw_config.[ch]`: every parameter, each with its unit, scenario field
+  and GUI control.
+- `fsw_scheduler.c`: init, reset, step, and the start-up re-Reset the
+  tool does for momentum dumping.
+- `fsw_ports.c`: the port tables with layout hashes.
+- `fsw_layout_check.c`: compile-time `sizeof`/`offsetof` checks against
+  the recorded layouts.
+- `fsw_log.c`: Basilisk's C logging API without Basilisk.
+- `fsw_host`: `info` and `replay`.
+- One C unit test per module, a replay test, CMake, `ICD.md`,
+  `TRACEABILITY.md` and `manifest.json`.
+
+**Found on the way.**
+- `thrFiringSchmitt.lastThrustState` (a `boolean_t[MAX_EFF_CNT]`) comes
+  back from SWIG as a bare pointer. A first export wrote the pointer's
+  address as the array's value; it passed only because the module's
+  `Reset` overwrites the field. The array is now read from memory at its
+  declared size, and the generator refuses any value that is not a number.
+- `cssWlsEst` initialises its residual output only when something
+  subscribes to it; reading it through its NULL pointer segfaulted the
+  test. Reads now fall back to the container's own payload, which is what
+  the simulation recorded.
+- The scenario and spacecraft names went into generated C comments, a C
+  string literal and a CMake comment as typed. A shared scenario could
+  have put code into the project. User text now goes through escaping
+  helpers (security analysis S-14).
+
+**Measured.**
+- Every attitude template (14 spacecraft) exports, builds with
+  `-Wall -Wextra` without warnings in the generated code, and passes
+  CTest.
+- Replayed at zero tolerance over 300 recorded steps, every output and
+  telemetry port equals the simulation's exactly, with GCC 14 and with
+  Clang on Linux x86-64.
+
+**Records.** `Scenario.fsw_exports` keeps each export's folder and its
+configuration hash, with a short hash per setting group. The tab and
+`fsw-status` then say Up to date, Stale (naming the groups that changed),
+Changed on disk or Folder missing. The orbit, the duration, other
+spacecraft and star trackers do not make an export stale. The scenario
+editor carries the records through every edit (no widget edits them).
+
+**Compliance.** SRS-F-18 with its verification; ICD-09 (the export
+format); SRF (the export redistributes Basilisk sources); security
+analysis S-14. The 5.3.2.4 (automatic code generation) entries stay not
+applicable to the tool's own code, and now say what each export provides
+to the developer of the flight software it generates.
+
+## Software in the loop (SRS-F-19): workbench phase 2
+
+The flight software can now fly the spacecraft from outside the tool:
+**Run SIL...** on the Flight Software tab, or `spacemissionstudio sil`,
+starts a program (an export's `fsw_host`, the adapter's
+`fsw_adapter_host`, or anything that follows the contract) and runs the
+scenario in lock-step with it. Basilisk is unchanged.
+
+**The contract (`SIL_CONTRACT.md`, version 1).**
+- Frames of a 28-byte header (magic, version, type, sequence number,
+  length, time in ns, CRC-32) and a payload.
+- HELLO carries the program's ports with their layout hashes, so a
+  program built for other payloads is refused before the first step.
+  Then RESET, one STEP and OUTPUT per step, ERROR and BYE.
+- The byte stream is a Unix-domain socket in a private folder (TCP on
+  127.0.0.1 on Windows) behind a three-function interface on each side.
+  A serial or UDP link replaces only that.
+- Implemented twice: in Python (`spacemissionstudio.sil`) and in C (the
+  export's `generated/fsw_sil.c`). The tests run each against the other.
+
+**Where the bridge goes.** Every model in the dynamics task has the same
+priority, so they run in the order they were added. A first look at the
+templates showed that `ExtForceTorque` (06, 15) reads `mrpFeedback`'s
+command right after it, in the same step. A bridge added at the end of
+the task would have applied the program's commands one step late.
+- The runner builds the scenario once to find the spacecraft's last
+  flight-software module.
+- It then builds it again with a `SimBaseClass` subclass. That subclass
+  calls `super().AddModelToTask` and adds the bridge right after that
+  module, at its priority.
+- The phase 1 timing check (no model between the first and last module
+  may see a difference) then guarantees the same-step latency.
+- A second model at the end of the task keeps the inputs as they stand
+  once every model has reset; they go out in RESET.
+
+**Shadow and drive.** Each step the bridge does three things:
+- sends the inputs as the modules read them;
+- compares the program's outputs with what the modules just wrote;
+- writes the program's actuator commands into the modules' output
+  messages through their own `write()`.
+
+The actuators read those commands. The modules keep running as the
+reference, on the same inputs.
+
+**Measured.**
+- The exported `fsw_host` in the loop reproduces the normal run bit for
+  bit: every result series identical and every residual zero. This holds
+  for templates 06 (same-step actuation, TCP), 12 (the momentum-dumping
+  priming re-Reset) and 13 (models between the modules), on Linux.
+- Round trip: 0.17 to 0.19 ms per step on average on this test machine
+  (template 07, 0.4 ms at the 99th percentile).
+- An export made with a 20 % higher P gain, run against the original
+  scenario, showed wheel-torque residuals up to 1.8e-3 N*m, settling
+  within about 0.1 h, and the stale-export warning.
+
+**Failing loudly.** Each of these stops the run with the reason, and the
+program's last output is kept:
+- a wrong token, version, step, port name, size or layout hash (every
+  difference named);
+- a broken frame;
+- no answer within the step timeout;
+- a closed link, an exited program, or an ERROR from the program.
+  `fsw_host` sends a module's `BSK_ERROR` as one before it exits (tested
+  since: see "A module error in the loop" below).
+
+An optional step deadline counts late answers as dropped steps; the late
+answers are recognised by their sequence number and discarded.
+`SimulationService` gained one optional argument (the simulation class);
+an exception raised in a Python SysModel comes out of
+`ExecuteSimulation()` as a generic "director method" error, so the
+runner reports the bridge's own error instead.
+
+**Adapter.** Each export now also has `adapter/`:
+- generated payload structs for every port, and the configuration
+  constants the modules use;
+- port glue;
+- a template `fsw_adapter.c` (`fsw_init`, `fsw_reset`, `fsw_step`);
+- `ADAPTER_GUIDE.md`.
+
+It builds as `fsw_adapter_host` with the same harness, so it can also
+replay the recorded run. As generated it sets no command; the comparison
+then lists every output as never written.
+
+**Consent.** The program never comes from the scenario. The dialog
+shows its full path and SHA-256 and needs a tick for each program; the
+runner checks the hash again just before starting it (security analysis
+S-15). The analysis no longer says the tool opens no listening socket.
+
+**Compliance.** SRS-F-19 with its verification, ICD-10 (the SIL link),
+security analysis S-15, the SDD component map.
+
+## GUI tests fail instead of hanging on a modal dialog
+
+Under the offscreen platform a modal dialog nobody answers blocks for
+ever. During the flight-software export work a failing label test left the
+main window with unsaved changes, and the whole suite hung at its "Unsaved
+changes" prompt when pytest-qt closed the window, instead of reporting the
+failure. Only `test_main_window.py`'s own `window` fixture guarded against
+this.
+
+`tests/gui/conftest.py` now replaces every modal entry point the GUI uses
+(QMessageBox's static functions, QFileDialog's getters, `QDialog.exec`,
+`QMenu.exec`) for every GUI test. During setup and the test itself, a
+dialog the test did not replace raises an error naming it, so the test
+fails; pytest-qt also reports one raised inside a Qt slot. When the test's
+widgets are closed afterwards it answers at once (the default button, a
+rejected dialog, no file). A test's own monkeypatch still takes precedence.
+`tests/gui/test_dialog_guard.py` runs a failing test with unsaved changes
+and a slot that opens a message box in a separate pytest under a time
+limit. Both fail with their reason; the same files without the guard hang
+until killed. All 1081 GUI tests pass unchanged with the guard.
+
+## A module error in the loop, and errors that stop as in Basilisk
+
+The SIL path for a module error had no test. One now leaves an export's
+`mrpFeedback` guidance input unconnected (one line removed from
+`fsw_connect()`). The module's own `Reset` check calls `_bskError`, and
+`fsw_host` sends it as ERROR before exiting with status 70. The run then
+stops with "the flight software reported an error: Error:
+mrpFeedback.guidInMsg wasn't connected", and the module's message is in
+the program's output. `replay` stops the same way.
+
+Found while writing it: Basilisk 2.12's `_bskLog` at level `BSK_ERROR`
+throws a `BasiliskError`, so the simulation stops. The export's
+`fsw_log.c` only printed the message and carried on. No vendored module
+logs at that level today (all fourteen use `_bskError` for errors and
+`_bskLog` only for information and warnings), so no export was affected.
+It now stops as `_bskError` does, and `_bskLogNoThrow` returns -1 at that
+level (and does nothing for a NULL logger), as Basilisk's does. A C test
+checks both.
+
+## Navigation error (SRS-F-09)
+
+Until now the flight software was always told the true state: `simpleNav`
+ran without its error model. A spacecraft can now carry
+`navigation_error` (Attitude control tab, "Navigation error"): per
+channel (attitude, body rate, Sun heading, position, velocity) a per-step
+standard deviation and a bound, plus a random seed. They map onto
+`simpleNav`'s Gauss-Markov model: `PMatrix` holds the step and
+`walkBounds` the bound, per axis, with angles as MRPs, `tan(angle/4)`.
+
+**Found while building it.**
+- Basilisk treats a zero bound as no bound at all, so a step without a
+  bound would let the error grow without limit. The schema refuses that.
+- The attitude, body-rate and Sun-heading result series were recorded
+  from `simpleNav`'s output. With errors on they would have quietly become
+  what the flight software was told, not what the spacecraft did. When
+  errors are on, a second, error-free `simpleNav` that feeds nothing now
+  supplies those series. New `navigation_error.*` series give the
+  difference: rotation angle, rate, Sun-heading angle, position, velocity.
+- A segmented long run rebuilds the simulation per segment, so the same
+  seed would replay the same random walk in every segment. Each segment
+  now gets the scenario's seed (or Basilisk's default) plus its number.
+  The error still restarts at zero in each segment.
+
+**Measured** on template 07 over 30 minutes:
+- Every error stays within its limit, and the attitude and Sun-heading
+  errors reach the clamp exactly.
+- The same seed repeats the run bit for bit; another seed differs.
+- An all-zero block changes nothing.
+- The exported flight software in the loop, given the same noisy
+  navigation, still reproduces the normal run bit for bit.
+
+## Windows: export hashes and SIL deadlines (SRS-F-18, SRS-F-19)
+
+The pull request's first Windows run failed 6 tests; Linux had passed.
+Both causes were reproduced on Linux before fixing them.
+- **Every fresh export read as "Changed on disk".** `capture.json` was
+  written as text, so Windows turned each `\n` into `\r\n`, while its hash
+  in `manifest.json` was taken from the `\n` text. The export now writes
+  the exact bytes it hashes. Two test fixtures had the same mistake and now
+  write bytes too; no expectation changed. Reproduced by making
+  `write_text` write `\r\n`: 5 failed before, all passed after.
+- **A missed deadline could count as met.** Deadlines were timed with
+  `time.monotonic()`, which ticks about every 15.6 ms on Windows, so a
+  short deadline looked unexpired. The SIL session now times with
+  `time.perf_counter()`, and a reply measured later than its deadline
+  counts as dropped even when the wait itself did not run out. Reproduced
+  with a 15.625 ms `monotonic` tick: 0 of 61 steps dropped before, 61 after.
+
+## Audit of the whole tool (2026-10-10)
+
+A complete review: automated sweeps over all of `spacemissionstudio/`, a
+line-by-line reading of this pull request's code, targeted reading and
+fuzzing of the rest, and a check of every claim in the compliance
+documents against the code and tests.
+
+**What was run.**
+- Lint with extra bug-finding rules, vulture, codespell: nothing that
+  was a bug (closure warnings are calls inside their own loop; the naive
+  datetimes are the app's naive-UTC convention).
+- The exported C (templates 06, 07, 12, 13) built with `-Wall -Wextra
+  -Wshadow -Wconversion` (no warnings), run under AddressSanitizer and
+  UndefinedBehaviorSanitizer (unit tests, replay and a SIL run each:
+  no memory error), and the clang static analyzer (one report, in
+  Basilisk's own `mrpFeedback.c`: a false positive, unchanged).
+- Fuzzing: 6000 mutated scenario files, 6000 mutated CCSDS messages,
+  3000 mutated TLEs.
+- The compliance documents: every cited test and path exists, every
+  requirement ID is in the extracted standards, every "Compliant" row
+  names evidence.
+
+**Found and fixed** (each with a test that fails without the fix):
+- *Scenario files* (SRS-F-01): 62 kinds of wrong-typed value got past
+  `load_scenario` as a raw TypeError, ValueError or AttributeError; the
+  GUI's Open showed nothing. Values are now checked against their
+  declared types, naming the field.
+- *Conditions* (SRS-S-04, S-12): a deeply nested `if` condition crashed
+  loading with MemoryError. Length, depth and repetition are capped.
+- *CCSDS* (SRS-F-14): 14 kinds of malformed message raised Python
+  errors; `ccsds-validate` printed tracebacks. Each is now a
+  conformance error citing its clause.
+- *SIL* (SRS-F-19, S-15): the program's hash was re-checked before the
+  seconds-long build, not "just before the start" as S-15 said; it is
+  now checked again right before the launch. The report is strict JSON
+  (it held NaN and Infinity tokens).
+- *Export* (SRS-F-18): `fsw_host replay --expect` without its file
+  skipped the comparison and exited 0; a folder with someone else's
+  `manifest.json` was offered for replacement and lost that file; a
+  relative `--out` was recorded so that `fsw-status` reported the
+  export missing; replay leaked its buffers.
+- *TLE* (SRS-F-02): an epoch field like `26280e50000000` passed the
+  check and failed the run with a NaN error.
+- *GUI*: the Run SIL dialog, the SIL comparison panel and the Monte
+  Carlo tab had boxes and tabs the mouse wheel changed, against the
+  app-wide rule; an export ending during a half-typed edit lost its
+  record.
+- *Documents*: 449 requirement quotes in the matrix ended mid-sentence
+  without a mark; a docstring pointed at a missing file; the export
+  README's usage snippet reset before writing the inputs.
+
+- *SIL deadlock* (SRS-F-19), found by this pull request's CI: a run
+  with a step deadline the program misses hung until the job's
+  90-minute limit (both macOS jobs, one Linux job). Every late
+  `OUTPUT` stayed unread, so once both socket buffers were full the
+  program waited to write its `OUTPUT` and the simulation waited to
+  write its `STEP`, each for ever. Reproduced locally: template 07,
+  60 min, deadline 1e-7 s, Unix socket, no progress after 90 s. The
+  simulation now reads while it sends (and reads what has already
+  arrived when a wait runs out), and a send the program takes nothing
+  of for the step timeout fails the run. The same run now completes
+  in 7 s with all 3601 steps dropped. Two tests hang without the fix:
+  4 MiB sent both ways before either side reads, and 20000 dropped
+  steps followed by an answered one and BYE. CI now dumps every
+  thread's stack for a test still running after 10 minutes.
+
+**Withdrawn.** An earlier note said Monte Carlo runs share one
+navigation seed. They do not: Basilisk's Controller
+(`setShouldDisperseSeeds`) gives every model with an `RNGSeed`,
+`simpleNav` included, its own random seed per run (read from its code;
+the manual now says so).
+
+**Still open.** The Run SIL dialog hashes the program at each keystroke
+of its path (slow only for a very large file; hashing later would let a
+ticked consent go stale). `compliance/unreached_code.md` is a dated
+measurement that still lists a widget removed since. The sequence
+numbers of the SIL link wrap after 2^32 frames.

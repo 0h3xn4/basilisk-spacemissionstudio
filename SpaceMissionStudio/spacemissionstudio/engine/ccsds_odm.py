@@ -42,7 +42,7 @@ from __future__ import annotations
 import math
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
@@ -247,6 +247,8 @@ def read(text: str) -> OdmMessage:
             message.segments.append(segment)
             state = "metadata"
             continue
+        if stripped in ("META_STOP", "COVARIANCE_START") and segment is None:
+            raise OdmError(f"line {number}: {stripped} before the first META_START (CCSDS 502.0-B-3 5.2.3.3)")
         if stripped == "META_STOP":
             state = "data"
             continue
@@ -282,11 +284,18 @@ def read(text: str) -> OdmMessage:
                     covariance = {"epoch": match.group(2), "frame": None, "rows": [], "line": number}
                     segment.covariances.append(covariance)
                 else:
+                    if covariance is None:
+                        raise OdmError(f"line {number}: COV_REF_FRAME before the covariance EPOCH "
+                                       "(CCSDS 502.0-B-3 5.2.5.3)")
                     covariance["frame"] = match.group(2)
                 continue
             if covariance is None:
                 raise OdmError(f"line {number}: covariance data before its EPOCH (CCSDS 502.0-B-3 5.2.5.3)")
-            covariance["rows"].append([float(v) for v in stripped.split()])
+            try:
+                covariance["rows"].append([float(v) for v in stripped.split()])
+            except ValueError as exc:
+                raise OdmError(f"line {number}: covariance line has a non-numeric value ({exc}) "
+                               "(CCSDS 502.0-B-3 5.2.5.4)") from exc
         else:
             raise OdmError(f"line {number}: data after COVARIANCE_STOP outside a new META_START block")
     return message
@@ -607,14 +616,16 @@ def read_checked(text: str) -> Tuple[OdmMessage, List[Issue]]:
 def _parse_time(value: str) -> datetime:
     """A 7.5.10 time string as a naive datetime (seconds = 60 folded into
     the next minute)."""
-    value = value.rstrip("Z")
-    date, clock = value.split("T")
-    if len(date) == 8:  # YYYY-DDD
-        base = datetime.strptime(date, "%Y-%j")
-    else:
-        base = datetime.strptime(date, "%Y-%m-%d")
-    hours, minutes, seconds = clock.split(":")
-    return base + timedelta(hours=int(hours), minutes=int(minutes), seconds=float(seconds))
+    try:
+        date, clock = value.rstrip("Z").split("T")
+        if len(date) == 8:  # YYYY-DDD
+            base = datetime.strptime(date, "%Y-%j")
+        else:
+            base = datetime.strptime(date, "%Y-%m-%d")
+        hours, minutes, seconds = clock.split(":")
+        return base + timedelta(hours=int(hours), minutes=int(minutes), seconds=float(seconds))
+    except (ValueError, OverflowError) as exc:  # e.g. seconds of 1e999: callers treat any bad time as ValueError
+        raise ValueError(f"{value!r} is not a CCSDS time") from exc
 
 
 def format_time(moment: datetime) -> str:
@@ -647,7 +658,7 @@ def _header(kind: str, originator: str, creation: Optional[datetime], comments: 
             message_id: Optional[str]) -> List[str]:
     lines = [_line(f"CCSDS_{kind}_VERS", VERSION)]
     lines += [f"COMMENT {c}" for c in comments]
-    lines.append(_line("CREATION_DATE", format_time(creation or datetime.utcnow().replace(microsecond=0))))
+    lines.append(_line("CREATION_DATE", format_time(creation or datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0))))
     lines.append(_line("ORIGINATOR", originator))
     if message_id:
         lines.append(_line("MESSAGE_ID", message_id))

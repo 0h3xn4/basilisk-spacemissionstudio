@@ -125,6 +125,24 @@ def test_several_spacecraft_choose_whose_spread_is_shown(qtbot, tmp_path):
     assert widget.table.horizontalHeaderItem(widget.table.columnCount() - 1).text().startswith("follower final")
 
 
+def test_the_mouse_wheel_does_not_change_whose_spread_is_shown(qtbot, qapp, tmp_path):
+    """The spacecraft choice is a no-wheel drop-down like every other in the
+    app: scrolling the tab over it changes nothing."""
+    from test_wheel_in_dialogs import _changed_by_wheel
+
+    from spacemissionstudio.gui.monte_carlo_results_widget import MonteCarloResultsWidget
+
+    _save_batch(tmp_path, names=("chief", "follower"))
+    widget = MonteCarloResultsWidget()
+    qtbot.addWidget(widget)
+    widget.load_folder(tmp_path)
+    widget.resize(1000, 800)  # [px]
+    widget.show()
+    qtbot.waitExposed(widget)
+    changed, count = _changed_by_wheel(widget, qapp)
+    assert count > 0 and not changed, changed
+
+
 def test_per_run_series_are_drawn_as_one_ensemble(qtbot, tmp_path):
     """Interchangeable runs get one colour, thin translucent lines and a
     single legend entry, and the hover shows the run under the pointer --

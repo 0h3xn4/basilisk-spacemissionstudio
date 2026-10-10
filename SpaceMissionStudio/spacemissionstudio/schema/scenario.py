@@ -55,12 +55,16 @@ painful than reserving the shape up front.
 
 from __future__ import annotations
 
+import re
+
+import dataclasses
 import json
 import math
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+import typing
+from typing import Any, Dict, List, Optional
 
 from .command import Command, report_before_propagate_errors
 
@@ -978,6 +982,71 @@ class MagneticMomentumManagementConfig:
         _require(self.c_gain > 0, f"{spacecraft_name}: magnetic_momentum_management.c_gain must be > 0")
 
 
+_NAV_CHANNELS = (  # (field prefix, unit, what it perturbs)
+    ("attitude", "deg", "attitude"),
+    ("rate", "deg/s", "body rate"),
+    ("sun", "deg", "Sun heading"),
+    ("position", "m", "position"),
+    ("velocity", "m/s", "velocity"),
+)
+
+
+@dataclass
+class NavigationErrorConfig:
+    """Errors on what the flight software is told, by Basilisk's
+    ``simpleNav`` (its Gauss-Markov error model, ``PMatrix`` and
+    ``walkBounds``). Without this, the navigation messages are the true
+    state.
+
+    Each error, per axis, is a random walk: every flight-software step it
+    changes by a normal draw of standard deviation ``<channel>_step`` and is
+    held within ``<channel>_bound`` (Basilisk clamps at the bound). A
+    channel with a step needs a bound: Basilisk treats a zero bound as no
+    bound at all, and the error would drift without limit. Attitude and
+    Sun-heading errors are small rotations, given here in degrees per axis
+    (``simpleNav`` applies them as MRPs, ``tan(angle/4)``). ``seed`` is
+    Basilisk's random-number seed (``None``: its default), so a run is
+    repeatable.
+    """
+
+    attitude_step_deg: float = 0.0  # [deg] 1-sigma change per step, per axis
+    attitude_bound_deg: float = 0.0  # [deg] per axis
+    rate_step_deg_s: float = 0.0  # [deg/s]
+    rate_bound_deg_s: float = 0.0  # [deg/s]
+    sun_step_deg: float = 0.0  # [deg]
+    sun_bound_deg: float = 0.0  # [deg]
+    position_step_m: float = 0.0  # [m]
+    position_bound_m: float = 0.0  # [m]
+    velocity_step_m_s: float = 0.0  # [m/s]
+    velocity_bound_m_s: float = 0.0  # [m/s]
+    seed: Optional[int] = None
+
+    def channel(self, prefix: str) -> tuple:
+        """``(step, bound)`` of one channel, in this config's units."""
+        unit = next(u for p, u, _ in _NAV_CHANNELS if p == prefix).replace("/", "_")
+        return getattr(self, f"{prefix}_step_{unit}"), getattr(self, f"{prefix}_bound_{unit}")
+
+    def validate(self, spacecraft_name: str) -> None:
+        for prefix, unit, label in _NAV_CHANNELS:
+            step, bound = self.channel(prefix)
+            for value, what in ((step, "step"), (bound, "bound")):
+                _require(isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+                         and value >= 0.0,
+                         f"{spacecraft_name}: navigation_error {label} {what} must be a number >= 0 [{unit}]")
+            _require(step == 0.0 or bound > 0.0,
+                     f"{spacecraft_name}: navigation_error {label} needs a bound > 0 when its step is set "
+                     "(without one Basilisk lets the error grow without limit)")
+        _require(self.attitude_bound_deg < 180.0 and self.sun_bound_deg < 180.0,
+                 f"{spacecraft_name}: navigation_error attitude and Sun bounds must be below 180 deg")
+        _require(self.seed is None or (isinstance(self.seed, int) and not isinstance(self.seed, bool)
+                                       and 0 <= self.seed < 2 ** 32),
+                 f"{spacecraft_name}: navigation_error seed must be an integer from 0 to 2^32 - 1")
+
+    @property
+    def any_error(self) -> bool:
+        return any(self.channel(prefix)[0] > 0.0 for prefix, _, _ in _NAV_CHANNELS)
+
+
 @dataclass
 class FuelTankConfig:
     """Real propellant depletion for this spacecraft's ``"thruster"``
@@ -1199,6 +1268,8 @@ class SpacecraftConfig:
     constant_thrust: Optional[ConstantThrustConfig] = None
     momentum_dumping: Optional[MomentumDumpingConfig] = None
     magnetic_momentum_management: Optional[MagneticMomentumManagementConfig] = None
+    # What simpleNav tells the flight software; None: the true state.
+    navigation_error: Optional[NavigationErrorConfig] = None
     fuel_tank: Optional[FuelTankConfig] = None
     propellant_budget: Optional[PropellantBudgetConfig] = None  # see engine/propellant_budget.py
 
@@ -1587,6 +1658,11 @@ class SpacecraftConfig:
                       "actuator (desaturation hardware) on this spacecraft")
             num_reaction_wheels = sum(1 for a in self.actuators if a.kind == "reaction_wheel")
             self.magnetic_momentum_management.validate(self.name, num_reaction_wheels)
+        if self.navigation_error is not None:
+            _require(self.fsw_mode is not None or self.comms_pointing is not None,
+                     f"{self.name}: navigation_error needs attitude flight software (a pointing mode or comms "
+                     "pointing): only then is there navigation to perturb")
+            self.navigation_error.validate(self.name)
         if self.propellant_budget is not None:
             self.propellant_budget.validate(self.name)
         if self.fuel_tank is not None:
@@ -1880,6 +1956,30 @@ class SimSettings:
                   f"sim_settings.integrator {self.integrator!r} must be one of {SUPPORTED_INTEGRATORS}")
 
 
+@dataclass
+class FswExportRecord:
+    """Where a spacecraft's flight software was last exported
+    (``spacemissionstudio.fsw_export``): the folder, and the configuration
+    hash it was exported with, so the GUI can say when the scenario's
+    flight-software settings have changed since (a stale export).
+    ``parts`` holds one short hash per setting group, to name what changed.
+    The export folder's own ``manifest.json`` holds the full provenance."""
+
+    spacecraft: str
+    path: str  # the export folder, absolute or relative to the scenario file
+    config_digest: str  # 64 hex digits (fsw_export.digest.fsw_config_digest)
+    exported_utc: str = ""
+    basilisk_revision: str = ""
+    parts: dict = field(default_factory=dict)  # setting group -> 16 hex digits
+
+    def validate(self) -> None:
+        _require(bool(self.spacecraft), "fsw_exports[].spacecraft must not be empty")
+        _require(bool(self.path), f"fsw_exports[{self.spacecraft}].path must not be empty")
+        _require(isinstance(self.config_digest, str) and re.fullmatch(r"[0-9a-f]{64}", self.config_digest) is not None,
+                 f"fsw_exports[{self.spacecraft}].config_digest must be 64 lower-case hex digits")
+        _require(isinstance(self.parts, dict), f"fsw_exports[{self.spacecraft}].parts must be a mapping")
+
+
 SUPPORTED_SIMULATION_MODES = ("full_attitude", "orbit_only")
 
 
@@ -1923,6 +2023,7 @@ class Scenario:
     # mission_sequence means; engine.mission_engine is an ADDITIVE,
     # separate execution path only used when this is non-empty.
     mission_sequence: list = field(default_factory=list)  # list[Command]
+    fsw_exports: list = field(default_factory=list)  # list[FswExportRecord], at most one per spacecraft
     description: str = ""
     schema_version: int = CURRENT_SCHEMA_VERSION
 
@@ -1943,6 +2044,11 @@ class Scenario:
         _require(len(names) == len(set(names)), f"spacecraft names must be unique, got {names}")
         for sc in self.spacecraft:
             sc.validate()
+        for record in self.fsw_exports:
+            record.validate()
+        exported = [record.spacecraft for record in self.fsw_exports]
+        _require(len(exported) == len(set(exported)),
+                 f"fsw_exports lists a spacecraft more than once: {exported}")
         flexible = [sc.name for sc in self.spacecraft if sc.solar_arrays]
         _require(not flexible or self.sim_settings.integrator in ("rkf45", "rkf78"),
                   f"{flexible[0] if flexible else ''}: flexible solar arrays need an adaptive integrator "
@@ -2174,6 +2280,9 @@ class Scenario:
                 MagneticMomentumManagementConfig(**magnetic_momentum_management_data)
                 if magnetic_momentum_management_data is not None else None
             )
+            navigation_error_data = sc.pop("navigation_error", None)
+            navigation_error = (NavigationErrorConfig(**navigation_error_data)
+                                if navigation_error_data is not None else None)
             fuel_tank_data = sc.pop("fuel_tank", None)
             fuel_tank = FuelTankConfig(**fuel_tank_data) if fuel_tank_data is not None else None
             budget_data = sc.pop("propellant_budget", None)
@@ -2186,15 +2295,17 @@ class Scenario:
                                                 phasing_keeping=phasing_keeping, constant_thrust=constant_thrust,
                                                 momentum_dumping=momentum_dumping,
                                                 magnetic_momentum_management=magnetic_momentum_management,
+                                                navigation_error=navigation_error,
                                                 fuel_tank=fuel_tank, facets=facets,
                                                 **sc))
 
         mission_sequence = [Command.from_dict(c) for c in data.pop("mission_sequence", [])]
+        fsw_exports = [FswExportRecord(**r) for r in data.pop("fsw_exports", [])]
 
         return Scenario(
             gravity=gravity, sim_settings=sim_settings, space_weather=space_weather,
             ground_stations=ground_stations, spacecraft=spacecraft, monte_carlo=monte_carlo,
-            mission_sequence=mission_sequence, **data,
+            mission_sequence=mission_sequence, fsw_exports=fsw_exports, **data,
         )
 
     def save(self, path: "str | Path") -> None:
@@ -2202,6 +2313,85 @@ class Scenario:
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(self.to_dict(), indent=2) + "\n")
+
+
+_TYPE_HINTS: Dict[type, Dict[str, Any]] = {}
+
+
+def _describe(value) -> str:
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "true/false"
+    if isinstance(value, (int, float)):
+        return "a number"
+    if isinstance(value, str):
+        return "text"
+    if isinstance(value, (list, tuple)):
+        return "a list"
+    if isinstance(value, dict):
+        return "an object"
+    return type(value).__name__
+
+
+def _type_problem(value, annotation) -> Optional[str]:
+    """Why ``value`` (as read from JSON) does not fit ``annotation``, or None.
+    Only the shapes JSON can get wrong are checked; anything else passes."""
+    origin, args = typing.get_origin(annotation), typing.get_args(annotation)
+    if annotation is typing.Any or annotation is object:
+        return None
+    if origin is typing.Union:
+        if value is None and type(None) in args:
+            return None
+        problems = [_type_problem(value, a) for a in args if a is not type(None)]
+        return None if any(p is None for p in problems) else problems[0]
+    if annotation is float:
+        ok = isinstance(value, (int, float)) and not isinstance(value, bool)
+        return None if ok else f"expected a number, got {_describe(value)}"
+    if annotation is int:
+        ok = isinstance(value, int) and not isinstance(value, bool)
+        return None if ok else f"expected a whole number, got {_describe(value)}"
+    if annotation is bool:
+        return None if isinstance(value, bool) else f"expected true or false, got {_describe(value)}"
+    if annotation is str:
+        return None if isinstance(value, str) else f"expected text, got {_describe(value)}"
+    if annotation is list or origin is list:
+        if not isinstance(value, (list, tuple)):
+            return f"expected a list, got {_describe(value)}"
+        for index, item in enumerate(value):
+            problem = _type_problem(item, args[0]) if args else None
+            if problem:
+                return f"item {index}: {problem}"
+        return None
+    if annotation is tuple or origin is tuple:
+        return None if isinstance(value, (list, tuple)) else f"expected a list, got {_describe(value)}"
+    if annotation is dict or origin is dict:
+        return None if isinstance(value, dict) else f"expected an object, got {_describe(value)}"
+    if isinstance(annotation, type) and dataclasses.is_dataclass(annotation):
+        return None if isinstance(value, annotation) else f"expected an object, got {_describe(value)}"
+    return None
+
+
+def _check_types(obj, path: str, errors: List[str]) -> None:
+    """Every field of ``obj`` (a loaded dataclass) and of the dataclasses in
+    it against its declared type, so a hand-edited file with, say, a list
+    where a number belongs is refused naming the field, before validate()
+    compares it with something."""
+    hints = _TYPE_HINTS.get(type(obj))
+    if hints is None:
+        hints = _TYPE_HINTS[type(obj)] = typing.get_type_hints(type(obj), globals())
+    for f in dataclasses.fields(obj):
+        value, where = getattr(obj, f.name), f"{path}.{f.name}" if path else f.name
+        problem = _type_problem(value, hints.get(f.name, typing.Any))
+        if problem:
+            errors.append(f"{where}: {problem}")
+            continue
+        if dataclasses.is_dataclass(value):
+            _check_types(value, where, errors)
+        elif isinstance(value, list):
+            for index, item in enumerate(value):
+                if dataclasses.is_dataclass(item):
+                    _check_types(item, f"{where}[{index}]", errors)
 
 
 def load_scenario(path: "str | Path") -> Scenario:
@@ -2228,12 +2418,23 @@ def load_scenario(path: "str | Path") -> Scenario:
     if not isinstance(raw, dict) or "schema_version" not in raw:
         raise ScenarioValidationError(f"{path}: missing required top-level 'schema_version' field")
 
-    raw = migrations.migrate(raw)
-
     try:
+        raw = migrations.migrate(raw)
         scenario = Scenario.from_dict(raw)
-    except (TypeError, KeyError) as exc:
+    except ScenarioValidationError:
+        raise
+    except (TypeError, KeyError, ValueError, AttributeError) as exc:
         raise ScenarioValidationError(f"{path}: malformed scenario structure ({exc})") from exc
-
-    scenario.validate()
+    errors: List[str] = []
+    _check_types(scenario, "", errors)
+    if errors:
+        raise ScenarioValidationError(f"{path}: " + "; ".join(errors[:10]))
+    try:
+        scenario.validate()
+    except ScenarioValidationError:
+        raise
+    except (TypeError, KeyError, ValueError, AttributeError, OverflowError) as exc:
+        # A wrong-typed value inside a free-form block (e.g. a device's params) that the type check above
+        # cannot see: still a refusal naming the file, never a traceback.
+        raise ScenarioValidationError(f"{path}: malformed value ({exc})") from exc
     return scenario

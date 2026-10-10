@@ -74,6 +74,7 @@
       "constant_thrust": null,
       "momentum_dumping": null,
       "magnetic_momentum_management": null,
+      "navigation_error": null,
       "fuel_tank": null,
       "propellant_budget": null,
       "vizard_model_path": null,
@@ -145,6 +146,7 @@
     ]
   },
   "mission_sequence": [],
+  "fsw_exports": [],
   "description": "A 20-run Monte Carlo batch with the uncertainty a real launch leaves: each run starts on a slightly different orbit (1-sigma: 1 km in semi-major axis, 0.02 deg in inclination, 0.1 deg along track) and flies with a drag coefficient between 2.2 and 3.0. Three days at 400 km, with real space weather.\n\nWhat to look at:\n- Run it with Run Monte Carlo...: the Monte Carlo tab opens on the runs' spread.\n- The runs start ~10 km apart along track (1-sigma) and spread ~150 km a day: a lower orbit is faster.\n- The Runs table: sort by semi-major axis to see the lowest orbits pull ahead.\n- Drag alone (spreads set to 0) separates them by only ~10 km in three days.\n\nTry changing:\n- Number of runs, for smoother statistics.\n- The element spreads, for a better or worse launcher.\n- Add a dry-mass dispersion: with drag on, mass matters (compare template 09).",
   "schema_version": 4
 }

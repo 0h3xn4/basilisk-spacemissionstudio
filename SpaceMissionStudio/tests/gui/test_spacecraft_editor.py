@@ -1931,3 +1931,26 @@ def test_dialog_round_trips_thruster_realism_settings(qtbot):
     assert dialog.sk_min_on_time_s.value() == 300.0  # [s]
     assert dialog.sk_eccentricity_neutral_check.isChecked()
     assert dialog.to_dataclass().station_keeping == existing.station_keeping
+
+
+def test_dialog_round_trips_navigation_error(qtbot):
+    """The Navigation error group shows a spacecraft's errors and seed and
+    gives them back unchanged; unticked, the spacecraft has none (the true
+    state)."""
+    from spacemissionstudio.gui.spacecraft_editor import SpacecraftEditorDialog
+    from spacemissionstudio.schema.scenario import NavigationErrorConfig, OrbitIC, SpacecraftConfig
+
+    errors = NavigationErrorConfig(attitude_step_deg=0.002, attitude_bound_deg=0.02, rate_step_deg_s=0.0005,
+                                   rate_bound_deg_s=0.005, position_step_m=1.0, position_bound_m=10.0, seed=7)
+    existing = SpacecraftConfig(
+        name="sat-nav", orbit=OrbitIC(type="cartesian", position_km=[7000, 0, 0], velocity_km_s=[0, 7.5, 0]),
+        fsw_mode="inertial3D", navigation_error=errors,
+    )
+    dialog = SpacecraftEditorDialog(config=existing)
+    qtbot.addWidget(dialog)
+    assert dialog.navigation_error_group.isChecked() and dialog.nav_seed.value() == 7
+    assert dialog.to_dataclass().navigation_error == errors
+    dialog.nav_seed.setValue(-1)
+    assert dialog.to_dataclass().navigation_error.seed is None  # "Basilisk default"
+    dialog.navigation_error_group.setChecked(False)
+    assert dialog.to_dataclass().navigation_error is None

@@ -495,7 +495,13 @@ def cmd_ccsds_validate(args: argparse.Namespace) -> int:
 
     failed = False
     for path in args.files:
-        issues = ccsds_odm.validate(Path(path).read_text(encoding="ascii", errors="replace"))
+        try:
+            text = Path(path).read_text(encoding="ascii", errors="replace")
+        except OSError as exc:
+            print(f"{path}: cannot be read ({exc.strerror or exc})", file=sys.stderr)
+            failed = True
+            continue
+        issues = ccsds_odm.validate(text)
         errors = [i for i in issues if i.level == "error"]
         failed = failed or bool(errors)
         print(f"{path}: {'conforms' if not errors else f'{len(errors)} error(s)'}"
@@ -581,6 +587,96 @@ def cmd_ccsds_import(args: argparse.Namespace) -> int:
     for note in notes:
         print(f"  {note}")
     print(f"{args.spacecraft}: orbit set from {args.message} -> {args.out or args.scenario}")
+    return 0
+
+
+def cmd_export_fsw(args: argparse.Namespace) -> int:
+    """Export a spacecraft's flight software as a standalone C project."""
+    from .fsw_export.capture import CaptureError
+    from .fsw_export.generate import ExportError
+    from .fsw_export.records import export_flight_software, with_record
+
+    try:
+        scenario = load_scenario(args.scenario)
+    except ScenarioValidationError as exc:
+        print(f"INVALID: {exc}", file=sys.stderr)
+        return 1
+    try:
+        result, record = export_flight_software(scenario, args.spacecraft, args.out, steps=args.steps,
+                                                overwrite=args.overwrite)
+    except (CaptureError, ExportError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+    manifest = result.manifest
+    print(f"{args.spacecraft}: {len(manifest['modules'])} modules, {len(manifest['ports']['inputs'])} inputs, "
+          f"{len(manifest['ports']['outputs'])} outputs, {manifest['recorded_steps']} recorded steps -> {result.directory}")
+    print(f"  configuration digest {record.config_digest}")
+    print(f"  build: cmake -S {result.directory} -B {result.directory}/build && cmake --build {result.directory}/build "
+          f"&& ctest --test-dir {result.directory}/build")
+    if args.record:
+        scenario.fsw_exports = with_record(scenario, record)
+        scenario.validate()
+        scenario.save(args.scenario)
+        print(f"  recorded in {args.scenario}")
+    return 0
+
+
+def cmd_fsw_status(args: argparse.Namespace) -> int:
+    """Whether each recorded flight-software export still matches the scenario."""
+    from .fsw_export.records import CURRENT, export_status
+
+    try:
+        scenario = load_scenario(args.scenario)
+    except ScenarioValidationError as exc:
+        print(f"INVALID: {exc}", file=sys.stderr)
+        return 1
+    if not scenario.fsw_exports:
+        print("no flight-software exports recorded in this scenario")
+        return 0
+    worst = 0
+    for record in scenario.fsw_exports:
+        status = export_status(scenario, record, base_dir=args.scenario.resolve().parent)
+        print(f"{record.spacecraft}: {status.state.upper()} -- {status.message} ({record.path})")
+        if status.state != CURRENT:
+            worst = 2
+    return worst
+
+
+def cmd_sil(args: argparse.Namespace) -> int:
+    """Run a spacecraft's flight software as an external program, in the loop."""
+    from .sil.contract import SilError
+    from .sil.runner import SilOptions, SilRunError, run_sil
+    from .sil.session import Timeouts
+
+    try:
+        scenario = load_scenario(args.scenario)
+    except ScenarioValidationError as exc:
+        print(f"INVALID: {exc}", file=sys.stderr)
+        return 1
+    timeouts = Timeouts(handshake_s=args.handshake_timeout, step_s=args.step_timeout,
+                        deadline_s=args.deadline_ms * 1e-3 if args.deadline_ms else None)
+    try:
+        _, report = run_sil(scenario, args.spacecraft, SilOptions(str(args.binary), timeouts, args.transport))
+    except SilRunError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        if exc.report is not None and exc.report.log_tail.strip():
+            print("--- the program's last output ---", file=sys.stderr)
+            print(exc.report.log_tail.rstrip(), file=sys.stderr)
+        return 1
+    except SilError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+    print("\n".join(report.summary_lines()))
+    if args.report:
+        args.report.write_text(report.to_json() + "\n")
+        print(f"  report: {args.report}")
+    if args.residuals_csv:
+        report.write_residuals_csv(args.residuals_csv)
+        print(f"  residuals: {args.residuals_csv}")
+    if args.max_error is not None and (report.max_abs_error > args.max_error or report.signals_missing):
+        print(f"FAIL: largest residual {report.max_abs_error:.6g} is over {args.max_error:g}"
+              if report.max_abs_error > args.max_error else "FAIL: some outputs were never written", file=sys.stderr)
+        return 2
     return 0
 
 
@@ -831,6 +927,38 @@ def build_parser() -> argparse.ArgumentParser:
     p_ccsds_in.add_argument("--set-epoch", action="store_true", help="move the scenario epoch to the OPM's epoch")
     p_ccsds_in.add_argument("--out", type=Path, help="write the updated scenario here (default: overwrite)")
     p_ccsds_in.set_defaults(func=cmd_ccsds_import)
+
+    p_fsw = subparsers.add_parser("export-fsw",
+                                  help="export a spacecraft's flight software as a standalone C project (needs Basilisk)")
+    p_fsw.add_argument("scenario", type=Path)
+    p_fsw.add_argument("--spacecraft", required=True)
+    p_fsw.add_argument("--out", type=Path, required=True, help="the export folder (empty, or an earlier export)")
+    p_fsw.add_argument("--steps", type=int, default=None, help="flight-software steps to record for the tests (200)")
+    p_fsw.add_argument("--overwrite", action="store_true", help="replace an earlier export in --out")
+    p_fsw.add_argument("--record", action="store_true", help="record the export in the scenario file")
+    p_fsw.set_defaults(func=cmd_export_fsw)
+    p_fsw_status = subparsers.add_parser("fsw-status",
+                                         help="check the scenario's recorded flight-software exports (stale or not)")
+    p_fsw_status.add_argument("scenario", type=Path)
+    p_fsw_status.set_defaults(func=cmd_fsw_status)
+
+    p_sil = subparsers.add_parser("sil", help="run a spacecraft's flight software as an external program in the "
+                                              "loop and compare it with the simulation's own (needs Basilisk)")
+    p_sil.add_argument("scenario", type=Path)
+    p_sil.add_argument("--spacecraft", required=True)
+    p_sil.add_argument("--binary", type=Path, required=True,
+                       help="the program: an export's fsw_host or fsw_adapter_host, or any program following "
+                            "SIL_CONTRACT.md; it is run as <binary> sil <address>")
+    p_sil.add_argument("--transport", choices=("auto", "unix", "tcp"), default="auto")
+    p_sil.add_argument("--deadline-ms", type=float, default=None,
+                       help="an answer later than this counts as a dropped step (default: none, pure lock-step)")
+    p_sil.add_argument("--step-timeout", type=float, default=10.0, help="seconds without any answer before failing")
+    p_sil.add_argument("--handshake-timeout", type=float, default=30.0, help="seconds to connect and say HELLO")
+    p_sil.add_argument("--report", type=Path, help="write the full report (JSON) here")
+    p_sil.add_argument("--residuals-csv", type=Path, help="write the sampled residuals (CSV) here")
+    p_sil.add_argument("--max-error", type=float, default=None,
+                       help="exit with status 2 if any residual is larger, or an output was never written")
+    p_sil.set_defaults(func=cmd_sil)
 
     p_sw = subparsers.add_parser("spaceweather-resolve",
                                   help="resolve space weather for a scenario without running it (no Basilisk needed)")

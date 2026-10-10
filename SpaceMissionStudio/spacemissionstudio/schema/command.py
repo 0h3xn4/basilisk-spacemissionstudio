@@ -365,14 +365,34 @@ _ALLOWED_NODES = (ast.Expression, ast.Constant, ast.Name, ast.Load, ast.Subscrip
                   ast.List, ast.BinOp, ast.UnaryOp, ast.BoolOp, ast.And, ast.Or, ast.Compare, ast.IfExp,
                   *_BINARY, *_UNARY, *_COMPARE)
 _MAX_POWER_EXPONENT = 1000  # [-] keeps a crafted ``10 ** 10 ** 10`` from hanging the run
+_MAX_CONDITION_LENGTH = 2000  # characters: a condition is a line, not a program
+_MAX_CONDITION_DEPTH = 50  # nesting levels: deeper ones exhaust the parser's and the evaluator's stack
+_MAX_REPEAT = 1_000_000  # [-] the most a text or list may be repeated (``'x' * n``)
+
+
+def _depth(tree: ast.AST) -> int:
+    deepest, todo = 0, [(tree, 1)]
+    while todo:
+        node, level = todo.pop()
+        deepest = max(deepest, level)
+        todo += [(child, level + 1) for child in ast.iter_child_nodes(node)]
+    return deepest
 
 
 def parse_condition(expression: str) -> ast.Expression:
-    """Parse ``expression`` and check every node is allowed."""
+    """Parse ``expression`` and check every node is allowed, and that it is
+    no longer and no deeper than a condition needs (security analysis S-12)."""
+    text = expression.strip()
+    if len(text) > _MAX_CONDITION_LENGTH:
+        raise ConditionError(f"longer than {_MAX_CONDITION_LENGTH} characters")
     try:
-        tree = ast.parse(expression.strip(), mode="eval")
+        tree = ast.parse(text, mode="eval")
     except SyntaxError as exc:
         raise ConditionError(f"not a valid expression ({exc.msg})") from exc
+    except (RecursionError, MemoryError):
+        raise ConditionError(f"nested more than {_MAX_CONDITION_DEPTH} levels deep") from None
+    if _depth(tree) > _MAX_CONDITION_DEPTH:
+        raise ConditionError(f"nested more than {_MAX_CONDITION_DEPTH} levels deep")
     for node in ast.walk(tree):
         if not isinstance(node, _ALLOWED_NODES):
             raise ConditionError(f"{type(node).__name__} is not allowed in a condition (only names, numbers, "
@@ -404,6 +424,10 @@ def _binary(node, context):
     left, right = _evaluate(node.left, context), _evaluate(node.right, context)
     if isinstance(node.op, ast.Pow) and abs(right) > _MAX_POWER_EXPONENT:
         raise ConditionError(f"exponent {right} is too large")
+    if isinstance(node.op, ast.Mult):
+        for sequence, count in ((left, right), (right, left)):
+            if isinstance(sequence, (str, list, tuple)) and isinstance(count, int) and count > _MAX_REPEAT:
+                raise ConditionError(f"repeats a text or list more than {_MAX_REPEAT} times")
     return _BINARY[type(node.op)](left, right)
 
 

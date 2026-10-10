@@ -109,6 +109,44 @@ set a spacecraft's orbit from a CCSDS OPM or TLE-based OMM
 | `--set-epoch` | move the scenario epoch to the OPM's epoch |
 | `--out` | write the updated scenario here (default: overwrite) |
 
+## `export-fsw`
+
+export a spacecraft's flight software as a standalone C project (needs Basilisk)
+
+| Argument | Help |
+|---|---|
+| `scenario` |  |
+| `--spacecraft` |  |
+| `--out` | the export folder (empty, or an earlier export) |
+| `--steps` | flight-software steps to record for the tests (200) |
+| `--overwrite` | replace an earlier export in --out |
+| `--record` | record the export in the scenario file |
+
+## `fsw-status`
+
+check the scenario's recorded flight-software exports (stale or not)
+
+| Argument | Help |
+|---|---|
+| `scenario` |  |
+
+## `sil`
+
+run a spacecraft's flight software as an external program in the loop and compare it with the simulation's own (needs Basilisk)
+
+| Argument | Help |
+|---|---|
+| `scenario` |  |
+| `--spacecraft` |  |
+| `--binary` | the program: an export's fsw_host or fsw_adapter_host, or any program following SIL_CONTRACT.md; it is run as <binary> sil <address> |
+| `--transport {auto,unix,tcp}` |  |
+| `--deadline-ms` | an answer later than this counts as a dropped step (default: none, pure lock-step) |
+| `--step-timeout` | seconds without any answer before failing |
+| `--handshake-timeout` | seconds to connect and say HELLO |
+| `--report` | write the full report (JSON) here |
+| `--residuals-csv` | write the sampled residuals (CSV) here |
+| `--max-error` | exit with status 2 if any residual is larger, or an output was never written |
+
 ## `spaceweather-resolve`
 
 resolve space weather for a scenario without running it (no Basilisk needed)

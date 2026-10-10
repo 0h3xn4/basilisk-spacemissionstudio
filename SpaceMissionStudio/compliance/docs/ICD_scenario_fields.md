@@ -18,6 +18,7 @@ Top-level scenario object (the JSON file's root).
 | `sim_settings` | SimSettings | `SimSettings(duration_days=1.0, dynamics_task_rate_s=10.0, in` |  |
 | `monte_carlo` | MonteCarloConfig | `MonteCarloConfig(enabled=False, num_runs=10, thread_count=1,` |  |
 | `mission_sequence` | list | `[]` | list[Command] |
+| `fsw_exports` | list | `[]` | list[FswExportRecord], at most one per spacecraft |
 | `description` | str | `''` |  |
 | `schema_version` | int | `4` |  |
 
@@ -103,6 +104,19 @@ One flat plate of the spacecraft's outer surface, for attitude -dependent drag a
 | `drag_coeff` | float | `2.2` | [-] |
 | `specular_coeff` | float | `0.3` | [-] fraction of sunlight reflected mirror-like |
 | `diffuse_coeff` | float | `0.1` | [-] fraction reflected diffusely; the rest is absorbed |
+
+## FswExportRecord
+
+Where a spacecraft's flight software was last exported (``spacemissionstudio.fsw_export``): the folder, and the configuration hash it was exported with, so the GUI can say when the scenario's flight-software settings have changed since (a stale export). ``parts`` holds one short hash per setting group, to name what changed. The export folder's own ``manifest.json`` holds the full provenance.
+
+| Field | Type | Default | Unit / note |
+|---|---|---|---|
+| `spacecraft` | str | `required` |  |
+| `path` | str | `required` | the export folder, absolute or relative to the scenario file |
+| `config_digest` | str | `required` | 64 hex digits (fsw_export.digest.fsw_config_digest) |
+| `exported_utc` | str | `''` |  |
+| `basilisk_revision` | str | `''` |  |
+| `parts` | dict | `{}` | setting group -> 16 hex digits |
 
 ## FuelTankConfig
 
@@ -192,6 +206,24 @@ Batch execution settings -- see ``engine/monte_carlo.py``. ``thread_count`` > 1 
 | `thread_count` | int | `1` |  |
 | `verbose` | bool | `False` |  |
 | `dispersions` | list | `[]` | list[DispersionConfig] |
+
+## NavigationErrorConfig
+
+Errors on what the flight software is told, by Basilisk's ``simpleNav`` (its Gauss-Markov error model, ``PMatrix`` and ``walkBounds``). Without this, the navigation messages are the true state.
+
+| Field | Type | Default | Unit / note |
+|---|---|---|---|
+| `attitude_step_deg` | float | `0.0` | [deg] 1-sigma change per step, per axis |
+| `attitude_bound_deg` | float | `0.0` | [deg] per axis |
+| `rate_step_deg_s` | float | `0.0` | [deg/s] |
+| `rate_bound_deg_s` | float | `0.0` | [deg/s] |
+| `sun_step_deg` | float | `0.0` | [deg] |
+| `sun_bound_deg` | float | `0.0` | [deg] |
+| `position_step_m` | float | `0.0` | [m] |
+| `position_bound_m` | float | `0.0` | [m] |
+| `velocity_step_m_s` | float | `0.0` | [m/s] |
+| `velocity_bound_m_s` | float | `0.0` | [m/s] |
+| `seed` | Optional[int] | `None` |  |
 
 ## OrbitIC
 
@@ -385,6 +417,7 @@ See engine/spaceweather.py and engine/service.py. Real data only (user requireme
 | `constant_thrust` | Optional[ConstantThrustConfig] | `None` |  |
 | `momentum_dumping` | Optional[MomentumDumpingConfig] | `None` |  |
 | `magnetic_momentum_management` | Optional[MagneticMomentumManagementConfig] | `None` |  |
+| `navigation_error` | Optional[NavigationErrorConfig] | `None` |  |
 | `fuel_tank` | Optional[FuelTankConfig] | `None` |  |
 | `propellant_budget` | Optional[PropellantBudgetConfig] | `None` | see engine/propellant_budget.py |
 | `vizard_model_path` | Optional[str] | `None` | path to a .obj file, or "CUBE"/"CYLINDER"/"SPHERE" |

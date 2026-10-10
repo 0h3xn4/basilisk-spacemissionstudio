@@ -513,6 +513,41 @@ def _mean_elements(oe: Dict[str, np.ndarray], req: float, j2: float) -> Dict[str
     return {"a": a, "e": e, "i": i, "raan": raan, "argp": argp, "true_anomaly": true_anomaly}
 
 
+def _mrp_to_quaternion(sigma: np.ndarray) -> np.ndarray:
+    s2 = np.sum(sigma * sigma, axis=1, keepdims=True)
+    return np.hstack([(1.0 - s2) / (1.0 + s2), 2.0 * sigma / (1.0 + s2)])
+
+
+def _navigation_error_series(name: str, handle) -> List[TimeSeries]:
+    """What the flight software is told minus the truth, as magnitudes:
+    ``<sc>.navigation_error.attitude`` [deg] (the rotation between the two
+    attitudes), ``.rate`` [deg/s], ``.sun_heading`` [deg] (the angle between
+    the two Sun headings; 0 without a Sun), ``.position`` [m], ``.velocity``
+    [m/s]."""
+    nav, truth = handle.nav_recorder, handle.truth_nav_recorder
+    count = min(len(nav.times()), len(truth.times()))
+    t_s = truth.times()[:count] * macros.NANO2SEC
+    q_nav = _mrp_to_quaternion(np.asarray(nav.sigma_BN)[:count])
+    q_true = _mrp_to_quaternion(np.asarray(truth.sigma_BN)[:count])
+    attitude = np.degrees(2.0 * np.arccos(np.clip(np.abs(np.sum(q_nav * q_true, axis=1)), 0.0, 1.0)))
+    rate = np.degrees(np.linalg.norm(np.asarray(nav.omega_BN_B)[:count] - np.asarray(truth.omega_BN_B)[:count],
+                                     axis=1))
+    s_nav, s_true = np.asarray(nav.vehSunPntBdy)[:count], np.asarray(truth.vehSunPntBdy)[:count]
+    norms = np.linalg.norm(s_nav, axis=1) * np.linalg.norm(s_true, axis=1)
+    cosine = np.divide(np.sum(s_nav * s_true, axis=1), norms, out=np.ones(count), where=norms > 0.0)
+    sun = np.degrees(np.arccos(np.clip(cosine, -1.0, 1.0)))
+    trans_nav, trans_true = handle.nav_trans_recorder, handle.truth_trans_recorder
+    n = min(count, len(trans_nav.times()), len(trans_true.times()))
+    position = np.linalg.norm(np.asarray(trans_nav.r_BN_N)[:n] - np.asarray(trans_true.r_BN_N)[:n], axis=1)
+    velocity = np.linalg.norm(np.asarray(trans_nav.v_BN_N)[:n] - np.asarray(trans_true.v_BN_N)[:n], axis=1)
+    prefix = f"{name}.navigation_error"
+    return [TimeSeries(f"{prefix}.attitude", t_s, ("attitude",), attitude[:, None], units="deg"),
+            TimeSeries(f"{prefix}.rate", t_s, ("rate",), rate[:, None], units="deg/s"),
+            TimeSeries(f"{prefix}.sun_heading", t_s, ("sun_heading",), sun[:, None], units="deg"),
+            TimeSeries(f"{prefix}.position", t_s[:n], ("position",), position[:, None], units="m"),
+            TimeSeries(f"{prefix}.velocity", t_s[:n], ("velocity",), velocity[:, None], units="m/s")]
+
+
 @dataclass
 class _SpacecraftHandle:
     name: str
@@ -520,6 +555,12 @@ class _SpacecraftHandle:
     recorder: object
     # Phase 2: all None/empty unless sc_config.fsw_mode/sensors were set.
     nav_recorder: Optional[object] = None
+    # With navigation_error: the error-free simpleNav and its recorders, and the
+    # navigated position/velocity (see SimulationService._build_truth_nav).
+    truth_nav: Optional[object] = None
+    truth_nav_recorder: Optional[object] = None
+    truth_trans_recorder: Optional[object] = None
+    nav_trans_recorder: Optional[object] = None
     control_torque_recorder: Optional[object] = None
     rw_speed_recorder: Optional[object] = None
     rw_speed_out_msg: Optional[object] = None  # the wheels' own speed message, read for segmented runs
@@ -574,9 +615,14 @@ class SimulationService:
     ``SimBaseClass``, which is not designed to be reset and rebuilt).
     """
 
-    def __init__(self, scenario: Scenario, vizard_request: Optional[VizardRequest] = None):
+    def __init__(self, scenario: Scenario, vizard_request: Optional[VizardRequest] = None,
+                 simulation_class: Optional[type] = None):
         self.scenario = scenario
         self.vizard_request = vizard_request
+        # A SimBaseClass subclass to build with instead (sil.runner adds its
+        # bridge right after the spacecraft's last flight-software module
+        # this way); None: SimBaseClass itself.
+        self._simulation_class = simulation_class
         self.scSim: Optional[SimulationBaseClass.SimBaseClass] = None
         self.mu: Optional[float] = None
         # (spacecraft name, t [s]) once a spacecraft with drag re-entered;
@@ -710,7 +756,7 @@ class SimulationService:
         # orientation instead (two-body at 10 s: < 1 mm per day against
         # Kepler); the planet positions need no correction because zeroBase
         # puts the central body at the origin.
-        self.scSim = SimulationBaseClass.SimBaseClass()
+        self.scSim = (self._simulation_class or SimulationBaseClass.SimBaseClass)()
         dyn_process = self.scSim.CreateNewProcess("dynProcess", priority=100)
         dyn_task_name = "dynTask"
         dyn_process.addTask(
@@ -1298,8 +1344,10 @@ class SimulationService:
                     )
 
                 nav = fsw.build_simple_nav(
-                    self.scSim, dyn_task_name, sc_config.name, sc_object, sun_state_out_msg=self._sun_state_out_msg
+                    self.scSim, dyn_task_name, sc_config.name, sc_object, sun_state_out_msg=self._sun_state_out_msg,
+                    navigation_error=sc_config.navigation_error,
                 )
+                self._build_truth_nav(handle, sc_config, sc_object, nav, dyn_task_name)
                 veh_config_msg = fsw.build_vehicle_config_msg(fsw_inertia)
 
                 # Real sun-heading ESTIMATION (schema.scenario's
@@ -1497,8 +1545,10 @@ class SimulationService:
                 comms_config = sc_config.comms_pointing
 
                 nav = fsw.build_simple_nav(
-                    self.scSim, dyn_task_name, sc_config.name, sc_object, sun_state_out_msg=self._sun_state_out_msg
+                    self.scSim, dyn_task_name, sc_config.name, sc_object, sun_state_out_msg=self._sun_state_out_msg,
+                    navigation_error=sc_config.navigation_error,
                 )
+                self._build_truth_nav(handle, sc_config, sc_object, nav, dyn_task_name)
                 veh_config_msg = fsw.build_vehicle_config_msg(fsw_inertia)
 
                 sun_axis_b = comms_config.sun_pointing_axis_b
@@ -1724,31 +1774,55 @@ class SimulationService:
 
         self.dyn_task_name = dyn_task_name
         if initialize:
-            self.scSim.InitializeSimulation()
-            stop_time_s = sim_settings.duration_days * 86400.0
-            if self._desat_controls:
-                # thrMomentumManagement needs a real (nonzero) rwSpeedsInMsg
-                # reading in place before its Reset() establishes anything
-                # meaningful -- confirmed directly against a real Basilisk
-                # build (not assumed from the shipped example's comment
-                # alone): without this extra Reset() call, desaturation
-                # never fires for the ENTIRE run, with no error of any
-                # kind, because InitializeSimulation()'s own automatic
-                # Reset() at t=0 runs before any module has ever produced
-                # output. Priming one dynamics tick and re-Reset()ing here
-                # (not just at t=0) is Basilisk's own documented pattern
-                # (examples/scenarioMomentumDumping.py's "cannot be run at
-                # simulation time t=0" comment); this makes it automatic
-                # rather than a thing every scenario author has to know to
-                # do -- see engine.fsw.build_momentum_dumping's docstring
-                # for the actual numbers this was confirmed against.
-                priming_time_s = min(sim_settings.dynamics_task_rate_s, stop_time_s)
-                priming_time_ns = macros.sec2nano(priming_time_s)
-                self.scSim.ConfigureStopTime(priming_time_ns)
-                self.scSim.ExecuteSimulation()
-                for desat_control in self._desat_controls:
-                    desat_control.Reset(priming_time_ns)
-            self.scSim.ConfigureStopTime(macros.sec2nano(stop_time_s))
+            self.initialize()
+
+    def _build_truth_nav(self, handle, sc_config, sc_object, nav, dyn_task_name: str) -> None:
+        """With navigation errors on, a second, error-free simpleNav right
+        after the first, feeding nothing: the attitude, rate and Sun-heading
+        series stay the true ones, and the navigation-error series compare
+        the two."""
+        if sc_config.navigation_error is None or not sc_config.navigation_error.any_error:
+            return
+        truth = fsw.build_simple_nav(self.scSim, dyn_task_name, sc_config.name, sc_object,
+                                     sun_state_out_msg=self._sun_state_out_msg, model_tag="simpleNavTruth")
+        handle.truth_nav = truth
+        for attribute, msg in (("truth_nav_recorder", truth.attOutMsg), ("truth_trans_recorder", truth.transOutMsg),
+                               ("nav_trans_recorder", nav.transOutMsg)):
+            recorder = self._record(msg)
+            setattr(handle, attribute, recorder)
+            self.scSim.AddModelToTask(dyn_task_name, recorder)
+
+    def initialize(self) -> None:
+        """``InitializeSimulation()`` and the start-up steps that go with it.
+        ``build(initialize=False)`` leaves this to the caller, so a module
+        can be added to the task in between (``fsw_export.capture`` adds
+        its recorder this way)."""
+        sim_settings = self.scenario.sim_settings
+        self.scSim.InitializeSimulation()
+        stop_time_s = sim_settings.duration_days * 86400.0
+        if self._desat_controls:
+            # thrMomentumManagement needs a real (nonzero) rwSpeedsInMsg
+            # reading in place before its Reset() establishes anything
+            # meaningful -- confirmed directly against a real Basilisk
+            # build (not assumed from the shipped example's comment
+            # alone): without this extra Reset() call, desaturation
+            # never fires for the ENTIRE run, with no error of any
+            # kind, because InitializeSimulation()'s own automatic
+            # Reset() at t=0 runs before any module has ever produced
+            # output. Priming one dynamics tick and re-Reset()ing here
+            # (not just at t=0) is Basilisk's own documented pattern
+            # (examples/scenarioMomentumDumping.py's "cannot be run at
+            # simulation time t=0" comment); this makes it automatic
+            # rather than a thing every scenario author has to know to
+            # do -- see engine.fsw.build_momentum_dumping's docstring
+            # for the actual numbers this was confirmed against.
+            priming_time_s = min(sim_settings.dynamics_task_rate_s, stop_time_s)
+            priming_time_ns = macros.sec2nano(priming_time_s)
+            self.scSim.ConfigureStopTime(priming_time_ns)
+            self.scSim.ExecuteSimulation()
+            for desat_control in self._desat_controls:
+                desat_control.Reset(priming_time_ns)
+        self.scSim.ConfigureStopTime(macros.sec2nano(stop_time_s))
 
     def _record(self, msg):
         """A recorder for ``msg`` sampling every
@@ -2065,13 +2139,18 @@ class SimulationService:
                                        mean_oe["true_anomaly"], units="rad"))
 
             if handle.nav_recorder is not None:
-                nav_t_s = handle.nav_recorder.times() * macros.NANO2SEC
+                # With navigation errors the error-free instance gives the true attitude.
+                att = handle.truth_nav_recorder if handle.truth_nav_recorder is not None else handle.nav_recorder
+                nav_t_s = att.times() * macros.NANO2SEC
                 result.add(TimeSeries(f"{name}.attitude_sigma_BN", nav_t_s, ("s1", "s2", "s3"),
-                                       handle.nav_recorder.sigma_BN, units="-"))
+                                       att.sigma_BN, units="-"))
                 result.add(TimeSeries(f"{name}.body_rate_omega_BN_B", nav_t_s, ("x", "y", "z"),
-                                       handle.nav_recorder.omega_BN_B, units="rad/s"))
+                                       att.omega_BN_B, units="rad/s"))
                 result.add(TimeSeries(f"{name}.sun_heading_body", nav_t_s, ("x", "y", "z"),
-                                       handle.nav_recorder.vehSunPntBdy, units="-"))
+                                       att.vehSunPntBdy, units="-"))
+                if handle.truth_nav_recorder is not None:
+                    for series in _navigation_error_series(name, handle):
+                        result.add(series)
             elif self.scenario.simulation_mode == "full_attitude":
                 # No attitude control, so no navigation recorder -- but the
                 # attitude still evolves (template 10's gravity-gradient

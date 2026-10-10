@@ -157,6 +157,7 @@
       "constant_thrust": null,
       "momentum_dumping": null,
       "magnetic_momentum_management": null,
+      "navigation_error": null,
       "fuel_tank": null,
       "propellant_budget": null,
       "vizard_model_path": null,
@@ -200,6 +201,7 @@
     "dispersions": []
   },
   "mission_sequence": [],
+  "fsw_exports": [],
   "description": "The realistic counterpart to 06, on a 150 kg microsatellite: a star tracker, IMU and coarse sun sensor, three 6 N*m*s reaction wheels, and a solar array with a battery. Sun-safe pointing, with full perturbations.\n\nWhat to look at:\n- sat-1.rw_speeds as the wheels absorb the pointing manoeuvre.\n- sat-1.battery_charge and sat-1.battery_net_power: charging to full in sunlight, then draining at the 12 W bus load in eclipse.\n\nTry changing:\n- Reaction wheel limits, or pick real devices from the sensor/actuator catalog.\n- Pointing mode locationPointing at a ground station (add a station first).",
   "schema_version": 4
 }

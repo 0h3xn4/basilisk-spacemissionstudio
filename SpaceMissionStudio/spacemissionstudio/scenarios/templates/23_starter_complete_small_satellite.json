@@ -355,6 +355,7 @@
         ],
         "c_gain": 0.003
       },
+      "navigation_error": null,
       "fuel_tank": null,
       "propellant_budget": null,
       "vizard_model_path": null,
@@ -455,6 +456,7 @@
       "children": []
     }
   ],
+  "fsw_exports": [],
   "description": "A complete small-satellite mission to copy and edit: the 150 kg microsatellite preset (star tracker, IMU, sun sensor, wheels unloaded by torque rods, solar array, battery) in Sun-safe pointing, with a radio link to Berlin.\n\nA Mission Sequence stops at the start and end of the first pass (about 10 and 18 min in), reports both, then coasts on for an hour.\n\nWhat to look at:\n- The Mission Output tab: the two reports.\n- berlin-gs.access_to_smallsat-1.link_margin_db: 11 dB at the 10 deg edge of the pass, 21 dB at its peak.\n- smallsat-1.rw_speeds: up to ~300 RPM while turning to the Sun, then the torque rods bring them back near zero.\n- smallsat-1.battery_charge: full in sunlight, about 35 Wh used in the 35 min eclipse.\n\nTry changing:\n- Pointing mode locationPointing at berlin-gs, to aim at the station.\n- The transmitter power or data rate (Power/propulsion tab).\n- Add a station-keeping thruster (template 18 shows how).",
   "schema_version": 4
 }

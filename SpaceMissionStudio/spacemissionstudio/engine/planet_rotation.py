@@ -17,7 +17,7 @@
 #
 """Mid-step planet orientation for the gravity model (ECSS-Q-ST-80C
 7.1.7a numerical accuracy; Phase 3 finding V-04, see
-``compliance/validation/README.md``).
+``compliance/phase3_log.md``).
 
 **Problem.** Basilisk 2.12's ``GravBodyData::computeGravityInertial``
 (``gravityEffector.cpp``) takes the planet orientation from the SPICE

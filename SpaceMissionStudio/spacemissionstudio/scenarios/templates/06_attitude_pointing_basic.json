@@ -74,6 +74,7 @@
       "constant_thrust": null,
       "momentum_dumping": null,
       "magnetic_momentum_management": null,
+      "navigation_error": null,
       "fuel_tank": null,
       "propellant_budget": null,
       "vizard_model_path": null,
@@ -117,6 +118,7 @@
     "dispersions": []
   },
   "mission_sequence": [],
+  "fsw_exports": [],
   "description": "A spacecraft pointing at nadir, starting tipped away from it with a small body rate. There are no sensors or actuators: the control torque is applied ideally, so this shows only the pointing concept. Template 07 adds real hardware.\n\nWhat to look at:\n- Vizard's attitude view: the spacecraft swings onto nadir and holds it.\n\nTry changing:\n- Pointing mode: velocityPoint (along the velocity) or inertial3D (fixed in space).\n- The initial attitude tip.",
   "schema_version": 4
 }
