@@ -244,7 +244,7 @@ def scenario_warnings(scenario) -> List[str]:
     for. Never raises."""
     warnings: List[str] = []
     for check in (_pass_warnings, _recording_warnings, _tle_warnings, _gravity_warnings,
-                  _formation_law_warnings):
+                  _formation_law_warnings, _navigation_restart_warnings):
         try:
             warnings += check(scenario)
         except Exception:  # noqa: BLE001, S110 -- a half-edited scenario must never break the Explain tab
@@ -519,6 +519,37 @@ def _formation_law_warnings(scenario) -> List[str]:
             warnings.append(f"{sc.name}: hill_pd starts {np.linalg.norm(rho - reference) / 1e3:.2f} km off its "
                             f"reference and asks for {command:.1e} m/s^2, more than the thruster's "
                             f"{accel_max:.1e} m/s^2 -- a saturated PD law can diverge")
+    return warnings
+
+
+# [-] flight-software steps per (bound/step)^2 that the navigation errors
+# take, after starting from zero, to spread to 90 % of their usual size.
+# Measured with Basilisk's simpleNav (40 seeds x 3 axes for each of the
+# bound/step ratios 5, 10, 20 and 50): 0.30 to 0.41; the largest is used.
+_NAV_BUILD_UP_STEPS = 0.41
+_NAV_PREFIXES = ("attitude", "rate", "sun", "position", "velocity")
+
+
+def _navigation_restart_warnings(scenario) -> List[str]:
+    """A run split into segments restarts each segment's navigation
+    errors at zero: Basilisk keeps simpleNav's error state private and
+    clears it at every Reset, so it cannot be carried over."""
+    from .long_run import needs_segments, segment_lengths_s
+
+    if not needs_segments(scenario):
+        return []
+    restarts = len(segment_lengths_s(scenario)) - 1
+    step_s = scenario.sim_settings.dynamics_task_rate_s  # [s] simpleNav runs every dynamics step
+    warnings = []
+    for sc in scenario.spacecraft:
+        nav = sc.navigation_error
+        if nav is None or not nav.any_error:
+            continue
+        ratio = max(bound / step for step, bound in (nav.channel(p) for p in _NAV_PREFIXES) if step > 0.0)
+        build_up_s = _NAV_BUILD_UP_STEPS * ratio ** 2 * step_s  # [s]
+        took = f"{build_up_s:.0f} s" if build_up_s < 120.0 else format_elapsed(build_up_s)
+        warnings.append(f"{sc.name}: navigation errors restart at zero at each of the {restarts} segment "
+                        f"starts, then take about {took} to build up again")
     return warnings
 
 
