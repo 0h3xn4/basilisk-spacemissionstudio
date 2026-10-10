@@ -384,7 +384,7 @@ def test_condition_errors_name_the_problem():
     ("-" * 1500 + "1", "nested more than 50 levels deep"),
     ("'x' * 10 ** 9", "repeats a text or list more than 1000000 times"),
     ("10 ** 999 * [0]", "repeats a text or list more than 1000000 times"),
-])
+], ids=["long-unary", "long-sum", "deep", "repeat-text", "repeat-list"])  # short: Windows caps the test id's env var
 def test_a_condition_cannot_exhaust_memory_or_the_stack(expression, reason):
     """A crafted condition is refused with a message (security analysis
     S-12): too long or nested too deep (it raised MemoryError or
