@@ -34,14 +34,15 @@ from pathlib import Path
 from typing import Optional
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QFileDialog, QHBoxLayout, QHeaderView, QLabel,
-                               QMessageBox, QPushButton, QTableWidget, QTableWidgetItem, QTabWidget, QVBoxLayout,
+from PySide6.QtWidgets import (QAbstractItemView, QFileDialog, QHBoxLayout, QHeaderView, QLabel,
+                               QMessageBox, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout,
                                QWidget)
 
 from ..engine import monte_carlo_results as mcr
 from .results_widget import ResultsWidget
 from .scenario_explainer_widget import _stat_tile
 from .theme import PALETTE
+from .widgets import ComboBox, TabWidget
 
 _EMPTY_HINT = ("Run > Run Monte Carlo... shows its batch here. Open results... shows one an earlier batch saved "
                "(the folder you chose for it).")
@@ -76,7 +77,7 @@ class MonteCarloResultsWidget(QWidget):
         self.title_label.setStyleSheet(f"font-weight: 600; font-size: 15px; color: {PALETTE['text']};")
         header.addWidget(self.title_label, 1)
         self.spacecraft_label = QLabel("Spacecraft:")
-        self.spacecraft_combo = QComboBox()
+        self.spacecraft_combo = ComboBox()
         self.spacecraft_combo.currentIndexChanged.connect(self._refresh_spacecraft_views)
         header.addWidget(self.spacecraft_label)
         header.addWidget(self.spacecraft_combo)
@@ -94,7 +95,7 @@ class MonteCarloResultsWidget(QWidget):
         self.tiles_row = QHBoxLayout()
         layout.addLayout(self.tiles_row)
 
-        self.views = QTabWidget()
+        self.views = TabWidget()
         # The plot view (a second QWebEngineView next to the Results tab's)
         # is built only once a batch is shown: an idle one in every window
         # costs a Chromium renderer, and the macOS CI runner's test worker
