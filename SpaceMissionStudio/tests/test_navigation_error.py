@@ -94,6 +94,65 @@ def test_each_long_run_segment_gets_its_own_seed():
     assert second.spacecraft[0].navigation_error.seed == 0x1badcad1
 
 
+def test_a_segmented_run_warns_that_navigation_errors_restart():
+    """Basilisk keeps simpleNav's error state private and clears it at
+    every Reset, so a run split into segments restarts the errors at zero.
+    The Explain tab says so, with the time they take to build up again:
+    0.41 x (bound/step)^2 steps of the slowest channel (here the Sun
+    heading, bound/step 20, at 1 s: 164 s). Single runs and runs without
+    errors get no such warning."""
+    from spacemissionstudio.engine.scenario_checks import scenario_warnings
+
+    def restart_warnings(scenario):
+        return [w for w in scenario_warnings(scenario) if "restart at zero" in w]
+
+    long_noisy = _template("07", 200 * 1440, **_ERRORS)  # 200 days: segments of 90, 90 and 20 days
+    assert restart_warnings(long_noisy) == ["sat-1: navigation errors restart at zero at each of the 2 segment "
+                                            "starts, then take about 3 min to build up again"]
+    assert restart_warnings(_template("07", 60, **_ERRORS)) == []
+    assert restart_warnings(_template("07", 200 * 1440)) == []
+
+
+@pytest.mark.requires_basilisk
+def test_navigation_errors_build_up_from_zero_as_fast_as_the_warning_says():
+    """simpleNav started from zero (as every segment starts), 40 seeds x 3
+    axes, attitude bound/step 10 at 1 s: the spread of the errors is still
+    small after the first step and back to 90 % of its usual size within
+    the 0.41 x (bound/step)^2 steps the restart warning uses."""
+    from Basilisk.architecture import messaging
+    from Basilisk.simulation import simpleNav
+    from Basilisk.utilities import SimulationBaseClass, macros
+
+    from spacemissionstudio.engine import scenario_checks
+    from spacemissionstudio.engine.fsw import navigation_error_matrices
+
+    ratio, steps = 10, 800  # [-], [-]
+
+    def attitude_errors_deg(seed):
+        sim = SimulationBaseClass.SimBaseClass()
+        sim.CreateNewProcess("process").addTask(sim.CreateNewTask("task", macros.sec2nano(1.0)))
+        nav = simpleNav.SimpleNav()
+        nav.PMatrix, nav.walkBounds = navigation_error_matrices(
+            NavigationErrorConfig(attitude_step_deg=0.01, attitude_bound_deg=0.01 * ratio))  # [deg], [deg]
+        nav.RNGSeed = seed
+        state = messaging.SCStatesMsg().write(messaging.SCStatesMsgPayload())
+        nav.scStateInMsg.subscribeTo(state)
+        recorder = nav.attOutMsg.recorder()
+        sim.AddModelToTask("task", nav)
+        sim.AddModelToTask("task", recorder)
+        sim.InitializeSimulation()
+        sim.ConfigureStopTime(macros.sec2nano(float(steps)))
+        sim.ExecuteSimulation()
+        return np.degrees(4.0 * np.arctan(np.array(recorder.sigma_BN)))  # [deg] MRP to angle, per axis
+
+    errors = np.concatenate([attitude_errors_deg(seed) for seed in range(1, 41)], axis=1)  # [deg]
+    spread = np.sqrt(np.mean(errors ** 2, axis=1))  # [deg]
+    usual = np.mean(spread[steps // 2:])  # [deg]
+    assert spread[0] < 0.2 * usual
+    build_up = int(np.ceil(scenario_checks._NAV_BUILD_UP_STEPS * ratio ** 2))
+    assert spread[build_up] >= 0.9 * usual
+
+
 @pytest.mark.requires_basilisk
 def test_simple_nav_gets_the_errors_in_its_own_units():
     """PMatrix holds the step and walkBounds the bound per axis, in

@@ -330,6 +330,29 @@ def test_thousands_of_dropped_steps_never_block_the_link(kind):
     assert reply.outputs == [struct.pack("<d", 3.0)] and said_bye
 
 
+def test_a_step_without_deadline_waits_while_earlier_steps_are_still_answered():
+    """The step timeout is "no answer at all" for that long: a step with no
+    deadline keeps waiting while the program works through late answers to
+    earlier steps (100 dropped steps at 20 ms each, over 1 s of backlog,
+    against a 0.3 s step timeout), and gets its own answer."""
+    listener, fake, side = _session(KINDS[0], {"delay_s": 0.02},
+                                    Timeouts(handshake_s=5.0, step_s=0.3, deadline_s=1e-9))
+
+    def run():
+        side.handshake()
+        side.reset(0, [None, None])
+        dropped = sum(side.step(step * RATE_NS, [bytes(8), bytes(4)]) is None for step in range(1, 101))
+        side.timeouts.deadline_s = None
+        return dropped, side.step(101 * RATE_NS, [struct.pack("<d", 4.0), bytes(4)])
+
+    try:
+        dropped, reply = _finishes(run, 60.0)
+    finally:
+        side.transport.close()
+        listener.close()
+    assert dropped == 100 and reply.outputs == [struct.pack("<d", 4.0)]
+
+
 @pytest.mark.parametrize("fake_kwargs, timeouts, reason", [
     ({"silent_after": 1}, Timeouts(handshake_s=5.0, step_s=0.3), "did not answer for"),
     ({"silent_after": 1}, Timeouts(handshake_s=5.0, step_s=0.3, deadline_s=0.05), None),

@@ -479,7 +479,11 @@ the true values. New plots under "Navigation Error" show the difference
 between what the flight software was told and the truth, as one magnitude
 each: attitude, rate and Sun heading in degrees, position in m, velocity in
 m/s. A run longer than one segment restarts the errors at zero in each
-segment, with a new seed. In a Monte Carlo batch Basilisk gives every run
+segment, with a new seed: Basilisk keeps the error state inside its
+navigation module and clears it when a segment starts, so it cannot be
+carried over. They build up again within about 0.41 x (bound / step)^2
+steps of the slowest channel (measured with Basilisk's module); the
+Explain tab says how long that is for your run. In a Monte Carlo batch Basilisk gives every run
 its own random seed (the scenario's seed is not used there), so the runs see
 different errors. Software in the loop gives the program the same noisy
 navigation as the simulation's own modules.

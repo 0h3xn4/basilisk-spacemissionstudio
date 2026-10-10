@@ -160,11 +160,17 @@ class SimulationSide:
         self.hello = hello
         return hello
 
-    def _await_reply(self, kind: FrameType, seq: int, time_ns: int, timeout_s: float) -> Frame:
+    def _await_reply(self, kind: FrameType, seq: int, time_ns: int, timeout_s: float,
+                     while_answering: bool = False) -> Frame:
+        """The answer to frame ``seq``. ``while_answering``: ``timeout_s``
+        counts from the last frame heard, so late answers to earlier steps
+        keep the wait going (the step timeout is "no answer at all")."""
         end = time.perf_counter() + timeout_s
         while True:
             frame = self._receive(max(0.0, end - time.perf_counter()))
             if frame.type == FrameType.OUTPUT and frame.seq < seq:
+                if while_answering:
+                    end = time.perf_counter() + timeout_s
                 continue  # a step answered after its deadline: already counted as dropped
             if frame.type != kind or frame.seq != seq:
                 raise self._protocol_error(f"expected {kind.name} for frame {seq}, received {frame.type.name} "
@@ -189,7 +195,8 @@ class SimulationSide:
         seq = self._send(FrameType.STEP, time_ns, encode_payloads(self.expected.inputs, inputs))
         wait = self.timeouts.deadline_s if self.timeouts.deadline_s is not None else self.timeouts.step_s
         try:
-            frame = self._await_reply(FrameType.OUTPUT, seq, time_ns, wait)
+            frame = self._await_reply(FrameType.OUTPUT, seq, time_ns, wait,
+                                      while_answering=self.timeouts.deadline_s is None)
         except SilTimeout:
             silent = time.perf_counter() - self._last_heard
             if self.timeouts.deadline_s is None or silent >= self.timeouts.step_s:
