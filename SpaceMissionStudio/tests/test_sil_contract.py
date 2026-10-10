@@ -36,7 +36,7 @@ import pytest
 
 from spacemissionstudio.sil import contract as c
 from spacemissionstudio.sil.session import Expected, SimulationSide, Timeouts
-from spacemissionstudio.sil.transport import Listener, SilTimeout
+from spacemissionstudio.sil.transport import Listener, SilTimeout, SocketTransport
 
 TOKEN = "0123456789abcdef0123456789abcdef"
 IN = [c.PortSpec("nav_attOutMsg", "NavAtt", 8, "a" * 16), c.PortSpec("wheels_rwSpeedOutMsg", "RWSpeed", 4, "b" * 16)]
@@ -252,6 +252,81 @@ def test_a_late_answer_is_a_dropped_step_and_is_discarded_when_it_arrives():
     finally:
         side.transport.close()
         listener.close()
+
+
+def _finishes(work, within_s=60.0):
+    """Runs ``work`` in a thread: a hang fails the test instead of the run."""
+    outcome = {}
+
+    def run():
+        try:
+            outcome["value"] = work()
+        except BaseException as exc:  # noqa: BLE001 - handed back to the test
+            outcome["error"] = exc
+
+    thread = threading.Thread(target=run, daemon=True)
+    thread.start()
+    thread.join(within_s)
+    assert not thread.is_alive(), f"still blocked after {within_s:.0f} s"
+    if "error" in outcome:
+        raise outcome["error"]
+    return outcome.get("value")
+
+
+def test_a_send_never_waits_for_a_peer_that_is_itself_sending():
+    """Both sides send more than the socket buffers hold before reading:
+    send() keeps what arrives meanwhile for receive(), so neither waits for
+    the other for ever. A peer that takes nothing at all is a SilTimeout
+    after the send's timeout."""
+    ours, theirs = socket.socketpair()
+    transport = SocketTransport(ours)
+    mine, their_data = bytes(range(256)) * 16384, bytes(reversed(range(256))) * 16384  # 4 MiB each way
+    received = bytearray()
+
+    def peer():
+        theirs.sendall(their_data)
+        while len(received) < len(mine):
+            received.extend(theirs.recv(65536))
+
+    thread = threading.Thread(target=peer, daemon=True)
+    thread.start()
+    try:
+        _finishes(lambda: transport.send(mine, 30.0))
+        assert _finishes(lambda: transport.receive(len(their_data), 30.0)) == their_data
+        thread.join(30.0)
+        assert bytes(received) == mine
+        with pytest.raises(SilTimeout, match="took nothing for"):
+            _finishes(lambda: transport.send(mine, 0.3))
+    finally:
+        transport.close()
+        theirs.close()
+
+
+@pytest.mark.parametrize("kind", KINDS)
+def test_thousands_of_dropped_steps_never_block_the_link(kind):
+    """With a deadline no answer can meet, every step is dropped and no
+    OUTPUT is waited for; the late OUTPUTs (more than the socket buffers
+    hold) are still read and skipped, the flight software never blocks
+    writing them, and the run ends with BYE."""
+    listener, fake, side = _session(kind, timeouts=Timeouts(handshake_s=5.0, step_s=10.0, deadline_s=1e-9))
+    steps = 20000
+
+    def run():
+        side.handshake()
+        side.reset(0, [None, None])
+        dropped = sum(side.step(step * RATE_NS, [bytes(8), bytes(4)]) is None for step in range(1, steps + 1))
+        side.timeouts.deadline_s = None
+        reply = side.step((steps + 1) * RATE_NS, [struct.pack("<d", 3.0), bytes(4)])
+        return dropped, reply, side.bye()
+
+    try:
+        dropped, reply, said_bye = _finishes(run, 120.0)
+    finally:
+        side.transport.close()
+        listener.close()
+    fake.join(5.0)
+    assert dropped == steps == side.late_replies and fake.steps == steps + 1
+    assert reply.outputs == [struct.pack("<d", 3.0)] and said_bye
 
 
 @pytest.mark.parametrize("fake_kwargs, timeouts, reason", [

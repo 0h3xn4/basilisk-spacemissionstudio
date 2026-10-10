@@ -80,7 +80,10 @@ class SimulationSide:
     def _send(self, kind: FrameType, time_ns: int, payload: bytes = b"", seq: Optional[int] = None) -> int:
         if seq is None:
             seq, self._seq = self._seq, self._seq + 1
-        self.transport.send(encode_frame(Frame(kind, seq, time_ns, payload)))
+        try:
+            self.transport.send(encode_frame(Frame(kind, seq, time_ns, payload)), self.timeouts.step_s)
+        except SilTimeout:
+            raise SilError(f"the flight software took no {kind.name} for {self.timeouts.step_s:.3g} s") from None
         return seq
 
     def send_error(self, text: str) -> None:

@@ -123,8 +123,8 @@ Identifiers are module paths: `engine/service` is `spacemissionstudio/engine/ser
 | `sil/contract` | The SIL transport contract, version 1 | SRS-F-19 | `FrameType`, `SilError`, `ContractError`, `Frame`, `encode_frame`, `decode_header`, `check_crc`, `PortSpec`, `Hello`, `encode_hello`, `decode_hello`, `port_mismatches` (+5) | - | - | 273 |
 | `sil/report` | What a SIL run measured | SRS-F-19 | `SignalStats`, `timing_summary`, `SilReport`, `Comparator` | engine/results, fsw_export/model, sil/contract | numpy | 263 |
 | `sil/runner` | Runs a spacecraft's flight software as an external program, software-in-the-loop, against the Basilisk dynamics (SRS-F-19). | SRS-F-19 | `SilOptions`, `SilCancelled`, `SilRunError`, `file_sha256`, `check_binary`, `check_runnable`, `run_sil` | engine/long_run, engine/service, fsw_export/capture, fsw_export/digest, sil/contract, sil/report, sil/session, sil/transport | Basilisk | 392 |
-| `sil/session` | The simulation side of the SIL contract | SRS-F-19 | `Timeouts`, `StepReply`, `Expected`, `SimulationSide` | sil/contract, sil/transport | - | 223 |
-| `sil/transport` | The byte stream under the SIL contract (``SIL_CONTRACT.md`` section 2). | SRS-F-19 | `SilTimeout`, `SilLinkClosed`, `Transport`, `SocketTransport`, `Listener` | sil/contract | - | 169 |
+| `sil/session` | The simulation side of the SIL contract | SRS-F-19 | `Timeouts`, `StepReply`, `Expected`, `SimulationSide` | sil/contract, sil/transport | - | 226 |
+| `sil/transport` | The byte stream under the SIL contract (``SIL_CONTRACT.md`` section 2). | SRS-F-19 | `SilTimeout`, `SilLinkClosed`, `Transport`, `SocketTransport`, `Listener` | sil/contract | - | 225 |
 
 ## Forward traceability (requirement -> components)
 

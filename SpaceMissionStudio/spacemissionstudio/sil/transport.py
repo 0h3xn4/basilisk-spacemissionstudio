@@ -28,6 +28,7 @@ A serial or UDP link would be another :class:`Transport`.
 from __future__ import annotations
 
 import os
+import select
 import shutil
 import socket
 import sys
@@ -55,8 +56,12 @@ class Transport(ABC):
     """A reliable, ordered byte stream."""
 
     @abstractmethod
-    def send(self, data: bytes) -> None:
-        """Sends every byte, or raises :class:`SilLinkClosed`."""
+    def send(self, data: bytes, timeout_s: Optional[float] = None) -> None:
+        """Sends every byte, or raises :class:`SilLinkClosed`. Raises
+        :class:`SilTimeout` when the other side takes nothing for
+        ``timeout_s`` (``None``: wait for ever). Whatever arrives while
+        sending is kept for :meth:`receive`, so a peer that is itself
+        blocked writing can never hold up a send."""
 
     @abstractmethod
     def receive(self, size: int, timeout_s: Optional[float]) -> bytes:
@@ -76,21 +81,72 @@ class SocketTransport(Transport):
     def __init__(self, sock: socket.socket):
         self._sock = sock
         self._pending = bytearray()
+        self._eof = False  # the other side has closed its end
         if sock.family == socket.AF_INET:
             sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
-    def send(self, data: bytes) -> None:
+    def send(self, data: bytes, timeout_s: Optional[float] = None) -> None:
+        # Not sendall: the flight software writes one OUTPUT per STEP and,
+        # while nobody reads them (steps past their deadline), both socket
+        # buffers fill and each side waits for the other for ever. Reading
+        # while sending breaks that cycle.
+        view = memoryview(data)
+        end = None if timeout_s is None else time.perf_counter() + max(0.0, timeout_s)
         try:
-            self._sock.settimeout(None)
-            self._sock.sendall(data)
+            self._sock.setblocking(False)
+            while view:
+                remaining = None if end is None else end - time.perf_counter()
+                if remaining is not None and remaining <= 0.0:
+                    raise SilTimeout(f"the flight software took nothing for {timeout_s:.3g} s")
+                readable, writable, _ = select.select([] if self._eof else [self._sock], [self._sock], [],
+                                                      remaining)
+                if readable:
+                    self._read_available()
+                if writable:
+                    try:
+                        view = view[self._sock.send(view):]
+                    except (BlockingIOError, InterruptedError):
+                        pass
         except OSError as exc:
             raise SilLinkClosed(f"the link to the flight software failed while sending ({exc})") from None
+        finally:
+            try:
+                self._sock.setblocking(True)
+            except OSError:
+                pass
+
+    def _read_available(self) -> None:
+        """Keeps what has already arrived, without waiting."""
+        try:
+            chunk = self._sock.recv(65536)
+        except (BlockingIOError, InterruptedError):
+            return
+        if chunk:
+            self._pending += chunk
+        else:
+            self._eof = True
 
     def receive(self, size: int, timeout_s: Optional[float]) -> bytes:
         end = None if timeout_s is None else time.perf_counter() + max(0.0, timeout_s)
         while len(self._pending) < size:
+            if self._eof:
+                raise SilLinkClosed("the flight software closed the link")
             remaining = None if end is None else end - time.perf_counter()
             if remaining is not None and remaining <= 0.0:
+                # Out of time, but what has already arrived still counts
+                # (and must be read, or it piles up unread).
+                try:
+                    self._sock.setblocking(False)
+                    self._read_available()
+                except OSError as exc:
+                    raise SilLinkClosed(f"the link to the flight software failed ({exc})") from None
+                finally:
+                    try:
+                        self._sock.setblocking(True)
+                    except OSError:
+                        pass
+                if len(self._pending) >= size:
+                    break
                 raise SilTimeout(f"waited {timeout_s:.3g} s")
             try:
                 self._sock.settimeout(remaining)

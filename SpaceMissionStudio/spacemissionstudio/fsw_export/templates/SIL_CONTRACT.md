@@ -164,7 +164,9 @@ runs (see "Timing" in the export's ICD).
 - **Step deadline** (optional, off by default): an `OUTPUT` that arrives
   later counts as a dropped step. The previous commands stay in place,
   and the late `OUTPUT`, recognised by its sequence number, is discarded
-  when it arrives.
+  when it arrives. The simulation reads while it sends, so a flight
+  software whose writes of late `OUTPUT`s fill the link never waits on
+  the simulation: a plain blocking write is enough.
 - **Step timeout** (default 10 s): no answer at all within this time
   ends the run with an error. So do an exited program, a closed link and
   any `ERROR`.
