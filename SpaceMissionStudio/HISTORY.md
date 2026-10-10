@@ -8742,3 +8742,20 @@ standard deviation and a bound, plus a random seed. They map onto
 - An all-zero block changes nothing.
 - The exported flight software in the loop, given the same noisy
   navigation, still reproduces the normal run bit for bit.
+
+## Windows: export hashes and SIL deadlines (SRS-F-18, SRS-F-19)
+
+The pull request's first Windows run failed 6 tests; Linux had passed.
+Both causes were reproduced on Linux before fixing them.
+- **Every fresh export read as "Changed on disk".** `capture.json` was
+  written as text, so Windows turned each `\n` into `\r\n`, while its hash
+  in `manifest.json` was taken from the `\n` text. The export now writes
+  the exact bytes it hashes. Two test fixtures had the same mistake and now
+  write bytes too; no expectation changed. Reproduced by making
+  `write_text` write `\r\n`: 5 failed before, all passed after.
+- **A missed deadline could count as met.** Deadlines were timed with
+  `time.monotonic()`, which ticks about every 15.6 ms on Windows, so a
+  short deadline looked unexpired. The SIL session now times with
+  `time.perf_counter()`, and a reply measured later than its deadline
+  counts as dropped even when the wait itself did not run out. Reproduced
+  with a 15.625 ms `monotonic` tick: 0 of 61 steps dropped before, 61 after.

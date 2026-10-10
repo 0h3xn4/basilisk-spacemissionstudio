@@ -87,9 +87,9 @@ class SocketTransport(Transport):
             raise SilLinkClosed(f"the link to the flight software failed while sending ({exc})") from None
 
     def receive(self, size: int, timeout_s: Optional[float]) -> bytes:
-        end = None if timeout_s is None else time.monotonic() + max(0.0, timeout_s)
+        end = None if timeout_s is None else time.perf_counter() + max(0.0, timeout_s)
         while len(self._pending) < size:
-            remaining = None if end is None else end - time.monotonic()
+            remaining = None if end is None else end - time.perf_counter()
             if remaining is not None and remaining <= 0.0:
                 raise SilTimeout(f"waited {timeout_s:.3g} s")
             try:
@@ -144,12 +144,12 @@ class Listener:
     def accept(self, timeout_s: float, gone: Callable[[], Optional[str]] = lambda: None) -> SocketTransport:
         """The first connection within ``timeout_s``. ``gone()`` is asked
         between waits; a reason from it (the program exited) ends the wait."""
-        end = time.monotonic() + timeout_s
+        end = time.perf_counter() + timeout_s
         while True:
             reason = gone()
             if reason:
                 raise SilLinkClosed(reason)
-            remaining = end - time.monotonic()
+            remaining = end - time.perf_counter()
             if remaining <= 0.0:
                 raise SilTimeout(f"the flight software did not connect within {timeout_s:.3g} s")
             self._sock.settimeout(min(0.1, remaining))

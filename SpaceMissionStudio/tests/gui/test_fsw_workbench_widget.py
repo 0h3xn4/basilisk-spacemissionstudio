@@ -46,7 +46,7 @@ def _record(tmp_path, scenario):
 
     folder = tmp_path / "fsw"
     folder.mkdir()
-    (folder / "ICD.md").write_text("# ICD\n")
+    (folder / "ICD.md").write_bytes(b"# ICD\n")  # the bytes hashed below, on Windows too
     record = FswExportRecord(spacecraft="sat-1", path=str(folder),
                              config_digest=digest.fsw_config_digest(scenario, "sat-1"), exported_utc="earlier",
                              parts=digest.fsw_config_parts(scenario, "sat-1"))

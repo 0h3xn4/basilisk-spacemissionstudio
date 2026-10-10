@@ -71,7 +71,7 @@ class SimulationSide:
         self.hello: Optional[Hello] = None
         self.late_replies = 0  # OUTPUTs that arrived after their step's deadline
         self._seq = 0
-        self._last_heard = time.monotonic()
+        self._last_heard = time.perf_counter()
         self._header = None
         self._describe_exit = describe_exit  # e.g. "the program exited with status 70: <stderr>"
 
@@ -95,7 +95,7 @@ class SimulationSide:
 
     def _receive(self, timeout_s: Optional[float]) -> Frame:
         """One frame; a broken frame is answered with ERROR and raised."""
-        start = time.monotonic()
+        start = time.perf_counter()
         try:
             if self._header is None:  # a header whose payload timed out is kept for the next call
                 header = self.transport.receive(HEADER_SIZE, timeout_s)
@@ -105,7 +105,7 @@ class SimulationSide:
                     self.send_error(str(exc))
                     raise
             kind, seq, length, time_ns, crc = self._header
-            remaining = None if timeout_s is None else max(0.0, timeout_s - (time.monotonic() - start))
+            remaining = None if timeout_s is None else max(0.0, timeout_s - (time.perf_counter() - start))
             payload = self.transport.receive(length, remaining) if length else b""
             self._header = None
             try:
@@ -115,7 +115,7 @@ class SimulationSide:
                 raise
         except SilLinkClosed as exc:
             raise self._closed(exc) from None
-        self._last_heard = time.monotonic()
+        self._last_heard = time.perf_counter()
         if kind == FrameType.ERROR:
             raise SilError(f"the flight software reported an error: {error_text(payload)}")
         return Frame(kind, seq, time_ns, payload)
@@ -158,9 +158,9 @@ class SimulationSide:
         return hello
 
     def _await_reply(self, kind: FrameType, seq: int, time_ns: int, timeout_s: float) -> Frame:
-        end = time.monotonic() + timeout_s
+        end = time.perf_counter() + timeout_s
         while True:
-            frame = self._receive(max(0.0, end - time.monotonic()))
+            frame = self._receive(max(0.0, end - time.perf_counter()))
             if frame.type == FrameType.OUTPUT and frame.seq < seq:
                 continue  # a step answered after its deadline: already counted as dropped
             if frame.type != kind or frame.seq != seq:
@@ -188,13 +188,18 @@ class SimulationSide:
         try:
             frame = self._await_reply(FrameType.OUTPUT, seq, time_ns, wait)
         except SilTimeout:
-            silent = time.monotonic() - self._last_heard
+            silent = time.perf_counter() - self._last_heard
             if self.timeouts.deadline_s is None or silent >= self.timeouts.step_s:
                 raise SilError(f"the flight software did not answer for {silent:.3g} s (step at "
                                f"t = {time_ns * 1e-9:.9g} s)") from None
             self.late_replies += 1
             return None
         round_trip = time.perf_counter_ns() - sent
+        if self.timeouts.deadline_s is not None and round_trip > self.timeouts.deadline_s * 1e9:
+            # Measured late although the wait did not run out: a wait is only
+            # as fine as the system's timer (about 15.6 ms on Windows).
+            self.late_replies += 1
+            return None
         try:
             execution_ns, payloads = decode_output(self.expected.outputs + self.expected.telemetry, frame.payload)
         except ContractError as exc:
@@ -207,9 +212,9 @@ class SimulationSide:
         """Ends the session; True when the flight software answered BYE."""
         try:
             seq = self._send(FrameType.BYE, 0)
-            end = time.monotonic() + self.timeouts.bye_s
+            end = time.perf_counter() + self.timeouts.bye_s
             while True:
-                frame = self._receive(max(0.0, end - time.monotonic()))
+                frame = self._receive(max(0.0, end - time.perf_counter()))
                 if frame.type == FrameType.BYE and frame.seq == seq:
                     return True
                 if frame.type != FrameType.OUTPUT:

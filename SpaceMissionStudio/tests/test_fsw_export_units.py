@@ -154,7 +154,7 @@ def test_the_digest_follows_flight_software_settings_only():
 def _fake_export(tmp_path, scenario, name="sat-1"):
     folder = tmp_path / "export"
     folder.mkdir()
-    (folder / "ICD.md").write_text("# ICD\n")
+    (folder / "ICD.md").write_bytes(b"# ICD\n")  # the bytes hashed below, on Windows too
     files = {"ICD.md": hashlib.sha256(b"# ICD\n").hexdigest()}
     record = FswExportRecord(spacecraft=name, path=str(folder),
                              config_digest=digest.fsw_config_digest(scenario, name),

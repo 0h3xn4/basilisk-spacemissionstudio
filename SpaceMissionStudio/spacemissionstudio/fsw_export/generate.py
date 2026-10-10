@@ -842,8 +842,11 @@ def generate(capture: FswCapture, out_dir, overwrite: bool = False) -> ExportRes
         target = out / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(data)
-    (out / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
-    (out / "capture.json").write_text(capture.to_json() + "\n")
-    manifest["files"]["capture.json"] = hashlib.sha256((capture.to_json() + "\n").encode()).hexdigest()
-    (out / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+    # Bytes, not text: on Windows write_text would turn each \n into \r\n
+    # and the file would no longer match the hash taken here.
+    (out / "manifest.json").write_bytes((json.dumps(manifest, indent=2, sort_keys=True) + "\n").encode())
+    captured = (capture.to_json() + "\n").encode()
+    (out / "capture.json").write_bytes(captured)
+    manifest["files"]["capture.json"] = hashlib.sha256(captured).hexdigest()
+    (out / "manifest.json").write_bytes((json.dumps(manifest, indent=2, sort_keys=True) + "\n").encode())
     return ExportResult(out, sorted(ctx.files) + ["capture.json", "manifest.json"], manifest)
