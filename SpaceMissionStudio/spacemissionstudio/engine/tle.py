@@ -51,6 +51,7 @@ epoch and applies the ICRS frame bias, so the tool no longer uses it.
 from __future__ import annotations
 
 import math
+import re
 import warnings
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -95,6 +96,9 @@ def check_lines(line1: str, line2: str) -> None:
             raise TLEError(f"TLE line {number} checksum is {line[68]}, computed {_checksum(line)}")
     if line1[2:7] != line2[2:7]:
         raise TLEError(f"TLE catalogue numbers differ: {line1[2:7]!r} and {line2[2:7]!r}")
+    epoch = line1[18:32]  # columns 19-32: YYDDD.DDDDDDDD
+    if not re.fullmatch(r"\d{5}\.\d{8}", epoch) or not 1.0 <= float(epoch[2:]) < 367.0:
+        raise TLEError(f"TLE line 1 epoch {epoch!r} (columns 19-32) is not YYDDD.DDDDDDDD with a day of year 1-366")
 
 
 def parse(line1: str, line2: str) -> Satrec:

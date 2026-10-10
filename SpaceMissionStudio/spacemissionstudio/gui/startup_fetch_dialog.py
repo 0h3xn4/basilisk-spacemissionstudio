@@ -65,7 +65,7 @@ adding cancellation machinery for a rare case.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from PySide6.QtCore import QEventLoop, Qt, QThread, Signal
@@ -213,7 +213,7 @@ class StartupFetchDialog(QDialog):
         until = eo.high_accuracy_until(installed)
         self.earth_orientation_checkbox = QCheckBox("Earth orientation from NAIF (ITRF93 Earth PCKs) -- about 36 MB")
         # Checked when nothing is installed or the high-accuracy span is over.
-        self.earth_orientation_checkbox.setChecked(not installed or until is None or until < datetime.utcnow())
+        self.earth_orientation_checkbox.setChecked(not installed or until is None or until < datetime.now(timezone.utc).replace(tzinfo=None))
         self.earth_orientation_checkbox.setToolTip(
             f"From {eo.NAIF_PCK_URL}: the combined (1962-2126) and the high-precision Earth PCK with their "
             "comment files. The previous files are kept for rollback.\n"

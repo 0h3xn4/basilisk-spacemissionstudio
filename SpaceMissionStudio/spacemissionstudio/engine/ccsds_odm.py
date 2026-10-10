@@ -42,7 +42,7 @@ from __future__ import annotations
 import math
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
@@ -658,7 +658,7 @@ def _header(kind: str, originator: str, creation: Optional[datetime], comments: 
             message_id: Optional[str]) -> List[str]:
     lines = [_line(f"CCSDS_{kind}_VERS", VERSION)]
     lines += [f"COMMENT {c}" for c in comments]
-    lines.append(_line("CREATION_DATE", format_time(creation or datetime.utcnow().replace(microsecond=0))))
+    lines.append(_line("CREATION_DATE", format_time(creation or datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0))))
     lines.append(_line("ORIGINATOR", originator))
     if message_id:
         lines.append(_line("MESSAGE_ID", message_id))
