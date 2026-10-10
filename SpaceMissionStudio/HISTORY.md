@@ -8837,3 +8837,35 @@ of its path (slow only for a very large file; hashing later would let a
 ticked consent go stale). `compliance/unreached_code.md` is a dated
 measurement that still lists a widget removed since. The sequence
 numbers of the SIL link wrap after 2^32 frames.
+
+## Unexecuted code re-measured; navigation errors in long runs (2026-10-10)
+
+**Unexecuted code (Q-ST-80C 6.2.3.6a).** `compliance/unreached_code.md`
+dated from 2026-10-09: about 6600 statements had been added since, and it
+still listed a widget removed in the meantime. Re-measured on commit
+660912587 with Python 3.12 and `sys.monitoring`, as before (2717 passed,
+10 skipped): 1462 of 22587 statements are not executed, and every function
+is entered by some test. The 189 error-handler and early-exit statements
+added since, and a fresh vulture search, found no unreachable code
+(`compliance/review_log.md` F-18). The other unexecuted statements added
+since (919, conditions the tests do not set up) were not reviewed one by
+one. The report now records when and on what it was measured.
+
+**Navigation error across segments (SRS-F-09).** A run longer than one
+segment restarts the navigation errors at zero in each segment. This
+cannot be fixed without changing Basilisk: `simpleNav` keeps its error
+state in a private `GaussMarkov` member, and `Reset` clears it
+(`setRNGSeed` zeroes the state), so nothing outside Basilisk can carry it
+over. What changed instead:
+- Measured with Basilisk's own `simpleNav` (40 seeds x 3 axes for each
+  of the bound/step ratios 5, 10, 20 and 50): from zero, the errors
+  spread back to 90 % of their usual size within 0.30 to 0.41 x
+  (bound/step)^2 flight-software steps.
+- The Explain tab now warns for a segmented run with navigation errors:
+  how many restarts there are and how long the errors take to build up
+  again (0.41 x (bound/step)^2 steps of the slowest channel). For the
+  test settings at 1 s that is about 3 minutes in each 90-day segment.
+- The manual says why the errors restart and how quickly they recover.
+- Tests: the warning (and none for single runs or runs without errors),
+  and Basilisk's `simpleNav` starting from zero and reaching 90 % within
+  the steps the warning assumes.
