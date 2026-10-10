@@ -66,7 +66,6 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QScrollArea,
-    QSpinBox,
     QVBoxLayout,
     QWidget,
 )
@@ -104,7 +103,7 @@ from .orbit_ic_widget import OrbitIcWidget
 from .param_form import ParamForm
 from .sensor_actuator_editor import SensorActuatorListWidget
 from .theme import PALETTE
-from .widgets import ComboBox, PreciseDoubleSpinBox, TabWidget
+from .widgets import ComboBox, PreciseDoubleSpinBox, SpinBox, TabWidget
 
 _FSW_MODE_NONE_LABEL = "(none -- no attitude control)"
 
@@ -1824,7 +1823,7 @@ class SpacecraftEditorDialog(QDialog):
             grid.addWidget(spins[0], row, 1)
             grid.addWidget(spins[1], row, 2)
             self.nav_spins[channel] = spins
-        self.nav_seed = QSpinBox()
+        self.nav_seed = SpinBox()
         self.nav_seed.setRange(-1, 2 ** 31 - 1)
         self.nav_seed.setSpecialValueText("Basilisk default")
         self.nav_seed.setValue(nav0.seed if nav0 is not None and nav0.seed is not None else -1)
