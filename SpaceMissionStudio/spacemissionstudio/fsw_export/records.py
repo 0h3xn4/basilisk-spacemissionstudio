@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional
@@ -59,7 +60,9 @@ def export_flight_software(scenario, spacecraft_name: str, out_dir, steps: Optio
 
     captured = capture(scenario, spacecraft_name, steps=steps or DEFAULT_STEPS)
     result = generate(captured, out_dir, overwrite=overwrite)
-    record = FswExportRecord(spacecraft=spacecraft_name, path=str(Path(out_dir)),
+    # The folder as an absolute path: a relative one would later be read against the scenario file's
+    # folder (export_status), not the folder it was typed in.
+    record = FswExportRecord(spacecraft=spacecraft_name, path=os.path.abspath(out_dir),
                              config_digest=captured.config_digest, exported_utc=result.manifest["exported_utc"],
                              basilisk_revision=BASILISK_REVISION,
                              parts=fsw_config_parts(scenario, spacecraft_name))

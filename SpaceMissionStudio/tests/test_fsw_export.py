@@ -112,6 +112,10 @@ def test_the_export_holds_basilisks_bytes_documents_and_a_complete_manifest(tmp_
     out = tmp_path / "fsw"
     result, record = export_flight_software(_template("13"), "sat-1", out, steps=20)
     manifest = json.loads((out / "manifest.json").read_text())
+    from spacemissionstudio.fsw_export.model import FswCapture
+
+    captured = (out / "capture.json").read_text()  # reads back into the same capture
+    assert FswCapture.from_json(captured).to_json() + "\n" == captured
     for relative, digest in manifest["files"].items():
         assert hashlib.sha256((out / relative).read_bytes()).hexdigest() == digest, relative
     for path in (out / "basilisk").rglob("*"):
@@ -140,6 +144,25 @@ def test_the_export_holds_basilisks_bytes_documents_and_a_complete_manifest(tmp_
         export_flight_software(_template("13"), "sat-1", foreign, steps=5)
     assert (foreign / "notes.txt").read_text() == "mine"
 
+
+
+def test_the_cli_records_a_relative_export_folder_so_it_is_found_again(tmp_path, monkeypatch, capsys):
+    """``export-fsw --out fsw --record`` typed in another folder than the
+    scenario's: the record keeps the folder as an absolute path, so
+    ``fsw-status`` finds the export (it read the relative path against the
+    scenario's folder and reported it missing)."""
+    from spacemissionstudio import cli
+
+    (tmp_path / "scenarios").mkdir()
+    scenario_path = tmp_path / "scenarios" / "s.json"
+    shutil.copy(next(_TEMPLATES.glob("06_*.json")), scenario_path)
+    monkeypatch.chdir(tmp_path)
+    assert cli.main(["export-fsw", "scenarios/s.json", "--spacecraft", "sat-1", "--out", "fswout", "--steps", "5",
+                     "--record"]) == 0
+    assert Path(load_scenario(scenario_path).fsw_exports[0].path) == tmp_path / "fswout"
+    capsys.readouterr()
+    assert cli.main(["fsw-status", "scenarios/s.json"]) == 0
+    assert "CURRENT" in capsys.readouterr().out
 
 def _cmake(*args, cwd=None):
     return subprocess.run(["cmake", *args], cwd=cwd, capture_output=True, text=True)  # noqa: S603,S607

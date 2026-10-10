@@ -390,6 +390,13 @@ def read_graph(service, spacecraft_name: str) -> FswGraph:
 
     telemetry = [Port(_identifier(f"{names[id(p)]}_{fname}"), mtype, f"{names[id(p)]}.{fname}")
                  for p, fname, mtype in output_at.values() if f"{names[id(p)]}.{fname}" not in outputs]
+    # Port names become C symbols (write_<port>, read_<port>, struct fields): two sources made into the same
+    # identifier would not compile.
+    seen: Dict[str, str] = {}
+    for port in list(inputs.values()) + list(outputs.values()) + telemetry:
+        if port.name in seen:
+            raise CaptureError(f"{seen[port.name]} and {port.producer} would both be called {port.name} in the export")
+        seen[port.name] = port.producer
     priming = [names[id(m)] for m in service._desat_controls if id(m) in fsw_ids]
     output_sizes = {f"{names[id(p)]}.{fname}": (address, message_types[mtype].size)
                     for address, (p, fname, mtype) in output_at.items()}

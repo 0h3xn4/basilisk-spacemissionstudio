@@ -155,6 +155,34 @@ def test_an_error_in_a_module_reaches_the_simulation_and_stops_the_run(tmp_path)
     assert replay.returncode == 70 and "guidInMsg wasn't connected" in replay.stderr
 
 
+def test_fsw_host_replay_refuses_options_it_cannot_honour(built_07, tmp_path):
+    """``fsw_host replay`` with an option missing its value (``--expect``
+    last), a tolerance that is not a number >= 0, or an input trace with no
+    records exits 2 naming the problem, instead of skipping the comparison
+    and reporting success; the recorded replay still matches."""
+    host = _program(built_07, "fsw_host")
+    data = built_07.parent / "export" / "tests" / "data"
+    inputs, expected, out = data / "replay_inputs.trace", data / "replay_expected.trace", tmp_path / "out.trace"
+
+    def replay(*extra):
+        return subprocess.run([str(host), "replay", str(inputs), str(out), *extra],  # noqa: S603
+                              capture_output=True, text=True)
+
+    for extra, reason in ((["--expect"], "--expect needs a value"),
+                          (["--expect", str(expected), "--rtol", "abc"], "--rtol abc is not a number >= 0"),
+                          (["--atol", "-1"], "--atol -1 is not a number >= 0")):
+        done = replay(*extra)
+        assert done.returncode == 2 and reason in done.stderr, (extra, done.stdout, done.stderr)
+    header = inputs.read_bytes()  # magic, kind, port count, record count, then 20 bytes per port
+    port_count = int.from_bytes(header[12:16], "little")
+    empty = tmp_path / "empty.trace"
+    empty.write_bytes(header[:16] + bytes(4) + header[20:20 + 20 * port_count])  # the same ports, no records
+    done = subprocess.run([str(host), "replay", str(empty), str(out)], capture_output=True, text=True)  # noqa: S603
+    assert done.returncode == 2 and "has no reset record" in done.stderr, done.stderr
+    done = replay("--expect", str(expected), "--rtol", "1e-9")
+    assert done.returncode == 0 and "all outputs match" in done.stdout, done.stdout + done.stderr
+
+
 def test_a_deadline_no_step_meets_drops_every_step(built_07):
     """With a 100 ns deadline every answer is late: each step counts as
     dropped, the commands stay as they were, and the run still completes."""

@@ -253,3 +253,26 @@ def test_the_exported_logging_stops_on_errors_as_basilisk_does(tmp_path):
     error = subprocess.run([str(probe), "log-error"], capture_output=True, text=True)  # noqa: S603
     assert error.returncode == 70 and "handled: wheel model diverged" in error.stdout
     assert "continued" not in error.stdout and "BSK_ERROR: wheel model diverged" in error.stderr
+
+
+def test_only_an_earlier_export_is_replaced_never_another_folders_manifest(tmp_path):
+    """A folder whose manifest.json is someone else's (a web app's, or not
+    JSON at all) holds no earlier export: replacing it is refused even with
+    overwrite, and the file stays as it was. Our own manifest is recognised."""
+    for name, text in (("web", '{"name": "my app", "icons": []}'), ("broken", "{not json"),
+                       ("files-list", '{"files": ["a.c"], "format": 1, "config_digest": "x"}')):
+        folder = tmp_path / name
+        folder.mkdir()
+        (folder / "manifest.json").write_text(text)
+        assert not generate.holds_export(folder)
+        with pytest.raises(generate.ExportError, match="holds no earlier export"):
+            generate._remove_previous(folder, overwrite=True)
+        assert (folder / "manifest.json").read_text() == text
+    ours = tmp_path / "ours"
+    ours.mkdir()
+    (ours / "old.c").write_text("int x;\n")
+    (ours / "manifest.json").write_text(json.dumps({"format": 1, "config_digest": "0" * 64,
+                                                    "files": {"old.c": "0" * 64}}))
+    assert generate.holds_export(ours)
+    generate._remove_previous(ours, overwrite=True)
+    assert not any(ours.iterdir())

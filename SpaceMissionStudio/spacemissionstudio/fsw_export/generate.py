@@ -757,6 +757,24 @@ def _generate_cmake(ctx: _Context, basilisk_sources: List[str], types: List[str]
     ctx.write("CMakeLists.txt", "\n".join(cm))
 
 
+def _export_manifest(folder: Path) -> Optional[dict]:
+    """The manifest of an earlier SpaceMissionStudio export in ``folder``,
+    or None (no manifest.json, or someone else's)."""
+    try:
+        manifest = json.loads((Path(folder) / "manifest.json").read_text())
+    except (OSError, ValueError):
+        return None
+    if not isinstance(manifest, dict) or not isinstance(manifest.get("files"), dict) \
+            or not isinstance(manifest.get("format"), int) or not isinstance(manifest.get("config_digest"), str):
+        return None
+    return manifest
+
+
+def holds_export(folder) -> bool:
+    """Whether ``folder`` holds an earlier export (what overwrite replaces)."""
+    return _export_manifest(Path(folder)) is not None
+
+
 def _remove_previous(out: Path, overwrite: bool) -> None:
     if not out.exists():
         return
@@ -765,12 +783,13 @@ def _remove_previous(out: Path, overwrite: bool) -> None:
     entries = list(out.iterdir())
     if not entries:
         return
-    manifest_path = out / "manifest.json"
-    if not manifest_path.exists():
+    manifest = _export_manifest(out)
+    if manifest is None:
         raise ExportError(f"{out} is not empty and holds no earlier export: choose an empty folder")
     if not overwrite:
         raise ExportError(f"{out} holds an earlier export; export again with overwrite to replace it")
-    previous = json.loads(manifest_path.read_text()).get("files", {})
+    manifest_path = out / "manifest.json"
+    previous = manifest["files"]
     for relative in previous:
         target = (out / relative).resolve()
         if out.resolve() in target.parents and target.is_file():

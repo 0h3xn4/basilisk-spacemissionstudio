@@ -208,7 +208,7 @@ def readme_markdown(cap: FswCapture) -> str:
     return "\n".join([
         f"# Flight software of {cap.spacecraft}", "",
         f"Exported by SpaceMissionStudio {cap.exported_with.get('spacemissionstudio', '')} from the scenario "
-        f"\"{cap.scenario_name}\": the attitude flight software the simulation runs, as a standalone C99 project. "
+        f"\"{cap.scenario_name}\": the attitude flight software the simulation runs, as a standalone C project (C99 with the compiler's extensions). "
         "It needs CMake and a C compiler only: no Python, no Basilisk installation.", "",
         "## Build and test", "", "```sh", "cmake -S . -B build", "cmake --build build", "ctest --test-dir build",
         "./build/fsw_host info", "```", "",
@@ -218,7 +218,8 @@ def readme_markdown(cap: FswCapture) -> str:
         f"from {len(cap.times_ns)} simulation steps and compares every output with the simulation's.", "",
         "## Using it", "", "```c", '#include "fsw_scheduler.h"', '#include "fsw_ports.h"', "",
         "fsw_init();                                  /* parameters, SelfInit, constants, connections */",
-        "fsw_reset(0);                                /* Reset of every module */",
+        "fsw_input_ports[i].write(&payload, 0);       /* each input written before the reset */",
+        "fsw_reset(0);                                /* Reset of every module (some read their inputs here) */",
         "for (;;) {                                   /* every fsw_rate_ns */",
         "    fsw_input_ports[i].write(&payload, t);   /* each input port */",
         "    fsw_step(t);",
@@ -246,7 +247,7 @@ def readme_markdown(cap: FswCapture) -> str:
         "| `adapter/` | The SIL adapter template for flight software of your own |",
         "| `SIL_CONTRACT.md`, `ADAPTER_GUIDE.md` | The SIL transport contract, and how to use the adapter |",
         "| `tests/` | Unit tests and the recorded replay traces |",
-        "| `capture.json` | Everything recorded from the simulation (used by SpaceMissionStudio) |",
+        "| `capture.json` | Everything recorded from the simulation: modules, parameters, ports, layouts and the replay traces (`FswCapture.from_json` reads it) |",
         "| `manifest.json` | Configuration digest, provenance and a SHA-256 of every file |", "",
         "## Provenance and licence", "",
         f"Configuration digest `{cap.config_digest}`. SpaceMissionStudio marks this export stale when the scenario's "

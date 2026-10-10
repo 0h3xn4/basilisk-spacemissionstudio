@@ -287,7 +287,9 @@ class FlightSoftwareWidget(QWidget):
         folder = self.choose_folder(name)
         if folder is None:
             return
-        overwrite = (folder / "manifest.json").is_file()
+        from ..fsw_export.generate import holds_export
+
+        overwrite = holds_export(folder)  # only an earlier export; another folder's manifest.json is not one
         if overwrite and not self.confirm_overwrite(folder):
             return
         self._busy = name
