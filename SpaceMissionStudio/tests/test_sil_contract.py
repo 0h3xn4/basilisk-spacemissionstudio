@@ -277,7 +277,7 @@ def test_a_send_never_waits_for_a_peer_that_is_itself_sending():
     """Both sides send more than the socket buffers hold before reading:
     send() keeps what arrives meanwhile for receive(), so neither waits for
     the other for ever. A peer that takes nothing at all is a SilTimeout
-    after the send's timeout."""
+    once its buffers are full and the send's timeout has passed."""
     ours, theirs = socket.socketpair()
     transport = SocketTransport(ours)
     mine, their_data = bytes(range(256)) * 16384, bytes(reversed(range(256))) * 16384  # 4 MiB each way
@@ -296,7 +296,8 @@ def test_a_send_never_waits_for_a_peer_that_is_itself_sending():
         thread.join(30.0)
         assert bytes(received) == mine
         with pytest.raises(SilTimeout, match="took nothing for"):
-            _finishes(lambda: transport.send(mine, 0.3))
+            for _ in range(64):  # until the peer's buffers are full (Windows loopback holds several MiB)
+                _finishes(lambda: transport.send(mine, 0.3))
     finally:
         transport.close()
         theirs.close()
