@@ -201,6 +201,7 @@ def _dialogs():
         ("phasing-formation", phasing), ("main-window", main_window),
         ("constellation", simple("constellation_dialog", "WalkerConstellationDialog", ["sat-1"])),
         ("vizard", simple("vizard_dialog", "VizardDialog")),
+        ("sil-run", simple("sil_dialog", "SilRunDialog", "sat-1")),
     ]
     cases += [(f"sensor-{kind}", item(kind, True)) for kind in SUPPORTED_SENSOR_KINDS]
     cases += [(f"actuator-{kind}", item(kind, False)) for kind in SUPPORTED_ACTUATOR_KINDS]

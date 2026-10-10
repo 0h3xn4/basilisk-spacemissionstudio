@@ -118,12 +118,18 @@ class SilReport:
         return lines
 
     def to_json(self) -> str:
-        return json.dumps(asdict(self), indent=1, sort_keys=True)
+        """Strict JSON (for jq, browsers, CI): NaN as null, infinities as
+        "inf"/"-inf"; :meth:`from_json` reads them back."""
+        return json.dumps(_json_safe(asdict(self)), indent=1, sort_keys=True, allow_nan=False)
 
     @classmethod
     def from_json(cls, text: str) -> "SilReport":
         data = json.loads(text)
-        data["signals"] = [SignalStats(**s) for s in data["signals"]]
+        data["signals"] = [SignalStats(**{k: _number(v) if k in _STATS_NUMBERS else v for k, v in s.items()})
+                           for s in data["signals"]]
+        data["residuals"] = {k: [_number(v) for v in values] for k, values in data["residuals"].items()}
+        for key in ("round_trip", "execution"):
+            data[key] = {k: _number(v) for k, v in data[key].items()}
         return cls(**data)
 
     def to_result_set(self):
@@ -151,6 +157,27 @@ class SilReport:
             writer.writerow(["time_s"] + names)
             for i, t in enumerate(self.sample_times_s):
                 writer.writerow([repr(t)] + [repr(self.residuals[n][i]) for n in names])
+
+
+_STATS_NUMBERS = ("max_abs_error", "rms_error", "time_of_max_s", "max_abs_reference")
+
+
+def _json_safe(value):
+    if isinstance(value, float) and not math.isfinite(value):
+        return None if math.isnan(value) else ("inf" if value > 0 else "-inf")
+    if isinstance(value, dict):
+        return {k: _json_safe(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(v) for v in value]
+    return value
+
+
+def _number(value) -> float:
+    if value is None:
+        return math.nan
+    if isinstance(value, str):
+        return float(value)  # "inf" or "-inf"
+    return value
 
 
 class _PortReader:
@@ -203,10 +230,13 @@ class Comparator:
                 if sample:
                     self._samples[i].append(np.full(len(reader.names), np.nan))
                 continue
-            residual = reader.values(ext) - ref_values
+            ext_values = reader.values(ext)
+            with np.errstate(invalid="ignore"):  # inf - inf
+                residual = ext_values - ref_values
+            residual[ext_values == ref_values] = 0.0  # equal infinities are no error either
             magnitude = np.abs(residual)
             magnitude[np.isnan(magnitude)] = np.inf  # a NaN on one side only is the worst error there is
-            magnitude[np.isnan(ref_values) & np.isnan(residual) & np.isnan(reader.values(ext))] = 0.0
+            magnitude[np.isnan(ref_values) & np.isnan(ext_values)] = 0.0
             worse = magnitude > self._max[i]
             self._max[i][worse] = magnitude[worse]
             self._time_of_max[i][worse] = time_s

@@ -29,11 +29,12 @@ from typing import Optional
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QAbstractItemView, QFileDialog, QHBoxLayout, QHeaderView, QLabel, QMessageBox,
-                               QPlainTextEdit, QPushButton, QTableWidget, QTableWidgetItem, QTabWidget, QVBoxLayout,
+                               QPlainTextEdit, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout,
                                QWidget)
 
 from .scenario_explainer_widget import _stat_tile
 from .theme import PALETTE
+from .widgets import TabWidget
 
 _COLUMNS = ("Signal", "Kind", "Max |residual|", "RMS", "At t [s]", "Max |reference|", "Not written [steps]")
 
@@ -80,7 +81,7 @@ class SilComparisonWidget(QWidget):
         layout.addWidget(self.status_label)
         self.tiles_row = QHBoxLayout()
         layout.addLayout(self.tiles_row)
-        self.views = QTabWidget()
+        self.views = TabWidget()
         signals_page = QWidget()
         signals_layout = QVBoxLayout(signals_page)
         signals_layout.setContentsMargins(0, 4, 0, 0)

@@ -152,3 +152,20 @@ def test_the_comparison_panel_shows_the_numbers_and_saves_the_report(qtbot, tmp_
     assert panel.status_label.text().startswith("Stopped: the flight software did not answer")
     panel.show_report(None)
     assert panel.table.rowCount() == 0 and not panel.views.isVisibleTo(panel)
+
+
+def test_the_mouse_wheel_changes_nothing_on_the_comparison_panel(qtbot, qapp):
+    """With a report shown, scrolling over the panel's tabs and boxes
+    changes no view (the app-wide no-wheel rule)."""
+    from test_wheel_in_dialogs import _changed_by_wheel
+
+    from spacemissionstudio.gui.sil_comparison_widget import SilComparisonWidget
+
+    panel = SilComparisonWidget()
+    qtbot.addWidget(panel)
+    panel.show_report(_report())
+    panel.resize(1000, 800)  # [px]
+    panel.show()
+    qtbot.waitExposed(panel)
+    changed, count = _changed_by_wheel(panel, qapp)
+    assert count > 0 and not changed, changed

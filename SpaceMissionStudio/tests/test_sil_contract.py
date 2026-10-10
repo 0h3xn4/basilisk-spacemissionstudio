@@ -30,6 +30,7 @@ import sys
 import threading
 import time
 import zlib
+from pathlib import Path
 
 import pytest
 
@@ -321,4 +322,33 @@ def test_a_program_changed_after_consent_is_refused(tmp_path):
     program.chmod(0o644)
     with pytest.raises(c.SilError, match="not executable"):
         run_sil(None, "sat-1", SilOptions(str(program)))
+    assert not marker.exists()
+
+
+@pytest.mark.requires_basilisk
+@pytest.mark.skipif(sys.platform == "win32", reason="the stand-in program is a shell script")
+def test_a_program_swapped_while_the_simulation_is_built_is_refused(tmp_path, monkeypatch):
+    """The hash is checked again right before the program starts, after
+    the seconds the simulation takes to build: a program replaced in that
+    window is refused and never started (security analysis S-15)."""
+    from spacemissionstudio.schema import load_scenario
+    from spacemissionstudio.sil import runner
+
+    program = tmp_path / "fsw_host"
+    marker = tmp_path / "started"
+    program.write_text(f"#!/bin/sh\ntouch {marker}\n")
+    program.chmod(0o755)
+    confirmed = runner.file_sha256(program)
+    real_listener = runner.Listener
+
+    def swap_then_listen(kind):  # the last step before the start
+        program.write_text(f"#!/bin/sh\ntouch {marker}\necho swapped\n")
+        return real_listener(kind)
+
+    monkeypatch.setattr(runner, "Listener", swap_then_listen)
+    templates = Path(__file__).resolve().parent.parent / "spacemissionstudio" / "scenarios" / "templates"
+    scenario = load_scenario(next(templates.glob("07_*.json")))
+    scenario.sim_settings.duration_days = 1 / 1440.0  # [day]
+    with pytest.raises(c.SilError, match="changed after you confirmed it"):
+        runner.run_sil(scenario, "sat-1", runner.SilOptions(str(program), expected_sha256=confirmed))
     assert not marker.exists()

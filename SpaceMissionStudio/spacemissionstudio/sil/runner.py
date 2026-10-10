@@ -326,6 +326,12 @@ def run_sil(scenario, spacecraft_name: str, options: SilOptions, vizard_request=
     listener = Listener(options.transport)
     report.address_kind = listener.kind
     token = secrets.token_hex(16)
+    # Again, right before the start: building the simulation above takes seconds, and a program swapped in
+    # meanwhile must not run (security analysis S-15).
+    if file_sha256(binary) != sha256:
+        listener.close()
+        raise SilError(f"{binary} changed after you confirmed it (while the simulation was being built); start the "
+                       "run again")
     program = _Program(binary, listener.address, token)
     session = None
     result = None

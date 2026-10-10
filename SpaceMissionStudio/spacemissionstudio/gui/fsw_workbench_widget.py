@@ -146,6 +146,7 @@ class FlightSoftwareWidget(QWidget):
         self._cards: Dict[str, _SpacecraftCard] = {}
         self._worker: Optional[_ExportWorker] = None
         self._busy: Optional[str] = None
+        self._export_scenario = None  # the scenario an export in progress started from
         self._sil_running: Optional[str] = None
         outer = QVBoxLayout(self)
         intro = QLabel("Export each spacecraft's attitude flight software as a standalone C project "
@@ -293,6 +294,7 @@ class FlightSoftwareWidget(QWidget):
         if overwrite and not self.confirm_overwrite(folder):
             return
         self._busy = name
+        self._export_scenario = self._scenario  # the record goes here if the editor is mid-edit when it ends
         self._refresh()
         self._worker = _ExportWorker(self._scenario, name, folder, overwrite, self)
         self._worker.finished_ok.connect(self._on_export_done)
@@ -303,8 +305,13 @@ class FlightSoftwareWidget(QWidget):
         from ..fsw_export.records import with_record
 
         self._busy = None
-        records = with_record(self._scenario, record)
-        self._scenario.fsw_exports = records
+        # The editor's scenario, or the one the export started from while the editor holds an invalid one
+        # (set_scenario(None) during a half-typed edit): the record is never dropped.
+        scenario = self._scenario if self._scenario is not None else self._export_scenario
+        if scenario is None:
+            return
+        records = with_record(scenario, record)
+        scenario.fsw_exports = records
         self.exports_changed.emit(records)
         self._refresh()
         card = self._cards.get(record.spacecraft)

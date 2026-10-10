@@ -21,6 +21,7 @@ per signal, never-written outputs, NaN, the sampled series, timing
 summaries and the report's JSON, CSV and plottable forms."""
 
 import csv
+import json
 import math
 import struct
 
@@ -118,3 +119,26 @@ def test_long_runs_keep_a_bounded_sample_of_the_residuals():
     report = _report()
     comparator.finish(report)
     assert len(report.sample_times_s) == module.MAX_SAMPLES and report.sample_times_s[1] == 3.0
+
+
+def test_the_report_is_strict_json_even_with_nan_and_infinite_residuals():
+    """A NaN on one side (an infinite error) and a port not written (NaN
+    samples): the JSON has no NaN or Infinity tokens, so strict parsers and
+    CI tools read it, and it comes back as the same values. Equal
+    infinities on both sides are no error."""
+    comparator = Comparator([OUT], [TLM], {"Demo": LAYOUT}, expected_steps=2)
+    ref = _payload(1.0, float("inf"), 0.0, 5)
+    comparator.add(0.0, [_payload(float("nan"), float("inf"), 0.0, 5), None], [ref, ref])
+    comparator.add(1.0, [ref, ref], [ref, ref])
+    report = _report()
+    comparator.finish(report)
+    report.steps = 2
+    stats = {s.name: s for s in report.signals}
+    assert math.isinf(stats["rw_torqueOutMsg.torque[0]"].max_abs_error)
+    assert stats["rw_torqueOutMsg.torque[1]"].max_abs_error == 0.0  # inf against inf
+    text = report.to_json()
+    json.loads(text, parse_constant=lambda token: pytest.fail(f"non-standard JSON token {token}"))
+    again = SilReport.from_json(text)
+    assert math.isinf(again.signals[0].max_abs_error) and again.signals[1].max_abs_reference == math.inf
+    assert np.isnan(again.residuals["guid_out.torque[0]"][0])
+    assert again.residuals["rw_torqueOutMsg.count"] == report.residuals["rw_torqueOutMsg.count"]

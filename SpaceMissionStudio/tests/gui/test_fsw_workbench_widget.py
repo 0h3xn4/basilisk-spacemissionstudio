@@ -118,3 +118,24 @@ def test_export_from_the_tab_records_it(qtbot, tmp_path):
     (records,) = signal.args
     assert [r.spacecraft for r in records] == ["sat-1"] and (tmp_path / "export" / "CMakeLists.txt").is_file()
     assert widget.card("sat-1").badge.text() == "Up to date"
+
+
+def test_an_export_ending_while_the_scenario_is_mid_edit_keeps_its_record(qtbot, tmp_path):
+    """The editor hands the tab no scenario while a half-typed edit does not
+    validate. An export that finishes then still hands its record on (it
+    went into a dropped slot exception before)."""
+    from types import SimpleNamespace
+
+    from spacemissionstudio.gui.fsw_workbench_widget import FlightSoftwareWidget
+
+    scenario = _scenario()
+    _, record = _record(tmp_path, scenario)
+    widget = FlightSoftwareWidget()
+    qtbot.addWidget(widget)
+    widget.set_scenario(scenario)
+    widget._busy, widget._export_scenario = "sat-1", scenario  # as _on_export leaves them
+    widget.set_scenario(None)
+    result = SimpleNamespace(manifest={"modules": [1, 2, 3], "recorded_steps": 5})
+    with qtbot.waitSignal(widget.exports_changed) as signal:
+        widget._on_export_done(result, record)
+    assert [r.spacecraft for r in signal.args[0]] == ["sat-1"] and widget._busy is None

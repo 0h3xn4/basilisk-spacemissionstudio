@@ -29,10 +29,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox, QFileDialog,
-                               QFormLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QCheckBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QHBoxLayout, QLabel,
+                               QLineEdit, QPushButton, QVBoxLayout, QWidget)
 
 from .theme import PALETTE
+from .widgets import ComboBox, DoubleSpinBox
 
 _TRANSPORTS = (("Automatic (Unix socket, TCP on Windows)", "auto"), ("Unix-domain socket", "unix"),
                ("TCP on 127.0.0.1", "tcp"))
@@ -75,11 +76,11 @@ class SilRunDialog(QDialog):
         self.hash_label.setWordWrap(True)
         self.hash_label.setStyleSheet(f"color: {PALETTE['text_muted']}; font-family: monospace;")
         form.addRow("SHA-256", self.hash_label)
-        self.transport_combo = QComboBox()
+        self.transport_combo = ComboBox()
         for text, value in _TRANSPORTS:
             self.transport_combo.addItem(text, value)
         form.addRow("Link", self.transport_combo)
-        self.deadline_spin = QDoubleSpinBox()
+        self.deadline_spin = DoubleSpinBox()
         self.deadline_spin.setRange(0.0, 10000.0)  # [ms]
         self.deadline_spin.setDecimals(2)
         self.deadline_spin.setSuffix(" ms")
@@ -87,7 +88,7 @@ class SilRunDialog(QDialog):
         self.deadline_spin.setToolTip("An answer later than this counts as a dropped step; the previous commands "
                                       "stay in place.")
         form.addRow("Step deadline", self.deadline_spin)
-        self.timeout_spin = QDoubleSpinBox()
+        self.timeout_spin = DoubleSpinBox()
         self.timeout_spin.setRange(0.1, 600.0)  # [s]
         self.timeout_spin.setValue(10.0)  # [s]
         self.timeout_spin.setSuffix(" s")
