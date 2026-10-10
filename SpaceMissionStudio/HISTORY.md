@@ -8670,3 +8670,24 @@ S-15). The analysis no longer says the tool opens no listening socket.
 
 **Compliance.** SRS-F-19 with its verification, ICD-10 (the SIL link),
 security analysis S-15, the SDD component map.
+
+## GUI tests fail instead of hanging on a modal dialog
+
+Under the offscreen platform a modal dialog nobody answers blocks for
+ever. During the flight-software export work a failing label test left the
+main window with unsaved changes, and the whole suite hung at its "Unsaved
+changes" prompt when pytest-qt closed the window, instead of reporting the
+failure. Only `test_main_window.py`'s own `window` fixture guarded against
+this.
+
+`tests/gui/conftest.py` now replaces every modal entry point the GUI uses
+(QMessageBox's static functions, QFileDialog's getters, `QDialog.exec`,
+`QMenu.exec`) for every GUI test. During setup and the test itself, a
+dialog the test did not replace raises an error naming it, so the test
+fails; pytest-qt also reports one raised inside a Qt slot. When the test's
+widgets are closed afterwards it answers at once (the default button, a
+rejected dialog, no file). A test's own monkeypatch still takes precedence.
+`tests/gui/test_dialog_guard.py` runs a failing test with unsaved changes
+and a slot that opens a message box in a separate pytest under a time
+limit. Both fail with their reason; the same files without the guard hang
+until killed. All 1081 GUI tests pass unchanged with the guard.
