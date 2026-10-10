@@ -23,9 +23,12 @@
  * this C interface, with their configuration's bskLogger pointer, which
  * Basilisk leaves NULL. A NULL logger logs at the default level.
  *
- * _bskError() does not return. It calls the handler set with
- * fsw_set_error_handler() (the SIL harness reports the error to the
- * simulation there), then exits with status 70.
+ * Errors stop the flight software, as in Basilisk, where they throw a
+ * BasiliskError: _bskError(), and _bskLog() at level BSK_ERROR, print the
+ * message, call the handler set with fsw_set_error_handler() (the SIL
+ * harness reports the error to the simulation there), then exit with status
+ * 70. _bskLogNoThrow() returns -1 at level BSK_ERROR instead, and does
+ * nothing for a NULL logger, as Basilisk's does.
  */
 
 #include <stdio.h>
@@ -91,6 +94,9 @@ void _setLogLevel(BSKLogger *logger, logLevel_t level)
 
 void _bskLog(BSKLogger *logger, logLevel_t level, const char *info)
 {
+    if (level == BSK_ERROR) {
+        _bskError(logger, info);
+    }
     if (level >= (logger ? logger : &defaultLogger)->level) {
         fprintf(stderr, "BSK_%s: %s\n", levelName(level), info);
     }
@@ -98,15 +104,23 @@ void _bskLog(BSKLogger *logger, logLevel_t level, const char *info)
 
 int _bskLogNoThrow(BSKLogger *logger, logLevel_t level, const char *info)
 {
+    if (logger == NULL) {
+        return 0;
+    }
+    if (level == BSK_ERROR) {
+        return -1;
+    }
     _bskLog(logger, level, info);
     return 0;
 }
 
 void _bskError(BSKLogger *logger, const char *info)
 {
-    _bskLog(logger, BSK_ERROR, info);
+    (void)logger;
+    fprintf(stderr, "BSK_ERROR: %s\n", info != NULL ? info : "");
+    fflush(stderr);
     if (errorHandler != NULL) {
-        errorHandler(info);
+        errorHandler(info != NULL ? info : "");
     }
     exit(70);
 }

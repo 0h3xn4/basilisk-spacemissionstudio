@@ -197,3 +197,59 @@ def test_export_records_validate_and_round_trip_with_the_scenario(tmp_path):
     loaded.fsw_exports = [FswExportRecord(spacecraft="sat-1", path="x", config_digest="xyz")]
     with pytest.raises(ScenarioValidationError, match="64 lower-case hex"):
         loaded.validate()
+
+
+_LOG_PROBE = r'''
+#include <stdio.h>
+#include <string.h>
+#include "architecture/utilities/bskLogging.h"
+#include "fsw_log.h"
+
+static void handler(const char *message) { printf("handled: %s\n", message); fflush(stdout); }
+
+int main(int argc, char **argv)
+{
+    BSKLogger *logger = _BSKLogger();
+    fsw_set_error_handler(handler);
+    if (argc > 1 && strcmp(argv[1], "log-error") == 0) {
+        _bskLog(logger, BSK_ERROR, "wheel model diverged");
+        printf("continued after BSK_ERROR\n");
+        return 0;
+    }
+    printf("nothrow null %d, error %d, warning %d\n", _bskLogNoThrow(NULL, BSK_ERROR, "x"),
+           _bskLogNoThrow(logger, BSK_ERROR, "x"), _bskLogNoThrow(logger, BSK_WARNING, "just a warning"));
+    return 0;
+}
+'''
+
+
+@pytest.mark.requires_c_toolchain
+def test_the_exported_logging_stops_on_errors_as_basilisk_does(tmp_path):
+    """Basilisk throws on _bskLog at BSK_ERROR level, and _bskLogNoThrow
+    returns -1 there (0, without logging, for a NULL logger). The export's
+    fsw_log.c does the same: _bskLog at BSK_ERROR calls the error handler
+    and exits with status 70 instead of carrying on."""
+    import shutil
+    import subprocess
+
+    project = tmp_path / "probe"
+    (project / "architecture" / "utilities").mkdir(parents=True)
+    (project / "architecture" / "utilities" / "bskLogging.h").write_bytes(
+        sources.read("architecture/utilities/bskLogging.h"))
+    for name in ("fsw_log.c", "fsw_log.h"):
+        shutil.copy(generate._TEMPLATES / name, project / name)
+    (project / "main.c").write_text(_LOG_PROBE)
+    (project / "CMakeLists.txt").write_text("cmake_minimum_required(VERSION 3.16)\nproject(probe C)\n"
+                                            "add_executable(probe main.c fsw_log.c)\n"
+                                            "target_include_directories(probe PRIVATE .)\n")
+    build = tmp_path / "build"
+    for args in (["-S", str(project), "-B", str(build)], ["--build", str(build), "--config", "Release"]):
+        done = subprocess.run(["cmake", *args], capture_output=True, text=True)  # noqa: S603,S607
+        assert done.returncode == 0, done.stdout + done.stderr
+    probe = next(p for p in build.rglob("probe*") if p.is_file() and p.suffix in ("", ".exe"))
+    plain = subprocess.run([str(probe)], capture_output=True, text=True)  # noqa: S603
+    assert plain.returncode == 0 and "nothrow null 0, error -1, warning 0" in plain.stdout
+    assert "BSK_WARNING: just a warning" in plain.stderr
+    error = subprocess.run([str(probe), "log-error"], capture_output=True, text=True)  # noqa: S603
+    assert error.returncode == 70 and "handled: wheel model diverged" in error.stdout
+    assert "continued" not in error.stdout and "BSK_ERROR: wheel model diverged" in error.stderr

@@ -8642,8 +8642,8 @@ program's last output is kept:
 - a broken frame;
 - no answer within the step timeout;
 - a closed link, an exited program, or an ERROR from the program.
-  `fsw_host` sends a module's `BSK_ERROR` as one before it exits; no
-  test triggers a module error, so that path is not exercised.
+  `fsw_host` sends a module's `BSK_ERROR` as one before it exits (tested
+  since: see "A module error in the loop" below).
 
 An optional step deadline counts late answers as dropped steps; the late
 answers are recognised by their sequence number and discarded.
@@ -8691,3 +8691,22 @@ rejected dialog, no file). A test's own monkeypatch still takes precedence.
 and a slot that opens a message box in a separate pytest under a time
 limit. Both fail with their reason; the same files without the guard hang
 until killed. All 1081 GUI tests pass unchanged with the guard.
+
+## A module error in the loop, and errors that stop as in Basilisk
+
+The SIL path for a module error had no test. One now leaves an export's
+`mrpFeedback` guidance input unconnected (one line removed from
+`fsw_connect()`). The module's own `Reset` check calls `_bskError`, and
+`fsw_host` sends it as ERROR before exiting with status 70. The run then
+stops with "the flight software reported an error: Error:
+mrpFeedback.guidInMsg wasn't connected", and the module's message is in
+the program's output. `replay` stops the same way.
+
+Found while writing it: Basilisk 2.12's `_bskLog` at level `BSK_ERROR`
+throws a `BasiliskError`, so the simulation stops. The export's
+`fsw_log.c` only printed the message and carried on. No vendored module
+logs at that level today (all fourteen use `_bskError` for errors and
+`_bskLog` only for information and warnings), so no export was affected.
+It now stops as `_bskError` does, and `_bskLogNoThrow` returns -1 at that
+level (and does nothing for a NULL logger), as Basilisk's does. A C test
+checks both.

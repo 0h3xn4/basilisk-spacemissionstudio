@@ -51,10 +51,12 @@ def _program(build: Path, name: str) -> Path:
     return next(p for p in build.rglob(f"{name}*") if p.is_file() and p.suffix in ("", ".exe"))
 
 
-def _export_and_build(scenario, spacecraft, folder: Path) -> Path:
+def _export_and_build(scenario, spacecraft, folder: Path, edit=None) -> Path:
     from spacemissionstudio.fsw_export.records import export_flight_software
 
     export_flight_software(scenario, spacecraft, folder / "export", steps=10)
+    if edit is not None:
+        edit(folder / "export")
     build = folder / "build"
     for args in (["-S", str(folder / "export"), "-B", str(build), "-DCMAKE_BUILD_TYPE=Release"],
                  ["--build", str(build), "--config", "Release", "-j", "4"]):
@@ -126,6 +128,31 @@ def test_a_program_for_another_spacecraft_or_that_exits_fails_loudly(built_07, t
     script.chmod(0o755)
     with pytest.raises(SilRunError, match="exited with status 3 \\(cannot open the star tracker\\)"):
         run_sil(_template("07", 1), "sat-1", SilOptions(str(script), timeouts=Timeouts(handshake_s=5.0)))
+
+
+def test_an_error_in_a_module_reaches_the_simulation_and_stops_the_run(tmp_path):
+    """An export whose mrpFeedback has its guidance input left unconnected
+    (one line removed from fsw_connect()): the module's own Reset check
+    calls _bskError; fsw_host sends it as ERROR before it exits, and the run
+    stops naming it, the module's message in the program's output."""
+    from spacemissionstudio.sil.runner import SilOptions, SilRunError, run_sil
+
+    def disconnect_guidance(export: Path):
+        config = export / "generated" / "fsw_config.c"
+        lines = config.read_text().splitlines(keepends=True)
+        kept = [line for line in lines if "Msg_C_subscribe(&fsw_modules.mrpFeedback.guidInMsg" not in line]
+        assert len(kept) == len(lines) - 1
+        config.write_text("".join(kept))
+
+    scenario = _template("07", 1)
+    build = _export_and_build(scenario, "sat-1", tmp_path, edit=disconnect_guidance)
+    with pytest.raises(SilRunError, match="reported an error: Error: mrpFeedback.guidInMsg wasn't connected") as failed:
+        run_sil(scenario, "sat-1", SilOptions(str(_program(build, "fsw_host"))))
+    assert "BSK_ERROR: Error: mrpFeedback.guidInMsg wasn't connected" in failed.value.report.log_tail
+    replay = subprocess.run([str(_program(build, "fsw_host")), "replay",  # noqa: S603
+                             str(tmp_path / "export" / "tests" / "data" / "replay_inputs.trace"),
+                             str(tmp_path / "out.trace")], capture_output=True, text=True)
+    assert replay.returncode == 70 and "guidInMsg wasn't connected" in replay.stderr
 
 
 def test_a_deadline_no_step_meets_drops_every_step(built_07):
