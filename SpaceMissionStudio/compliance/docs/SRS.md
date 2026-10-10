@@ -323,7 +323,7 @@ Methods: T = test, A = analysis, I = inspection, R = review of design.
 
 | Requirement | Method | Evidence |
 |---|---|---|
-| SRS-F-01 | T | `tests/test_scenario_schema.py`, `tests/test_migrations.py`, `tests/test_validation.py` |
+| SRS-F-01 | T | `tests/test_scenario_schema.py`, `tests/test_migrations.py`, `tests/test_validation.py`, `tests/test_scenario_robustness.py` |
 | SRS-F-02 | T | `tests/test_tle.py`, `tests/test_osculating_elements.py` |
 | SRS-F-03 | T | `tests/test_two_body_validation.py`, `tests/validation/test_v04_propagation.py` |
 | SRS-F-04 | T | `tests/test_planet_rotation.py`, `tests/test_geodesy.py`, V-04 |

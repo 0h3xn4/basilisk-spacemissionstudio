@@ -57,12 +57,14 @@ from __future__ import annotations
 
 import re
 
+import dataclasses
 import json
 import math
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+import typing
+from typing import Any, Dict, List, Optional
 
 from .command import Command, report_before_propagate_errors
 
@@ -2313,6 +2315,85 @@ class Scenario:
         path.write_text(json.dumps(self.to_dict(), indent=2) + "\n")
 
 
+_TYPE_HINTS: Dict[type, Dict[str, Any]] = {}
+
+
+def _describe(value) -> str:
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "true/false"
+    if isinstance(value, (int, float)):
+        return "a number"
+    if isinstance(value, str):
+        return "text"
+    if isinstance(value, (list, tuple)):
+        return "a list"
+    if isinstance(value, dict):
+        return "an object"
+    return type(value).__name__
+
+
+def _type_problem(value, annotation) -> Optional[str]:
+    """Why ``value`` (as read from JSON) does not fit ``annotation``, or None.
+    Only the shapes JSON can get wrong are checked; anything else passes."""
+    origin, args = typing.get_origin(annotation), typing.get_args(annotation)
+    if annotation is typing.Any or annotation is object:
+        return None
+    if origin is typing.Union:
+        if value is None and type(None) in args:
+            return None
+        problems = [_type_problem(value, a) for a in args if a is not type(None)]
+        return None if any(p is None for p in problems) else problems[0]
+    if annotation is float:
+        ok = isinstance(value, (int, float)) and not isinstance(value, bool)
+        return None if ok else f"expected a number, got {_describe(value)}"
+    if annotation is int:
+        ok = isinstance(value, int) and not isinstance(value, bool)
+        return None if ok else f"expected a whole number, got {_describe(value)}"
+    if annotation is bool:
+        return None if isinstance(value, bool) else f"expected true or false, got {_describe(value)}"
+    if annotation is str:
+        return None if isinstance(value, str) else f"expected text, got {_describe(value)}"
+    if annotation is list or origin is list:
+        if not isinstance(value, (list, tuple)):
+            return f"expected a list, got {_describe(value)}"
+        for index, item in enumerate(value):
+            problem = _type_problem(item, args[0]) if args else None
+            if problem:
+                return f"item {index}: {problem}"
+        return None
+    if annotation is tuple or origin is tuple:
+        return None if isinstance(value, (list, tuple)) else f"expected a list, got {_describe(value)}"
+    if annotation is dict or origin is dict:
+        return None if isinstance(value, dict) else f"expected an object, got {_describe(value)}"
+    if isinstance(annotation, type) and dataclasses.is_dataclass(annotation):
+        return None if isinstance(value, annotation) else f"expected an object, got {_describe(value)}"
+    return None
+
+
+def _check_types(obj, path: str, errors: List[str]) -> None:
+    """Every field of ``obj`` (a loaded dataclass) and of the dataclasses in
+    it against its declared type, so a hand-edited file with, say, a list
+    where a number belongs is refused naming the field, before validate()
+    compares it with something."""
+    hints = _TYPE_HINTS.get(type(obj))
+    if hints is None:
+        hints = _TYPE_HINTS[type(obj)] = typing.get_type_hints(type(obj), globals())
+    for f in dataclasses.fields(obj):
+        value, where = getattr(obj, f.name), f"{path}.{f.name}" if path else f.name
+        problem = _type_problem(value, hints.get(f.name, typing.Any))
+        if problem:
+            errors.append(f"{where}: {problem}")
+            continue
+        if dataclasses.is_dataclass(value):
+            _check_types(value, where, errors)
+        elif isinstance(value, list):
+            for index, item in enumerate(value):
+                if dataclasses.is_dataclass(item):
+                    _check_types(item, f"{where}[{index}]", errors)
+
+
 def load_scenario(path: "str | Path") -> Scenario:
     """Load, migrate (if needed), and validate a scenario file. Raises
     :class:`ScenarioValidationError` with a specific message on anything
@@ -2337,12 +2418,23 @@ def load_scenario(path: "str | Path") -> Scenario:
     if not isinstance(raw, dict) or "schema_version" not in raw:
         raise ScenarioValidationError(f"{path}: missing required top-level 'schema_version' field")
 
-    raw = migrations.migrate(raw)
-
     try:
+        raw = migrations.migrate(raw)
         scenario = Scenario.from_dict(raw)
-    except (TypeError, KeyError) as exc:
+    except ScenarioValidationError:
+        raise
+    except (TypeError, KeyError, ValueError, AttributeError) as exc:
         raise ScenarioValidationError(f"{path}: malformed scenario structure ({exc})") from exc
-
-    scenario.validate()
+    errors: List[str] = []
+    _check_types(scenario, "", errors)
+    if errors:
+        raise ScenarioValidationError(f"{path}: " + "; ".join(errors[:10]))
+    try:
+        scenario.validate()
+    except ScenarioValidationError:
+        raise
+    except (TypeError, KeyError, ValueError, AttributeError, OverflowError) as exc:
+        # A wrong-typed value inside a free-form block (e.g. a device's params) that the type check above
+        # cannot see: still a refusal naming the file, never a traceback.
+        raise ScenarioValidationError(f"{path}: malformed value ({exc})") from exc
     return scenario
